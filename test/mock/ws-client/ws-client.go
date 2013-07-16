@@ -17,14 +17,19 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Println("Client connected to ", addr)
+
+	go func() {
+		fmt.Println("Receiving...")
+		var resp string
+		websocket.JSON.Receive(ws, &resp)
+		fmt.Printf("Received '%s'\n", resp)
+	}()
+
 	for {
 		var s string
 		fmt.Scan(&s)
 		fmt.Printf("Sending '%s'\n", s)
 		websocket.JSON.Send(ws, s)
 
-		var resp string
-		websocket.JSON.Receive(ws, &resp)
-		fmt.Printf("Received '%s'\n", resp)
 	}
 }

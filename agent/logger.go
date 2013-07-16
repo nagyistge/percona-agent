@@ -15,3 +15,9 @@ type Logger interface {
 	Err(string)
 	Fatal(string)
 }
+
+type LogEntry struct {
+	Level uint
+	Service string
+	Message string
+}

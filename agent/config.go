@@ -1,7 +1,6 @@
-package config
+package agent
 
 import (
-//	"fmt"
 	"os"
 	"reflect"
 	"io/ioutil"
@@ -10,6 +9,7 @@ import (
 
 type Config struct {
 	ApiKey string `json:"api-key,omitempty"`
+	ApiUrl string `json:"api-url,omitempty"`
 	AgentUuid string `json:"agent-uuid,omitempty"`
 	SpoolDir string `json:"spool-dir,omitempty"`
 	LogFilename string `json:"log-file,omitempty"`
@@ -17,6 +17,7 @@ type Config struct {
 	ConfigFilename string `json:"config-file,omitempty"`
 }
 
+// Load config from JSON file.
 func (c *Config) ReadFile(filename string) error {
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
@@ -32,7 +33,16 @@ func (c *Config) ReadFile(filename string) error {
 	return nil
 }
 
-func (c *Config) Apply(d *Config) error {
+/*
+ * Apply default config d to missing values in config c.  This uses reflection,
+ * so it looks rather complicated, but all it's doing is the Perl equivalent of:
+ *   foreach my $key ( keys %d ) {
+ *      if ( !$c{$key} ) {
+ *         $c{$key} = $d{$key}
+ *      }
+ *   }
+ */
+func (c *Config) Apply(d *Config) {
 	cs := reflect.ValueOf(c).Elem()
 	ds := reflect.ValueOf(d).Elem()
 	for i := 0; i < cs.NumField(); i++ {
@@ -40,5 +50,4 @@ func (c *Config) Apply(d *Config) error {
 			cs.Field(i).SetString(ds.Field(i).String())
 		}
 	}
-	return nil
 }
