@@ -7,41 +7,10 @@ import (
 // The simple, generic struct of all messages.
 type Msg struct {
 	Command string
-	Data string
+	Data string // JSON
 }
 
-/*
- * Static messages, not exported.  Use their exported func counterparts.
- */
-
-var ok = Msg{
-	Command: "ok",
-	Data: "",
-}
-
-var ack = Msg{
-	Command: "ack",
-	Data: "",
-}
-
-var exit = Msg{
-	Command: "exit",
-	Data: "",
-}
-
-var ping = Msg{
-	Command: "ping",
-	Data: "",
-}
-
-var pong = Msg{
-	Command: "pong",
-	Data: "",
-}
-
-/*
- * Exported functions
- */
+// Methods
 
  /*
   * var data map[string]string
@@ -79,4 +48,33 @@ func Ping() *Msg {
 
 func Pong() *Msg {
 	return &pong
+}
+
+/*
+ * Static messages, not exported.  Use their exported func counterparts.
+ */
+
+var ok = Msg{
+	Command: "ok",
+	Data: "",
+}
+
+var ack = Msg{
+	Command: "ack",
+	Data: "",
+}
+
+var exit = Msg{
+	Command: "exit",
+	Data: "",
+}
+
+var ping = Msg{
+	Command: "ping",
+	Data: "",
+}
+
+var pong = Msg{
+	Command: "pong",
+	Data: "",
 }
