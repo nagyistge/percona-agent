@@ -1,4 +1,4 @@
-package main
+package ws_server
 
 type hub struct {
 	// Registered connections.
@@ -23,7 +23,7 @@ var h = hub{
 	connections: make(map[*connection]bool),
 }
 
-func (h *hub) run() {
+func (h *hub) run(data chan string, done chan bool) {
 	for {
 		select {
 		case c := <-h.register:
@@ -31,7 +31,9 @@ func (h *hub) run() {
 		case c := <-h.unregister:
 			delete(h.connections, c)
 			close(c.send)
+			done <- true
 		case m := <-h.broadcast:
+			data <- m
 			for c := range h.connections {
 				select {
 				case c.send <- m:
