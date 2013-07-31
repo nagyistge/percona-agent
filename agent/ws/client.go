@@ -1,5 +1,11 @@
 package ws
 
+import (
+	//"fmt"
+	"log"
+	"encoding/json"
+)
+
 // Websocket implementation of the agent/proto/client interface
 
 import (
@@ -15,7 +21,7 @@ type WsClient struct {
 }
 
 func NewClient(url string, endpoint string) (*WsClient, error) {
-	config, err := websocket.NewConfig(url + endpoint, "localhost")
+	config, err := websocket.NewConfig(url + endpoint, "http://localhost")
 	if err != nil {
 		// todo
 	}
@@ -31,6 +37,7 @@ func NewClient(url string, endpoint string) (*WsClient, error) {
 func (c *WsClient) Connect() error {
 	conn, err := websocket.DialConfig(c.config)
 	if err != nil {
+		log.Print(err)
 		// todo
 		return err
 	}
@@ -47,6 +54,16 @@ func (c *WsClient) Disconnect() error {
 }
 
 func (c *WsClient) Send(msg *proto.Msg) error {
+	bytes, err := json.Marshal(msg)
+	if err != nil {
+		log.Print(err)
+		return err
+	}
+	_, err = c.conn.Write(bytes)
+	if err != nil {
+		log.Print(err)
+		return err
+	}
 	return nil
 }
 
