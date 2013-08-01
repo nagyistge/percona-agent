@@ -1,13 +1,14 @@
 package proto
 
 import (
+	"log"
 	"encoding/json"
 )
 
 // The simple, generic struct of all messages.
 type Msg struct {
-	Command string
-	Data string // JSON
+	Cmd  string `json:"cmd"`
+	Data string `json:"data,omitempty"`
 }
 
 // Methods
@@ -17,13 +18,13 @@ type Msg struct {
   * data["msg"] = "It crashed!"
   * client.Send( NewMsg("err", data) )
   */
-func NewMsg(command string, mapData interface{}) *Msg {
-	codedData, err := json.Marshal(mapData)
+func NewMsg(cmd string, data interface{}) *Msg {
+	codedData, err := json.Marshal(data)
 	if err != nil {
-		// todo
+		log.Panic(err) // todo
 	}
 	var msg = Msg{
-		Command: command,
+		Cmd: cmd,
 		Data: string(codedData),  // map -> bytes -> string
 	}
 	return &msg
@@ -55,26 +56,22 @@ func Pong() *Msg {
  */
 
 var ok = Msg{
-	Command: "ok",
-	Data: "",
+	Cmd: "ok",
 }
 
 var ack = Msg{
-	Command: "ack",
-	Data: "",
+	Cmd: "ack",
 }
 
 var exit = Msg{
-	Command: "exit",
-	Data: "",
+	Cmd: "exit",
 }
 
+// Ping-pong is bidirectional: client can ping server and server can ping client.
 var ping = Msg{
-	Command: "ping",
-	Data: "",
+	Cmd: "ping",
 }
 
 var pong = Msg{
-	Command: "pong",
-	Data: "",
+	Cmd: "pong",
 }
