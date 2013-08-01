@@ -17,8 +17,8 @@ type MockWsServer struct {
  * endpoint: /, /agent, etc.
  * data:	 data from clients
  */
-func (s *MockWsServer) Run(addr string, endpoint string, data chan string, done chan bool) {
-	go h.run(data, done)
+func (s *MockWsServer) Run(addr string, endpoint string, data chan string) {
+	go h.run(data)
 	http.Handle(endpoint, websocket.Handler(wsHandler))
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatal("ListenAndServe:", err)
