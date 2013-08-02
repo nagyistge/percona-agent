@@ -1,6 +1,7 @@
 package ws_test
 
 import (
+	"log"
 	"time"
 	. "launchpad.net/gocheck"
 	"testing"
@@ -15,7 +16,8 @@ func Test(t *testing.T) { TestingT(t) }
 
 type TestSuite struct {
 	conn *ws.WsClient
-	dataChan chan string // msgs from client
+	fromClients chan *proto.Msg // msgs from client
+	toClients chan *proto.Msg // msgs from us to clients
 }
 var _ = Suite(&TestSuite{})
 
@@ -25,11 +27,12 @@ const (
 	ENDPOINT = "/"
 )
 
-// Start a mock ws server that sends all client msgs back to us via dataChan.
+// Start a mock ws server that sends all client msgs back to us via fromClients.
 func (s *TestSuite) SetUpSuite(t *C) {
-	s.dataChan = make(chan string, 10)
+	s.fromClients = make(chan *proto.Msg, 10)
+	s.toClients = make(chan *proto.Msg, 10)
 	mockWsServer := new(ws_server.MockWsServer)
-	go mockWsServer.Run(ADDR, ENDPOINT, s.dataChan)
+	go mockWsServer.Run(ADDR, ENDPOINT, s.fromClients, s.toClients)
 }
 
 func (s *TestSuite) SetUpTest(t *C) {
@@ -59,18 +62,18 @@ func (s *TestSuite) TearDownTest(t *C) {
 	}
 }
 
-/*
- * The server, client, and tests are concurrent, so waitForData() is required
- * because the client can send a msg and a test can check dataChan for that msg
- * before the server has sent it to the chan.
- */
-func waitForData(s *TestSuite) []string {
-	var buf []string
+func getClientMsgs(s *TestSuite) []proto.Msg {
+	/*
+	 * The server, client, and tests are concurrent, so this function is
+	 * required because the client can send a msg and a test can check
+	 * fromClients for that msg before the server has sent it to the chan.
+	 */
+	var buf []proto.Msg
 	var haveData bool = true
 	for haveData {
 		select {
-		case data := <-s.dataChan:
-			buf = append(buf, data)
+		case msg := <-s.fromClients:
+			buf = append(buf, *msg)
 		case <-time.After(10 * time.Millisecond):
 			haveData = false
 		}
@@ -78,17 +81,50 @@ func waitForData(s *TestSuite) []string {
 	return buf
 }
 
+func getServerMsgs(s *TestSuite) []proto.Msg {
+	/*
+	 * websocket.Codec.Receive() blocks, so gorun this and send back any
+	 * msgs via a channel so we can...
+	 */
+	var msgs = make(chan *proto.Msg)
+	go func() {
+		msg := new(proto.Msg)
+		err := s.conn.Recv(msg)
+		if err != nil {
+			log.Print(err)
+		} else {
+			msgs <- msg
+		}
+	}()
+
+	// ...use select and time.After() to timeout.
+	var buf []proto.Msg
+	select {
+	case msg := <-msgs:
+		buf = append(buf, *msg)
+	case <-time.After(100 * time.Millisecond):
+		break
+	}
+
+	return buf
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Test cases
+// //////////////////////////////////////////////////////////////////////////
+
 /*
  * Test sending messages
  */
 
 func (s *TestSuite) TestSend(t *C) {
 	// A simple, built-in message without data
-	s.conn.Send(proto.Ping())
-	expect := []string{
-		`{"cmd":"ping"}`,
+	ping := proto.Ping()
+	s.conn.Send(ping)
+	expect := []proto.Msg{
+		*ping,
 	}
-	got := waitForData(s)
+	got := getClientMsgs(s)
 	t.Check(got, DeepEquals, expect)
 
 	// A more complex, realistic message with data
@@ -97,9 +133,24 @@ func (s *TestSuite) TestSend(t *C) {
 	data["username"] = "root"
 	msg := proto.NewMsg("connect", data)
 	s.conn.Send(msg)
-	expect = []string{
-		`{"cmd":"connect","data":"{\"api-key\":\"123abc\",\"username\":\"root\"}"}`,
+	expect = []proto.Msg{
+		*msg,
 	}
-	got = waitForData(s)
+	got = getClientMsgs(s)
+	t.Check(got, DeepEquals, expect)
+}
+
+/*
+ * Test receiving messages
+ */
+
+func (s *TestSuite) TestRecv(t *C) {
+	// A simple, built-in message without data
+	ping := proto.Ping()
+	s.toClients <- ping
+	expect := []proto.Msg{
+		*ping,
+	}
+	got := getServerMsgs(s)
 	t.Check(got, DeepEquals, expect)
 }
