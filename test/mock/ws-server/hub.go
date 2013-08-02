@@ -1,20 +1,24 @@
 package ws_server
 
+import (
+	"github.com/percona/percona-cloud-tools/agent/proto"
+)
+
 type hub struct {
 	connections map[*connection]bool
-	broadcast chan string
+	broadcast chan *proto.Msg
 	register chan *connection
 	unregister chan *connection
 }
 
 var h = hub{
-	broadcast:   make(chan string),
+	broadcast:   make(chan *proto.Msg),
 	register:    make(chan *connection),
 	unregister:  make(chan *connection),
 	connections: make(map[*connection]bool),
 }
 
-func (h *hub) run(data chan string) {
+func (h *hub) run(fromClients chan *proto.Msg, toClients chan *proto.Msg) {
 	for {
 		select {
 		case c := <-h.register:
@@ -23,7 +27,17 @@ func (h *hub) run(data chan string) {
 			delete(h.connections, c)
 			close(c.send)
 		case msg := <-h.broadcast:
-			data <- msg
+			fromClients <- msg
+		case msg := <-toClients:
+			for c := range h.connections {
+				select {
+				case c.send <- msg:
+				default:
+					delete(h.connections, c)
+					close(c.send)
+					go c.ws.Close()
+				}
+			}
 		}
 	}
 }

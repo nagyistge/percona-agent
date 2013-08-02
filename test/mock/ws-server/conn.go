@@ -1,15 +1,15 @@
 package ws_server
 
 import (
-	//"fmt"
-	//"log"
+	"log"
 	"code.google.com/p/go.net/websocket"
+	"github.com/percona/percona-cloud-tools/agent/proto"
 )
 
 // A client websocket connect
 type connection struct {
 	ws *websocket.Conn
-	send chan string  // data to send to client
+	send chan *proto.Msg // data to send to client
 }
 
 // Called when a new client connects
@@ -17,7 +17,7 @@ func wsHandler(ws *websocket.Conn) {
 	// Create a new websocket connection for this client.
 	c := &connection{
 		ws: ws,
-		send: make(chan string, 256),
+		send: make(chan *proto.Msg, 10),
 	}
 	// Register the connection with the hub.
 	h.register <- c
@@ -31,21 +31,21 @@ func wsHandler(ws *websocket.Conn) {
 
 func (c *connection) reader() {
 	for {
-		var message string
-		err := websocket.Message.Receive(c.ws, &message)
+		msg := new(proto.Msg)
+		err := websocket.JSON.Receive(c.ws, msg)
 		if err != nil {
 			break
 		}
-		h.broadcast <- message
+		h.broadcast <- msg
 	}
 	c.ws.Close()
 }
 
 func (c *connection) writer() {
-	for message := range c.send {
-		err := websocket.Message.Send(c.ws, message)
+	for msg := range c.send {
+		err := websocket.JSON.Send(c.ws, msg)
 		if err != nil {
-			break
+			log.Print(err)
 		}
 	}
 	c.ws.Close()
