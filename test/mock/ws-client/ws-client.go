@@ -1,35 +1,40 @@
-package main
+package ws_client
 
 import (
-	"flag"
-	"log"
-	"fmt"
-	"code.google.com/p/go.net/websocket"
+	"github.com/percona/percona-cloud-tools/agent/proto"
 )
 
-// Use -addr to change bind address:port.
-var addr = flag.String("addr", "ws://127.0.0.1:8000", "http service address")
+type MockClient struct {
+	fromClient chan *proto.Msg
+	toClient chan *proto.Msg
+}
 
-func main() {
-	origin := "http://localhost"
-	ws, err := websocket.Dial(*addr, "", origin)
-	if err != nil {
-		log.Fatal(err)
+func NewMockClient(fromClient chan *proto.Msg, toClient chan *proto.Msg) *MockClient {
+	c := &MockClient{
+		fromClient: fromClient,
+		toClient: toClient,
 	}
-	fmt.Println("Client connected to ", addr)
+	return c
+}
 
-	go func() {
-		fmt.Println("Receiving...")
-		var resp string
-		websocket.JSON.Receive(ws, &resp)
-		fmt.Printf("Received '%s'\n", resp)
-	}()
+func (c *MockClient) Connect() error {
+	return nil
+}
 
-	for {
-		var s string
-		fmt.Scan(&s)
-		fmt.Printf("Sending '%s'\n", s)
-		websocket.JSON.Send(ws, s)
+func (c *MockClient) Disconnect() error {
+	return nil
+}
 
+func (c *MockClient) Send(msg *proto.Msg) error {
+	c.fromClient <- msg
+	return nil
+}
+
+func (c *MockClient) Recv() (*proto.Msg, error) {
+	select {
+	case msg := <-c.toClient:
+		return msg, nil
+	default:
+		return nil, nil
 	}
 }
