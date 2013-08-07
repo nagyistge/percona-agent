@@ -7,6 +7,7 @@ import (
 	"testing"
 	"github.com/percona/percona-cloud-tools/agent/ws"
 	"github.com/percona/percona-cloud-tools/agent/proto"
+	. "github.com/percona/percona-cloud-tools/test"
 	ws_server "github.com/percona/percona-cloud-tools/test/mock/ws-server"
 )
 
@@ -62,25 +63,6 @@ func (s *TestSuite) TearDownTest(t *C) {
 	}
 }
 
-func getClientMsgs(s *TestSuite) []proto.Msg {
-	/*
-	 * The server, client, and tests are concurrent, so this function is
-	 * required because the client can send a msg and a test can check
-	 * fromClients for that msg before the server has sent it to the chan.
-	 */
-	var buf []proto.Msg
-	var haveData bool = true
-	for haveData {
-		select {
-		case msg := <-s.fromClients:
-			buf = append(buf, *msg)
-		case <-time.After(10 * time.Millisecond):
-			haveData = false
-		}
-	}
-	return buf
-}
-
 func getServerMsgs(s *TestSuite) []proto.Msg {
 	/*
 	 * websocket.Codec.Receive() blocks, so gorun this and send back any
@@ -124,7 +106,7 @@ func (s *TestSuite) TestSend(t *C) {
 	expect := []proto.Msg{
 		*ping,
 	}
-	got := getClientMsgs(s)
+	got := WaitForClientMsgs(s.fromClients)
 	t.Check(got, DeepEquals, expect)
 
 	// A more complex, realistic message with data
@@ -136,8 +118,10 @@ func (s *TestSuite) TestSend(t *C) {
 	expect = []proto.Msg{
 		*msg,
 	}
-	got = getClientMsgs(s)
+	got = WaitForClientMsgs(s.fromClients)
 	t.Check(got, DeepEquals, expect)
+	// Is the Data string the correct JSON string?
+	t.Check(got[0].Data, Equals, `{"api-key":"123abc","username":"root"}`)
 }
 
 /*
