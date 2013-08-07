@@ -1,20 +1,19 @@
 package agent
 
 import (
-	"os"
-	"os/user"
-	"fmt"
+//	"os"
+//	"os/user"
 	"github.com/percona/percona-cloud-tools/agent/proto"
 )
 
 type Agent struct {
 	Uuid string
-	Services map[string]chan *Msg
+	Services map[string]chan *proto.Msg
 }
-
+/*
 func (agent *Agent) Run(config *Config, client *proto.Client, log *Logger) {
 
-	log.Info("Running agent", agent.Uuid)
+	// log.Info("Running agent", agent.Uuid)
 
 	client.Connect()
 
@@ -92,3 +91,4 @@ func (agent *Agent) stopAllServices() {
 		agent.Services[serviceName] <- stopMsg
 	}
 }
+*/
