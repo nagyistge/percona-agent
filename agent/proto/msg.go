@@ -13,11 +13,11 @@ type Msg struct {
 
 // Methods
 
- /*
-  * var data map[string]string
-  * data["msg"] = "It crashed!"
-  * client.Send( NewMsg("err", data) )
-  */
+/*
+ * var data map[string]string
+ * data["msg"] = "It crashed!"
+ * client.Send( NewMsg("err", data) )
+ */
 func NewMsg(cmd string, data interface{}) *Msg {
 	codedData, err := json.Marshal(data)
 	if err != nil {
