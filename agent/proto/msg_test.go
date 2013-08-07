@@ -18,7 +18,7 @@ func (s *TestSuite) TestNewMsg(t *C) {
 	data["msg"] = "It crashed!"
 	got := NewMsg("err", data)
 	expect := &Msg{
-		Command: "err",
+		Cmd: "err",
 		Data: `{"msg":"It crashed!"}`,
 	}
 	t.Check(got, DeepEquals, expect)
