@@ -1,8 +1,9 @@
-pakcage service
+package service
 
-type Service struct {
-	Name string
-	Plan []*Task
-	Log Logger
+type Manager interface {
+	NewManager()
+	Start(interface{}) error
+	Stop() error
+	Status() string
+	IsRunning() bool
 }
-
