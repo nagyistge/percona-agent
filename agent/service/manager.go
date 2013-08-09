@@ -1,9 +1,9 @@
 package service
 
 type Manager interface {
-	NewManager()
-	Start(interface{}) error
+	Start(config []byte) error
 	Stop() error
+	UpdateConfig(config []byte) error
 	Status() string
 	IsRunning() bool
 }

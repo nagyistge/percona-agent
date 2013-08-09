@@ -13,19 +13,20 @@ import (
 
 type Agent struct {
 	config *Config
-	logRelay *log.LogRelayer
-	log *log.LogWriter
 	client proto.Client
+	logChan chan *log.LogEntry
 	services map[string]service.Manager
+	// --
+	log *log.LogWriter
 }
 
-func NewAgent(config *Config, logRelay *log.LogRelayer, log *log.LogWriter, client proto.Client, services map[string]service.Manager) *Agent {
+func NewAgent(config *Config, client proto.Client, logChan chan *log.LogEntry, services map[string]service.Manager) *Agent {
 	agent := &Agent{
 		config: config,
-		logRelay: logRelay,
-		log: log,
 		client: client,
 		services: services,
+		// --
+		log: log.NewLogWriter(logChan, ""),
 	}
 	return agent
 }
@@ -43,9 +44,10 @@ func (agent *Agent) Run() {
 	for {
 		msg, err := agent.client.Recv()
 		if err != nil {
-			// error
+			agent.log.Error(err)
 			continue
 		}
+		agent.log.Debug("Recv", msg)
 		agent.handleMsg(msg)
 	}
 }
@@ -100,38 +102,40 @@ func (agent *Agent) handleMsg(msg *proto.Msg) {
 // proto.Msg.Cmd handlers
 /////////////////////////////////////////////////////////////////////////////
 
-func (agent *Agent) updateConfig(data string) {
+func (agent *Agent) updateConfig(data []byte) {
 }
 
-func (agent *Agent) updateAgent(data string) {
+func (agent *Agent) updateAgent(data []byte) {
 }
 
-func (agent *Agent) setLogLevel(data string) {
+func (agent *Agent) setLogLevel(data []byte) {
 }
 
-func (agent *Agent) ping() {
+func (agent *Agent) ping() error {
+	agent.log.Debug("Agent.ping")
 	agent.client.Send(proto.Pong())
+	return nil
 }
 
-func (agent *Agent) status(data string) {
+func (agent *Agent) status(data []byte) {
 }
 
-func (agent *Agent) shutdown(data string) {
+func (agent *Agent) shutdown(data []byte) {
 	agent.stopAllServices()
 	os.Exit(0)
 }
 
-func (agent *Agent) startService(data string) {
+func (agent *Agent) startService(data []byte) {
 	s := new(msg.StartService)
 	if err := json.Unmarshal(data, s); err != nil {
 	}
-	sm := agent.services[s.Name]
-	if sm.IsRunning() {
+	qh := agent.services[s.Name]
+	if qh.IsRunning() {
 		// error
 		return
 	}
 
-	if err := sm.Start(s.Config); err != nil {
+	if err := qh.Start(s.Config); err != nil {
 		// error
 		return
 	}
@@ -139,16 +143,16 @@ func (agent *Agent) startService(data string) {
 	// success
 }
 
-func (agent *Agent) stopService(data string) {
+func (agent *Agent) stopService(data []byte) {
 }
 
-func (agent *Agent) updateService(data string) {
+func (agent *Agent) updateService(data []byte) {
 }
 
-func (agent *Agent) pauseSendingData(data string) {
+func (agent *Agent) pauseSendingData(data []byte) {
 }
 
-func (agent *Agent) resumeSendingData(data string) {
+func (agent *Agent) resumeSendingData(data []byte) {
 }
 
 /////////////////////////////////////////////////////////////////////////////

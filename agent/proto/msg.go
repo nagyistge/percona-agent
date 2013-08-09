@@ -5,19 +5,29 @@ import (
 	"encoding/json"
 )
 
-// The simple, generic struct of all messages.
+/*
+ * Msg is the highest level structure sent by the server to the agent.
+ * The agent handles the Cmd by passing the raw Data to a handler method
+ * (e.g. startService()).  Each handler method knows the proto/msg/* type
+ * of the data and decodes it accordingly.  proto/msg/* types may also
+ * service-specif data; see those files for details.
+ */
 type Msg struct {
 	Cmd  string `json:"cmd"`
-	Data string `json:"data,omitempty"`
+	Data []byte `json:"data,omitempty"`
 }
 
-// Methods
+/////////////////////////////////////////////////////////////////////////////
+// Msg factory methods
+/////////////////////////////////////////////////////////////////////////////
 
 /*
- * var data map[string]string
- * data["msg"] = "It crashed!"
- * client.Send( NewMsg("err", data) )
+ * Example:
+ *   var data map[string]string
+ *   data["msg"] = "It crashed!"
+ *   agent.client.Send(proto.NewMsg("err", data))
  */
+
 func NewMsg(cmd string, data interface{}) *Msg {
 	codedData, err := json.Marshal(data)
 	if err != nil {
@@ -25,7 +35,7 @@ func NewMsg(cmd string, data interface{}) *Msg {
 	}
 	var msg = Msg{
 		Cmd: cmd,
-		Data: string(codedData),  // map -> bytes -> string
+		Data: codedData,  // map -> []byte
 	}
 	return &msg
 }

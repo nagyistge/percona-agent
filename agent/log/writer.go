@@ -2,6 +2,10 @@ package log
 
 // Converts log message (strings) to log entries and sends to log relayer
 
+import (
+	"fmt"
+)
+
 type LogWriter struct {
 	logChan chan *LogEntry
 	service string
@@ -15,31 +19,31 @@ func NewLogWriter(logChan chan *LogEntry, service string) *LogWriter {
 	return l
 }
 
-func (l *LogWriter) Debug(entry string) {
+func (l *LogWriter) Debug(entry ...interface{}) {
 	l.log(LOG_LEVEL_DEBUG, entry);
 }
 
-func (l *LogWriter) Info(entry string) {
+func (l *LogWriter) Info(entry ...interface{}) {
 	l.log(LOG_LEVEL_INFO, entry);
 }
 
-func (l *LogWriter) Warn(entry string) {
+func (l *LogWriter) Warn(entry ...interface{}) {
 	l.log(LOG_LEVEL_WARN, entry);
 }
 
-func (l *LogWriter) Error(entry string) {
+func (l *LogWriter) Error(entry ...interface{}) {
 	l.log(LOG_LEVEL_ERROR, entry);
 }
 
-func (l *LogWriter) Fatal(entry string) {
+func (l *LogWriter) Fatal(entry ...interface{}) {
 	l.log(LOG_LEVEL_FATAL, entry);
 }
 
-func (l *LogWriter) log(level uint, entry string) {
+func (l *LogWriter) log(level uint, entry ...interface{}) {
 	logEntry := &LogEntry{
 		Level: level,
 		Service: l.service,
-		Entry: entry,
+		Entry: fmt.Sprintf("%v", entry),
 	}
 	l.logChan <- logEntry
 }
