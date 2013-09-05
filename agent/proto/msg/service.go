@@ -16,3 +16,12 @@ type StartService struct {
 	Name string
 	Config []byte
 }
+
+type StopService struct {
+	Name string
+}
+
+type UpdateService struct {
+	Name string
+	Config []byte
+}

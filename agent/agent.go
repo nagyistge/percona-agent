@@ -15,16 +15,16 @@ type Agent struct {
 	config *Config
 	client proto.Client
 	logChan chan *log.LogEntry
-	services map[string]service.Manager
+	serviceManagers map[string]service.Manager
 	// --
 	log *log.LogWriter
 }
 
-func NewAgent(config *Config, client proto.Client, logChan chan *log.LogEntry, services map[string]service.Manager) *Agent {
+func NewAgent(config *Config, client proto.Client, logChan chan *log.LogEntry, serviceManagers map[string]service.Manager) *Agent {
 	agent := &Agent{
 		config: config,
 		client: client,
-		services: services,
+		serviceManagers: serviceManagers,
 		// --
 		log: log.NewLogWriter(logChan, ""),
 	}
@@ -52,50 +52,56 @@ func (agent *Agent) Run() {
 	}
 }
 
-func (agent *Agent) handleMsg(msg *proto.Msg) {
-	cmdDone := make(chan bool)
+func (agent *Agent) handleMsg(m *proto.Msg) error {
+	cmdDone := make(chan error)
 	go func() {
+		var err error
 		switch {
-		case msg.Cmd == "update-config":
-			agent.updateConfig(msg.Data)
-		case msg.Cmd == "update-agent":
-			agent.updateAgent(msg.Data)
-		case msg.Cmd == "set-log-level":
-			agent.setLogLevel(msg.Data)
-		case msg.Cmd == "ping":
+		case m.Cmd == "update-config":
+			agent.updateConfig(m.Data)
+		case m.Cmd == "update-agent":
+			agent.updateAgent(m.Data)
+		case m.Cmd == "set-log-level":
+			agent.setLogLevel(m.Data)
+		case m.Cmd == "ping":
 			agent.ping()
-		case msg.Cmd == "status":
-			agent.status(msg.Data)
-		case msg.Cmd == "shutdown":
-			agent.shutdown(msg.Data)
-		case msg.Cmd == "start-service":
-			agent.startService(msg.Data)
-		case msg.Cmd == "stop-service":
-			agent.stopService(msg.Data)
-		case msg.Cmd == "update-service":
-			agent.updateService(msg.Data)
-		case msg.Cmd == "pause-sending-data":
-			agent.pauseSendingData(msg.Data)
-		case msg.Cmd == "resume-sending-data":
-			agent.resumeSendingData(msg.Data)
+		case m.Cmd == "status":
+			agent.status(m.Data)
+		case m.Cmd == "shutdown":
+			agent.shutdown(m.Data)
+		case m.Cmd == "start-service":
+			s := new(msg.StartService)
+			if err := json.Unmarshal(m.Data, s); err == nil {
+				err = agent.handleStartService(s)
+			}
+		case m.Cmd == "stop-service":
+			agent.stopService(m.Data)
+		case m.Cmd == "update-service":
+			agent.updateService(m.Data)
+		case m.Cmd == "pause-sending-data":
+			agent.pauseSendingData(m.Data)
+		case m.Cmd == "resume-sending-data":
+			agent.resumeSendingData(m.Data)
 		default:
 			// error, unknown command
 		}
-		cmdDone <- true
+		cmdDone <- err
 	}()
 
+	// Wait 1 minute for the cmd to complete, else return an error.
 	cmdTimeout := time.After(time.Minute)
 	for {
 		select {
-			case <-cmdDone:
-				break
-			case <-time.After(500 * time.Millisecond):
-				// send waiting msg to server
-			case <-cmdTimeout:
-				// send fail msg to server
-				break
+		case err := <-cmdDone:
+			return err
+		case <-time.After(500 * time.Millisecond):
+			// @todo send waiting msg to server
+		case <-cmdTimeout:
+			return CmdTimeoutError{Cmd:m.Cmd}
 		}
 	}
+
+	// @todo shouldn't reach here, but if we do, log an error
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -125,22 +131,25 @@ func (agent *Agent) shutdown(data []byte) {
 	os.Exit(0)
 }
 
-func (agent *Agent) startService(data []byte) {
-	s := new(msg.StartService)
-	if err := json.Unmarshal(data, s); err != nil {
-	}
-	qh := agent.services[s.Name]
-	if qh.IsRunning() {
-		// error
-		return
+func (agent *Agent) handleStartService(s *msg.StartService) error {
+	agent.log.Debug("Agent.handleStartService")
+
+	// Check that we have a manager for the service.
+	m, ok := agent.serviceManagers[s.Name]
+	if !ok {
+		return UnknownServiceError{Service:s.Name}
 	}
 
-	if err := qh.Start(s.Config); err != nil {
-		// error
-		return
+	// Return error if service is running.  To keep things simple,
+	// we do not restart the service or verifty that the given config
+	// matches the running config.  Only stopped services can be started.
+	if m.IsRunning() {
+		return service.ServiceIsRunningError{Service:s.Name}
 	}
 
-	// success
+	// Start the service with the given config.
+	err := m.Start(s.Config)
+	return err
 }
 
 func (agent *Agent) stopService(data []byte) {
