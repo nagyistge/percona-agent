@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	NAME = "query-history"
+	Name = "qh-manager"
 )
 
 type QhManager struct {
@@ -16,43 +16,47 @@ type QhManager struct {
 }
 
 func NewQhManager(logChan chan *log.LogEntry) *QhManager {
-	qh := &QhManager{
-		log: log.NewLogWriter(logChan, ""),
+	m := &QhManager{
+		log: log.NewLogWriter(logChan, "qh-manager"),
 		config: nil, // not running yet
 	}
-	return qh
+	return m
 }
 
-func (qh *QhManager) Start(config []byte) error {
-	if qh.config != nil {
-		return service.ServiceIsRunningError{Service:NAME}
+func (m *QhManager) Start(config []byte) error {
+	if m.config != nil {
+		return service.ServiceIsRunningError{Service:Name}
 	}
 
-	firstConfig := new(Config)
-	if err := json.Unmarshal(config, firstConfig); err != nil {
+	c := new(Config)
+	if err := json.Unmarshal(config, c); err != nil {
 		return err
 	}
 
-	qh.log.Info("start!")
+	m.log.Info("Starting")
 
-	qh.config = firstConfig // success: service configured and running
+	// Prepare MySQL based on the config
+
+	// Run goroutine to run workers
+
+	m.config = c
 	return nil
 }
 
-func (qh *QhManager) Stop() error {
+func (m *QhManager) Stop() error {
 	return nil
 }
 
-func (qh *QhManager) UpdateConfig(config []byte) error {
+func (m *QhManager) UpdateConfig(config []byte) error {
 	return nil
 }
 
-func (qh *QhManager) Status() string {
+func (m *QhManager) Status() string {
 	return "ok"
 }
 
-func (qh *QhManager) IsRunning() bool {
-	if qh.config != nil {
+func (m *QhManager) IsRunning() bool {
+	if m.config != nil {
 		return true
 	}
 	return false

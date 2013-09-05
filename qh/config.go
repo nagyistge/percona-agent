@@ -7,4 +7,5 @@ type Config struct {
 	MaxSlowLogSize uint64	// bytes, 0 = no max
 	RemoveOldSlowLogs bool	// only if MaxSlowLogSize > 0
 	ExampleQueries bool		// only fingerprints if false
+	MysqlDsn string
 }
