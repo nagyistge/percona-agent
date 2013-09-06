@@ -8,4 +8,6 @@ type Config struct {
 	RemoveOldSlowLogs bool	// only if MaxSlowLogSize > 0
 	ExampleQueries bool		// only fingerprints if false
 	MysqlDsn string
+	MaxWorkers uint8
+	Runtime uint
 }

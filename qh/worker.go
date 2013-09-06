@@ -8,22 +8,29 @@ import (
 //	"github.com/percona/percona-go-mysql/log/parser"
 )
 
-type QhJob struct {
+type Worker struct {
+	cc *agent.ControlChannels
+	job *Job
+	log *agentLog.LogWriter
+}
+
+type Job struct {
 	Slowlog string
 	Runtime time.Duration
 	StartOffset uint64
 	StopOffset uint64
 	ExampleQueries bool
+	resultChan *Result
+	doneChan *Worker
 }
 
-type QhWorker struct {
-	cc *agent.ControlChannels
-	job *QhJob
-	log *agentLog.LogWriter
+type Result struct {
+	stopOffset uint64
+	dateFile string
 }
 
-func NewQhWorker(cc *agent.ControlChannels, job *QhJob) *QhWorker {
-	w := &QhWorker{
+func NewWorker(cc *agent.ControlChannels, job *Job) *Worker {
+	w := &Worker{
 		cc: cc,
 		job: job,
 		log: agentLog.NewLogWriter(cc.LogChan, "qh-worker"),
@@ -31,5 +38,5 @@ func NewQhWorker(cc *agent.ControlChannels, job *QhJob) *QhWorker {
 	return w
 }
 
-func (w *QhWorker) Run() {
+func (w *Worker) Run() {
 }
