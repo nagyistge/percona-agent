@@ -72,6 +72,10 @@ func (w *Worker) Run() {
 	global := mysqlLog.NewGlobalClass()
 	queries := make(map[string]*mysqlLog.QueryClass)
 	for event := range p.EventChan {
+		if event.Offset > w.job.StopOffset {
+			break
+		}
+
 		// Add the event to the global class.
 		global.AddEvent(event)
 
