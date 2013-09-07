@@ -1,8 +1,8 @@
 package qh
 
 import (
-	"os"
-	"math"
+//	"os"
+	"time"
 	"encoding/json"
 	"github.com/percona/percona-cloud-tools/agent"
 	"github.com/percona/percona-cloud-tools/agent/log"
@@ -14,7 +14,7 @@ const (
 )
 
 type Manager struct {
-	cc *agent.ControLChannels
+	cc *agent.ControlChannels
 	log *log.LogWriter
 	config *Config  // nil if not running
 	intervalSyncer *IntervalSyncer
@@ -50,7 +50,7 @@ func (m *Manager) Start(config []byte) error {
 	// @todo
 
 	// Run goroutines to get intervals, run workeres, and send results.
-	go m.run(c)
+	go m.run(*c)
 
 	m.config = c
 	return nil
@@ -80,12 +80,29 @@ func (m *Manager) IsRunning() bool {
 /////////////////////////////////////////////////////////////////////////////
 
 func (m *Manager) run(config Config) error {
-	go getIntervals(config, m.intervalChan, m.intervalSyncer)
-	go runWorkers(config, m.intervalChan, resultChan)
-	go sendResults(config, m.resultChan)
+	ccI := &agent.ControlChannels{
+		LogChan: m.cc.LogChan,
+		StopChan: make(chan bool),
+	}
+	go getIntervals(ccI, config, m.intervalChan, m.intervalSyncer)
+
+	ccW := &agent.ControlChannels{
+		LogChan: m.cc.LogChan,
+		StopChan: make(chan bool),
+	}
+	go runWorkers(ccW, config, m.intervalChan, m.resultChan)
+
+	ccR := &agent.ControlChannels{
+		LogChan: m.cc.LogChan,
+		StopChan: make(chan bool),
+	}
+	go sendResults(ccR, config, m.resultChan)
 
 	select {
-	case <-m.cc.stopChan:
+	case <-m.cc.StopChan:
+		ccI.StopChan <- true
+		ccW.StopChan <- true
+		ccR.StopChan <- true
 	}
 
 	return nil
@@ -96,33 +113,37 @@ func (m *Manager) run(config Config) error {
 /////////////////////////////////////////////////////////////////////////////
 
 type Interval struct {
-	slowLogFile string
-	startTime time.Time
-	stopTime time.Time
-	startOffset uint64
-	stopOffset uint64
+	SlowLogFile string
+	StartTime time.Time
+	StopTime time.Time
+	StartOffset uint64
+	StopOffset uint64
 }
 
-func getIntervals(config Config, intervalChan chan *Interval, intervalSyncer *IntervalSyncer) error {
+func getIntervals(cc *agent.ControlChannels, config Config, intervalChan chan *Interval, intervalSyncer *IntervalSyncer) error {
+	/*
 	var slowLogFile string
 	var slowLogInfo os.FileInfo
 	var slowLogFd uintptr
-	interval := startInterval()
-	ticker := intervalSync.Sync(c.Interval, time.Now().UnixNano(), time.Sleep)
-	for t := range tickerChan {
-		stopstartInterval(config, interval)
-		intervalChan <- interval
+	ticker := intervalSyncer.Sync(float64(time.Now().UnixNano()))
+	for t := range ticker.C {
+		//stopstartInterval(config, interval)
+		//intervalChan <- interval
 	}
+	*/
 	return nil
 }
 
-func (m *Manager) startInterval() {
+func (m *Manager) startInterval() error {
+	/*
 	f := os.NewFile(m.slowLogFd, m.slowLogFile)
 	if fileInfo, err := f.Stat(); err != nil {
 		return err
 	} else {
 		m.slowLogInfo = fileInfo
 	}
+	*/
+	return nil
 }
 
 func stopInterval() {
@@ -132,27 +153,30 @@ func stopInterval() {
 // Run qh-worker to process intervals
 /////////////////////////////////////////////////////////////////////////////
 
-func runWorkers(config Config, intervalChan chan *Interval, resultChan chan *Result) {
+func runWorkers(cc *agent.ControlChannels, config Config, intervalChan chan *Interval, resultChan chan *Result) {
 	workers := make(map[*Worker]bool)
 	doneChan := make(chan *Worker, config.MaxWorkers)
 
-	select:
-	case interval := <-intervalChan{
+	select {
+	case interval := <-intervalChan:
 		if len(workers) < 2 {
-			job := Job{
-				SlowLog: interval.SlowLog,
+			cc := &agent.ControlChannels{
+				LogChan: cc.LogChan,
+				StopChan: make(chan bool),
+			}
+			job := &Job{
+				SlowLogFile: interval.SlowLogFile,
 				StartOffset: interval.StartOffset,
-				StopOffset: interval.StopOffset
-				--
-				Runtime: config.Runtime,
+				StopOffset: interval.StopOffset,
+				Runtime: time.Duration(config.Runtime) * time.Second,
 				ExampleQueries: config.ExampleQueries,
-				--
+				cc: cc,
 				ResultChan: resultChan,
 				DoneChan: doneChan,
 			}
 			w := NewWorker(job)
-			workers = append(workers, w)
 			w.Run()
+			workers[w] = true
 		} else {
 			// Too many workers running
 		}
@@ -165,9 +189,11 @@ func runWorkers(config Config, intervalChan chan *Interval, resultChan chan *Res
 // Send qh-worker results
 /////////////////////////////////////////////////////////////////////////////
 
-func sendResults(config Config, resultChan chan *Result) {
+func sendResults(cc *agent.ControlChannels, config Config, resultChan chan *Result) {
+	/*
 	for r := range resultChan {
 		// @todo
 	}
+	*/
 }
 

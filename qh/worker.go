@@ -15,13 +15,14 @@ type Worker struct {
 }
 
 type Job struct {
-	Slowlog string
+	SlowLogFile string
 	Runtime time.Duration
 	StartOffset uint64
 	StopOffset uint64
 	ExampleQueries bool
-	resultChan *Result
-	doneChan *Worker
+	cc *agent.ControlChannels
+	ResultChan chan *Result
+	DoneChan chan *Worker
 }
 
 type Result struct {
@@ -29,11 +30,10 @@ type Result struct {
 	dateFile string
 }
 
-func NewWorker(cc *agent.ControlChannels, job *Job) *Worker {
+func NewWorker(job *Job) *Worker {
 	w := &Worker{
-		cc: cc,
 		job: job,
-		log: agentLog.NewLogWriter(cc.LogChan, "qh-worker"),
+		log: agentLog.NewLogWriter(job.cc.LogChan, "qh-worker"),
 	}
 	return w
 }
