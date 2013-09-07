@@ -22,7 +22,7 @@ type Job struct {
 	StartOffset uint64
 	StopOffset uint64
 	ExampleQueries bool
-	cc *agent.ControlChannels
+	Cc *agent.ControlChannels
 	ResultChan chan *Result
 	DoneChan chan *Worker
 }
@@ -36,7 +36,7 @@ type Result struct {
 func NewWorker(job *Job) *Worker {
 	w := &Worker{
 		job: job,
-		log: agentLog.NewLogWriter(job.cc.LogChan, "qh-worker"),
+		log: agentLog.NewLogWriter(job.Cc.LogChan, "qh-worker"),
 	}
 	return w
 }

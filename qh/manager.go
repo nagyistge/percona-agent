@@ -170,7 +170,7 @@ func runWorkers(cc *agent.ControlChannels, config Config, intervalChan chan *Int
 				StopOffset: interval.StopOffset,
 				Runtime: time.Duration(config.Runtime) * time.Second,
 				ExampleQueries: config.ExampleQueries,
-				cc: cc,
+				Cc: cc,
 				ResultChan: resultChan,
 				DoneChan: doneChan,
 			}

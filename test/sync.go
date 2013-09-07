@@ -1,4 +1,4 @@
-package wait
+package testapp
 
 import (
 	"time"
