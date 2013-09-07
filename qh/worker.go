@@ -58,6 +58,13 @@ func (w *Worker) Run() {
 		return
 	}
 
+	// Seek to the start offset, if any.
+	// @todo error if start off > file size
+	if w.job.StartOffset != 0 {
+		// @todo handle error
+		file.Seek(int64(w.job.StartOffset), os.SEEK_SET)
+	}
+
 	// Create a slow log parser and run it.  It sends events log events
 	// via its channel.
 	p := parser.NewSlowLogParser(file, false) // false=debug off
