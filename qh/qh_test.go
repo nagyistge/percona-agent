@@ -34,6 +34,23 @@ func (s *WorkerTestSuite) TestWorkerSlow001(c *gocheck.C) {
 	defer os.Remove(tmpFilename)
 
 	// ...then diff <result file> <expected result file>
-	// @todo need a generical testlog.DeeplEquals
+	// @todo need a generic testlog.DeeplEquals
 	c.Assert(tmpFilename, testlog.FileEquals, sample + "slow001.json")
 }
+
+func (s *WorkerTestSuite) TestWorkerSlow001Half(c *gocheck.C) {
+	job := &qh.Job{
+		SlowLogFile: testlog.Sample + "slow001.log",
+		StartOffset: 0,
+		StopOffset: 359,
+		Runtime: time.Duration(3 * time.Second),
+		ExampleQueries: true,
+	}
+	tmpFilename := testapp.RunQhWorker(job)
+	defer os.Remove(tmpFilename)
+
+	// ...then diff <result file> <expected result file>
+	// @todo need a generic testlog.DeeplEquals
+	c.Assert(tmpFilename, testlog.FileEquals, sample + "slow001-half.json")
+}
+
