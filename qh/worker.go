@@ -60,7 +60,7 @@ func (w *Worker) Run() {
 
 	// Create a slow log parser and run it.  It sends events log events
 	// via its channel.
-	p := parser.NewSlowLogParser(file, true) // false=debug off
+	p := parser.NewSlowLogParser(file, false) // false=debug off
 	if err != nil {
 		result.Error = err
 		return

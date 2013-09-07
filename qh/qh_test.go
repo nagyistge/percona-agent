@@ -1,8 +1,10 @@
 package qh
 
 import (
+	"os"
 	"fmt"
 	"time"
+	"io/ioutil"
 	"launchpad.net/gocheck"
 	"testing"
 	"github.com/percona/percona-go-mysql/test"
@@ -21,7 +23,9 @@ func Test(t *testing.T) { gocheck.TestingT(t) }
 type WorkerTestSuite struct{}
 var _ = gocheck.Suite(&WorkerTestSuite{})
 
-func (s *WorkerTestSuite) TestWorker(c *gocheck.C) {
+var sample = os.Getenv("GOPATH") + "/src/github.com/percona/percona-cloud-tools/test/qh/"
+
+func (s *WorkerTestSuite) TestWorkerSlow001(c *gocheck.C) {
 	cc := &agent.ControlChannels{
 		LogChan: make(chan *log.LogEntry),
 		StopChan: make(chan bool),
@@ -42,9 +46,15 @@ func (s *WorkerTestSuite) TestWorker(c *gocheck.C) {
 	w := NewWorker(job)
 	w.Run()
 
+	// Write the result as formatted JSON to a file...
 	result := <-resultChan
 	bytes, _ := json.MarshalIndent(result, "", " ")
-	fmt.Printf("%s\n", bytes)
+	bytes = append(bytes, 0x0A) // newline
+	tmpFilename := fmt.Sprintf("/tmp/pct-test.%d", os.Getpid())
+	ioutil.WriteFile(tmpFilename, bytes, os.ModePerm)
+	defer os.Remove(tmpFilename)
 
-	c.Assert(1, gocheck.Equals, 1)
+	// ...then diff <result file> <expected result file>
+	// @todo need a generical testlog.DeeplEquals
+	c.Assert(tmpFilename, testlog.FileEquals, sample + "slow001.json")
 }
