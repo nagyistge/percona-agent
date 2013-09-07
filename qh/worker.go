@@ -3,10 +3,10 @@ package qh
 import (
 	"os"
 	"time"
-	"fmt"
+//	"fmt"
 	"github.com/percona/percona-cloud-tools/agent"
 	agentLog "github.com/percona/percona-cloud-tools/agent/log"
-//	mysqlLog "github.com/percona/percona-go-mysql/log"
+	mysqlLog "github.com/percona/percona-go-mysql/log"
 	"github.com/percona/percona-go-mysql/log/parser"
 )
 
@@ -28,9 +28,9 @@ type Job struct {
 }
 
 type Result struct {
-	Error error
-	stopOffset uint64
-	dateFile string
+	Error error `json:",omitempty"`
+	Global *mysqlLog.GlobalClass `json:",omitempty"`
+	Classes []*mysqlLog.QueryClass `json:",omitempty"`
 }
 
 func NewWorker(job *Job) *Worker {
@@ -67,9 +67,46 @@ func (w *Worker) Run() {
 	}
 	go p.Run()
 
-	for e := range p.EventChan {
-		fmt.Println(e)
+	// The global class has info and stats for all events.
+	// Each query has its own class, defined by the checksum of its fingerprint.
+	global := mysqlLog.NewGlobalClass()
+	queries := make(map[string]*mysqlLog.QueryClass)
+	for event := range p.EventChan {
+		// Add the event to the global class.
+		global.AddEvent(event)
+
+		// Get the query class to which the event belongs.
+		fingerprint := mysqlLog.Fingerprint(event.Query)
+		classId := mysqlLog.Checksum(fingerprint)
+		class, haveClass := queries[classId]
+		if !haveClass {
+			class = mysqlLog.NewQueryClass(classId, fingerprint)
+			queries[classId] = class
+		}
+
+		// Add the event to its query class.
+		class.AddEvent(event)
 	}
+
+	// Done parsing the slow log.  Finalize the global and query classes (calculate
+	// averages, etc.).
+	for _, class := range queries {
+		class.Finalize()
+	}
+	global.Finalize(uint64(len(queries)))
+
+	nQueries := len(queries)
+	classes := make([]*mysqlLog.QueryClass, nQueries)
+	for _, class := range queries {
+		// Decr before use; can't classes[--nQueries] in Go.
+		nQueries--
+		classes[nQueries] = class
+	}
+
+	// Save the result.  It will be sent by defer when we return.
+	result.Error = nil
+	result.Global = global
+	result.Classes = classes
 
 	return
 }

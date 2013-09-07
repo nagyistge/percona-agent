@@ -1,13 +1,14 @@
 package qh
 
 import (
-//	"fmt"
+	"fmt"
 	"time"
 	"launchpad.net/gocheck"
 	"testing"
 	"github.com/percona/percona-go-mysql/test"
 	"github.com/percona/percona-cloud-tools/agent"
 	"github.com/percona/percona-cloud-tools/agent/log"
+	"encoding/json"
 )
 
 // Hook up gocheck into the "go test" runner.
@@ -40,6 +41,10 @@ func (s *WorkerTestSuite) TestWorker(c *gocheck.C) {
 	}
 	w := NewWorker(job)
 	w.Run()
+
+	result := <-resultChan
+	bytes, _ := json.MarshalIndent(result, "", " ")
+	fmt.Printf("%s\n", bytes)
 
 	c.Assert(1, gocheck.Equals, 1)
 }
