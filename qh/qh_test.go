@@ -42,7 +42,7 @@ func (s *WorkerTestSuite) TestWorkerSlow001Half(c *gocheck.C) {
 	job := &qh.Job{
 		SlowLogFile: testlog.Sample + "slow001.log",
 		StartOffset: 0,
-		StopOffset: 359,
+		StopOffset: 358,
 		Runtime: time.Duration(3 * time.Second),
 		ExampleQueries: true,
 	}
