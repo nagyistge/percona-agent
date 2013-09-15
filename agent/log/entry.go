@@ -9,7 +9,9 @@ const (
 )
 
 type LogEntry struct {
-	Level uint `json:"level"`
-	Service string `json:"service"`
-	Entry string `json:"entry"`
+	User string `json:",omitempty"`
+	Id uint `json:",omitempty"`
+	Level uint
+	Service string
+	Msg string
 }

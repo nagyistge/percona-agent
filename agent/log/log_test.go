@@ -19,8 +19,10 @@ import (
 func Test(t *testing.T) { TestingT(t) }
 
 type TestSuite struct {
-	fromClients chan *proto.Msg
-	toClients chan *proto.Msg
+	dataToClient chan interface{}
+	dataFromClient chan interface{}
+	msgToClient chan *proto.Msg
+	msgFromClient chan *proto.Msg
 	fileName string
 	logFile *log.Logger
 	mockWsClient *ws_client.MockClient
@@ -37,11 +39,13 @@ func (s *TestSuite) SetUpSuite(t *C) {
 	}
 	s.logFile = log.New(file, "test", 0)
 
-	s.fromClients = make(chan *proto.Msg, 10)
-	s.toClients = make(chan *proto.Msg, 10)
-	s.mockWsClient = ws_client.NewMockClient(s.fromClients, s.toClients)
+	s.dataToClient = make(chan interface{}, 100)
+	s.dataFromClient = make(chan interface{}, 100)
+	s.msgToClient = make(chan *proto.Msg, 100)
+	s.msgFromClient = make(chan *proto.Msg, 100)
+	s.mockWsClient = ws_client.NewMockClient(s.dataToClient, s.dataFromClient, s.msgToClient, s.msgFromClient)
 
-	s.logChan = make(chan *agentLog.LogEntry, 10)
+	s.logChan = make(chan *agentLog.LogEntry, 100)
 }
 
 func (s *TestSuite) TearDownSuite(t *C) {
@@ -75,7 +79,7 @@ func (s *TestSuite) TestLogEntries(t *C) {
 		{
 			Level: 1,
 			Service: "test",
-			Entry: "debug",
+			Msg: "debug",
 		},
 	}
 	t.Check(got, DeepEquals, expect)
@@ -86,7 +90,7 @@ func (s *TestSuite) TestLogEntries(t *C) {
 		{
 			Level: 2,
 			Service: "test",
-			Entry: "info",
+			Msg: "info",
 		},
 	}
 	t.Check(got, DeepEquals, expect)
@@ -97,7 +101,7 @@ func (s *TestSuite) TestLogEntries(t *C) {
 		{
 			Level: 3,
 			Service: "test",
-			Entry: "warning",
+			Msg: "warning",
 		},
 	}
 	t.Check(got, DeepEquals, expect)
@@ -108,7 +112,7 @@ func (s *TestSuite) TestLogEntries(t *C) {
 		{
 			Level: 4,
 			Service: "test",
-			Entry: "error",
+			Msg: "error",
 		},
 	}
 	t.Check(got, DeepEquals, expect)
@@ -119,11 +123,45 @@ func (s *TestSuite) TestLogEntries(t *C) {
 		{
 			Level: 5,
 			Service: "test",
-			Entry: "fatal",
+			Msg: "fatal",
 		},
 	}
 	t.Check(got, DeepEquals, expect)
 }
+
+func (s *TestSuite) TestReLogEntry(t *C) {
+	l := agentLog.NewLogWriter(s.logChan, "test")
+
+	now := time.Now()
+	msg := &proto.Msg{
+		Ts: now,
+		User: "daniel",
+		Id: 1,
+		Cmd: "start-service",
+		Data: nil,
+		Timeout: 60,
+	}
+
+	// Associate log messages with this proto.Msg:
+	l.Re(msg)
+
+	l.Info("start")
+	got := getLogEntries(s)
+	expect := []agentLog.LogEntry{
+		{
+			User: "daniel",
+			Id: 1,
+			Level: 2,
+			Service: "test",
+			Msg: "start",
+		},
+	}
+	t.Check(got, DeepEquals, expect)
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Relayer test suite
+/////////////////////////////////////////////////////////////////////////////
 
 func (s *TestSuite) TestLogRelayer(t *C) {
 	l := agentLog.NewLogWriter(s.logChan, "test")
@@ -138,13 +176,25 @@ func (s *TestSuite) TestLogRelayer(t *C) {
 
 	l.Debug("debug") // below log level
 	l.Info("info") // below log level
-	l.Warn("warning")
-	l.Error("error")
+	l.Warn("warning msg")
+	l.Error("error", "msg")
 
-	got := WaitForClientMsgs(s.fromClients)
-	expect := []proto.Msg{
-		{Cmd:"log", Data:`{"level":3,"service":"test","entry":"warning"}`},
-		{Cmd:"log", Data:`{"level":4,"service":"test","entry":"error"}`},
+	got := WaitForLogEntries(s.dataFromClient)
+	expect := []agentLog.LogEntry{
+		{
+			User: "",
+			Id: 0,
+			Level: 3,
+			Service: "test",
+			Msg: "warning msg",
+		},
+		{
+			User: "",
+			Id: 0,
+			Level: 4,
+			Service: "test",
+			Msg: "error msg",
+		},
 	}
 	t.Check(got, DeepEquals, expect)
 }

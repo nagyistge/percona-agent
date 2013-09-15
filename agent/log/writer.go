@@ -4,11 +4,14 @@ package log
 
 import (
 	"fmt"
+	"github.com/percona/percona-cloud-tools/agent/proto"
 )
 
 type LogWriter struct {
 	logChan chan *LogEntry
 	service string
+	user string	// proto.Msg.User
+	id uint		// proto.Msg.Id
 }
 
 func NewLogWriter(logChan chan *LogEntry, service string) *LogWriter {
@@ -17,6 +20,11 @@ func NewLogWriter(logChan chan *LogEntry, service string) *LogWriter {
 		service: service,
 	}
 	return l
+}
+
+func (l *LogWriter) Re(msg *proto.Msg) {
+	l.user = msg.User
+	l. id = msg.Id
 }
 
 func (l *LogWriter) Debug(entry ...interface{}) {
@@ -39,11 +47,20 @@ func (l *LogWriter) Fatal(entry ...interface{}) {
 	l.log(LOG_LEVEL_FATAL, entry);
 }
 
-func (l *LogWriter) log(level uint, entry ...interface{}) {
+func (l *LogWriter) log(level uint, entry []interface{}) {
+	fullMsg := ""
+	for i, str := range entry {
+		if i > 0 {
+			fullMsg += " "
+		}
+		fullMsg += fmt.Sprintf("%v", str)
+	}
 	logEntry := &LogEntry{
+		User: l.user,
+		Id: l.id,
 		Level: level,
 		Service: l.service,
-		Entry: fmt.Sprintf("%v", entry),
+		Msg: fullMsg,
 	}
 	l.logChan <- logEntry
 }

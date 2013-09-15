@@ -5,14 +5,22 @@ import (
 )
 
 type MockClient struct {
-	fromClient chan *proto.Msg
-	toClient chan *proto.Msg
+	dataToClient chan interface{}
+	dataFromClient chan interface{}
+	msgToClient chan *proto.Msg
+	msgFromClient chan *proto.Msg
+	sendChan chan *proto.Msg
+	recvChan chan *proto.Msg
 }
 
-func NewMockClient(fromClient chan *proto.Msg, toClient chan *proto.Msg) *MockClient {
+func NewMockClient(dataToClient chan interface{}, dataFromClient chan interface{}, msgToClient chan *proto.Msg, msgFromClient chan *proto.Msg) *MockClient {
 	c := &MockClient{
-		fromClient: fromClient,
-		toClient: toClient,
+		dataToClient: dataToClient,
+		dataFromClient: dataFromClient,
+		msgToClient: msgToClient,
+		msgFromClient: msgFromClient,
+		recvChan: make(chan *proto.Msg, 10),
+		sendChan: make(chan *proto.Msg, 10),
 	}
 	return c
 }
@@ -21,20 +29,41 @@ func (c *MockClient) Connect() error {
 	return nil
 }
 
+func (c *MockClient) Run() {
+	go func() {
+		for msg := range c.sendChan {
+			c.msgFromClient <-msg
+		}
+	}()
+
+	go func() {
+		for msg := range c.msgToClient {
+			c.recvChan <-msg
+		}
+	}()
+}
+
 func (c *MockClient) Disconnect() error {
 	return nil
 }
 
-func (c *MockClient) Send(msg *proto.Msg) error {
-	c.fromClient <- msg
+func (c *MockClient) Send(data interface{}) error {
+	c.dataFromClient <-data
 	return nil
 }
 
-func (c *MockClient) Recv() (*proto.Msg, error) {
+func (c *MockClient) Recv(data interface{}) error {
 	select {
-	case msg := <-c.toClient:
-		return msg, nil
+	case data = <-c.dataToClient:
 	default:
-		return nil, nil
 	}
+	return nil
+}
+
+func (c *MockClient) SendChan() chan *proto.Msg {
+	return c.sendChan
+}
+
+func (c *MockClient) RecvChan() chan *proto.Msg {
+	return c.recvChan
 }
