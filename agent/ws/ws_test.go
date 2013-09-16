@@ -19,6 +19,7 @@ type TestSuite struct {
 	conn *ws.WsClient
 	fromClients chan *proto.Msg // msgs from client
 	toClients chan *proto.Msg // msgs from us to clients
+	ping *proto.Msg
 }
 var _ = Suite(&TestSuite{})
 
@@ -55,6 +56,15 @@ func (s *TestSuite) SetUpTest(t *C) {
 	}
 	t.Assert(err, IsNil)
 	s.conn = c
+
+	// A fake Msg and fake Cmd.
+	s.ping = &proto.Msg{
+		Ts: time.Now(),
+		User: "daniel",
+		Id: 1,
+		Cmd: "ping",
+		Data: []byte("ping"),
+	}
 }
 
 func (s *TestSuite) TearDownTest(t *C) {
@@ -101,27 +111,12 @@ func getServerMsgs(s *TestSuite) []proto.Msg {
 
 func (s *TestSuite) TestSend(t *C) {
 	// A simple, built-in message without data
-	ping := proto.Ping()
-	s.conn.Send(ping)
+	s.conn.Send(s.ping)
 	expect := []proto.Msg{
-		*ping,
+		*s.ping,
 	}
 	got := WaitForClientMsgs(s.fromClients)
 	t.Check(got, DeepEquals, expect)
-
-	// A more complex, realistic message with data
-	data := make(map[string]string)
-	data["api-key"] = "123abc"
-	data["username"] = "root"
-	msg := proto.NewMsg("connect", data)
-	s.conn.Send(msg)
-	expect = []proto.Msg{
-		*msg,
-	}
-	got = WaitForClientMsgs(s.fromClients)
-	t.Check(got, DeepEquals, expect)
-	// Is the Data string the correct JSON string?
-	t.Check(got[0].Data, Equals, `{"api-key":"123abc","username":"root"}`)
 }
 
 /*
@@ -130,11 +125,30 @@ func (s *TestSuite) TestSend(t *C) {
 
 func (s *TestSuite) TestRecv(t *C) {
 	// A simple, built-in message without data
-	ping := proto.Ping()
-	s.toClients <- ping
+	s.toClients <-s.ping
 	expect := []proto.Msg{
-		*ping,
+		*s.ping,
 	}
 	got := getServerMsgs(s)
+	t.Check(got, DeepEquals, expect)
+}
+
+/*
+ * Test the high-level, channel-based interface.
+ */
+
+func (s *TestSuite) TestChannels(t *C) {
+	// Run the send and recv channel listeners.
+	s.conn.Run()
+
+	// Send a msg to the send channel.
+	sendChan := s.conn.SendChan()
+	sendChan <-s.ping
+
+	// And the client should send that msg.
+	expect := []proto.Msg{
+		*s.ping,
+	}
+	got := WaitForClientMsgs(s.fromClients)
 	t.Check(got, DeepEquals, expect)
 }
