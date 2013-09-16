@@ -1,6 +1,7 @@
 package proto_test
 
 import (
+	"time"
 	. "launchpad.net/gocheck"
 	"testing"
 	. "github.com/percona/percona-cloud-tools/agent/proto"
@@ -13,13 +14,28 @@ func Test(t *testing.T) { TestingT(t) }
 type TestSuite struct{}
 var _ = Suite(&TestSuite{})
 
-func (s *TestSuite) TestNewMsg(t *C) {
-	data := make(map[string]string)
-	data["msg"] = "It crashed!"
-	got := NewMsg("err", data)
+func (s *TestSuite) TestReply(t *C) {
+	now := time.Now()
+
+	msg := &Msg{
+		Ts: now,
+		User: "daniel",
+		Id: 1,
+		Cmd: "StartService",
+		Timeout: 10,
+		Data: []byte("..."),
+	}
+
+	reply := &CmdReply{
+		Error: nil,
+	}
+
+	got := msg.Reply(reply)
 	expect := &Msg{
-		Cmd: "err",
-		Data: `{"msg":"It crashed!"}`,
+		User: "daniel",
+		Id: 1,
+		Cmd: "StartService",
+		Data: []byte(`{"Error":null}`),
 	}
 	t.Check(got, DeepEquals, expect)
 }

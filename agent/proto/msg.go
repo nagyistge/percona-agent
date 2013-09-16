@@ -1,87 +1,55 @@
 package proto
 
 import (
+	"fmt"
 	"log"
+	"time"
 	"encoding/json"
 )
 
-/*
- * Msg is the highest level structure sent by the server to the agent.
- * The agent handles the Cmd by passing the raw Data to a handler method
- * (e.g. startService()).  Each handler method knows the proto/msg/* type
- * of the data and decodes it accordingly.  proto/msg/* types may also
- * service-specif data; see those files for details.
- */
+// A command from the API or an agent reply to a command
 type Msg struct {
-	Cmd  string `json:"cmd"`
-	Data []byte `json:"data,omitempty"`
+	Ts		time.Time	// sent at (UTC)
+	User	string		// by this front-side user
+	Id		uint		// back-end routing ID
+	Cmd		string		// command (e.g. start-service)
+	Timeout uint		// command timeout (seconds)
+	Data	[]byte		// command data (e.g. msg.Service) or agent reply (e.g. CmdReply)
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// Msg factory methods
-/////////////////////////////////////////////////////////////////////////////
+// Data for StartService and StopService commands
+type ServiceMsg struct {
+	Name string
+	Config []byte `json:",omitempty"`	// e.g. qh.Config (percona-cloud-tools/qh/config.go)
+}
 
-/*
- * Example:
- *   var data map[string]string
- *   data["msg"] = "It crashed!"
- *   agent.client.Send(proto.NewMsg("err", data))
- */
+// Data for an agent reply to a command
+type CmdReply struct {
+	Error error // nil if command succeeded
+}
 
-func NewMsg(cmd string, data interface{}) *Msg {
+// Data for an agent reply to a status command
+type StatusReply struct {
+	Agent string
+	CmdQueue []string			// commands in the queue
+	Service map[string]string	// service.Manager.Status()
+}
+
+// The API sends messages to which the agent replies.  So there is no NewMsg(), just Reply().
+func (msg *Msg) Reply(data interface{}) *Msg {
 	codedData, err := json.Marshal(data)
 	if err != nil {
-		log.Panic(err) // todo
+		log.Panic(err) // @todo
 	}
-	var msg = Msg{
-		Cmd: cmd,
-		Data: codedData,  // map -> []byte
+	reply := &Msg{
+		User: msg.User,
+		Id: msg.Id,
+		Cmd: msg.Cmd,
+		Data: codedData,
 	}
-	return &msg
+	return reply
 }
 
-// E.g. client.Send(Ack())
-func Ack() *Msg {
-	return &ack
-}
-
-func Ok() *Msg {
-	return &ok
-}
-
-func Exit() *Msg {
-	return &exit
-}
-
-func Ping() *Msg {
-	return &ping
-}
-
-func Pong() *Msg {
-	return &pong
-}
-
-/*
- * Static messages, not exported.  Use their exported func counterparts.
- */
-
-var ok = Msg{
-	Cmd: "ok",
-}
-
-var ack = Msg{
-	Cmd: "ack",
-}
-
-var exit = Msg{
-	Cmd: "exit",
-}
-
-// Ping-pong is bidirectional: client can ping server and server can ping client.
-var ping = Msg{
-	Cmd: "ping",
-}
-
-var pong = Msg{
-	Cmd: "pong",
+func (msg *Msg) String() string {
+	return fmt.Sprintf("%s %s %d", msg.Ts, msg.User, msg.Id)
 }
