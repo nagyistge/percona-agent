@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"github.com/percona/percona-cloud-tools/agent"
 	"github.com/percona/percona-cloud-tools/agent/log"
+	"github.com/percona/percona-cloud-tools/agent/proto"
 	"github.com/percona/percona-cloud-tools/agent/service"
 )
 
@@ -20,6 +21,7 @@ type Manager struct {
 	intervalSyncer *IntervalSyncer
 	intervalChan chan *Interval
 	resultChan chan *Result
+	dataClient proto.Client
 }
 
 func NewManager(cc *agent.ControlChannels, intervalSyncer *IntervalSyncer) *Manager {
@@ -34,17 +36,23 @@ func NewManager(cc *agent.ControlChannels, intervalSyncer *IntervalSyncer) *Mana
 	return m
 }
 
-func (m *Manager) Start(config []byte) error {
+func (m *Manager) Start(msg *proto.Msg, config []byte) error {
+	// Log entries are in response to this msg.
+	m.log.Re(msg)
+
+	m.log.Info(msg, "Starting")
+
 	if m.config != nil {
-		return service.ServiceIsRunningError{Service:Name}
+		err := service.ServiceIsRunningError{Service:Name}
+		m.log.Error(err)
+		return err
 	}
 
 	c := new(Config)
 	if err := json.Unmarshal(config, c); err != nil {
+		m.log.Error(err)
 		return err
 	}
-
-	m.log.Info("Starting")
 
 	// Set the slow log according to the confnig.
 	// @todo
@@ -53,6 +61,7 @@ func (m *Manager) Start(config []byte) error {
 	go m.run(*c)
 
 	m.config = c
+	m.log.Info("Started")
 	return nil
 }
 
@@ -96,7 +105,7 @@ func (m *Manager) run(config Config) error {
 		LogChan: m.cc.LogChan,
 		StopChan: make(chan bool),
 	}
-	go sendResults(ccR, config, m.resultChan)
+	go sendResults(ccR, config, m.dataClient)
 
 	select {
 	case <-m.cc.StopChan:
@@ -189,7 +198,7 @@ func runWorkers(cc *agent.ControlChannels, config Config, intervalChan chan *Int
 // Send qh-worker results
 /////////////////////////////////////////////////////////////////////////////
 
-func sendResults(cc *agent.ControlChannels, config Config, resultChan chan *Result) {
+func sendResults(cc *agent.ControlChannels, config Config, dataClient proto.Client) {
 	/*
 	for r := range resultChan {
 		// @todo
