@@ -1,9 +1,12 @@
 package service
 
+import (
+	"github.com/percona/percona-cloud-tools/agent/proto"
+)
+
 type Manager interface {
-	Start(config []byte) error
-	Stop() error
-	UpdateConfig(config []byte) error
+	Start(msg *proto.Msg, config []byte) error
+	Stop(msg *proto.Msg) error
 	Status() string
 	IsRunning() bool
 }

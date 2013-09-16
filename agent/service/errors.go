@@ -5,5 +5,15 @@ type ServiceIsRunningError struct {
 }
 
 func (e ServiceIsRunningError) Error() string {
-	return e.Service + "service is already configured and running"
+	return e.Service + "service is running"
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+type ServiceIsNotRunningError struct {
+	Service string
+}
+
+func (e ServiceIsNotRunningError) Error() string {
+	return e.Service + "service is not running"
 }
