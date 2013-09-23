@@ -8,6 +8,7 @@ import (
 	"github.com/percona/percona-cloud-tools/agent/log"
 	"github.com/percona/percona-cloud-tools/agent/proto"
 	"github.com/percona/percona-cloud-tools/agent/service"
+	"github.com/percona/percona-cloud-tools/qh/interval"
 )
 
 const (
@@ -24,7 +25,7 @@ type Manager struct {
 	dataClient proto.Client
 }
 
-func NewManager(cc *agent.ControlChannels, intervalSyncer *IntervalSyncer) *Manager {
+func NewManager(cc *agent.ControlChannels, intervalIter *interval.Iter) *Manager {
 	m := &Manager{
 		cc: cc,
 		log: log.NewLogWriter(cc.LogChan, "qh-manager"),
@@ -125,47 +126,6 @@ func (m *Manager) run(config Config) error {
 }
 
 /////////////////////////////////////////////////////////////////////////////
-// Get synchronized intervals
-/////////////////////////////////////////////////////////////////////////////
-
-type Interval struct {
-	SlowLogFile string
-	StartTime time.Time
-	StopTime time.Time
-	StartOffset uint64
-	StopOffset uint64
-}
-
-func getIntervals(cc *agent.ControlChannels, config Config, intervalChan chan *Interval, intervalSyncer *IntervalSyncer) error {
-	/*
-	var slowLogFile string
-	var slowLogInfo os.FileInfo
-	var slowLogFd uintptr
-	ticker := intervalSyncer.Sync(float64(time.Now().UnixNano()))
-	for t := range ticker.C {
-		//stopstartInterval(config, interval)
-		//intervalChan <- interval
-	}
-	*/
-	return nil
-}
-
-func (m *Manager) startInterval() error {
-	/*
-	f := os.NewFile(m.slowLogFd, m.slowLogFile)
-	if fileInfo, err := f.Stat(); err != nil {
-		return err
-	} else {
-		m.slowLogInfo = fileInfo
-	}
-	*/
-	return nil
-}
-
-func stopInterval() {
-}
-
-/////////////////////////////////////////////////////////////////////////////
 // Run qh-worker to process intervals
 /////////////////////////////////////////////////////////////////////////////
 
@@ -212,4 +172,3 @@ func sendResults(cc *agent.ControlChannels, config Config, dataClient proto.Clie
 	}
 	*/
 }
-

@@ -30,7 +30,7 @@ func (s *WorkerTestSuite) TestWorkerSlow001(c *gocheck.C) {
 		Runtime: time.Duration(3 * time.Second),
 		ExampleQueries: true,
 	}
-	tmpFilename := testapp.RunQhWorker(job)
+	tmpFilename := test.RunQhWorker(job)
 	defer os.Remove(tmpFilename)
 
 	// ...then diff <result file> <expected result file>
@@ -49,7 +49,7 @@ func (s *WorkerTestSuite) TestWorkerSlow001Half(c *gocheck.C) {
 		Runtime: time.Duration(3 * time.Second),
 		ExampleQueries: true,
 	}
-	tmpFilename := testapp.RunQhWorker(job)
+	tmpFilename := test.RunQhWorker(job)
 	defer os.Remove(tmpFilename)
 	c.Assert(tmpFilename, testlog.FileEquals, sample + "slow001-half.json")
 }
@@ -65,7 +65,20 @@ func (s *WorkerTestSuite) TestWorkerSlow001Resume(c *gocheck.C) {
 		Runtime: time.Duration(3 * time.Second),
 		ExampleQueries: true,
 	}
-	tmpFilename := testapp.RunQhWorker(job)
+	tmpFilename := test.RunQhWorker(job)
 	defer os.Remove(tmpFilename)
 	c.Assert(tmpFilename, testlog.FileEquals, sample + "slow001-resume.json")
 }
+
+/////////////////////////////////////////////////////////////////////////////
+// Interval test suite
+/////////////////////////////////////////////////////////////////////////////
+
+type IntervalTestSuite struct{}
+var _ = gocheck.Suite(&IntervalTestSuite{})
+
+var sample = os.Getenv("GOPATH") + "/src/github.com/percona/percona-cloud-tools/test/qh/"
+
+func (s *IntervalTestSuite) TestInterval(c *gocheck.C) {
+}
+

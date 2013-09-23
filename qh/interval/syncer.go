@@ -1,24 +1,24 @@
-package qh
+package interval
 
 import (
 	"math"
 	"time"
 )
 
-type IntervalSyncer struct {
+type Syncer struct {
 	intervalSecond uint
 	sleepFunc func(time.Duration)
 }
 
-func NewIntervalSyncer(intervalSecond uint, sleepFunc func(time.Duration)) *IntervalSyncer {
-	s := &IntervalSyncer{
+func NewSyncer(intervalSecond uint, sleepFunc func(time.Duration)) *Syncer {
+	s := &Syncer{
 		intervalSecond: intervalSecond,
 		sleepFunc: sleepFunc,
 	}
 	return s
 }
 
-func (s *IntervalSyncer) Sync(nowNanosecond float64) *time.Ticker {
+func (s *Syncer) Sync(nowNanosecond float64) *time.Ticker {
 	// n := float64(t.UnixNano())
 	i := float64(time.Duration(s.intervalSecond) * time.Second)
 	d := i - math.Mod(nowNanosecond, i)
