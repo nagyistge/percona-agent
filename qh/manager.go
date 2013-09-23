@@ -1,7 +1,7 @@
 package qh
 
 import (
-//	"os"
+	"os"
 	"time"
 	"encoding/json"
 	"github.com/percona/percona-cloud-tools/agent"
@@ -52,6 +52,13 @@ func (m *Manager) Start(msg *proto.Msg, config []byte) error {
 	if err := json.Unmarshal(config, c); err != nil {
 		m.log.Error(err)
 		return err
+	}
+
+	// Create the data dir if necessary.
+	if err := os.Mkdir(c.DataDir, 0775); err != nil {
+		if !os.IsExist(err) {
+			return err
+		}
 	}
 
 	// Set the slow log according to the confnig.

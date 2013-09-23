@@ -10,4 +10,5 @@ type Config struct {
 	MysqlDsn string
 	MaxWorkers uint8
 	Runtime uint
+	DataDir string
 }
