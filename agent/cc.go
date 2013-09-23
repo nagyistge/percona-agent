@@ -7,4 +7,5 @@ import (
 type ControlChannels struct {
 	LogChan chan *log.LogEntry
 	StopChan chan bool
+	DoneChan chan bool
 }
