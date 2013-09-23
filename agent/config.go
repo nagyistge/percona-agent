@@ -8,13 +8,14 @@ import (
 )
 
 type Config struct {
-	ApiKey string `json:"api-key,omitempty"`
-	ApiUrl string `json:"api-url,omitempty"`
-	AgentUuid string `json:"agent-uuid,omitempty"`
-	SpoolDir string `json:"spool-dir,omitempty"`
-	LogFilename string `json:"log-file,omitempty"`
-	PidFilename string `json:"pid-file,omitempty"`
-	ConfigFilename string `json:"config-file,omitempty"`
+	ApiUrl string `json:",omitempty"`
+	ApiKey string `json:",omitempty"`
+	AgentUuid string `json:",omitempty"`
+	DataDir string `json:",omitempty"`
+	LogFile string `json:",omitempty"`
+	PidFile string `json:",omitempty"`
+	ConfigFile string `json:",omitempty"`
+	DbDsn string `json:",omitempty"`
 }
 
 // Load config from JSON file.
