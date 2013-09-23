@@ -3,8 +3,8 @@ package test
 import (
 	"time"
 	"github.com/percona/percona-cloud-tools/agent"
-	"github.com/percona/percona-cloud-tools/agent/proto"
 	"github.com/percona/percona-cloud-tools/agent/log"
+	"github.com/percona/percona-cloud-tools/agent/proto"
 )
 
 /*
@@ -55,4 +55,18 @@ func DoneWait(cc *agent.ControlChannels) bool {
 		return false
 	}
 	return false
+}
+
+func GetLogEntries(cc *agent.ControlChannels) []log.LogEntry {
+	var buf []log.LogEntry
+	var haveData bool = true
+	for haveData {
+		select {
+		case msg := <-cc.LogChan:
+			buf = append(buf, *msg)
+		case <-time.After(10 * time.Millisecond):
+			haveData = false
+		}
+	}
+	return buf
 }

@@ -13,6 +13,7 @@ type Config struct {
 	AgentUuid string `json:",omitempty"`
 	DataDir string `json:",omitempty"`
 	LogFile string `json:",omitempty"`
+	LogLevel string `json:",omitempty"`
 	PidFile string `json:",omitempty"`
 	ConfigFile string `json:",omitempty"`
 	DbDsn string `json:",omitempty"`
