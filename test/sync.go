@@ -1,7 +1,8 @@
-package testapp
+package test
 
 import (
 	"time"
+	"github.com/percona/percona-cloud-tools/agent"
 	"github.com/percona/percona-cloud-tools/agent/proto"
 	"github.com/percona/percona-cloud-tools/agent/log"
 )
@@ -37,4 +38,21 @@ func WaitForLogEntries(dataFromClient chan interface{}) []log.LogEntry {
 		}
 	}
 	return buf
+}
+
+func DoneWait(cc *agent.ControlChannels) bool {
+	// Tell whatever to stop...
+	cc.StopChan <-true
+
+	// Then wait for it.  The wait is necessary to yield what's probably
+	// a single thread running the caller and the thing they're waiting
+	// for.  If we just <-cc.DoneChan, the calling thread will block, never
+	// letting the other thing cc.DoneChan <-true.  Concurrency is fun!
+	select {
+	case <-cc.DoneChan:
+		return true
+	case <-time.After(250 * time.Millisecond):
+		return false
+	}
+	return false
 }
