@@ -9,12 +9,12 @@ import (
 
 // A command from the API or an agent reply to a command
 type Msg struct {
-	Ts		time.Time	// sent at (UTC)
-	User	string		// by this front-side user
-	Id		uint		// back-end routing ID
-	Cmd		string		// command (e.g. start-service)
-	Timeout uint		// command timeout (seconds)
-	Data	[]byte		// command data (e.g. msg.Service) or agent reply (e.g. CmdReply)
+	User	string							// by this front-side user
+	Id		uint							// back-end routing ID
+	Cmd		string							// command (e.g. start-service)
+	Ts		time.Time	`json:",omitempty"`	// sent at (UTC)
+	Timeout uint		`json:",omitempty"`	// command timeout (seconds)
+	Data	[]byte		`json:",omitempty"`	// command data (e.g. msg.Service) or agent reply (e.g. CmdReply)
 }
 
 // Data for StartService and StopService commands

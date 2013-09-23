@@ -6,6 +6,7 @@ import (
 	"time"
 	"fmt"
 	"sync"
+	"reflect"
 	"encoding/json"
 	"github.com/percona/percona-cloud-tools/agent/log"
 	"github.com/percona/percona-cloud-tools/agent/proto"
@@ -51,12 +52,25 @@ func NewAgent(config *Config, cc *ControlChannels, cmdClient proto.Client, statu
 	return agent
 }
 
+/*
+ * Get data to send to API on connect to authenticate (API key) and let
+ * API know how we're currently running.
+ */
 func (agent *Agent) Hello() map[string] string {
-	var data map[string]string
+	data := make(map[string]string)
+
+	// API key is in the config, as well as other info like PID file, etc.
+	// Map the config struct to our map[string]string.
+	cs := reflect.ValueOf(agent.config).Elem()  // config struct
+	for i := 0; i < cs.NumField(); i++ {  // foreach field
+		data[cs.Type().Field(i).Name] = cs.Field(i).String()
+	}
+
+	// Other info the API wants to know:
 	u, _ := user.Current()
-	//data["agent_uuid"] = agent.Uuid
-	data["hostname"], _ = os.Hostname()
-	data["username"] = u.Username
+	data["Hostname"], _ = os.Hostname()
+	data["Username"] = u.Username
+
 	return data
 }
 
@@ -139,9 +153,7 @@ func (agent *Agent) Run() {
 		agent.selfUpdate()
 	}
 
-	// Shouldn't get here.
-	// @todo return error
-	os.Exit(1)
+	agent.cc.DoneChan <-true
 }
 
 func (agent *Agent) cmdHandler(cmdChan chan *proto.Msg, doneChan chan bool) {
@@ -212,13 +224,15 @@ func (agent *Agent) statusHandler(statusChan chan *proto.Msg) {
 		status := new(proto.StatusReply)
 
 		agent.m["agent"].Lock()
-		agent.m["cmdq"].Lock()
+		agent.m["cmd"].Lock()
 
 		status.Agent = agent.status
 
 		status.CmdQueue = make([]string, len(agent.cmdq))
 		for _, msg := range agent.cmdq {
-			status.CmdQueue = append(status.CmdQueue, msg.String())
+			if msg != nil {
+				status.CmdQueue = append(status.CmdQueue, msg.String())
+			}
 		}
 
 		status.Service = make(map[string]string)
@@ -226,7 +240,7 @@ func (agent *Agent) statusHandler(statusChan chan *proto.Msg) {
 			status.Service[service] = m.Status()
 		}
 
-		agent.m["cmdq"].Unlock()
+		agent.m["cmd"].Unlock()
 		agent.m["agent"].Unlock()
 
 		sendStatusChan <-msg.Reply(status)
@@ -306,9 +320,13 @@ func (agent *Agent) handleStopService(msg *proto.Msg) error {
 // Internal methods
 /////////////////////////////////////////////////////////////////////////////
 
-func (agent *Agent) setStatus(msg *proto.Msg, status ...interface{}) {
+func (agent *Agent) setStatus(msg *proto.Msg, status string) {
 	agent.m["agent"].Lock()
-	agent.status = fmt.Sprintf("[%s] %v", msg, status)
+	if msg != nil {
+		agent.status = fmt.Sprintf("[%s] %s", msg, status)
+	} else {
+		agent.status = fmt.Sprintf("- %s", status)
+	}
 	agent.m["agent"].Unlock()
 }
 
