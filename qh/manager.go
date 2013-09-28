@@ -17,10 +17,11 @@ const (
 
 type Manager struct {
 	cc *agent.ControlChannels
-	log *log.LogWriter
+	intervalIter *interval.Iter
+	// --
 	config *Config  // nil if not running
-	intervalSyncer *IntervalSyncer
-	intervalChan chan *Interval
+	log *log.LogWriter
+	intervalChan chan *interval.Interval
 	resultChan chan *Result
 	dataClient proto.Client
 }
@@ -30,8 +31,8 @@ func NewManager(cc *agent.ControlChannels, intervalIter *interval.Iter) *Manager
 		cc: cc,
 		log: log.NewLogWriter(cc.LogChan, "qh-manager"),
 		config: nil, // not running yet
-		intervalSyncer: intervalSyncer,
-		intervalChan: make(chan *Interval, 10),
+		intervalIter: intervalIter,
+		intervalChan: make(chan *interval.Interval, 10),
 		resultChan: make(chan *Result, 10),
 	}
 	return m
@@ -77,10 +78,6 @@ func (m *Manager) Stop() error {
 	return nil
 }
 
-func (m *Manager) UpdateConfig(config []byte) error {
-	return nil
-}
-
 func (m *Manager) Status() string {
 	return "ok"
 }
@@ -97,12 +94,6 @@ func (m *Manager) IsRunning() bool {
 /////////////////////////////////////////////////////////////////////////////
 
 func (m *Manager) run(config Config) error {
-	ccI := &agent.ControlChannels{
-		LogChan: m.cc.LogChan,
-		StopChan: make(chan bool),
-	}
-	go getIntervals(ccI, config, m.intervalChan, m.intervalSyncer)
-
 	ccW := &agent.ControlChannels{
 		LogChan: m.cc.LogChan,
 		StopChan: make(chan bool),
@@ -117,7 +108,6 @@ func (m *Manager) run(config Config) error {
 
 	select {
 	case <-m.cc.StopChan:
-		ccI.StopChan <- true
 		ccW.StopChan <- true
 		ccR.StopChan <- true
 	}
@@ -129,35 +119,39 @@ func (m *Manager) run(config Config) error {
 // Run qh-worker to process intervals
 /////////////////////////////////////////////////////////////////////////////
 
-func runWorkers(cc *agent.ControlChannels, config Config, intervalChan chan *Interval, resultChan chan *Result) {
+func runWorkers(cc *agent.ControlChannels, config Config, intervalChan chan *interval.Interval, resultChan chan *Result) {
 	workers := make(map[*Worker]bool)
 	doneChan := make(chan *Worker, config.MaxWorkers)
-
-	select {
-	case interval := <-intervalChan:
-		if len(workers) < 2 {
-			cc := &agent.ControlChannels{
-				LogChan: cc.LogChan,
-				StopChan: make(chan bool),
+	for {
+		if len(workers) < config.MaxWorkers {
+			// Wait for an interval, the stop signal, or a worker to finish (if any are running).
+			select {
+			case interval := <-intervalChan:
+				cc := &agent.ControlChannels{
+					LogChan: cc.LogChan,
+					// not used: StopChan
+					// not used: DoneChan
+				}
+				job := &Job{
+					SlowLogFile: interval.FileName,
+					StartOffset: interval.StartOffset,
+					StopOffset: interval.StopOffset,
+					Runtime: time.Duration(config.Runtime) * time.Second,
+					ExampleQueries: config.ExampleQueries,
+				}
+				w := NewWorker(cc, job, resultChan, doneChan)
+				go w.Run()
+				workers[w] = true
+			case <-cc.StopChan:
+				break
+			case worker := <-doneChan:
+				delete(workers, worker)
 			}
-			job := &Job{
-				SlowLogFile: interval.SlowLogFile,
-				StartOffset: interval.StartOffset,
-				StopOffset: interval.StopOffset,
-				Runtime: time.Duration(config.Runtime) * time.Second,
-				ExampleQueries: config.ExampleQueries,
-				Cc: cc,
-				ResultChan: resultChan,
-				DoneChan: doneChan,
-			}
-			w := NewWorker(job)
-			w.Run()
-			workers[w] = true
 		} else {
-			// Too many workers running
+			// All workers are running.  Wait for one to finish before receiving another interval.
+			worker := <-doneChan
+			delete(workers, worker)
 		}
-	case worker := <-doneChan:
-		delete(workers, worker)
 	}
 }
 

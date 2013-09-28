@@ -18,11 +18,7 @@ func RunQhWorker(job *qh.Job) string {
 	resultChan := make(chan *qh.Result, 1)
 	doneChan := make(chan *qh.Worker, 1)
 
-	job.Cc = cc
-	job.ResultChan = resultChan
-	job.DoneChan = doneChan
-
-	w := qh.NewWorker(job)
+	w := qh.NewWorker(cc, job, resultChan, doneChan)
 	w.Run()
 
 	// Write the result as formatted JSON to a file...

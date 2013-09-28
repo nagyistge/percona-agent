@@ -13,18 +13,18 @@ import (
 type Worker struct {
 	cc *agent.ControlChannels
 	job *Job
+	resultChan chan *Result
+	doneChan chan *Worker
+	// --
 	log *agentLog.LogWriter
 }
 
 type Job struct {
 	SlowLogFile string
 	Runtime time.Duration
-	StartOffset uint64
-	StopOffset uint64
+	StartOffset int64
+	StopOffset int64
 	ExampleQueries bool
-	Cc *agent.ControlChannels
-	ResultChan chan *Result
-	DoneChan chan *Worker
 }
 
 type Result struct {
@@ -33,10 +33,13 @@ type Result struct {
 	Classes []*mysqlLog.QueryClass `json:",omitempty"`
 }
 
-func NewWorker(job *Job) *Worker {
+func NewWorker(cc *agent.ControlChannels, job *Job, resultChan chan *Result, doneChan chan *Worker) *Worker {
 	w := &Worker{
+		cc: cc,
 		job: job,
-		log: agentLog.NewLogWriter(job.Cc.LogChan, "qh-worker"),
+		resultChan: resultChan,
+		doneChan: doneChan,
+		log: agentLog.NewLogWriter(cc.LogChan, "qh-worker"),
 	}
 	return w
 }
@@ -47,8 +50,8 @@ func (w *Worker) Run() {
 	// worker.
 	result := new(Result)
 	defer func() {
-		w.job.ResultChan <- result
-		w.job.DoneChan <- w
+		w.resultChan <-result
+		w.doneChan <-w
 	}()
 
 	// Open the slow log file.
@@ -79,7 +82,7 @@ func (w *Worker) Run() {
 	global := mysqlLog.NewGlobalClass()
 	queries := make(map[string]*mysqlLog.QueryClass)
 	for event := range p.EventChan {
-		if event.Offset > w.job.StopOffset {
+		if int64(event.Offset) > w.job.StopOffset {
 			break
 		}
 
