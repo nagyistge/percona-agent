@@ -69,16 +69,3 @@ func (s *WorkerTestSuite) TestWorkerSlow001Resume(c *gocheck.C) {
 	defer os.Remove(tmpFilename)
 	c.Assert(tmpFilename, testlog.FileEquals, sample + "slow001-resume.json")
 }
-
-/////////////////////////////////////////////////////////////////////////////
-// Interval test suite
-/////////////////////////////////////////////////////////////////////////////
-
-type IntervalTestSuite struct{}
-var _ = gocheck.Suite(&IntervalTestSuite{})
-
-var sample = os.Getenv("GOPATH") + "/src/github.com/percona/percona-cloud-tools/test/qh/"
-
-func (s *IntervalTestSuite) TestInterval(c *gocheck.C) {
-}
-

@@ -2,6 +2,8 @@ package interval_test
 
 import (
 //	"fmt"
+	"os"
+	"io/ioutil"
 	"time"
 	"launchpad.net/gocheck"
 	"testing"
@@ -71,4 +73,57 @@ func (s *SyncerTestSuite) TestTickerTime(c *gocheck.C) {
 			}
 		}
 	}
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Iter test suite
+/////////////////////////////////////////////////////////////////////////////
+
+type IterTestSuite struct{}
+var _ = gocheck.Suite(&IterTestSuite{})
+
+var fileName string
+func getFilename() (string, error) {
+	return fileName, nil
+}
+
+func (s *IterTestSuite) TestIter(c *gocheck.C) {
+	tickerChan := make(chan time.Time)
+	intervalChan := make(chan *interval.Interval, 1)
+	stopChan := make(chan bool)
+
+	// This is the file we iterate.  It's 3 bytes large to start,
+	// so that should be the StartOffset.
+	tmpFile, _ := ioutil.TempFile("/tmp", "interval_test.")
+	tmpFile.Close()
+	fileName = tmpFile.Name()
+	_ = ioutil.WriteFile(tmpFile.Name(), []byte("123"), 0777)
+	defer func() { os.Remove(tmpFile.Name()) }()
+
+	// Start interating the file, waiting for ticks.
+	i := interval.NewIter(getFilename, tickerChan, intervalChan, stopChan)
+	go i.Run()
+
+	// Send a tick to start the interval
+	t1 := time.Now()
+	tickerChan <-t1
+
+	// Write more data to the file, pretend time passes...
+	_ = ioutil.WriteFile(tmpFile.Name(), []byte("123456"), 0777)
+
+	// Send a 2nd tick to finish the interval
+	t2 := time.Now()
+	tickerChan <-t2
+
+	// Stop the interator and get the interval it sent us
+	stopChan <-true
+	got := <-intervalChan
+	expect := &interval.Interval{
+		FileName: fileName,
+		StartTime: t1,
+		StopTime: t2,
+		StartOffset: 3,
+		StopOffset: 6,
+	}
+	c.Check(got, gocheck.DeepEquals, expect)
 }
