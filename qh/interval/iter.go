@@ -10,10 +10,6 @@ type Iter struct {
 	tickerChan chan time.Time
 	intervalChan chan *Interval
 	stopChan chan bool
-	// --
-	file string
-	size int64
-	fd uintptr
 }
 
 func NewIter(fileName func() (string, error), tickerChan chan time.Time, intervalChan chan *Interval, stopChan chan bool) *Iter {
@@ -45,7 +41,7 @@ func (i *Iter) Run() {
 				continue
 			}
 
-			if !cur.StartTime.IsZero() {
+			if !cur.StartTime.IsZero() { // StartTime is set
 				// End of interval
 				cur.FileName = curFile
 				cur.StopOffset = curSize
@@ -58,7 +54,8 @@ func (i *Iter) Run() {
 				cur.StartOffset = curSize
 				cur.StartTime = now
 			} else {
-				// First interval
+				// First interval, either due to first tick or because an error
+				// occurred earlier so a new interval was started.
 				cur.StartOffset = curSize
 				cur.StartTime = now
 			}
