@@ -6,23 +6,22 @@ import (
 )
 
 type Syncer struct {
-	intervalSecond uint
-	sleepFunc func(time.Duration)
+	atInterval uint
+	sleep func(time.Duration)
 }
 
-func NewSyncer(intervalSecond uint, sleepFunc func(time.Duration)) *Syncer {
+func NewSyncer(atInterval uint, sleep func(time.Duration)) *Syncer {
 	s := &Syncer{
-		intervalSecond: intervalSecond,
-		sleepFunc: sleepFunc,
+		atInterval: atInterval,
+		sleep: sleep,
 	}
 	return s
 }
 
-func (s *Syncer) Sync(nowNanosecond float64) *time.Ticker {
-	// n := float64(t.UnixNano())
-	i := float64(time.Duration(s.intervalSecond) * time.Second)
-	d := i - math.Mod(nowNanosecond, i)
-	s.sleepFunc(time.Duration(d) * time.Nanosecond)
-	ticker := time.NewTicker(time.Duration(s.intervalSecond) * time.Second)
+func (s *Syncer) Sync(nowNanosecond int64) *time.Ticker {
+	i := float64(time.Duration(s.atInterval) * time.Second)
+	d := i - math.Mod(float64(nowNanosecond), i)
+	s.sleep(time.Duration(d) * time.Nanosecond)
+	ticker := time.NewTicker(time.Duration(s.atInterval) * time.Second)
 	return ticker
 }
