@@ -76,18 +76,18 @@ func (s *SyncerTestSuite) TestTickerTime(c *gocheck.C) {
 }
 
 /////////////////////////////////////////////////////////////////////////////
-// Iter test suite
+// SyncTimeIter test suite
 /////////////////////////////////////////////////////////////////////////////
 
-type IterTestSuite struct{}
-var _ = gocheck.Suite(&IterTestSuite{})
+type SyncTimeIterTestSuite struct{}
+var _ = gocheck.Suite(&SyncTimeIterTestSuite{})
 
 var fileName string
 func getFilename() (string, error) {
 	return fileName, nil
 }
 
-func (s *IterTestSuite) TestIter(c *gocheck.C) {
+func (s *SyncTimeIterTestSuite) TestSyncTimeIter(c *gocheck.C) {
 	tickerChan := make(chan time.Time)
 	intervalChan := make(chan *interval.Interval, 1)
 	stopChan := make(chan bool)
@@ -101,7 +101,7 @@ func (s *IterTestSuite) TestIter(c *gocheck.C) {
 	defer func() { os.Remove(tmpFile.Name()) }()
 
 	// Start interating the file, waiting for ticks.
-	i := interval.NewIter(getFilename, tickerChan, intervalChan, stopChan)
+	i := interval.NewSyncTimeIter(getFilename, tickerChan, intervalChan, stopChan)
 	go i.Run()
 
 	// Send a tick to start the interval
@@ -119,7 +119,7 @@ func (s *IterTestSuite) TestIter(c *gocheck.C) {
 	stopChan <-true
 	got := <-intervalChan
 	expect := &interval.Interval{
-		FileName: fileName,
+		Filename: fileName,
 		StartTime: t1,
 		StopTime: t2,
 		StartOffset: 3,

@@ -23,10 +23,13 @@ func RunQhWorker(job *qh.Job) string {
 
 	// Write the result as formatted JSON to a file...
 	result := <-resultChan
-	bytes, _ := json.MarshalIndent(result, "", " ")
-	bytes = append(bytes, 0x0A) // newline
 	tmpFilename := fmt.Sprintf("/tmp/pct-test.%d", os.Getpid())
-	ioutil.WriteFile(tmpFilename, bytes, os.ModePerm)
-
+	WriteData(result, tmpFilename)
 	return tmpFilename
+}
+
+func WriteData(data interface{}, filename string) {
+	bytes, _ := json.MarshalIndent(data, "", " ")
+	bytes = append(bytes, 0x0A) // newline
+	ioutil.WriteFile(filename, bytes, os.ModePerm)
 }

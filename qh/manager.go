@@ -2,7 +2,9 @@ package qh
 
 import (
 	"os"
+	"fmt"
 	"time"
+	"sync"
 	"encoding/json"
 	"github.com/percona/percona-cloud-tools/agent"
 	"github.com/percona/percona-cloud-tools/agent/log"
@@ -17,31 +19,51 @@ const (
 
 type Manager struct {
 	cc *agent.ControlChannels
-	intervalIter *interval.Iter
-	// --
-	config *Config  // nil if not running
-	log *log.LogWriter
-	intervalChan chan *interval.Interval
+	iter interval.Iter
 	resultChan chan *Result
 	dataClient proto.Client
+	// --
+	log *log.LogWriter
+	config *Config  // nil if not running
+	configMux *sync.Mutex
+	workers map[*Worker]bool
+	workersMux *sync.Mutex
+	status map[string]string
+	statusMux map[string]*sync.Mutex
 }
 
-func NewManager(cc *agent.ControlChannels, intervalIter *interval.Iter) *Manager {
+func NewManager(cc *agent.ControlChannels, iter interval.Iter, resultChan chan *Result, dataClient proto.Client) *Manager {
 	m := &Manager{
 		cc: cc,
+		iter: iter,
+		resultChan: resultChan,
+		dataClient: dataClient,
+		// --
 		log: log.NewLogWriter(cc.LogChan, "qh-manager"),
 		config: nil, // not running yet
-		intervalIter: intervalIter,
-		intervalChan: make(chan *interval.Interval, 10),
-		resultChan: make(chan *Result, 10),
+		configMux: new(sync.Mutex),
+		workers: make(map[*Worker]bool),
+		workersMux: new(sync.Mutex),
+		status: map[string]string{
+			"manager": "",
+			"runWorkers": "",
+			"sendData": "",
+		},
+		statusMux: map[string]*sync.Mutex{
+			"manager": new(sync.Mutex),
+			"runWorkers": new(sync.Mutex),
+			"sendData": new(sync.Mutex),
+		},
 	}
 	return m
 }
 
 func (m *Manager) Start(msg *proto.Msg, config []byte) error {
+	m.setStatus("manager", "starting")
+	defer m.setStatus("manager", "waiting for command")
+
 	// Log entries are in response to this msg.
 	m.log.Re(msg)
-
 	m.log.Info(msg, "Starting")
 
 	if m.config != nil {
@@ -66,91 +88,151 @@ func (m *Manager) Start(msg *proto.Msg, config []byte) error {
 	// Set the slow log according to the confnig.
 	// @todo
 
-	// Run goroutines to get intervals, run workeres, and send results.
-	go m.run(*c)
+	// Run goroutines to run workers and send results.
+	go m.run()
 
+	m.configMux.Lock()
 	m.config = c
+	m.configMux.Unlock()
+
 	m.log.Info("Started")
+
 	return nil
 }
 
 func (m *Manager) Stop() error {
+	m.setStatus("manager", "stopping")
+	// @todo
+	m.setStatus("manager", "stopped")
 	return nil
 }
 
 func (m *Manager) Status() string {
-	return "ok"
+	m.configMux.Lock()
+	defer m.configMux.Unlock()
+
+	m.workersMux.Lock()
+	defer m.workersMux.Unlock()
+
+	for _, mux := range m.statusMux {
+		mux.Lock();
+		defer mux.Unlock();
+	}
+
+	var running bool
+	var config []byte
+	// Do NOT call IsRunning() because we have locked configMux and
+	// IsRunning() locks it too--deadlock!
+	if m.config != nil {
+		running = true
+		config, _ = json.Marshal(m.config)
+	}
+	status := fmt.Sprintf(`Running: %t
+Config: %s
+Workers: %d
+Manager: %s
+RunWorkers: %s
+SendData: %s
+`,
+		running, config, len(m.workers),
+		m.status["manager"], m.status["runWorkers"], m.status["sendData"])
+	return status
 }
 
 func (m *Manager) IsRunning() bool {
+	// Do NOT call this from any function that has locked configMux
+	// else we'll deadlock!
+	m.configMux.Lock()
+	var isRunning bool
 	if m.config != nil {
-		return true
+		// We're running if we have a config.  Call Status() to get more info.
+		isRunning = true
 	}
-	return false
+	m.configMux.Unlock()
+	return isRunning
 }
 
 /////////////////////////////////////////////////////////////////////////////
 // Implementation
 /////////////////////////////////////////////////////////////////////////////
 
-func (m *Manager) run(config Config) error {
+func (m *Manager) run() {
 	ccW := &agent.ControlChannels{
 		LogChan: m.cc.LogChan,
 		StopChan: make(chan bool),
 	}
-	go runWorkers(ccW, config, m.intervalChan, m.resultChan)
+	go m.runWorkers(ccW)
 
 	ccR := &agent.ControlChannels{
 		LogChan: m.cc.LogChan,
 		StopChan: make(chan bool),
 	}
-	go sendResults(ccR, config, m.dataClient)
+	go m.sendResults(ccR)
 
 	select {
 	case <-m.cc.StopChan:
-		ccW.StopChan <- true
-		ccR.StopChan <- true
+		ccW.StopChan <-true
+		ccR.StopChan <-true
 	}
+}
 
-	return nil
+func (m *Manager) setStatus(proc string, status string) {
+	m.statusMux[proc].Lock()
+	m.status[proc] = status
+	m.statusMux[proc].Unlock()
 }
 
 /////////////////////////////////////////////////////////////////////////////
 // Run qh-worker to process intervals
 /////////////////////////////////////////////////////////////////////////////
 
-func runWorkers(cc *agent.ControlChannels, config Config, intervalChan chan *interval.Interval, resultChan chan *Result) {
-	workers := make(map[*Worker]bool)
-	doneChan := make(chan *Worker, config.MaxWorkers)
+func (m *Manager) runWorkers(cc *agent.ControlChannels) {
+	intervalChan := m.iter.IntervalChan()
+	doneChan := make(chan *Worker, m.config.MaxWorkers)
 	for {
-		if len(workers) < config.MaxWorkers {
+		m.workersMux.Lock()
+		runningWorkers := len(m.workers)
+		m.workersMux.Unlock()
+		if runningWorkers < m.config.MaxWorkers {
 			// Wait for an interval, the stop signal, or a worker to finish (if any are running).
+			m.setStatus("runWorkers", "waiting for interval")
 			select {
 			case interval := <-intervalChan:
+				m.setStatus("runWorkers", "running worker")
 				cc := &agent.ControlChannels{
 					LogChan: cc.LogChan,
 					// not used: StopChan
 					// not used: DoneChan
 				}
 				job := &Job{
-					SlowLogFile: interval.FileName,
+					SlowLogFile: interval.Filename,
 					StartOffset: interval.StartOffset,
 					StopOffset: interval.StopOffset,
-					Runtime: time.Duration(config.Runtime) * time.Second,
-					ExampleQueries: config.ExampleQueries,
+					Runtime: time.Duration(m.config.WorkerRuntime) * time.Second,
+					ExampleQueries: m.config.ExampleQueries,
 				}
-				w := NewWorker(cc, job, resultChan, doneChan)
+				w := NewWorker(cc, job, m.resultChan, doneChan)
 				go w.Run()
-				workers[w] = true
+
+				m.workersMux.Lock()
+				m.workers[w] = true
+				m.workersMux.Unlock()
 			case <-cc.StopChan:
+				m.setStatus("runWorkers", "stopping")
 				break
 			case worker := <-doneChan:
-				delete(workers, worker)
+				m.setStatus("runWorkers", "reaping worker")
+				m.workersMux.Lock()
+				delete(m.workers, worker)
+				m.workersMux.Unlock()
 			}
 		} else {
 			// All workers are running.  Wait for one to finish before receiving another interval.
+			m.setStatus("runWorkers", "waiting for worker")
 			worker := <-doneChan
-			delete(workers, worker)
+			m.workersMux.Lock()
+			delete(m.workers, worker)
+			m.workersMux.Unlock()
 		}
 	}
 }
@@ -159,10 +241,17 @@ func runWorkers(cc *agent.ControlChannels, config Config, intervalChan chan *int
 // Send qh-worker results
 /////////////////////////////////////////////////////////////////////////////
 
-func sendResults(cc *agent.ControlChannels, config Config, dataClient proto.Client) {
-	/*
-	for r := range resultChan {
-		// @todo
+func (m *Manager) sendResults(cc *agent.ControlChannels) {
+	// @todo spool, send from spool, handle ws errors, etc.
+	for {
+		m.setStatus("sendData", "waiting for result")
+		select {
+		case <-cc.StopChan:
+			m.setStatus("sendData", "stopping")
+			break
+		case result := <-m.resultChan:
+			m.setStatus("sendData", "sending result")
+			_ = m.dataClient.Send(result)
+		}
 	}
-	*/
 }

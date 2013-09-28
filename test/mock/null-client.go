@@ -5,6 +5,7 @@ import (
 )
 
 type NullClient struct {
+	SentDataChan chan interface{}
 }
 
 func (c *NullClient) Connect() error {
@@ -19,6 +20,7 @@ func (c *NullClient) Disconnect() error {
 }
 
 func (c *NullClient) Send(data interface{}) error {
+	c.SentDataChan <-data
 	return nil
 }
 

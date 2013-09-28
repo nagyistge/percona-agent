@@ -5,15 +5,20 @@ import (
 	"time"
 )
 
-type Iter struct {
+type Iter interface {
+	IntervalChan() chan *Interval
+	Run()
+}
+
+type SyncTimeIter struct {
 	fileName func() (string, error)
 	tickerChan chan time.Time
 	intervalChan chan *Interval
 	stopChan chan bool
 }
 
-func NewIter(fileName func() (string, error), tickerChan chan time.Time, intervalChan chan *Interval, stopChan chan bool) *Iter {
-	iter := &Iter{
+func NewSyncTimeIter(fileName func() (string, error), tickerChan chan time.Time, intervalChan chan *Interval, stopChan chan bool) *SyncTimeIter {
+	iter := &SyncTimeIter{
 		fileName: fileName,
 		tickerChan: tickerChan,
 		intervalChan: intervalChan,
@@ -22,7 +27,11 @@ func NewIter(fileName func() (string, error), tickerChan chan time.Time, interva
 	return iter
 }
 
-func (i *Iter) Run() {
+func (i *SyncTimeIter) IntervalChan() chan *Interval {
+	return i.intervalChan
+}
+
+func (i *SyncTimeIter) Run() {
 	cur := new(Interval)
 	for {
 		select {
@@ -43,7 +52,7 @@ func (i *Iter) Run() {
 
 			if !cur.StartTime.IsZero() { // StartTime is set
 				// End of interval
-				cur.FileName = curFile
+				cur.Filename = curFile
 				cur.StopOffset = curSize
 				cur.StopTime = now
 

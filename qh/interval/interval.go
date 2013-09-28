@@ -5,7 +5,7 @@ import (
 )
 
 type Interval struct {
-	FileName string
+	Filename string
 	StartTime time.Time
 	StopTime time.Time
 	StartOffset int64
