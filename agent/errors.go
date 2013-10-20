@@ -8,6 +8,8 @@ import (
 	"github.com/percona/percona-cloud-tools/agent/proto"
 )
 
+/////////////////////////////////////////////////////////////////////////////
+
 type UnknownServiceError struct {
 	Service string
 }
@@ -53,3 +55,15 @@ func (e QueueFullError) Error() string {
 	}
 	return err
 }
+
+/////////////////////////////////////////////////////////////////////////////
+
+type CmdRejectedError struct {
+	Cmd string
+	Reason string
+}
+
+func (e CmdRejectedError) Error() string {
+	return fmt.Sprintf("%s command rejected because %s", e.Cmd, e.Reason)
+}
+

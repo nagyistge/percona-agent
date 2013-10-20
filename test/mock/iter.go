@@ -1,7 +1,7 @@
 package mock
 
 import (
-	"github.com/percona/percona-cloud-tools/qh/interval"
+	"github.com/percona/percona-cloud-tools/qa/interval"
 )
 
 type Iter struct {

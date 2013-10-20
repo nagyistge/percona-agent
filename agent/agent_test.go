@@ -15,6 +15,7 @@ import (
 	"github.com/percona/percona-cloud-tools/agent/service"
 	agentLog "github.com/percona/percona-cloud-tools/agent/log"
 	"github.com/percona/percona-cloud-tools/agent/proto"
+	"github.com/percona/percona-cloud-tools/qa"
 	// test and mock
 	"github.com/percona/percona-cloud-tools/test"
 	"github.com/percona/percona-cloud-tools/test/mock"
@@ -37,6 +38,8 @@ type AgentTestSuite struct {
 	cmdClient *ws_client.MockClient
 	statusClient *ws_client.MockClient
 	services map[string]service.Manager
+	readyChan chan bool
+	traceChan chan string
 	// mock ws client chans
 	dataToCmdClient chan interface{}
 	dataFromCmdClient chan interface{}
@@ -92,17 +95,18 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 
 	s.cc = &agent.ControlChannels{
 		LogChan: logChan,
-		StopChan: make(chan bool),
-		DoneChan: make(chan bool, 1),
+		StopChan: make(chan bool, 1),
+		DoneChan: make(chan bool),
 	};
 
 	s.cmdClient = ws_client.NewMockClient(s.dataToCmdClient, s.dataFromCmdClient, s.msgToCmdClient, s.msgFromCmdClient)
 	s.statusClient = ws_client.NewMockClient(s.dataToStatusClient, s.dataFromStatusClient, s.msgToStatusClient, s.msgFromStatusClient)
 
 	services := make(map[string]service.Manager)
-	traceChan := make(chan string, 10)
-	mockService := mock.NewMockServiceManager(traceChan)
-	services["qh"] = mockService
+	s.readyChan = make(chan bool, 1)
+	s.traceChan = make(chan string, 10)
+	services["qa"] = mock.NewMockServiceManager("qa", s.readyChan, s.traceChan)
+	services["mm"] = mock.NewMockServiceManager("mm", s.readyChan, s.traceChan)
 	s.services = services
 }
 
@@ -129,8 +133,15 @@ func (s *AgentTestSuite) SetUpTest(t *C) {
 }
 
 func (s *AgentTestSuite) TearDownTest(t *C) {
-	// Drain the log chan before the next test
+	if test.DoneWait(s.cc) == false {
+		t.Fatal("Agent did not stop")
+	}
+
+	// Drain the channels before the next test.
 	_ = test.WaitForLogEntries(s.logEntriesChan)
+	_ = test.WaitForClientMsgs(s.msgFromCmdClient)
+	_ = test.WaitForClientMsgs(s.msgFromStatusClient)
+	_ = test.WaitForTraces(s.traceChan)
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -165,13 +176,13 @@ func (s *AgentTestSuite) TestStatus(t *C) {
 		Ts: time.Now(),
 		User: "daniel",
 		Id: 1,
-		Cmd: "status",
+		Cmd: "Status",
 		Timeout: 3,
 	}
 	s.msgToStatusClient <-statusCmd
 
 	// Tell the agent to stop then wait for it.
-	test.DoneWait(s.cc)
+	// test.DoneWait(s.cc)
 
 	// Get msgs sent by agent to API (i.e. us).  There should only
 	// be one: a proto.StatusReply.
@@ -182,10 +193,11 @@ func (s *AgentTestSuite) TestStatus(t *C) {
 	// (user and id) with Data=StatusReply.
 	expect := statusCmd
 	statusReply := &proto.StatusReply{
-		Agent: "- Wait listen",
+		Agent: "Agent: Ready\nCommand: Ready\nStatus: 0\n",
 		CmdQueue: make([]string, agent.CMD_QUEUE_SIZE),
 		Service: map[string]string{
-			"qh": "AOK",
+			"qa": "AOK",
+			"mm": "AOK",
 		},
 	}
 	expect.Data, _ = json.Marshal(statusReply)
@@ -222,7 +234,7 @@ func (s *AgentTestSuite) TestSetConfig(t *C) {
 	s.msgToCmdClient <-setConfigCmd
 
 	// Tell the agent to stop then wait for it.
-	test.DoneWait(s.cc)
+	// test.DoneWait(s.cc)
 
 	// Get msgs sent by agent to API (i.e. us).  There should only
 	// be one: a proto.CmdReply.
@@ -273,4 +285,127 @@ func (s *AgentTestSuite) TestSetConfig(t *C) {
 		{"", 0, 4, "agent-test", "an error"},
 	}
 	t.Check(gotLogEntries, DeepEquals, expectLogEntries)
+}
+
+func (s *AgentTestSuite) TestStartService(t *C) {
+	// This is what the API would send:
+	// First, the service's config:
+	qaConfig := &qa.Config{
+		Interval: 60, // seconds
+		LongQueryTime: 0.123,
+		MaxSlowLogSize: 1073741824, // 1 GiB
+		RemoveOldSlowLogs: true,
+		ExampleQueries: true,
+		MysqlDsn: "",
+		MaxWorkers: 2,
+		WorkerRuntime: 120, // seconds
+		DataDir: "/var/lib/percona/qa",
+	}
+	qaConfigData, _ := json.Marshal(qaConfig)
+	// Second, a ServiceMsg:
+	serviceMsg := &proto.ServiceMsg{
+		Name: "qa",
+		Config: qaConfigData,
+	}
+	serviceMsgData, _ := json.Marshal(serviceMsg)
+	// Finally, the Msg:
+	msg := &proto.Msg{
+		Ts: time.Now(),
+		User: "daniel",
+		Id: 1,
+		Cmd: "StartService",
+		Timeout: 3,
+		Data: serviceMsgData,
+	}
+
+	// The readyChan is used by mock.MockServiceManager.Start() and Stop()
+	// to simulate slow starts and stops.  We're not testing that here, so
+	// this lets the service start immediately.
+	s.readyChan <-true
+
+	// Send the msg to the client, tell the agent to stop, then wait for it.
+	s.msgToCmdClient <-msg
+
+	// The agent should first check that the service service is *not* running,
+	// then start it.  It should do this only for the requested service (qa).
+	got := test.WaitForTraces(s.traceChan)
+	expect := []string{
+		`IsRunning qa`,
+		`Start qa {"Interval":60,"LongQueryTime":0.123,"MaxSlowLogSize":1073741824,"RemoveOldSlowLogs":true,"ExampleQueries":true,"MysqlDsn":"","MaxWorkers":2,"WorkerRuntime":120,"DataDir":"/var/lib/percona/qa"}`,
+	}
+	t.Check(got, DeepEquals, expect)
+
+	// The reply to that ^ should be Error=nil.
+	gotReplies := test.WaitForClientMsgs(s.msgFromCmdClient)
+	if t.Check(len(gotReplies), Equals, 1) == false {
+		// Avoid "index out of range" panic by trying to access got[0] below.
+		t.Errorf("%q", gotReplies)
+		t.FailNow()
+	}
+	reply := new(proto.CmdReply)
+	_ = json.Unmarshal(gotReplies[0].Data, reply)
+	t.Check(reply.Error, IsNil)
+	
+}
+
+// See TestStartService ^.  This test is like it, but it simulates a slow start.
+func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
+	qaConfig := &qa.Config{
+		Interval: 60, // seconds
+		LongQueryTime: 0.123,
+		MaxSlowLogSize: 1073741824, // 1 GiB
+		RemoveOldSlowLogs: true,
+		ExampleQueries: true,
+		MysqlDsn: "",
+		MaxWorkers: 2,
+		WorkerRuntime: 120, // seconds
+		DataDir: "/var/lib/percona/qa",
+	}
+	qaConfigData, _ := json.Marshal(qaConfig)
+	serviceMsg := &proto.ServiceMsg{
+		Name: "qa",
+		Config: qaConfigData,
+	}
+	serviceMsgData, _ := json.Marshal(serviceMsg)
+	now := time.Now()
+	msg := &proto.Msg{
+		Ts: now,
+		User: "daniel",
+		Id: 1,
+		Cmd: "StartService",
+		Timeout: 3,
+		Data: serviceMsgData,
+	}
+
+	// Send the msg to the client, tell the agent to stop, then wait for it.
+	s.msgToCmdClient <-msg
+
+	// No replies yet.
+	gotReplies := test.WaitForClientMsgs(s.msgFromCmdClient)
+	if t.Check(len(gotReplies), Equals, 0) == false {
+		// Avoid "index out of range" panic by trying to access got[0] below.
+		t.Errorf("%q", gotReplies)
+		t.FailNow()
+	}
+
+	// Agent should be able to reply on status chan, indicating that it's
+	// still starting the service.
+	gotStatus := test.GetStatus(s.msgToStatusClient, s.msgFromStatusClient)
+	t.Check(gotStatus.Agent, Equals,
+		fmt.Sprintf("Agent: Ready\nCommand: StartService [%s]\nStatus: 0\n", msg));
+
+	// Make it seem like service has started now.
+	time.Sleep(1 * time.Second)
+	s.readyChan <-true
+	// test.DoneWait(s.cc)
+
+	// Agent sends reply: no error.
+	gotReplies = test.WaitForClientMsgs(s.msgFromCmdClient)
+	if t.Check(len(gotReplies), Equals, 1) == false {
+		t.Errorf("%q", gotReplies)
+		t.FailNow()
+	}
+	reply := new(proto.CmdReply)
+	_ = json.Unmarshal(gotReplies[0].Data, reply)
+	t.Check(reply.Error, IsNil)
 }

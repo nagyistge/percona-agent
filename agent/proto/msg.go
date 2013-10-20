@@ -51,5 +51,5 @@ func (msg *Msg) Reply(data interface{}) *Msg {
 }
 
 func (msg *Msg) String() string {
-	return fmt.Sprintf("%s %s %d", msg.Ts, msg.User, msg.Id)
+	return fmt.Sprintf("%s %s %s %d", msg.Cmd, msg.Ts, msg.User, msg.Id)
 }
