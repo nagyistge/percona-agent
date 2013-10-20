@@ -33,8 +33,6 @@ type Agent struct {
 	statusq []*proto.Msg
 	status string
 	m map[string]*sync.Mutex
-	// -- testing
-	ConfigFile string
 }
 
 func NewAgent(config *Config, logRelayer *log.LogRelayer, cc *ControlChannels, cmdClient proto.Client, statusClient proto.Client, services map[string]service.Manager) *Agent {
@@ -54,8 +52,6 @@ func NewAgent(config *Config, logRelayer *log.LogRelayer, cc *ControlChannels, c
 			"cmd": new(sync.Mutex),
 			"status": new(sync.Mutex),
 		},
-		// for testing
-		ConfigFile: CONFIG_FILE,
 	}
 	return agent
 }
@@ -278,27 +274,36 @@ func (agent *Agent) handleSetConfig(msg *proto.Msg) error {
 		return err
 	}
 
+	// Set log file and level if they have changed.
 	if agent.config.LogFile != newConfig.LogFile {
 		if err := agent.logRelayer.SetLogFile(newConfig.LogFile); err != nil {
 			return err
 		}
 	}
-
 	if agent.config.LogLevel != newConfig.LogLevel {
 		if err := agent.logRelayer.SetLogLevel(newConfig.LogLevel); err != nil {
 			return err
 		}
 	}
 
-	// @todo
+	// Write PID file if it has changed.  New PID file must not exist.
 	if agent.config.PidFile != newConfig.PidFile {
+		if err := agent.writePidFile(newConfig.PidFile); err != nil {
+			return err
+		}
+		removeFile(agent.config.PidFile)
 	}
 
+	// Always write config file; remove old one if it changed.
 	if err := agent.saveConfig(newConfig); err != nil {
 		return err
 	}
-	agent.config = newConfig
+	if agent.config.File != newConfig.File {
+		removeFile(agent.config.File)
+	}
 
+	// Success: save the new config.
+	agent.config = newConfig
 	return nil
 }
 
@@ -383,5 +388,29 @@ func (agent *Agent) saveConfig(newConfig *Config) error {
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(agent.ConfigFile, data, 0766)
+	return ioutil.WriteFile(newConfig.File, data, 0766)
+}
+
+func (agent *Agent) writePidFile(pidFile string) error {
+	flags := os.O_CREATE | os.O_EXCL | os.O_WRONLY
+	file, err := os.OpenFile(pidFile, flags, 0644)
+	if err != nil {
+		return err
+	}
+	_, err = file.WriteString(fmt.Sprintf("%d\n", os.Getpid()))
+	if err != nil {
+		return err
+	}
+	err = file.Close()
+	return err
+}
+
+func removeFile (file string) error {
+	if file != "" {
+		err := os.Remove(file)
+		if !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }

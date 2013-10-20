@@ -8,15 +8,14 @@ import (
 )
 
 type Config struct {
+	File string `json:",omitempty"`
 	ApiUrl string `json:",omitempty"`
 	ApiKey string `json:",omitempty"`
 	AgentUuid string `json:",omitempty"`
 	DataDir string `json:",omitempty"`
+	PidFile string `json:",omitempty"`
 	LogFile string `json:",omitempty"`
 	LogLevel string `json:",omitempty"`
-	PidFile string `json:",omitempty"`
-	ConfigFile string `json:",omitempty"`
-	DbDsn string `json:",omitempty"`
 }
 
 // Load config from JSON file.

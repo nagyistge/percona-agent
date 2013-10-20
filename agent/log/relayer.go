@@ -37,14 +37,6 @@ func NewLogRelayer(client proto.Client, logChan chan *LogEntry, logger *golog.Lo
 	return r
 }
 
-type InvalidLogLevelError struct {
-	Level string
-}
-
-func (e InvalidLogLevelError) Error() string {
-	return "Invalid log level: " + e.Level
-}
-
 func (r *LogRelayer) SetLogLevel(levelName string) error {
 	var level uint
 	switch levelName {
@@ -89,3 +81,4 @@ func (r *LogRelayer) Run() {
 		}
 	}
 }
+

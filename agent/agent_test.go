@@ -6,6 +6,7 @@ import (
 	"time"
 	//"log"
 	"fmt"
+	"io/ioutil"
 	"encoding/json"
 	. "launchpad.net/gocheck"
 	"testing"
@@ -25,12 +26,13 @@ import (
 func Test(t *testing.T) { TestingT(t) }
 
 type AgentTestSuite struct {
-	agentConfigFile string
-	tmpLogFile string
+	tmpDir string
 	// agent and what it needs
 	agent *agent.Agent
 	config *agent.Config
 	logRelayer *agentLog.LogRelayer
+	logWriter *agentLog.LogWriter
+	logEntriesChan chan interface{}
 	cc *agent.ControlChannels
 	cmdClient *ws_client.MockClient
 	statusClient *ws_client.MockClient
@@ -59,23 +61,34 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 	s.msgToStatusClient = make(chan *proto.Msg, 10)
 	s.msgFromStatusClient = make(chan *proto.Msg, 10)
 
+	// Create fake agent config for testing.  Defaults for these won't work
+	// because we're probably not root, so we can't write to /var/log/, etc.
+	var err error
+	s.tmpDir, err = ioutil.TempDir("/tmp", "pt-agentd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataDir := s.tmpDir + "/data"
+	pidFile := s.tmpDir + "/pid"
+	configFile := s.tmpDir + "/conf"
+	logFile := s.tmpDir + "/log"
 	s.config = &agent.Config{
+		File: configFile,
 		ApiUrl: "wss://cloud-api.percona.com",
 		ApiKey: "123abc",
 		AgentUuid: "456-def-789",
-		DataDir: "/var/spool/pct-agentd",
-		LogFile: "/var/log/pct-agentd.log",
-		LogLevel: "warn",
-		PidFile: "/var/run/pct-agentd.pid",
-		ConfigFile: "/etc/percona/pct-agentd.conf",
+		DataDir: dataDir,
+		PidFile: pidFile,
+		LogFile: logFile,
+		LogLevel: "debug",
 	}
 
-	s.agentConfigFile = fmt.Sprintf("/tmp/pct-agentd.conf.%d", os.Getpid())
-
 	logChan := make(chan *agentLog.LogEntry, 10)
-	s.tmpLogFile = fmt.Sprintf("/tmp/pct-agentd.%d", os.Getpid())
-	logger, _ := agentLog.OpenLogFile(s.tmpLogFile)
-	s.logRelayer = agentLog.NewLogRelayer(new(mock.NullClient), logChan, logger, agentLog.LOG_LEVEL_DEBUG)
+	s.logEntriesChan = make(chan interface{}, 10)
+	logger, _ := agentLog.OpenLogFile(logFile)
+	s.logWriter = agentLog.NewLogWriter(logChan, "agent-test")
+	s.logRelayer = agentLog.NewLogRelayer(mock.NewMockLogClient(s.logEntriesChan), logChan, logger, agentLog.LOG_LEVEL_DEBUG)
+	go s.logRelayer.Run()
 
 	s.cc = &agent.ControlChannels{
 		LogChan: logChan,
@@ -94,8 +107,9 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 }
 
 func (s *AgentTestSuite) TearDownSuite(t *C) {
-	os.Remove(s.agentConfigFile)
-	os.Remove(s.tmpLogFile)
+	if err := os.RemoveAll(s.tmpDir); err != nil {
+		fmt.Println(err)
+	}
 }
 
 func (s *AgentTestSuite) SetUpTest(t *C) {
@@ -110,11 +124,13 @@ func (s *AgentTestSuite) SetUpTest(t *C) {
 		s.services,
 	)
 
-	// Prevent agent from using /etc/percona/pct-agentd.conf.
-	s.agent.ConfigFile = s.agentConfigFile
-
 	// Start the agent.  It is receiving on our msgToCmdClient and msgToStatusClient.
 	go s.agent.Run()
+}
+
+func (s *AgentTestSuite) TearDownTest(t *C) {
+	// Drain the log chan before the next test
+	_ = test.WaitForLogEntries(s.logEntriesChan)
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -122,20 +138,20 @@ func (s *AgentTestSuite) SetUpTest(t *C) {
 // //////////////////////////////////////////////////////////////////////////
 
 func (s *AgentTestSuite) TestHello(t *C) {
+	// Agent hello data should include its config plus the hostname and username.
 	got := s.agent.Hello()
 	h, _ := os.Hostname()
 	u, _ := user.Current()
 	expect := map[string]string{
 		// agent.config
+		"File": s.config.File,
 		"ApiUrl": "wss://cloud-api.percona.com",
 		"ApiKey": "123abc",
 		"AgentUuid": "456-def-789",
-		"DataDir": "/var/spool/pct-agentd",
-		"LogFile": "/var/log/pct-agentd.log",
-		"LogLevel": "warn",
-		"PidFile": "/var/run/pct-agentd.pid",
-		"ConfigFile": "/etc/percona/pct-agentd.conf",
-		"DbDsn": "",
+		"DataDir": s.config.DataDir,
+		"LogFile": s.config.LogFile,
+		"LogLevel": "debug",
+		"PidFile": s.config.PidFile,
 		// extra info
 		"Hostname": h,
 		"Username": u.Username,
@@ -178,32 +194,30 @@ func (s *AgentTestSuite) TestStatus(t *C) {
 	t.Check(string(got[0].Data), Equals, string(expect.Data)) // status reply
 }
 
-func (s *AgentTestSuite) TestCmdChan(t *C) {
-	newConfigFile := fmt.Sprintf("/tmp/pct-agentd.conf.%d.NEW", os.Getpid());
-	defer func() {
-		os.Remove(newConfigFile)
-	}()
-
+func (s *AgentTestSuite) TestSetConfig(t *C) {
+	// s.config has the config we created in SetUpSuite.  Now tell the agent
+	// to set (i.e. use) this config.  To really test that the agent can set
+	// and change its config, we use new values for these:
 	newConfig := &agent.Config{
-		ApiUrl: "wss://cloud-api.percona.com",
-		ApiKey: "123abc",
-		AgentUuid: "456-def-789",
-		DataDir: "/var/spool/pct-agentd",
-		LogFile: "/var/log/pct-agentd.log",
-		LogLevel: "error",
-		PidFile: "/var/run/pct-agentd.pid",
-		ConfigFile: newConfigFile,
+		File: s.config.File,
+		ApiUrl: s.config.ApiUrl,
+		ApiKey: s.config.ApiKey,
+		AgentUuid: s.config.AgentUuid,
+		DataDir: s.config.DataDir,
+		PidFile: s.config.PidFile + "-new",
+		LogFile: s.config.LogFile + "-new",
+		LogLevel: "warn",
 	}
 
 	// This is what the API would send:
-	data, _ := json.Marshal(newConfig)
+	configData, _ := json.Marshal(newConfig)
 	setConfigCmd := &proto.Msg{
 		Ts: time.Now(),
 		User: "daniel",
 		Id: 1,
 		Cmd: "SetConfig",
 		Timeout: 3,
-		Data: data,
+		Data: configData,
 	}
 	s.msgToCmdClient <-setConfigCmd
 
@@ -233,5 +247,30 @@ func (s *AgentTestSuite) TestCmdChan(t *C) {
 	t.Check(got[0].Id, Equals, expect.Id) // same id
 	t.Check(string(got[0].Data), Equals, string(expect.Data)) // status reply
 
-	// @todo check newConfigFile was written with new values
+	// The agent should write the config to Config.File.
+	gotData, _ := ioutil.ReadFile(s.config.File)
+	t.Check(string(gotData), Equals, string(configData))
+
+	// The agent should write its PID to Config.PidFile.
+	gotData, _ = ioutil.ReadFile(newConfig.PidFile)
+	t.Check(string(gotData), Equals, fmt.Sprintf("%d\n", os.Getpid()))
+
+	// The agent should open the new Config.LogFile.
+	gotLogFile, _ := os.Stat(newConfig.LogFile)
+	t.Check(gotLogFile, NotNil)
+	if gotLogFile != nil {
+		// FileInfo.Name() returns the base name
+		t.Check(gotLogFile.Name(), Equals, "log-new")
+	}
+	// And check that it set the new log level to "warn":
+	s.logWriter.Info("some info") // no logged
+	s.logWriter.Warn("a warning")
+	s.logWriter.Error("an error")
+	gotLogEntries := test.WaitForLogEntries(s.logEntriesChan)
+	expectLogEntries := []agentLog.LogEntry{
+		{"", 0, 2, "pct-agentd", "Running agent"}, // before level was changed
+		{"", 0, 3, "agent-test", "a warning"},
+		{"", 0, 4, "agent-test", "an error"},
+	}
+	t.Check(gotLogEntries, DeepEquals, expectLogEntries)
 }
