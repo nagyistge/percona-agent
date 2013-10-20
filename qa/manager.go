@@ -1,4 +1,4 @@
-package qh
+package qa
 
 import (
 	"os"
@@ -10,11 +10,11 @@ import (
 	"github.com/percona/percona-cloud-tools/agent/log"
 	"github.com/percona/percona-cloud-tools/agent/proto"
 	"github.com/percona/percona-cloud-tools/agent/service"
-	"github.com/percona/percona-cloud-tools/qh/interval"
+	"github.com/percona/percona-cloud-tools/qa/interval"
 )
 
 const (
-	Name = "qh-manager"
+	Name = "qa-manager"
 )
 
 type Manager struct {
@@ -39,7 +39,7 @@ func NewManager(cc *agent.ControlChannels, iter interval.Iter, resultChan chan *
 		resultChan: resultChan,
 		dataClient: dataClient,
 		// --
-		log: log.NewLogWriter(cc.LogChan, "qh-manager"),
+		log: log.NewLogWriter(cc.LogChan, Name),
 		config: nil, // not running yet
 		configMux: new(sync.Mutex),
 		workers: make(map[*Worker]bool),

@@ -1,4 +1,4 @@
-package qh
+package qa
 
 import (
 	"os"
@@ -39,13 +39,13 @@ func NewWorker(cc *agent.ControlChannels, job *Job, resultChan chan *Result, don
 		job: job,
 		resultChan: resultChan,
 		doneChan: doneChan,
-		log: agentLog.NewLogWriter(cc.LogChan, "qh-worker"),
+		log: agentLog.NewLogWriter(cc.LogChan, "qa-worker"),
 	}
 	return w
 }
 
 func (w *Worker) Run() {
-	// Whenever and however we return, send qh-manager our result and
+	// Whenever and however we return, send qa-manager our result and
 	// tell it we're done so it frees our spot for another concurrent
 	// worker.
 	result := new(Result)

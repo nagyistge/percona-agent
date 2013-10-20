@@ -1,4 +1,4 @@
-package qh
+package qa
 
 type Config struct {
 	Interval uint			// minutes, "How often to report"

@@ -1,4 +1,4 @@
-package qh_test
+package qa_test
 
 import (
 	"os"
@@ -13,8 +13,8 @@ import (
 	"github.com/percona/percona-cloud-tools/agent"
 	"github.com/percona/percona-cloud-tools/agent/log"
 	"github.com/percona/percona-cloud-tools/agent/proto"
-	"github.com/percona/percona-cloud-tools/qh"
-	"github.com/percona/percona-cloud-tools/qh/interval"
+	"github.com/percona/percona-cloud-tools/qa"
+	"github.com/percona/percona-cloud-tools/qa/interval"
 )
 
 // Hook up gocheck into the "go test" runner.
@@ -27,10 +27,10 @@ func Test(t *testing.T) { gocheck.TestingT(t) }
 type WorkerTestSuite struct{}
 var _ = gocheck.Suite(&WorkerTestSuite{})
 
-var sample = os.Getenv("GOPATH") + "/src/github.com/percona/percona-cloud-tools/test/qh/"
+var sample = os.Getenv("GOPATH") + "/src/github.com/percona/percona-cloud-tools/test/qa/"
 
 func (s *WorkerTestSuite) TestWorkerSlow001(c *gocheck.C) {
-	job := &qh.Job{
+	job := &qa.Job{
 		SlowLogFile: testlog.Sample + "slow001.log",
 		StartOffset: 0,
 		StopOffset: 524,
@@ -49,7 +49,7 @@ func (s *WorkerTestSuite) TestWorkerSlow001Half(c *gocheck.C) {
 	// This tests that the worker will stop processing events before
 	// the end of the slow log file.  358 is the last byte of the first
 	// (of 2) events.
-	job := &qh.Job{
+	job := &qa.Job{
 		SlowLogFile: testlog.Sample + "slow001.log",
 		StartOffset: 0,
 		StopOffset: 358,
@@ -65,7 +65,7 @@ func (s *WorkerTestSuite) TestWorkerSlow001Resume(c *gocheck.C) {
 	// This tests that the worker will resume processing events from
 	// somewhere in the slow log file.  359 is the first byte of the
 	// second (of 2) events.
-	job := &qh.Job{
+	job := &qa.Job{
 		SlowLogFile: testlog.Sample + "slow001.log",
 		StartOffset: 359,
 		StopOffset: 524,
@@ -94,17 +94,17 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	mockIter := &mock.Iter{
 		Chan: make(chan *interval.Interval, 1),
 	}
-	resultChan := make(chan *qh.Result, 2)
+	resultChan := make(chan *qa.Result, 2)
 	sentDataChan := make(chan interface{}, 2)
 	dataClient := &mock.NullClient{
 		SentDataChan: sentDataChan,
 	}
-	m := qh.NewManager(cc, mockIter, resultChan, dataClient)
+	m := qa.NewManager(cc, mockIter, resultChan, dataClient)
 
-	// Create the qh config
-	dataDir := fmt.Sprintf("/tmp/qh_test.TestStartService.%d", os.Getpid())
+	// Create the qa config
+	dataDir := fmt.Sprintf("/tmp/qa_test.TestStartService.%d", os.Getpid())
 	defer func() { os.Remove(dataDir) }()
-	config := &qh.Config{
+	config := &qa.Config{
 		Interval: 300,  // 5 min
 		LongQueryTime: 0.000000,
 		MaxSlowLogSize: 1073741824, // 1 GiB
@@ -116,7 +116,7 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 		DataDir: dataDir,
 	}
 
-	// Create the StartService cmd which contains the qh config
+	// Create the StartService cmd which contains the qa config
 	now := time.Now()
 	data, _ := json.Marshal(config)
 	msg := &proto.Msg{
@@ -125,10 +125,10 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 		Cmd: "StartService",
 		Ts: now,
 		Timeout: 1,
-		Data: data, // qh.Config
+		Data: data, // qa.Config
 	}
 
-	// Have the service manager start the qh service
+	// Have the service manager start the qa service
 	err := m.Start(msg, msg.Data)
 
 	// It should start without error.
@@ -136,16 +136,16 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 
 	// It should report itself as running
 	if !m.IsRunning() {
-		c.Error("qh.Manager.IsRunning() is false after Start()")
+		c.Error("qa.Manager.IsRunning() is false after Start()")
 	}
 
-	// It should create the qh.Config.DataDir.
+	// It should create the qa.Config.DataDir.
 	stat, err := os.Stat(dataDir)
 	if err != nil {
-		c.Errorf("qh.Manager.Start() did not create qh.Config.DataDir: %s", dataDir)
+		c.Errorf("qa.Manager.Start() did not create qa.Config.DataDir: %s", dataDir)
 	}
 	if !stat.IsDir() {
-		c.Errorf("qh.Config.DataDir is not a dir: %s", dataDir)
+		c.Errorf("qa.Config.DataDir is not a dir: %s", dataDir)
 	}
 
 	// @todo
