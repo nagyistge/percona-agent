@@ -1,4 +1,4 @@
-percona-cloud-tools
+percona/cloud-tools
 ===================
 
-Percona Cloud Tools Agent and Workers
+This is the Percona Cloud Tools (https://cloud.percona.com) agent, pct-agentd.

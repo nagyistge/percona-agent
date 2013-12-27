@@ -1,45 +1,40 @@
-package qa
+package qan
 
 import (
-	"os"
-	"time"
-//	"fmt"
-	"github.com/percona/percona-cloud-tools/agent"
-	agentLog "github.com/percona/percona-cloud-tools/agent/log"
+	pct "github.com/percona/cloud-tools"
 	mysqlLog "github.com/percona/percona-go-mysql/log"
 	"github.com/percona/percona-go-mysql/log/parser"
+	"os"
+	"time"
 )
 
 type Worker struct {
-	cc *agent.ControlChannels
-	job *Job
-	resultChan chan *Result
-	doneChan chan *Worker
-	// --
-	log *agentLog.LogWriter
+	logger          *pct.Logger
+	job             *Job
+	resultChan      chan *Result
+	workersDoneChan chan *Worker
 }
 
 type Job struct {
-	SlowLogFile string
-	Runtime time.Duration
-	StartOffset int64
-	StopOffset int64
+	SlowLogFile    string
+	Runtime        time.Duration
+	StartOffset    int64
+	StopOffset     int64
 	ExampleQueries bool
 }
 
 type Result struct {
-	Error error `json:",omitempty"`
-	Global *mysqlLog.GlobalClass `json:",omitempty"`
+	Error   error                  `json:",omitempty"`
+	Global  *mysqlLog.GlobalClass  `json:",omitempty"`
 	Classes []*mysqlLog.QueryClass `json:",omitempty"`
 }
 
-func NewWorker(cc *agent.ControlChannels, job *Job, resultChan chan *Result, doneChan chan *Worker) *Worker {
+func NewWorker(logger *pct.Logger, job *Job, resultChan chan *Result, workersDoneChan chan *Worker) *Worker {
 	w := &Worker{
-		cc: cc,
-		job: job,
-		resultChan: resultChan,
-		doneChan: doneChan,
-		log: agentLog.NewLogWriter(cc.LogChan, "qa-worker"),
+		logger:          logger,
+		job:             job,
+		resultChan:      resultChan,
+		workersDoneChan: workersDoneChan,
 	}
 	return w
 }
@@ -50,8 +45,12 @@ func (w *Worker) Run() {
 	// worker.
 	result := new(Result)
 	defer func() {
-		w.resultChan <-result
-		w.doneChan <-w
+		select {
+		case w.resultChan <- result:
+		default:
+			// todo: lost results
+		}
+		w.workersDoneChan <- w
 	}()
 
 	// Open the slow log file.
