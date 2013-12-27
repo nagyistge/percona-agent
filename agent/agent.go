@@ -1,88 +1,86 @@
 package agent
 
 import (
-	"os"
-	"os/user"
-	"time"
-	"fmt"
-	"sync"
-	"reflect"
-	"io/ioutil"
+	// Core
 	"encoding/json"
-	"github.com/percona/percona-cloud-tools/agent/log"
-	"github.com/percona/percona-cloud-tools/agent/proto"
-	"github.com/percona/percona-cloud-tools/agent/service"
+	"fmt"
+	golog "log"
+	"sync"
+	"time"
+	// External
+	proto "github.com/percona/cloud-protocol"
+	// Internal
+	pct "github.com/percona/cloud-tools"
+	"github.com/percona/cloud-tools/log"
 )
 
 const (
-	CMD_QUEUE_SIZE = 10
+	CMD_QUEUE_SIZE    = 10
 	STATUS_QUEUE_SIZE = 10
-	CONFIG_FILE = "/etc/percona/pct-agentd.conf"
+	DEFAULT_LOG_FILE  = "/var/log/pct-agentd.log"
+	MAX_ERRORS        = 3
 )
 
 type Agent struct {
-	config *Config
+	auth       *proto.AgentAuth
 	logRelayer *log.LogRelayer
-	cmdClient proto.Client
-	statusClient proto.Client
-	cc *ControlChannels
-	services map[string]service.Manager
+	logger     *pct.Logger
+	client     proto.WebsocketClient
+	services   map[string]pct.ServiceManager
 	// --
-	log *log.LogWriter
-	cmdq []*proto.Msg
-	cmdqMux *sync.Mutex
-	status map[string]string
-	statusMux map[string]*sync.Mutex
+	cmdSync *pct.SyncChan
+	cmdChan chan *proto.Cmd
+	cmdq    []*proto.Cmd
+	cmdqMux *sync.RWMutex
+	//
+	statusSync *pct.SyncChan
+	status     *pct.Status
+	statusChan chan *proto.Cmd
+	//
+	stopping   bool
+	stopReason string
+	update     bool
+	//
+	cmdHandlerSync    *pct.SyncChan
+	statusHandlerSync *pct.SyncChan
+	stopChan          chan bool
 }
 
-func NewAgent(config *Config, logRelayer *log.LogRelayer, cc *ControlChannels, cmdClient proto.Client, statusClient proto.Client, services map[string]service.Manager) *Agent {
+func NewAgent(auth *proto.AgentAuth, logRelayer *log.LogRelayer, logger *pct.Logger, client proto.WebsocketClient, services map[string]pct.ServiceManager) *Agent {
 	agent := &Agent{
-		config: config,
+		auth:       auth,
 		logRelayer: logRelayer,
-		cc: cc,
-		cmdClient: cmdClient,
-		statusClient: statusClient,
-		services: services,
+		logger:     logger,
+		client:     client,
+		services:   services,
 		// --
-		log: log.NewLogWriter(cc.LogChan, "pct-agentd"),
-		cmdq: make([]*proto.Msg, CMD_QUEUE_SIZE),
-		cmdqMux: new(sync.Mutex),
-		status: map[string]string{
-			"agent": "",
-			"cmd": "",
-		},
-		statusMux: map[string]*sync.Mutex{
-			"agent": new(sync.Mutex),
-			"cmd": new(sync.Mutex),
-		},
+		cmdq:       make([]*proto.Cmd, CMD_QUEUE_SIZE),
+		cmdqMux:    new(sync.RWMutex),
+		status:     pct.NewStatus([]string{"agent", "cmd"}),
+		cmdChan:    make(chan *proto.Cmd, CMD_QUEUE_SIZE),
+		statusChan: make(chan *proto.Cmd, STATUS_QUEUE_SIZE),
+		//
+		stopChan: make(chan bool, 1),
 	}
 	return agent
 }
 
-/*
- * Get data to send to API on connect to authenticate (API key) and let
- * API know how we're currently running.
- */
-func (agent *Agent) Hello() map[string] string {
-	data := make(map[string]string)
+// @goroutine
+func (agent *Agent) Run() (stopReason string, update bool) {
+	logger := agent.logger
+	logger.Info("Running agent")
 
-	// API key is in the config, as well as other info like PID file, etc.
-	// Map the config struct to our map[string]string.
-	cs := reflect.ValueOf(agent.config).Elem()  // config struct
-	for i := 0; i < cs.NumField(); i++ {  // foreach field
-		data[cs.Type().Field(i).Name] = cs.Field(i).String()
-	}
+	// Start client goroutines for sending/receving cmd/reply via channels
+	// so we can do non-blocking send/recv.  This only needs to be done once.
+	// The chans are buffered, so they work for awhile if not connected.
+	client := agent.client
+	client.Run()
+	cmdChan := client.RecvChan()
+	replyChan := client.SendChan()
 
-	// Other info the API wants to know:
-	u, _ := user.Current()
-	data["Hostname"], _ = os.Hostname()
-	data["Username"] = u.Username
-
-	return data
-}
-
-func (agent *Agent) Run() {
-	agent.log.Info("Running agent")
+	// Try and block forever to connect because the agent can't do anything
+	// until connected.
+	agent.connect()
 
 	/*
 	 * Start the status and cmd handlers.  Most messages must be serialized because,
@@ -91,279 +89,296 @@ func (agent *Agent) Run() {
 	 * so it's "first come, first serve" (i.e. fifo).  Concurrency has
 	 * consequences: e.g. if user1 sends a start-service and it succeeds
 	 * and user2 send the same start-service, user2 will get a ServiceIsRunningError.
-	 *
 	 * Status requests are handled concurrently so the user can always see what
 	 * the agent is doing even if it's busy processing commands.
 	 */
-	agent.statusClient.Run()
-	recvStatusChan := agent.statusClient.RecvChan()
-	statusChan := make(chan *proto.Msg, STATUS_QUEUE_SIZE)
-	go agent.statusHandler(statusChan)
+	agent.cmdHandlerSync = pct.NewSyncChan()
+	go agent.cmdHandler()
 
-	agent.cmdClient.Run()
-	recvCmdChan := agent.cmdClient.RecvChan()
-	cmdChan := make(chan *proto.Msg, CMD_QUEUE_SIZE)
-	stopChan := make(chan bool, 1)
-	doneChan := make(chan bool)
-	go agent.cmdHandler(cmdChan, stopChan, doneChan)
+	agent.statusHandlerSync = pct.NewSyncChan()
+	go agent.statusHandler()
 
-	// Reject new msgs after receiving Stop or Update.  To prevent leaving
-	// the system in a weird, half-finished state, we stopChan <-true and
-	// wait for cmdHandler to finish (<-doneChan).
-	stopping := false
-	stopReason := ""
-	update := false
+	// Allow those ^ goroutines to crash up to MAX_ERRORS.  Any more and it's
+	// probably a code bug rather than  bad input, network error, etc.
+	cmdHandlerErrors := 0
+	statusHandlerErrors := 0
 
-	// Receive and handle cmd and status requests from the API.
-	API_LOOP:
+	agent.status.Update("agent", "Ready")
+
+AGENT_LOOP:
 	for {
-		if stopping {
-			agent.setStatus("agent", "Stopping because " + stopReason, nil)
-		} else {
-			agent.setStatus("agent", "Ready", nil)
-		}
 		select {
-		case msg := <-recvCmdChan: // from API (wss:/cmd)
-			if stopping {
-				// Already received Stop or Update, can't do any more work.
-				err := CmdRejectedError{Cmd:msg.Cmd, Reason:stopReason}
-				sendReplyChan := agent.cmdClient.SendChan()
-				sendReplyChan <-msg.Reply(proto.CmdReply{Error: err})
-			} else {
-				// Try to send the cmd to the cmdHandler.  If the cmdq is not full,
-				// this will not block, else the default case will be called and we
-				// return a queue full error to let the user know that the agent is
-				// too busy.
-				agent.setStatus("agent", "Queueing", msg)
+		case cmd := <-cmdChan: // from API
+			if cmd.Cmd == "Abort" {
+				golog.Panicf("%s\n", cmd)
+			}
+
+			if agent.stopping {
+				// Already received Stop or Update, so reject further cmds.
+				err := pct.CmdRejectedError{Cmd: cmd.Cmd, Reason: agent.stopReason}
+				replyChan <- cmd.Reply(err.Error(), nil)
+				continue AGENT_LOOP
+			}
+
+			switch cmd.Cmd {
+			case "Stop", "Update":
+				agent.stopping = true
+				if cmd.Cmd == "Stop" {
+					agent.stopReason = fmt.Sprintf("agent received Stop command [%s]", cmd)
+				} else {
+					agent.stopReason = fmt.Sprintf("agent received Update command [%s]", cmd)
+					update = true
+				}
+				go agent.stop(cmd)
+			case "Status":
+				agent.status.UpdateRe("agent", "Queueing", cmd)
 				select {
-					case cmdChan <-msg:
-					default:
-						// @todo return quque full error
+				case agent.statusChan <- cmd: // to statusHandler
+				default:
+					err := pct.QueueFullError{Cmd: cmd.Cmd, Name: "statusQueue", Size: STATUS_QUEUE_SIZE}
+					replyChan <- cmd.Reply(err.Error(), nil)
+				}
+			default:
+				agent.status.UpdateRe("agent", "Queueing", cmd)
+				select {
+				case agent.cmdChan <- cmd: // to cmdHandler
+				default:
+					err := pct.QueueFullError{Cmd: cmd.Cmd, Name: "cmdQueue", Size: CMD_QUEUE_SIZE}
+					replyChan <- cmd.Reply(err.Error(), nil)
 				}
 			}
-
-			// Stop cmdHandler and reject further commands if this one is Stop or Update.
-			if msg.Cmd == "Stop" {
-				stopChan <-true
-				stopping = true
-				stopReason = fmt.Sprintf("agent received Stop command [%s]", msg)
-			} else if msg.Cmd == "Update" {
-				stopChan <-true
-				stopping = true
-				stopReason = fmt.Sprintf("agent received Update command [%s]", msg)
-
-				// Do self-update after stopping/before exiting.
-				update = true
+		case <-agent.cmdHandlerSync.CrashChan:
+			cmdHandlerErrors++
+			if cmdHandlerErrors < MAX_ERRORS {
+				logger.Error("cmdHandler crashed, restarting")
+				go agent.cmdHandler()
+			} else {
+				logger.Fatal("Too many cmdHandler errors")
 			}
-		case msg := <-recvStatusChan: // from API (wss:/status)
-			agent.setStatus("agent", "Queueing", msg)
-			select {
-				case statusChan <-msg:
-				default:
-					// @todo return quque full error
+		case <-agent.statusHandlerSync.CrashChan:
+			statusHandlerErrors++
+			if statusHandlerErrors < MAX_ERRORS {
+				logger.Error("statusHandler crashed, restarting")
+				go agent.statusHandler()
+			} else {
+				logger.Fatal("Too many statusHandler errors")
 			}
-		case <-agent.cc.StopChan: // from caller (for testing)
-			stopChan <-true
-			stopping = true
-			stopReason = "caller sent true on stop channel"
-		case <-doneChan: // from cmdHandler
-			close(cmdChan)
-			break API_LOOP
-		}
-	}
+		case err := <-client.ErrorChan():
+			// websocket closed/crashed/err
+			logger.Warn(err)
+			if agent.stopping {
+				logger.Warn("Lost connection to API while stopping")
+			} else {
+				agent.connect()
+				logger.Info("Reconnected to API")
+				cmdHandlerErrors = 0
+				statusHandlerErrors = 0
+			}
+		case <-agent.stopChan:
+			break AGENT_LOOP
+		} // select
 
-	close(statusChan)
+		agent.status.Update("agent", "Ready")
 
-	if update {
-		agent.selfUpdate()
-	}
+	} // for AGENT_LOOP
 
-	agent.setStatus("agent", "Stopped", nil)
-	agent.cc.DoneChan <-true
+	client.Disconnect()
+
+	return agent.stopReason, agent.update
 }
 
-func (agent *Agent) cmdHandler(cmdChan chan *proto.Msg, stopChan chan bool, doneChan chan bool) {
-	sendReplyChan := agent.cmdClient.SendChan()
+// @goroutine
+func (agent *Agent) cmdHandler() {
+	replyChan := agent.client.SendChan()
 
-	CMD_LOOP:
+	// defer is LIFO, so send done signal last.
+	defer agent.cmdHandlerSync.Done()
+	defer agent.status.Update("cmd", "Stopped")
+	agent.status.Update("cmd", "Ready")
+
 	for {
-		agent.setStatus("cmd", "Ready", nil)
 		select {
-		case <-stopChan:
-			break CMD_LOOP
-		case msg := <-cmdChan:
-			agent.setStatus("cmd", "Running", msg)
+		case <-agent.cmdHandlerSync.StopChan: // stop()
+			agent.cmdHandlerSync.Graceful()
+			return
+		case cmd := <-agent.cmdChan:
+			agent.status.UpdateRe("cmd", "Running", cmd)
+
 			agent.cmdqMux.Lock()
-			agent.cmdq = append(agent.cmdq, msg)
-			agent.cmdqMux.Unlock();
+			agent.cmdq = append(agent.cmdq, cmd)
+			agent.cmdqMux.Unlock()
 
 			// Run the command in another goroutine so we can wait for it
 			// (and possibly timeout) in this goroutine.
 			cmdDone := make(chan error)
 			go func() {
 				var err error
-				switch {
-				case msg.Cmd == "SetConfig":
-					err = agent.handleSetConfig(msg)
-				case msg.Cmd == "StartService":
-					err = agent.handleStartService(msg)
-				case msg.Cmd == "StopService":
-					err = agent.handleStopService(msg)
-				default:
-					err = UnknownCmdError{Cmd:msg.Cmd}
+				if cmd.Service == "" {
+					switch cmd.Cmd {
+					// Agent command
+					case "SetLogLevel":
+						err = agent.handleSetLogLevel(cmd)
+					case "StartService":
+						err = agent.handleStartService(cmd)
+					case "StopService":
+						err = agent.handleStopService(cmd)
+					default:
+						err = pct.UnknownCmdError{Cmd: cmd.Cmd}
+					}
+				} else {
+					// Service command
+					manager, ok := agent.services[cmd.Service]
+					if ok {
+						if manager.IsRunning() {
+							err = manager.Do(cmd)
+						} else {
+							err = pct.ServiceIsNotRunningError{Service: cmd.Service}
+						}
+					} else {
+						err = pct.UnknownServiceError{Service: cmd.Service}
+					}
 				}
-				cmdDone <-err
+				cmdDone <- err
 			}()
 
 			// Wait for the cmd to complete.
 			var err error
-			cmdTimeout := time.After(time.Duration(msg.Timeout) * time.Second)
+			cmdTimeout := time.After(time.Duration(5) * time.Second) // todo
 			select {
 			case err = <-cmdDone:
 			case <-cmdTimeout:
-				err = CmdTimeoutError{Cmd:msg.Cmd}
+				err = pct.CmdTimeoutError{Cmd: cmd.Cmd}
+				// @todo kill that ^ goroutine
 			}
 
 			// Reply to the command: just the error if any.  The user can check
-			// the log for details about running the command because the msg
+			// the log for details about running the command because the cmd
 			// should have been associated with the log entries in the cmd handler
 			// function by calling LogWriter.Re().
-			agent.setStatus("cmd", "Replying", msg)
-			sendReplyChan <-msg.Reply(proto.CmdReply{Error: err})
-
-			// Pop the msg from the queue.
-			agent.setStatus("cmd", "Finishing", msg)
-			agent.cmdqMux.Lock()
-			agent.cmdq = agent.cmdq[0:len(agent.cmdq) - 1]
-			agent.cmdqMux.Unlock()
-		}
-	}
-
-	// Caller told us to stop, and now we're done.
-	agent.setStatus("cmd", "Stopped", nil)
-	doneChan <-true
-}
-
-/////////////////////////////////////////////////////////////////////////////
-// Status Handler
-/////////////////////////////////////////////////////////////////////////////
-
-func (agent *Agent) statusHandler(statusChan chan *proto.Msg) {
-	sendStatusChan := agent.statusClient.SendChan()
-
-	for msg := range statusChan {
-		status := new(proto.StatusReply)
-
-		for _, mux := range agent.statusMux {
-			mux.Lock();
-		}
-		agent.cmdqMux.Lock();
-
-		status.Agent = fmt.Sprintf("Agent: %s\nCommand: %s\nStatus: %d\n",
-			agent.status["agent"], agent.status["cmd"], len(statusChan));
-
-		status.CmdQueue = make([]string, len(agent.cmdq))
-		for _, msg := range agent.cmdq {
-			if msg != nil {
-				status.CmdQueue = append(status.CmdQueue, msg.String())
+			agent.status.UpdateRe("cmd", "Replying", cmd)
+			if err != nil {
+				replyChan <- cmd.Reply(err.Error(), nil)
+			} else {
+				replyChan <- cmd.Reply("", nil)
 			}
-		}
 
-		status.Service = make(map[string]string)
-		for service, m := range agent.services {
-			status.Service[service] = m.Status()
-		}
+			// Pop the cmd from the queue.
+			agent.status.UpdateRe("cmd", "Finishing", cmd)
+			agent.cmdqMux.Lock()
+			agent.cmdq = agent.cmdq[0 : len(agent.cmdq)-1]
+			agent.cmdqMux.Unlock()
 
-		agent.cmdqMux.Unlock();
-		for _, mux := range agent.statusMux {
-			mux.Unlock();
-		}
+			agent.status.Update("cmd", "Ready")
+		} // select
+	} // for
+}
 
-		sendStatusChan <-msg.Reply(status)
+// @goroutine
+func (agent *Agent) statusHandler() {
+	replyChan := agent.client.SendChan()
+
+	defer agent.statusHandlerSync.Done()
+
+	// Status handler doesn't update agent.status because that's circular,
+	// e.g. "How am I? I'm good!".
+
+	for {
+		select {
+		case <-agent.statusHandlerSync.StopChan:
+			agent.statusHandlerSync.Graceful()
+			return
+		case cmd := <-agent.statusChan:
+			status := agent.Status()
+			replyChan <- cmd.Reply("", status)
+		}
 	}
 }
 
+func (agent *Agent) Status() *proto.StatusData {
+	agent.status.Lock()
+	defer agent.status.Unlock()
+
+	agent.cmdqMux.RLock()
+	defer agent.cmdqMux.RUnlock()
+
+	status := new(proto.StatusData)
+
+	status.Agent = fmt.Sprintf("Agent: %s\nStopping: %t\nCommand: %s\nStatus: %d\n",
+		agent.status.Get("agent", false),
+		agent.stopping,
+		agent.status.Get("cmd", false),
+		len(agent.statusChan))
+
+	status.CmdQueue = make([]string, len(agent.cmdq))
+	for _, cmd := range agent.cmdq {
+		if cmd != nil {
+			status.CmdQueue = append(status.CmdQueue, cmd.String())
+		}
+	}
+
+	status.Service = make(map[string]string)
+	for service, m := range agent.services {
+		status.Service[service] = m.Status()
+	}
+
+	return status
+}
+
 /////////////////////////////////////////////////////////////////////////////
-// proto.Msg.Cmd handlers
+// Command handlers
 /////////////////////////////////////////////////////////////////////////////
 
-func (agent *Agent) handleSetConfig(msg *proto.Msg) error {
-	agent.setStatus("cmd", "SetConfig", msg)
+func (agent *Agent) handleSetLogLevel(cmd *proto.Cmd) error {
+	agent.status.UpdateRe("cmd", "SetLogLevel", cmd)
 
-	// Unmarshal the data to get the new config.
-	newConfig := new(Config)
-	if err := json.Unmarshal(msg.Data, newConfig); err != nil {
+	log := new(proto.LogLevel)
+	if err := json.Unmarshal(cmd.Data, log); err != nil {
+		agent.logger.Error(err)
 		return err
 	}
 
-	// Set log file and level if they have changed.
-	if agent.config.LogFile != newConfig.LogFile {
-		if err := agent.logRelayer.SetLogFile(newConfig.LogFile); err != nil {
-			return err
-		}
-	}
-	if agent.config.LogLevel != newConfig.LogLevel {
-		if err := agent.logRelayer.SetLogLevel(newConfig.LogLevel); err != nil {
-			return err
-		}
-	}
-
-	// Write PID file if it has changed.  New PID file must not exist.
-	if agent.config.PidFile != newConfig.PidFile {
-		if err := agent.writePidFile(newConfig.PidFile); err != nil {
-			return err
-		}
-		removeFile(agent.config.PidFile)
-	}
-
-	// Always write config file; remove old one if it changed.
-	if err := agent.saveConfig(newConfig); err != nil {
+	if err := agent.logRelayer.SetLogLevel(log.Level); err != nil {
+		agent.logger.Error(err)
 		return err
 	}
-	if agent.config.File != newConfig.File {
-		removeFile(agent.config.File)
-	}
 
-	// Success: save the new config.
-	agent.config = newConfig
+	agent.logger.Info("New log level:" + log.Level)
 	return nil
 }
 
-func (agent *Agent) handleStartService(msg *proto.Msg) error {
-	agent.setStatus("cmd", "StartService", msg)
-	agent.log.Debug("Agent.startService")
+func (agent *Agent) handleStartService(cmd *proto.Cmd) error {
+	agent.status.UpdateRe("cmd", "StartService", cmd)
 
 	// Unmarshal the data to get the service name and config.
-	s := new(proto.ServiceMsg)
-	if err := json.Unmarshal(msg.Data, s); err != nil {
+	s := new(proto.ServiceData)
+	if err := json.Unmarshal(cmd.Data, s); err != nil {
 		return err
 	}
 
 	// Check if we have a manager for the service.
 	m, ok := agent.services[s.Name]
 	if !ok {
-		return UnknownServiceError{Service:s.Name}
+		return pct.UnknownServiceError{Service: s.Name}
 	}
 
 	// Return error if service is running.  To keep things simple,
 	// we do not restart the service or verifty that the given config
 	// matches the running config.  Only stopped services can be started.
 	if m.IsRunning() {
-		return service.ServiceIsRunningError{Service:s.Name}
+		return pct.ServiceIsRunningError{Service: s.Name}
 	}
 
 	// Start the service with the given config.
-	err := m.Start(msg, s.Config)
+	err := m.Start(cmd, s.Config)
 	return err
 }
 
-func (agent *Agent) handleStopService(msg *proto.Msg) error {
-	agent.setStatus("cmd", "StopService", msg)
-	agent.log.Debug("Agent.stopService")
+func (agent *Agent) handleStopService(cmd *proto.Cmd) error {
+	agent.status.UpdateRe("cmd", "StopService", cmd)
 
 	// Unmarshal the data to get the service name.
-	s := new(proto.ServiceMsg)
-	if err := json.Unmarshal(msg.Data, s); err != nil {
+	s := new(proto.ServiceData)
+	if err := json.Unmarshal(cmd.Data, s); err != nil {
 		return err
 	}
 
@@ -381,7 +396,7 @@ func (agent *Agent) handleStopService(msg *proto.Msg) error {
 	}
 
 	// Stop the service.
-	err := m.Stop(msg)
+	err := m.Stop(cmd)
 	return err
 }
 
@@ -389,51 +404,56 @@ func (agent *Agent) handleStopService(msg *proto.Msg) error {
 // Internal methods
 /////////////////////////////////////////////////////////////////////////////
 
-func (agent *Agent) setStatus(proc string, status string, msg *proto.Msg) {
-	agent.statusMux[proc].Lock()
-	if msg != nil {
-		status = fmt.Sprintf("%s [%s]", status, msg)
-	} else {
-		status = fmt.Sprintf("%s", status)
-	}
-	agent.status[proc] = status
-	agent.statusMux[proc].Unlock()
-}
-
-func (agent *Agent) stopAllServices() {
-}
-
-func (agent *Agent) selfUpdate() {
-}
-
-func (agent *Agent) saveConfig(newConfig *Config) error {
-	data, err := json.Marshal(newConfig)
-	if err != nil {
-		return err
-	}
-	return ioutil.WriteFile(newConfig.File, data, 0766)
-}
-
-func (agent *Agent) writePidFile(pidFile string) error {
-	flags := os.O_CREATE | os.O_EXCL | os.O_WRONLY
-	file, err := os.OpenFile(pidFile, flags, 0644)
-	if err != nil {
-		return err
-	}
-	_, err = file.WriteString(fmt.Sprintf("%d\n", os.Getpid()))
-	if err != nil {
-		return err
-	}
-	err = file.Close()
-	return err
-}
-
-func removeFile (file string) error {
-	if file != "" {
-		err := os.Remove(file)
-		if !os.IsNotExist(err) {
-			return err
+func (agent *Agent) connect() {
+	agent.status.Update("agent", "Connecting to API")
+	agent.logger.Info("Connecting to API")
+	client := agent.client
+	authResponse := new(proto.AuthResponse)
+	for {
+		client.Disconnect()
+		if err := client.Connect(); err != nil {
+			agent.logger.Warn(err)
+			time.Sleep(5 * time.Second)
+			continue
 		}
+
+		if err := client.Send(agent.auth); err != nil {
+			agent.logger.Warn(err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		if err := client.Recv(authResponse); err != nil {
+			agent.logger.Warn(err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		if authResponse.Error != "" {
+			agent.logger.Warn(authResponse.Error)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		break // auth success
 	}
-	return nil
+}
+
+// @goroutine
+func (agent *Agent) stop(cmd *proto.Cmd) {
+	agent.status.UpdateRe("agent", "stopping cmdHandler", cmd)
+	agent.cmdHandlerSync.Stop()
+	agent.cmdHandlerSync.Wait()
+
+	for service, manager := range agent.services {
+		agent.status.UpdateRe("agent", "stopping"+service, cmd)
+		manager.Stop(cmd)
+	}
+
+	agent.status.UpdateRe("agent", "stopping statusHandler", cmd)
+	agent.statusHandlerSync.Stop()
+	agent.statusHandlerSync.Wait()
+
+	agent.status.UpdateRe("agent", "stopping agent", cmd)
+	agent.stopChan <- true
 }

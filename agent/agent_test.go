@@ -1,25 +1,25 @@
 package agent_test
 
 import (
-	"os"
-	"os/user"
-	"time"
-	//"log"
+	// Core
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"encoding/json"
+	golog "log"
+	"os"
+	"time"
+	// External
+	proto "github.com/percona/cloud-protocol"
+	// Internal
+	pct "github.com/percona/cloud-tools"
+	"github.com/percona/cloud-tools/agent"
+	"github.com/percona/cloud-tools/log"
+	"github.com/percona/cloud-tools/qan"
+	// Testing
+	"github.com/percona/cloud-tools/test"
+	"github.com/percona/cloud-tools/test/mock"
 	. "launchpad.net/gocheck"
 	"testing"
-	// our pkgs
-	"github.com/percona/percona-cloud-tools/agent"
-	"github.com/percona/percona-cloud-tools/agent/service"
-	agentLog "github.com/percona/percona-cloud-tools/agent/log"
-	"github.com/percona/percona-cloud-tools/agent/proto"
-	"github.com/percona/percona-cloud-tools/qa"
-	// test and mock
-	"github.com/percona/percona-cloud-tools/test"
-	"github.com/percona/percona-cloud-tools/test/mock"
-	"github.com/percona/percona-cloud-tools/test/mock/ws-client"
 )
 
 // Hook gocheck into the "go test" runner.
@@ -29,85 +29,83 @@ func Test(t *testing.T) { TestingT(t) }
 type AgentTestSuite struct {
 	tmpDir string
 	// agent and what it needs
-	agent *agent.Agent
-	config *agent.Config
-	logRelayer *agentLog.LogRelayer
-	logWriter *agentLog.LogWriter
-	logEntriesChan chan interface{}
-	cc *agent.ControlChannels
-	cmdClient *ws_client.MockClient
-	statusClient *ws_client.MockClient
-	services map[string]service.Manager
+	auth      *proto.AgentAuth
+	agent     *agent.Agent
+	logRelay  *log.LogRelayer
+	logger    *pct.Logger
+	logChan   chan *proto.LogEntry
+	client    proto.WebsocketClient
+	services  map[string]pct.ServiceManager
 	readyChan chan bool
 	traceChan chan string
-	// mock ws client chans
-	dataToCmdClient chan interface{}
-	dataFromCmdClient chan interface{}
-	msgToCmdClient chan *proto.Msg
-	msgFromCmdClient chan *proto.Msg
 	// --
-	dataToStatusClient chan interface{}
-	dataFromStatusClient chan interface{}
-	msgToStatusClient chan *proto.Msg
-	msgFromStatusClient chan *proto.Msg
+	sendDataChan chan interface{}
+	recvDataChan chan interface{}
+	sendChan     chan *proto.Cmd
+	recvChan     chan *proto.Reply
+	//
+	doneChan   chan bool
+	stopReason string
+	upgrade    bool
 }
+
 var _ = Suite(&AgentTestSuite{})
 
 func (s *AgentTestSuite) SetUpSuite(t *C) {
-	s.dataToCmdClient = make(chan interface{}, 10)
-	s.dataFromCmdClient = make(chan interface{}, 10)
-	s.msgToCmdClient = make(chan *proto.Msg, 10)
-	s.msgFromCmdClient = make(chan *proto.Msg, 10)
-
-	s.dataToStatusClient = make(chan interface{}, 10)
-	s.dataFromStatusClient = make(chan interface{}, 10)
-	s.msgToStatusClient = make(chan *proto.Msg, 10)
-	s.msgFromStatusClient = make(chan *proto.Msg, 10)
-
-	// Create fake agent config for testing.  Defaults for these won't work
-	// because we're probably not root, so we can't write to /var/log/, etc.
+	// Tmp dir
 	var err error
 	s.tmpDir, err = ioutil.TempDir("/tmp", "pt-agentd")
 	if err != nil {
 		t.Fatal(err)
 	}
-	dataDir := s.tmpDir + "/data"
-	pidFile := s.tmpDir + "/pid"
-	configFile := s.tmpDir + "/conf"
+	// dataDir := s.tmpDir + "/data"
+	// pidFile := s.tmpDir + "/pid"
 	logFile := s.tmpDir + "/log"
-	s.config = &agent.Config{
-		File: configFile,
-		ApiUrl: "wss://cloud-api.percona.com",
-		ApiKey: "123abc",
-		AgentUuid: "456-def-789",
-		DataDir: dataDir,
-		PidFile: pidFile,
-		LogFile: logFile,
-		LogLevel: "debug",
+
+	// Agent
+	s.auth = &proto.AgentAuth{
+		ApiKey:   "123",
+		Uuid:     "abc-123",
+		Hostname: "server1",
+		Username: "root",
 	}
 
-	logChan := make(chan *agentLog.LogEntry, 10)
-	s.logEntriesChan = make(chan interface{}, 10)
-	logger, _ := agentLog.OpenLogFile(logFile)
-	s.logWriter = agentLog.NewLogWriter(logChan, "agent-test")
-	s.logRelayer = agentLog.NewLogRelayer(mock.NewMockLogClient(s.logEntriesChan), logChan, logger, agentLog.LOG_LEVEL_DEBUG)
-	go s.logRelayer.Run()
+	logChan := make(chan *proto.LogEntry, 100)
 
-	s.cc = &agent.ControlChannels{
-		LogChan: logChan,
-		StopChan: make(chan bool, 1),
-		DoneChan: make(chan bool),
-	};
+	fileLog, _ := log.OpenLogFile(logFile)
+	nullClient := &mock.NullClient{}
+	s.logRelay = log.NewLogRelayer(nullClient, logChan, fileLog)
+	go s.logRelay.Run()
 
-	s.cmdClient = ws_client.NewMockClient(s.dataToCmdClient, s.dataFromCmdClient, s.msgToCmdClient, s.msgFromCmdClient)
-	s.statusClient = ws_client.NewMockClient(s.dataToStatusClient, s.dataFromStatusClient, s.msgToStatusClient, s.msgFromStatusClient)
+	s.logger = pct.NewLogger(logChan, "agent-test")
 
-	services := make(map[string]service.Manager)
-	s.readyChan = make(chan bool, 1)
+	// mock client <-------------------------------------------------> API <---------------------> mock front end
+	// handler <- agent <- chan <- client (agent on user's server)  <- API (cloud-api.percona.com) <- front end <- user
+	//                      |         |                                  |                            |
+	// handler <- agent <- chan <- mock client <-                    sendChan                [Cmd] <- test
+	// handler -> agent -> chan -> mock client -> [Reply]            recvChan                      -> test
+	s.sendChan = make(chan *proto.Cmd, 5)
+	s.recvChan = make(chan *proto.Reply, 5)
+	s.sendDataChan = make(chan interface{}, 5)
+	s.recvDataChan = make(chan interface{}, 5)
+	s.client = mock.NewWebsocketClient(s.sendChan, s.recvChan, s.sendDataChan, s.recvDataChan)
+	go s.client.Run()
+
+	s.readyChan = make(chan bool, 2)
 	s.traceChan = make(chan string, 10)
-	services["qa"] = mock.NewMockServiceManager("qa", s.readyChan, s.traceChan)
+	services := make(map[string]pct.ServiceManager)
+	services["qan"] = mock.NewMockServiceManager("qan", s.readyChan, s.traceChan)
 	services["mm"] = mock.NewMockServiceManager("mm", s.readyChan, s.traceChan)
 	s.services = services
+
+	s.doneChan = make(chan bool, 1)
+
+	golog.SetFlags(golog.Lmicroseconds | golog.Ltime)
+	go func() {
+		for logEntry := range s.logChan {
+			golog.Printf("%+v\n", logEntry)
+		}
+	}()
 }
 
 func (s *AgentTestSuite) TearDownSuite(t *C) {
@@ -119,269 +117,152 @@ func (s *AgentTestSuite) TearDownSuite(t *C) {
 func (s *AgentTestSuite) SetUpTest(t *C) {
 	// Before each test, create and agent.  Tests make change the agent,
 	// so this ensures each test starts with an agent with known values.
-	s.agent = agent.NewAgent(
-		s.config,
-		s.logRelayer,
-		s.cc,
-		s.cmdClient,
-		s.statusClient,
-		s.services,
-	)
+	s.agent = agent.NewAgent(s.auth, s.logRelay, s.logger, s.client, s.services)
 
-	// Start the agent.  It is receiving on our msgToCmdClient and msgToStatusClient.
-	go s.agent.Run()
+	// Run and authorize agent
+	go func() {
+		s.stopReason, s.upgrade = s.agent.Run()
+		s.doneChan <- true
+	}()
+	_ = <-s.recvDataChan                    // recv AgentAuth
+	s.sendDataChan <- &proto.AuthResponse{} // send AuthResponse
 }
 
 func (s *AgentTestSuite) TearDownTest(t *C) {
-	if test.DoneWait(s.cc) == false {
-		t.Fatal("Agent did not stop")
-	}
-
-	// Drain the channels before the next test.
-	_ = test.WaitForLogEntries(s.logEntriesChan)
-	_ = test.WaitForClientMsgs(s.msgFromCmdClient)
-	_ = test.WaitForClientMsgs(s.msgFromStatusClient)
-	_ = test.WaitForTraces(s.traceChan)
+	s.readyChan <- true                   // qan.Stop() immediately
+	s.readyChan <- true                   // mm.Stop immediately
+	s.sendChan <- &proto.Cmd{Cmd: "Stop"} // tell agent to stop itself
+	<-s.doneChan                          // wait for goroutine agent.Run() in test
+	test.DrainLogChan(s.logChan)
+	test.DrainSendChan(s.sendChan)
+	test.DrainRecvChan(s.recvChan)
+	test.DrainTraceChan(s.traceChan)
 }
 
 /////////////////////////////////////////////////////////////////////////////
 // Test cases
 // //////////////////////////////////////////////////////////////////////////
 
-func (s *AgentTestSuite) TestHello(t *C) {
-	// Agent hello data should include its config plus the hostname and username.
-	got := s.agent.Hello()
-	h, _ := os.Hostname()
-	u, _ := user.Current()
-	expect := map[string]string{
-		// agent.config
-		"File": s.config.File,
-		"ApiUrl": "wss://cloud-api.percona.com",
-		"ApiKey": "123abc",
-		"AgentUuid": "456-def-789",
-		"DataDir": s.config.DataDir,
-		"LogFile": s.config.LogFile,
-		"LogLevel": "debug",
-		"PidFile": s.config.PidFile,
-		// extra info
-		"Hostname": h,
-		"Username": u.Username,
-	}
-	t.Check(got, DeepEquals, expect)
-}
-
 func (s *AgentTestSuite) TestStatus(t *C) {
-	// This is what the API would send:
-	statusCmd := &proto.Msg{
-		Ts: time.Now(),
-		User: "daniel",
-		Id: 1,
-		Cmd: "Status",
-		Timeout: 3,
-	}
-	s.msgToStatusClient <-statusCmd
 
-	// Tell the agent to stop then wait for it.
-	// test.DoneWait(s.cc)
+	// This is what the API would send:
+	statusCmd := &proto.Cmd{
+		Ts:   time.Now(),
+		User: "daniel",
+		Cmd:  "Status",
+	}
+	s.sendChan <- statusCmd
 
 	// Get msgs sent by agent to API (i.e. us).  There should only
-	// be one: a proto.StatusReply.
-	got := test.WaitForClientMsgs(s.msgFromStatusClient)
-	t.Check(len(got), Equals, 1)
+	// be one: a proto.StatusData.
+	got := test.WaitReply(s.recvChan)
+	if !t.Check(len(got), Equals, 1) {
+		return
+	}
 
 	// The agent should have sent back the original cmd's routing info
-	// (user and id) with Data=StatusReply.
+	// (user and id) with Data=StatusData.
 	expect := statusCmd
-	statusReply := &proto.StatusReply{
-		Agent: "Agent: Ready\nCommand: Ready\nStatus: 0\n",
+	statusReply := &proto.StatusData{
+		Agent:    "Agent: Ready\nStopping: false\nCommand: Ready\nStatus: 0\n",
 		CmdQueue: make([]string, agent.CMD_QUEUE_SIZE),
 		Service: map[string]string{
-			"qa": "AOK",
-			"mm": "AOK",
+			"qan": "AOK",
+			"mm":  "AOK",
 		},
 	}
 	expect.Data, _ = json.Marshal(statusReply)
-	t.Check(got[0].User, Equals, expect.User) // same user
-	t.Check(got[0].Id, Equals, expect.Id) // same id
 	t.Check(string(got[0].Data), Equals, string(expect.Data)) // status reply
-}
-
-func (s *AgentTestSuite) TestSetConfig(t *C) {
-	// s.config has the config we created in SetUpSuite.  Now tell the agent
-	// to set (i.e. use) this config.  To really test that the agent can set
-	// and change its config, we use new values for these:
-	newConfig := &agent.Config{
-		File: s.config.File,
-		ApiUrl: s.config.ApiUrl,
-		ApiKey: s.config.ApiKey,
-		AgentUuid: s.config.AgentUuid,
-		DataDir: s.config.DataDir,
-		PidFile: s.config.PidFile + "-new",
-		LogFile: s.config.LogFile + "-new",
-		LogLevel: "warn",
-	}
-
-	// This is what the API would send:
-	configData, _ := json.Marshal(newConfig)
-	setConfigCmd := &proto.Msg{
-		Ts: time.Now(),
-		User: "daniel",
-		Id: 1,
-		Cmd: "SetConfig",
-		Timeout: 3,
-		Data: configData,
-	}
-	s.msgToCmdClient <-setConfigCmd
-
-	// Tell the agent to stop then wait for it.
-	// test.DoneWait(s.cc)
-
-	// Get msgs sent by agent to API (i.e. us).  There should only
-	// be one: a proto.CmdReply.
-	got := test.WaitForClientMsgs(s.msgFromCmdClient)
-	if t.Check(len(got), Equals, 1) == false {
-		// Avoid "index out of range" panic by trying to access got[0] below.
-		t.FailNow()
-	}
-
-	// The agent should not have sent anything via the status client.
-	gotStatus := test.WaitForClientMsgs(s.msgFromStatusClient)
-	t.Check(len(gotStatus), Equals, 0)
-
-	// The agent should have sent back the original cmd's routing info
-	// (user and id) with Data=CmdReply.
-	expect := setConfigCmd
-	cmdReply := &proto.CmdReply{
-		Error: nil,
-	}
-	expect.Data, _ = json.Marshal(cmdReply)
-	t.Check(got[0].User, Equals, expect.User) // same user
-	t.Check(got[0].Id, Equals, expect.Id) // same id
-	t.Check(string(got[0].Data), Equals, string(expect.Data)) // status reply
-
-	// The agent should write the config to Config.File.
-	gotData, _ := ioutil.ReadFile(s.config.File)
-	t.Check(string(gotData), Equals, string(configData))
-
-	// The agent should write its PID to Config.PidFile.
-	gotData, _ = ioutil.ReadFile(newConfig.PidFile)
-	t.Check(string(gotData), Equals, fmt.Sprintf("%d\n", os.Getpid()))
-
-	// The agent should open the new Config.LogFile.
-	gotLogFile, _ := os.Stat(newConfig.LogFile)
-	t.Check(gotLogFile, NotNil)
-	if gotLogFile != nil {
-		// FileInfo.Name() returns the base name
-		t.Check(gotLogFile.Name(), Equals, "log-new")
-	}
-	// And check that it set the new log level to "warn":
-	s.logWriter.Info("some info") // no logged
-	s.logWriter.Warn("a warning")
-	s.logWriter.Error("an error")
-	gotLogEntries := test.WaitForLogEntries(s.logEntriesChan)
-	expectLogEntries := []agentLog.LogEntry{
-		{"", 0, 2, "pct-agentd", "Running agent"}, // before level was changed
-		{"", 0, 3, "agent-test", "a warning"},
-		{"", 0, 4, "agent-test", "an error"},
-	}
-	t.Check(gotLogEntries, DeepEquals, expectLogEntries)
 }
 
 func (s *AgentTestSuite) TestStartService(t *C) {
 	// This is what the API would send:
 	// First, the service's config:
-	qaConfig := &qa.Config{
-		Interval: 60, // seconds
-		LongQueryTime: 0.123,
-		MaxSlowLogSize: 1073741824, // 1 GiB
+	qanConfig := &qan.Config{
+		Interval:          60, // seconds
+		LongQueryTime:     0.123,
+		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
-		ExampleQueries: true,
-		MysqlDsn: "",
-		MaxWorkers: 2,
-		WorkerRuntime: 120, // seconds
-		DataDir: "/var/lib/percona/qa",
+		ExampleQueries:    true,
+		MysqlDsn:          "",
+		MaxWorkers:        2,
+		WorkerRuntime:     120, // seconds
 	}
-	qaConfigData, _ := json.Marshal(qaConfig)
-	// Second, a ServiceMsg:
-	serviceMsg := &proto.ServiceMsg{
-		Name: "qa",
-		Config: qaConfigData,
+	qanConfigData, _ := json.Marshal(qanConfig)
+	// Second, a ServiceData:
+	serviceCmd := &proto.ServiceData{
+		Name:   "qan",
+		Config: qanConfigData,
 	}
-	serviceMsgData, _ := json.Marshal(serviceMsg)
-	// Finally, the Msg:
-	msg := &proto.Msg{
-		Ts: time.Now(),
+	serviceData, _ := json.Marshal(serviceCmd)
+	// Finally, the Cmd:
+	cmd := &proto.Cmd{
+		Ts:   time.Now(),
 		User: "daniel",
-		Id: 1,
-		Cmd: "StartService",
-		Timeout: 3,
-		Data: serviceMsgData,
+		Cmd:  "StartService",
+		Data: serviceData,
 	}
 
 	// The readyChan is used by mock.MockServiceManager.Start() and Stop()
 	// to simulate slow starts and stops.  We're not testing that here, so
 	// this lets the service start immediately.
-	s.readyChan <-true
+	s.readyChan <- true
 
-	// Send the msg to the client, tell the agent to stop, then wait for it.
-	s.msgToCmdClient <-msg
+	// Send the cmd to the client, tell the agent to stop, then wait for it.
+	s.sendChan <- cmd
 
 	// The agent should first check that the service service is *not* running,
-	// then start it.  It should do this only for the requested service (qa).
-	got := test.WaitForTraces(s.traceChan)
+	// then start it.  It should do this only for the requested service (qan).
+	got := test.WaitTrace(s.traceChan)
 	expect := []string{
-		`IsRunning qa`,
-		`Start qa {"Interval":60,"LongQueryTime":0.123,"MaxSlowLogSize":1073741824,"RemoveOldSlowLogs":true,"ExampleQueries":true,"MysqlDsn":"","MaxWorkers":2,"WorkerRuntime":120,"DataDir":"/var/lib/percona/qa"}`,
+		`IsRunning qan`,
+		`Start qan {"Interval":60,"LongQueryTime":0.123,"MaxSlowLogSize":1073741824,"RemoveOldSlowLogs":true,"ExampleQueries":true,"MysqlDsn":"","MaxWorkers":2,"WorkerRuntime":120}`,
 	}
 	t.Check(got, DeepEquals, expect)
 
 	// The reply to that ^ should be Error=nil.
-	gotReplies := test.WaitForClientMsgs(s.msgFromCmdClient)
+	gotReplies := test.WaitReply(s.recvChan)
 	if t.Check(len(gotReplies), Equals, 1) == false {
 		// Avoid "index out of range" panic by trying to access got[0] below.
 		t.Errorf("%q", gotReplies)
 		t.FailNow()
 	}
-	reply := new(proto.CmdReply)
+	reply := new(proto.Reply)
 	_ = json.Unmarshal(gotReplies[0].Data, reply)
-	t.Check(reply.Error, IsNil)
-	
+	t.Check(reply.Error, Equals, "")
 }
 
 // See TestStartService ^.  This test is like it, but it simulates a slow start.
 func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
-	qaConfig := &qa.Config{
-		Interval: 60, // seconds
-		LongQueryTime: 0.123,
-		MaxSlowLogSize: 1073741824, // 1 GiB
+	qanConfig := &qan.Config{
+		Interval:          60, // seconds
+		LongQueryTime:     0.123,
+		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
-		ExampleQueries: true,
-		MysqlDsn: "",
-		MaxWorkers: 2,
-		WorkerRuntime: 120, // seconds
-		DataDir: "/var/lib/percona/qa",
+		ExampleQueries:    true,
+		MysqlDsn:          "",
+		MaxWorkers:        2,
+		WorkerRuntime:     120, // seconds
 	}
-	qaConfigData, _ := json.Marshal(qaConfig)
-	serviceMsg := &proto.ServiceMsg{
-		Name: "qa",
-		Config: qaConfigData,
+	qanConfigData, _ := json.Marshal(qanConfig)
+	serviceCmd := &proto.ServiceData{
+		Name:   "qan",
+		Config: qanConfigData,
 	}
-	serviceMsgData, _ := json.Marshal(serviceMsg)
+	serviceData, _ := json.Marshal(serviceCmd)
 	now := time.Now()
-	msg := &proto.Msg{
-		Ts: now,
+	cmd := &proto.Cmd{
+		Ts:   now,
 		User: "daniel",
-		Id: 1,
-		Cmd: "StartService",
-		Timeout: 3,
-		Data: serviceMsgData,
+		Cmd:  "StartService",
+		Data: serviceData,
 	}
 
-	// Send the msg to the client, tell the agent to stop, then wait for it.
-	s.msgToCmdClient <-msg
+	// Send the cmd to the client, tell the agent to stop, then wait for it.
+	s.sendChan <- cmd
 
 	// No replies yet.
-	gotReplies := test.WaitForClientMsgs(s.msgFromCmdClient)
+	gotReplies := test.WaitReply(s.recvChan)
 	if t.Check(len(gotReplies), Equals, 0) == false {
 		// Avoid "index out of range" panic by trying to access got[0] below.
 		t.Errorf("%q", gotReplies)
@@ -390,22 +271,21 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
 
 	// Agent should be able to reply on status chan, indicating that it's
 	// still starting the service.
-	gotStatus := test.GetStatus(s.msgToStatusClient, s.msgFromStatusClient)
-	t.Check(gotStatus.Agent, Equals,
-		fmt.Sprintf("Agent: Ready\nCommand: StartService [%s]\nStatus: 0\n", msg));
+	gotStatus := test.GetStatus(s.sendChan, s.recvChan)
+	t.Check(gotStatus.Agent, Equals, fmt.Sprintf("Agent: Ready\nStopping: false\nCommand: StartService [%s]\nStatus: 0\n", cmd))
 
 	// Make it seem like service has started now.
-	time.Sleep(1 * time.Second)
-	s.readyChan <-true
+	// time.Sleep(1 * time.Second)
+	s.readyChan <- true
 	// test.DoneWait(s.cc)
 
 	// Agent sends reply: no error.
-	gotReplies = test.WaitForClientMsgs(s.msgFromCmdClient)
+	gotReplies = test.WaitReply(s.recvChan)
 	if t.Check(len(gotReplies), Equals, 1) == false {
 		t.Errorf("%q", gotReplies)
 		t.FailNow()
 	}
-	reply := new(proto.CmdReply)
+	reply := new(proto.Reply)
 	_ = json.Unmarshal(gotReplies[0].Data, reply)
-	t.Check(reply.Error, IsNil)
+	t.Check(reply.Error, Equals, "")
 }
