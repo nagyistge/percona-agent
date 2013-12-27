@@ -1,39 +1,45 @@
 package test
 
 import (
+	proto "github.com/percona/cloud-protocol"
 	"time"
-	golog "log"
-	"encoding/json"
-	"github.com/percona/percona-cloud-tools/agent"
-	"github.com/percona/percona-cloud-tools/agent/log"
-	"github.com/percona/percona-cloud-tools/agent/proto"
 )
 
-func DoneWait(cc *agent.ControlChannels) bool {
-	// Tell whatever to stop...
-	cc.StopChan <-true
-
-	// Then wait for it.  The wait is necessary to yield what's probably
-	// a single thread running the caller and the thing they're waiting
-	// for.  If we just <-cc.DoneChan, the calling thread will block, never
-	// letting the other thing cc.DoneChan <-true.  Concurrency is fun!
-	golog.SetFlags(golog.LstdFlags | golog.Lmicroseconds)
-	select {
-	case <-cc.DoneChan:
-		return true
-	case <-time.After(250 * time.Millisecond):
-		return false
-	}
-	return false
-}
-
-func WaitForClientMsgs(msgFromClient chan *proto.Msg) []proto.Msg {
-	var buf []proto.Msg
+func WaitCmd(replyChan chan *proto.Cmd) []proto.Cmd {
+	var buf []proto.Cmd
 	var haveData bool = true
 	for haveData {
 		select {
-		case msg := <-msgFromClient:
-			buf = append(buf, *msg)
+		case cmd := <-replyChan:
+			buf = append(buf, *cmd)
+		case <-time.After(100 * time.Millisecond):
+			haveData = false
+		}
+	}
+	return buf
+}
+
+func WaitReply(replyChan chan *proto.Reply) []proto.Reply {
+	var buf []proto.Reply
+	var haveData bool = true
+	for haveData {
+		select {
+		case reply := <-replyChan:
+			buf = append(buf, *reply)
+		case <-time.After(100 * time.Millisecond):
+			haveData = false
+		}
+	}
+	return buf
+}
+
+func WaitData(recvDataChan chan interface{}) []interface{} {
+	var buf []interface{}
+	var haveData bool = true
+	for haveData {
+		select {
+		case data := <-recvDataChan:
+			buf = append(buf, data)
 		case <-time.After(10 * time.Millisecond):
 			haveData = false
 		}
@@ -41,13 +47,13 @@ func WaitForClientMsgs(msgFromClient chan *proto.Msg) []proto.Msg {
 	return buf
 }
 
-func WaitForLogEntries(dataFromClient chan interface{}) []log.LogEntry {
-	var buf []log.LogEntry
+func WaitLog(recvDataChan chan interface{}) []proto.LogEntry {
+	var buf []proto.LogEntry
 	var haveData bool = true
 	for haveData {
 		select {
-		case data := <-dataFromClient:
-			buf = append(buf, *data.(*log.LogEntry))
+		case data := <-recvDataChan:
+			buf = append(buf, *data.(*proto.LogEntry))
 		case <-time.After(10 * time.Millisecond):
 			haveData = false
 		}
@@ -55,7 +61,7 @@ func WaitForLogEntries(dataFromClient chan interface{}) []log.LogEntry {
 	return buf
 }
 
-func WaitForTraces(traceChan chan string) []string {
+func WaitTrace(traceChan chan string) []string {
 	var buf []string
 	var haveData bool = true
 	for haveData {
@@ -69,35 +75,13 @@ func WaitForTraces(traceChan chan string) []string {
 	return buf
 }
 
-func GetStatus(toClient chan *proto.Msg, fromClient chan *proto.Msg) *proto.StatusReply {
-	statusCmd := &proto.Msg{
-		Ts: time.Now(),
-		User: "user",
-		Id: 1,
-		Cmd: "Status",
-		Timeout: 3,
-	}
-	toClient <-statusCmd
-
-	reply := new(proto.StatusReply)
-	select {
-	case msg := <-fromClient:
-		_ = json.Unmarshal(msg.Data, reply)
-		return reply
-	case <-time.After(10 * time.Millisecond):
-	}
-
-	return reply
-}
-
-// @todo replace with WaitForLogEntries()
-func GetLogEntries(cc *agent.ControlChannels) []log.LogEntry {
-	var buf []log.LogEntry
+func WaitErr(errChan chan error) []error {
+	var buf []error
 	var haveData bool = true
 	for haveData {
 		select {
-		case msg := <-cc.LogChan:
-			buf = append(buf, *msg)
+		case err := <-errChan:
+			buf = append(buf, err)
 		case <-time.After(10 * time.Millisecond):
 			haveData = false
 		}

@@ -1,35 +1,77 @@
 package test
 
 import (
-	"os"
-	"fmt"
-	"io/ioutil"
-	"github.com/percona/percona-cloud-tools/agent"
-	"github.com/percona/percona-cloud-tools/agent/log"
-	"github.com/percona/percona-cloud-tools/qa"
 	"encoding/json"
+	proto "github.com/percona/cloud-protocol"
+	"io/ioutil"
+	"os"
+	"time"
 )
 
-func RunQhWorker(job *qa.Job) string {
-	cc := &agent.ControlChannels{
-		LogChan: make(chan *log.LogEntry),
-		StopChan: make(chan bool),
+func GetStatus(sendChan chan *proto.Cmd, recvChan chan *proto.Reply) *proto.StatusData {
+	statusCmd := &proto.Cmd{
+		Ts:   time.Now(),
+		User: "user",
+		Cmd:  "Status",
 	}
-	resultChan := make(chan *qa.Result, 1)
-	doneChan := make(chan *qa.Worker, 1)
+	sendChan <- statusCmd
 
-	w := qa.NewWorker(cc, job, resultChan, doneChan)
-	w.Run()
+	status := new(proto.StatusData)
+	select {
+	case reply := <-recvChan:
+		_ = json.Unmarshal(reply.Data, status)
+	case <-time.After(10 * time.Millisecond):
+	}
 
-	// Write the result as formatted JSON to a file...
-	result := <-resultChan
-	tmpFilename := fmt.Sprintf("/tmp/pct-test.%d", os.Getpid())
-	WriteData(result, tmpFilename)
-	return tmpFilename
+	return status
 }
 
 func WriteData(data interface{}, filename string) {
 	bytes, _ := json.MarshalIndent(data, "", " ")
 	bytes = append(bytes, 0x0A) // newline
 	ioutil.WriteFile(filename, bytes, os.ModePerm)
+}
+
+func DrainLogChan(c chan *proto.LogEntry) {
+DRAIN:
+	for {
+		select {
+		case _ = <-c:
+		default:
+			break DRAIN
+		}
+	}
+}
+
+func DrainSendChan(c chan *proto.Cmd) {
+DRAIN:
+	for {
+		select {
+		case _ = <-c:
+		default:
+			break DRAIN
+		}
+	}
+}
+
+func DrainRecvChan(c chan *proto.Reply) {
+DRAIN:
+	for {
+		select {
+		case _ = <-c:
+		default:
+			break DRAIN
+		}
+	}
+}
+
+func DrainTraceChan(c chan string) {
+DRAIN:
+	for {
+		select {
+		case _ = <-c:
+		default:
+			break DRAIN
+		}
+	}
 }
