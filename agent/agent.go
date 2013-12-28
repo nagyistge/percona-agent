@@ -11,7 +11,7 @@ import (
 	proto "github.com/percona/cloud-protocol"
 	// Internal
 	pct "github.com/percona/cloud-tools"
-	"github.com/percona/cloud-tools/log"
+	"github.com/percona/cloud-tools/logrelay"
 )
 
 const (
@@ -23,7 +23,7 @@ const (
 
 type Agent struct {
 	auth       *proto.AgentAuth
-	logRelayer *log.LogRelayer
+	logRelay *logrelay.LogRelay
 	logger     *pct.Logger
 	client     proto.WebsocketClient
 	services   map[string]pct.ServiceManager
@@ -46,10 +46,10 @@ type Agent struct {
 	stopChan          chan bool
 }
 
-func NewAgent(auth *proto.AgentAuth, logRelayer *log.LogRelayer, logger *pct.Logger, client proto.WebsocketClient, services map[string]pct.ServiceManager) *Agent {
+func NewAgent(auth *proto.AgentAuth, logRelay *logrelay.LogRelay, logger *pct.Logger, client proto.WebsocketClient, services map[string]pct.ServiceManager) *Agent {
 	agent := &Agent{
 		auth:       auth,
-		logRelayer: logRelayer,
+		logRelay: logRelay,
 		logger:     logger,
 		client:     client,
 		services:   services,
@@ -337,12 +337,8 @@ func (agent *Agent) handleSetLogLevel(cmd *proto.Cmd) error {
 		return err
 	}
 
-	if err := agent.logRelayer.SetLogLevel(log.Level); err != nil {
-		agent.logger.Error(err)
-		return err
-	}
+	agent.logRelay.LogLevelChan() <-log.Level
 
-	agent.logger.Info("New log level:" + log.Level)
 	return nil
 }
 

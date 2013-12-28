@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	golog "log"
 	"os"
 	"time"
 	// External
@@ -13,7 +12,7 @@ import (
 	// Internal
 	pct "github.com/percona/cloud-tools"
 	"github.com/percona/cloud-tools/agent"
-	"github.com/percona/cloud-tools/log"
+	"github.com/percona/cloud-tools/logrelay"
 	"github.com/percona/cloud-tools/qan"
 	// Testing
 	"github.com/percona/cloud-tools/test"
@@ -31,7 +30,7 @@ type AgentTestSuite struct {
 	// agent and what it needs
 	auth      *proto.AgentAuth
 	agent     *agent.Agent
-	logRelay  *log.LogRelayer
+	logRelay  *logrelay.LogRelay
 	logger    *pct.Logger
 	logChan   chan *proto.LogEntry
 	client    proto.WebsocketClient
@@ -60,7 +59,7 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 	}
 	// dataDir := s.tmpDir + "/data"
 	// pidFile := s.tmpDir + "/pid"
-	logFile := s.tmpDir + "/log"
+	// logFile := s.tmpDir + "/log"
 
 	// Agent
 	s.auth = &proto.AgentAuth{
@@ -70,14 +69,11 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 		Username: "root",
 	}
 
-	logChan := make(chan *proto.LogEntry, 100)
-
-	fileLog, _ := log.OpenLogFile(logFile)
-	nullClient := &mock.NullClient{}
-	s.logRelay = log.NewLogRelayer(nullClient, logChan, fileLog)
+	nullClient := mock.NewNullClient()
+	s.logRelay = logrelay.NewLogRelay(nullClient)
 	go s.logRelay.Run()
-
-	s.logger = pct.NewLogger(logChan, "agent-test")
+	s.logChan = s.logRelay.LogChan()
+	s.logger = pct.NewLogger(s.logChan, "agent-test")
 
 	// mock client <-------------------------------------------------> API <---------------------> mock front end
 	// handler <- agent <- chan <- client (agent on user's server)  <- API (cloud-api.percona.com) <- front end <- user
@@ -99,13 +95,6 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 	s.services = services
 
 	s.doneChan = make(chan bool, 1)
-
-	golog.SetFlags(golog.Lmicroseconds | golog.Ltime)
-	go func() {
-		for logEntry := range s.logChan {
-			golog.Printf("%+v\n", logEntry)
-		}
-	}()
 }
 
 func (s *AgentTestSuite) TearDownSuite(t *C) {
