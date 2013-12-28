@@ -1,8 +1,10 @@
 package test
 
 import (
-	proto "github.com/percona/cloud-protocol"
+//	"fmt"
+	"os"
 	"time"
+	proto "github.com/percona/cloud-protocol"
 )
 
 func WaitCmd(replyChan chan *proto.Cmd) []proto.Cmd {
@@ -47,15 +49,32 @@ func WaitData(recvDataChan chan interface{}) []interface{} {
 	return buf
 }
 
-func WaitLog(recvDataChan chan interface{}) []proto.LogEntry {
+func WaitLog(recvDataChan chan interface{}, n int) []proto.LogEntry {
 	var buf []proto.LogEntry
-	var haveData bool = true
-	for haveData {
+	var cnt int = 0
+	timeout := time.After(300 * time.Millisecond)
+	FIRST_LOOP:
+	for {
 		select {
 		case data := <-recvDataChan:
 			buf = append(buf, *data.(*proto.LogEntry))
-		case <-time.After(10 * time.Millisecond):
-			haveData = false
+			cnt++
+			if n > 0 && cnt >= n {
+				break FIRST_LOOP
+			}
+		case <-timeout:
+			break FIRST_LOOP
+		}
+	}
+	if n > 0 && cnt >= n {
+		SECOND_LOOP:
+		for {
+			select {
+			case data := <-recvDataChan:
+				buf = append(buf, *data.(*proto.LogEntry))
+			case <-time.After(100 * time.Millisecond):
+				break SECOND_LOOP
+			}
 		}
 	}
 	return buf
@@ -87,4 +106,39 @@ func WaitErr(errChan chan error) []error {
 		}
 	}
 	return buf
+}
+
+func WaitFileSize(fileName string, originalSize int64) {
+	var lastSize int64 = -1
+	var lastChange int64 = -1
+	timeout := time.After(2 * time.Second)
+	TRY_LOOP:
+	for {
+		select {
+		case <-timeout:
+			break TRY_LOOP
+		case <-time.After(100 * time.Millisecond):
+			thisSize, err := fileSize(fileName)
+			if err != nil {
+				continue
+			}
+			if lastSize > 0 {
+				thisChange := thisSize - lastSize
+				//fmt.Printf("last size %d chagne %d this size %d change %d\n", lastSize, lastChange, thisSize,thisChange)
+				if lastChange == 0 && thisChange == 0 {
+					break TRY_LOOP
+				}
+				lastChange = thisChange
+			}
+			lastSize = thisSize
+		}
+	}
+}
+
+func fileSize(fileName string) (int64, error) {
+	stat, err := os.Stat(fileName)
+	if err != nil {
+		return -1, err
+	}
+	return stat.Size(), nil
 }

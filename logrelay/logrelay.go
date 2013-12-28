@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	BUFFER_SIZE = 10
+	BUFFER_SIZE int = 10
 )
 
 type LogRelay struct {
@@ -20,10 +20,22 @@ type LogRelay struct {
 	logLevel      int
 	logLevelChan  chan int
 	logFile       *golog.Logger
+	logFileName   string
 	logFileChan   chan string
 	firstBuf      []*proto.LogEntry
+	firstBufSize  int
 	secondBuf     []*proto.LogEntry
-	lost          uint
+	secondBufSize int
+	lost          int
+	statusChan    chan *Status
+}
+
+type Status struct {
+	LogLevel  int
+	LogFile   string
+	Connected bool
+	Channel   int
+	Buffers   int
 }
 
 /**
@@ -39,7 +51,8 @@ func NewLogRelay(client proto.WebsocketClient) *LogRelay {
 		logFileChan:   make(chan string),
 		firstBuf:      make([]*proto.LogEntry, BUFFER_SIZE),
 		secondBuf:     make([]*proto.LogEntry, BUFFER_SIZE),
-		connectedChan: make(chan bool, 2),
+		connectedChan: make(chan bool),
+		statusChan:    make(chan *Status, 1),
 	}
 	return r
 }
@@ -85,6 +98,7 @@ func (r *LogRelay) Run() {
 				r.logFile.Println(entry)
 			}
 		case connected := <-r.connectedChan:
+			r.connected = connected
 			if connected {
 				// Connected for first time or reconnected.
 				if len(r.firstBuf) > 0 {
@@ -101,15 +115,33 @@ func (r *LogRelay) Run() {
 			r.setLogFile(file)
 		case level := <-r.logLevelChan:
 			r.setLogLevel(level)
+		} // select
+
+		// If anyone is listening, send last internal status.
+		status := &Status{
+			LogLevel:  r.logLevel,
+			LogFile:   r.logFileName,
+			Connected: r.connected,
+			Channel:   len(r.logChan),
+			Buffers:   r.firstBufSize + r.secondBufSize,
 		}
-	}
+		select {
+		case r.statusChan <- status:
+		default:
+		}
+	} // for
 }
 
-// Even the relayer needs to log stuff.  Hopefully this won't cause an infinite loop?
+func (r *LogRelay) StatusChan() chan *Status {
+	return r.statusChan
+}
+
+// Even the relayer needs to log stuff.
 func (r *LogRelay) internal(msg string) {
 	logEntry := &proto.LogEntry{
-		Level: proto.LOG_WARNING,
-		Msg:   msg,
+		Service: "logrelay",
+		Level:   proto.LOG_WARNING,
+		Msg:     msg,
 	}
 	r.logChan <- logEntry
 }
@@ -121,7 +153,6 @@ func (r *LogRelay) connect() {
 		return
 	}
 	r.client.Connect()
-	r.connected = true
 	r.connectedChan <- true
 	go r.waitErr()
 }
@@ -133,8 +164,8 @@ func (r *LogRelay) waitErr() {
 	// waiting for error/disconenct.
 	var data interface{}
 	if err := r.client.Recv(data); err != nil {
-		r.internal("API lost")
 		r.connectedChan <- false
+		r.internal("Lost connection")
 	}
 }
 
@@ -142,28 +173,29 @@ func (r *LogRelay) buffer(e *proto.LogEntry) {
 	// First time we need to buffer delayed/lost log entries is closest to
 	// the events that are causing problems, so we keep some, and when this
 	// buffer is full...
-	n := len(r.firstBuf)
-	if n < BUFFER_SIZE {
-		r.firstBuf[n] = e
+	if r.firstBufSize < BUFFER_SIZE {
+		r.firstBuf[r.firstBufSize] = e
+		r.firstBufSize++
 		return
 	}
 
 	// ...we switch to second, sliding window buffer, keeping the latest
 	// log entries and a tally of how many we've had to drop from the start
 	// (firstBuf) until now.
-	n = len(r.secondBuf)
-	if n < BUFFER_SIZE {
-		r.secondBuf[n] = e
+	if r.secondBufSize < BUFFER_SIZE {
+		r.secondBuf[r.secondBufSize] = e
+		r.secondBufSize++
 		return
 	}
 
 	// secondBuf is full too.  This problem is long-lived.  Throw away the
 	// buf and keep saving the latest log entries, counting how many we've lost.
-	r.lost += BUFFER_SIZE
+	r.lost += r.secondBufSize
 	for i := 0; i < BUFFER_SIZE; i++ {
 		r.secondBuf[i] = nil
 	}
 	r.secondBuf[0] = e
+	r.secondBufSize = 1
 }
 
 func (r *LogRelay) send(entry *proto.LogEntry, bufferOnErr bool) error {
@@ -181,20 +213,32 @@ func (r *LogRelay) resend() {
 	for i := 0; i < BUFFER_SIZE; i++ {
 		if r.firstBuf[i] != nil {
 			if err := r.send(r.firstBuf[i], false); err == nil {
+				// Remove from buffer on successful send.
 				r.firstBuf[i] = nil
+				r.firstBufSize--
 			}
 		}
 	}
 
 	if r.lost > 0 {
-		r.internal(fmt.Sprintf("Lost %d log entries", r.lost))
+		logEntry := &proto.LogEntry{
+			Level:   proto.LOG_WARNING,
+			Service: "logrelay",
+			Msg:     fmt.Sprintf("Lost %d log entries", r.lost),
+		}
+		// If the lost message warning fails to send, do not rebuffer it to avoid
+		// the pathological case of filling the buffers with lost message warnings
+		// caused by lost message warnings.
+		r.send(logEntry, false)
 		r.lost = 0
 	}
 
 	for i := 0; i < BUFFER_SIZE; i++ {
 		if r.secondBuf[i] != nil {
 			if err := r.send(r.secondBuf[i], false); err == nil {
-				r.firstBuf[i] = nil
+				// Remove from buffer on successful send.
+				r.secondBuf[i] = nil
+				r.secondBufSize--
 			}
 		}
 	}
@@ -215,5 +259,6 @@ func (r *LogRelay) setLogFile(logFile string) {
 	} else {
 		logFile := golog.New(file, "", golog.LstdFlags)
 		r.logFile = logFile
+		r.logFileName = file.Name()
 	}
 }

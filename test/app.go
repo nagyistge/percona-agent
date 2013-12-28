@@ -75,3 +75,11 @@ DRAIN:
 		}
 	}
 }
+
+func FileSize(fileName string) (int64, error) {
+	stat, err := os.Stat(fileName)
+	if err != nil {
+		return -1, err
+	}
+	return stat.Size(), nil
+}

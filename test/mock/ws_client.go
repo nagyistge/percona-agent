@@ -1,6 +1,8 @@
 package mock
 
 import (
+	//"fmt"
+	"code.google.com/p/go.net/websocket"
 	proto "github.com/percona/cloud-protocol"
 )
 
@@ -12,6 +14,9 @@ type WebsocketClient struct {
 	testSendDataChan chan interface{}
 	testRecvDataChan chan interface{}
 	errChan          chan error
+	conn             *websocket.Conn
+	RecvError        chan error
+	ConnectChan      chan bool
 }
 
 func NewWebsocketClient(sendChan chan *proto.Cmd, recvChan chan *proto.Reply, sendDataChan chan interface{}, recvDataChan chan interface{}) *WebsocketClient {
@@ -22,11 +27,20 @@ func NewWebsocketClient(sendChan chan *proto.Cmd, recvChan chan *proto.Reply, se
 		testRecvChan:     recvChan,
 		testSendDataChan: sendDataChan,
 		testRecvDataChan: recvDataChan,
+		conn:             new(websocket.Conn),
+		RecvError:        make(chan error),
 	}
 	return c
 }
 
 func (c *WebsocketClient) Connect() error {
+	if c.ConnectChan != nil {
+		select {
+		case c.ConnectChan <-true:
+		default:
+		}
+		<-c.ConnectChan
+	}
 	return nil
 }
 
@@ -66,11 +80,16 @@ func (c *WebsocketClient) Recv(data interface{}) error {
 	// Relay data from test to user.
 	select {
 	case data = <-c.testSendDataChan:
-	default:
+	case err := <-c.RecvError:
+		return err
 	}
 	return nil
 }
 
 func (c *WebsocketClient) ErrorChan() chan error {
 	return c.errChan
+}
+
+func (c *WebsocketClient) Conn() *websocket.Conn {
+	return c.conn
 }

@@ -3,7 +3,6 @@ package pct
 import (
 	"fmt"
 	proto "github.com/percona/cloud-protocol"
-	"os"
 )
 
 type Logger struct {
@@ -29,27 +28,26 @@ func (l *Logger) InResponseTo(cmd *proto.Cmd) {
 }
 
 func (l *Logger) Debug(entry ...interface{}) {
-	l.log(proto.LOG_LEVEL_DEBUG, entry)
+	l.log(proto.LOG_DEBUG, entry)
 }
 
 func (l *Logger) Info(entry ...interface{}) {
-	l.log(proto.LOG_LEVEL_INFO, entry)
+	l.log(proto.LOG_INFO, entry)
 }
 
 func (l *Logger) Warn(entry ...interface{}) {
-	l.log(proto.LOG_LEVEL_WARN, entry)
+	l.log(proto.LOG_WARNING, entry)
 }
 
 func (l *Logger) Error(entry ...interface{}) {
-	l.log(proto.LOG_LEVEL_ERROR, entry)
+	l.log(proto.LOG_ERROR, entry)
 }
 
 func (l *Logger) Fatal(entry ...interface{}) {
-	l.log(proto.LOG_LEVEL_FATAL, entry)
-	os.Exit(-1)
+	l.log(proto.LOG_CRITICAL, entry)
 }
 
-func (l *Logger) log(level uint, entry []interface{}) {
+func (l *Logger) log(level int, entry []interface{}) {
 	fullMsg := ""
 	for i, str := range entry {
 		if i > 0 {

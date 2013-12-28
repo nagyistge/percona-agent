@@ -1,10 +1,19 @@
 package mock
 
 import (
+	"code.google.com/p/go.net/websocket"
 	proto "github.com/percona/cloud-protocol"
 )
 
 type NullClient struct {
+	conn *websocket.Conn
+}
+
+func NewNullClient() *NullClient {
+	c := &NullClient{
+		conn: new(websocket.Conn),
+	}
+	return c
 }
 
 func (c *NullClient) Connect() error {
@@ -40,4 +49,8 @@ func (c *NullClient) Do(cmd *proto.Cmd) error {
 
 func (c *NullClient) ErrorChan() chan error {
 	return nil
+}
+
+func (c *NullClient) Conn() *websocket.Conn {
+	return c.conn
 }

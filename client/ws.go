@@ -113,3 +113,7 @@ func (c *WebsocketClient) Recv(data interface{}) error {
 func (c *WebsocketClient) ErrorChan() chan error {
 	return c.errChan
 }
+
+func (c *WebsocketClient) Conn() *websocket.Conn {
+	return c.conn
+}
