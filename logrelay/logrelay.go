@@ -2,10 +2,10 @@ package logrelay
 
 import (
 	"fmt"
-	proto "github.com/percona/cloud-protocol"
-	golog "log"
+	"log"
 	"os"
 	"time"
+	proto "github.com/percona/cloud-protocol"
 )
 
 const (
@@ -19,7 +19,7 @@ type LogRelay struct {
 	logChan       chan *proto.LogEntry
 	logLevel      int
 	logLevelChan  chan int
-	logFile       *golog.Logger
+	logFile       *log.Logger
 	logFileName   string
 	logFileChan   chan string
 	firstBuf      []*proto.LogEntry
@@ -42,9 +42,10 @@ type Status struct {
  * client is optional.  If not given, only file logging is enabled if a log file
  * is sent to the LogFileChan().
  */
-func NewLogRelay(client proto.WebsocketClient) *LogRelay {
+func NewLogRelay(client proto.WebsocketClient, logFileName string) *LogRelay {
 	r := &LogRelay{
 		client:        client,
+		logFileName:   logFileName,
 		logLevel:      proto.LOG_NOTICE,
 		logLevelChan:  make(chan int),
 		logChan:       make(chan *proto.LogEntry, BUFFER_SIZE*2),
@@ -71,6 +72,8 @@ func (r *LogRelay) LogFileChan() chan string {
 
 // @goroutine
 func (r *LogRelay) Run() {
+	r.setLogFile(r.logFileName)
+
 	// Connect if we were created with a client.  If this is slow, log entries
 	// will be buffered and sent later.
 	go r.connect()
@@ -139,6 +142,7 @@ func (r *LogRelay) StatusChan() chan *Status {
 // Even the relayer needs to log stuff.
 func (r *LogRelay) internal(msg string) {
 	logEntry := &proto.LogEntry{
+		Ts:      time.Now().UTC(),
 		Service: "logrelay",
 		Level:   proto.LOG_WARNING,
 		Msg:     msg,
@@ -152,7 +156,12 @@ func (r *LogRelay) connect() {
 		// log file only
 		return
 	}
-	r.client.Connect()
+	r.client.Disconnect()
+	for {
+		if err := r.client.Connect(); err == nil {
+			break
+		}
+	}
 	r.connectedChan <- true
 	go r.waitErr()
 }
@@ -222,6 +231,7 @@ func (r *LogRelay) resend() {
 
 	if r.lost > 0 {
 		logEntry := &proto.LogEntry{
+			Ts:		 time.Now().UTC(),
 			Level:   proto.LOG_WARNING,
 			Service: "logrelay",
 			Msg:     fmt.Sprintf("Lost %d log entries", r.lost),
@@ -253,12 +263,26 @@ func (r *LogRelay) setLogLevel(level int) {
 }
 
 func (r *LogRelay) setLogFile(logFile string) {
-	file, err := os.OpenFile(logFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0755)
-	if err != nil {
-		r.internal(err.Error())
-	} else {
-		logFile := golog.New(file, "", golog.LstdFlags)
-		r.logFile = logFile
-		r.logFileName = file.Name()
+	if logFile == "" {
+		r.logFile = nil
+		r.logFileName = ""
+		return
 	}
+
+	var file *os.File
+	if logFile == "STDOUT" {
+		file = os.Stdout
+	} else if logFile == "STDERR" {
+		file = os.Stderr
+	} else {
+		var err error
+		file, err = os.OpenFile(logFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0755)
+		if err != nil {
+			r.internal(err.Error())
+			return
+		}
+	}
+	logger := log.New(file, "", log.Ldate | log.Ltime | log.Lmicroseconds)
+	r.logFile = logger
+	r.logFileName = file.Name()
 }

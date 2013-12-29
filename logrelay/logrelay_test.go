@@ -38,7 +38,7 @@ func (s *TestSuite) SetUpSuite(t *C) {
 	s.recvChan = make(chan interface{}, 5)
 	s.client = mock.NewWebsocketClient(nil, nil, s.sendChan, s.recvChan)
 
-	s.relay = logrelay.NewLogRelay(s.client)
+	s.relay = logrelay.NewLogRelay(s.client, "")
 	s.logger = pct.NewLogger(s.relay.LogChan(), "test")
 	go s.relay.Run() // calls client.Connect()
 }
@@ -190,7 +190,7 @@ func (s *TestSuite) TestOfflineBuffering(t *C) {
 	// We're going to cause the relay's client Recv() to get an error
 	// which will cause the relay to connect again.  We block this 2nd
 	// connect by blocking this chan.  End result: relay remains offline.
-	s.client.ConnectChan = make(chan bool)
+	s.client.ConnectChan = make(chan error)
 	doneChan := make(chan bool, 1)
 	go func() {
 		s.client.RecvError <- io.EOF
@@ -215,7 +215,7 @@ func (s *TestSuite) TestOfflineBuffering(t *C) {
 	}
 
 	// Unblock the relay's connect attempt.
-	s.client.ConnectChan <- true
+	s.client.ConnectChan <-nil
 
 	// Wait for the relay resend what it had ^ buffered.
 	got = test.WaitLog(s.recvChan, 3)
@@ -230,7 +230,7 @@ func (s *TestSuite) TestOfflineBuffering(t *C) {
 func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
 	// Same magic as in TestOfflineBuffering to force relay offline.
 	l := s.logger
-	s.client.ConnectChan = make(chan bool)
+	s.client.ConnectChan = make(chan error)
 	doneChan := make(chan bool, 1)
 	go func() {
 		s.client.RecvError <- io.EOF
@@ -247,7 +247,7 @@ func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
 	}
 
 	// Unblock the relay's connect attempt.
-	s.client.ConnectChan <- true
+	s.client.ConnectChan <-nil
 
 	// Wait for the relay resend what it had ^ buffered.
 	// Extra +1 is for "Lost connection".
@@ -276,7 +276,7 @@ func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
 	}
 
 	// Unblock the relay's connect attempt.
-	s.client.ConnectChan <- true
+	s.client.ConnectChan <-nil
 
 	// +2 for "Lost connection" and "Lost N entries".
 	got = test.WaitLog(s.recvChan, logrelay.BUFFER_SIZE+overflow+2)
@@ -315,3 +315,5 @@ func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
 	}
 	t.Check(got, DeepEquals, expect)
 }
+
+
