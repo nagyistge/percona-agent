@@ -210,3 +210,31 @@ func (s *TestSuite) TestApiDisconnectChan(t *C) {
 	}
 	t.Assert(got[0], NotNil)
 }
+
+func (s *TestSuite) TestConnectBackoff(t *C) {
+	origin := "http://localhost:137"
+	ws, err := client.NewWebsocketClient(URL+ENDPOINT, origin)
+	t.Assert(err, IsNil)
+
+	err = ws.Connect()
+	t.Assert(err, IsNil)
+
+	// todo: this is probably prone to deadlocks, not thread-safe
+	c, ok := mock.Clients[origin]
+	if !t.Check(ok, Equals, true) {
+		return
+	}
+
+	// 0s wait, connect, err="Lost connection",
+	// 1s wait, connect, err="Lost connection",
+	// 3s wait, connect, ok
+	t0 := time.Now()
+	for i := 0; i < 2; i++ {
+		mock.ClientDisconnectChan <-c
+		ws.Connect()
+	}
+	d := time.Now().Sub(t0)
+	if d < time.Duration(3 * time.Second) {
+		t.Errorf("Exponential backoff wait time between connect attempts: %s\n", d)
+	}
+}

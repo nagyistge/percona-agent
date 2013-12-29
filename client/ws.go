@@ -1,6 +1,7 @@
 package client
 
 import (
+	"time"
 	"code.google.com/p/go.net/websocket"
 	proto "github.com/percona/cloud-protocol"
 )
@@ -18,6 +19,7 @@ type WebsocketClient struct {
 	recvChan chan *proto.Cmd
 	sendChan chan *proto.Reply
 	errChan  chan error
+	backoff  *Backoff
 }
 
 func NewWebsocketClient(url string, origin string) (*WebsocketClient, error) {
@@ -33,23 +35,29 @@ func NewWebsocketClient(url string, origin string) (*WebsocketClient, error) {
 		recvChan: make(chan *proto.Cmd, RECV_BUFFER_SIZE),
 		sendChan: make(chan *proto.Reply, SEND_BUFFER_SIZE),
 		errChan:  make(chan error, 2),
+		backoff:  NewBackoff(),
 	}
 	return c, nil
 }
 
 func (c *WebsocketClient) Connect() error {
+	time.Sleep(c.backoff.Wait())
 	conn, err := websocket.DialConfig(c.config)
 	if err != nil {
 		return err
 	}
 	c.conn = conn
+	c.backoff.Success()
 	return nil
 }
 
 func (c *WebsocketClient) Disconnect() error {
 	var err error
-	if c.conn != nil {
+	if c.sendChan != nil {
 		close(c.sendChan)
+		c.sendChan = nil
+	}
+	if c.conn != nil {
 		err = c.conn.Close()
 		c.conn = nil
 	}
@@ -67,7 +75,12 @@ func (c *WebsocketClient) Run() {
 	// Receive Reply from client and send to API.
 	go func() {
 		var err error
-		defer func() { c.errChan <- err }()
+		defer func() {
+			select {
+			case c.errChan <-err:
+			default:
+			}
+		}()
 		for reply := range c.sendChan {
 			if err = c.Send(reply); err != nil {
 				break
@@ -77,7 +90,12 @@ func (c *WebsocketClient) Run() {
 
 	// Receive Cmd from API and send to client.
 	var err error
-	defer func() { c.errChan <- err }()
+	defer func() {
+		select {
+		case c.errChan <-err:
+		default:
+		}
+	}()
 	for {
 		cmd := new(proto.Cmd)
 		if err = c.Recv(cmd); err != nil {
