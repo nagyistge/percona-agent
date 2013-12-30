@@ -16,7 +16,7 @@ type WebsocketClient struct {
 	errChan          chan error
 	conn             *websocket.Conn
 	RecvError        chan error
-	ConnectChan      chan bool
+	ConnectChan      chan error
 }
 
 func NewWebsocketClient(sendChan chan *proto.Cmd, recvChan chan *proto.Reply, sendDataChan chan interface{}, recvDataChan chan interface{}) *WebsocketClient {
@@ -34,14 +34,15 @@ func NewWebsocketClient(sendChan chan *proto.Cmd, recvChan chan *proto.Reply, se
 }
 
 func (c *WebsocketClient) Connect() error {
+	var err error
 	if c.ConnectChan != nil {
 		select {
-		case c.ConnectChan <-true:
+		case c.ConnectChan <-nil:
 		default:
 		}
-		<-c.ConnectChan
+		err = <-c.ConnectChan
 	}
-	return nil
+	return err
 }
 
 func (c *WebsocketClient) Disconnect() error {

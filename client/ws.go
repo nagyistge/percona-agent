@@ -1,9 +1,10 @@
 package client
 
 import (
-	"time"
 	"code.google.com/p/go.net/websocket"
+	"errors"
 	proto "github.com/percona/cloud-protocol"
+	"time"
 )
 
 const (
@@ -14,6 +15,7 @@ const (
 type WebsocketClient struct {
 	origin   string
 	url      string
+	auth     *proto.AgentAuth
 	config   *websocket.Config
 	conn     *websocket.Conn
 	recvChan chan *proto.Cmd
@@ -22,7 +24,7 @@ type WebsocketClient struct {
 	backoff  *Backoff
 }
 
-func NewWebsocketClient(url string, origin string) (*WebsocketClient, error) {
+func NewWebsocketClient(url string, origin string, auth *proto.AgentAuth) (*WebsocketClient, error) {
 	config, err := websocket.NewConfig(url, origin)
 	if err != nil {
 		return nil, err
@@ -30,6 +32,7 @@ func NewWebsocketClient(url string, origin string) (*WebsocketClient, error) {
 	c := &WebsocketClient{
 		origin:   origin,
 		url:      url,
+		auth:     auth,
 		config:   config,
 		conn:     nil,
 		recvChan: make(chan *proto.Cmd, RECV_BUFFER_SIZE),
@@ -41,12 +44,36 @@ func NewWebsocketClient(url string, origin string) (*WebsocketClient, error) {
 }
 
 func (c *WebsocketClient) Connect() error {
+	// Potentially wait before attempt.  Caller probably has us in a for loop,
+	// and if API is flapping, we don't want to connect too fast, too often.
 	time.Sleep(c.backoff.Wait())
+
+	// Make websocket connection.  If this fails, either API is down or the ws
+	// address is wrong.
 	conn, err := websocket.DialConfig(c.config)
 	if err != nil {
 		return err
 	}
 	c.conn = conn
+
+	// First API expects from us is our authentication credentials.
+	// If this fails, it's probably an internal API error, *not* failed auth
+	// because that happens next...
+	if err := c.Send(c.auth); err != nil {
+		return err
+	}
+
+	// After we send our auth creds, API responds with AuthReponse: any error = auth failure.
+	authResponse := new(proto.AuthResponse)
+	if err := c.Recv(authResponse); err != nil {
+		return err // websocket error, not auth fail
+	}
+	if authResponse.Error != "" {
+		// auth fail (invalid API key, agent UUID, or combo of those)
+		return errors.New(authResponse.Error)
+	}
+
+	// Success!
 	c.backoff.Success()
 	return nil
 }
@@ -77,7 +104,7 @@ func (c *WebsocketClient) Run() {
 		var err error
 		defer func() {
 			select {
-			case c.errChan <-err:
+			case c.errChan <- err:
 			default:
 			}
 		}()
@@ -92,7 +119,7 @@ func (c *WebsocketClient) Run() {
 	var err error
 	defer func() {
 		select {
-		case c.errChan <-err:
+		case c.errChan <- err:
 		default:
 		}
 	}()

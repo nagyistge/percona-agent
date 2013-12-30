@@ -19,8 +19,8 @@ type LogRelay struct {
 	logChan       chan *proto.LogEntry
 	logLevel      int
 	logLevelChan  chan int
-	logFile       *log.Logger
-	logFileName   string
+	logger       *log.Logger
+	logFile   string
 	logFileChan   chan string
 	firstBuf      []*proto.LogEntry
 	firstBufSize  int
@@ -42,11 +42,11 @@ type Status struct {
  * client is optional.  If not given, only file logging is enabled if a log file
  * is sent to the LogFileChan().
  */
-func NewLogRelay(client proto.WebsocketClient, logFileName string) *LogRelay {
+func NewLogRelay(client proto.WebsocketClient, logFile string) *LogRelay {
 	r := &LogRelay{
 		client:        client,
-		logFileName:   logFileName,
-		logLevel:      proto.LOG_NOTICE,
+		logFile:   logFile,
+		logLevel:      proto.LOG_INFO,
 		logLevelChan:  make(chan int),
 		logChan:       make(chan *proto.LogEntry, BUFFER_SIZE*2),
 		logFileChan:   make(chan string),
@@ -72,7 +72,7 @@ func (r *LogRelay) LogFileChan() chan string {
 
 // @goroutine
 func (r *LogRelay) Run() {
-	r.setLogFile(r.logFileName)
+	r.setLogFile(r.logFile)
 
 	// Connect if we were created with a client.  If this is slow, log entries
 	// will be buffered and sent later.
@@ -96,12 +96,13 @@ func (r *LogRelay) Run() {
 				}
 			}
 
-			if r.logFile != nil {
+			if r.logger != nil {
 				// Write log entry to file, too.
-				r.logFile.Println(entry)
+				r.logger.Println(entry)
 			}
 		case connected := <-r.connectedChan:
 			r.connected = connected
+			r.internal(fmt.Sprintf("connected: %t", connected))
 			if connected {
 				// Connected for first time or reconnected.
 				if len(r.firstBuf) > 0 {
@@ -123,7 +124,7 @@ func (r *LogRelay) Run() {
 		// If anyone is listening, send last internal status.
 		status := &Status{
 			LogLevel:  r.logLevel,
-			LogFile:   r.logFileName,
+			LogFile:   r.logFile,
 			Connected: r.connected,
 			Channel:   len(r.logChan),
 			Buffers:   r.firstBufSize + r.secondBufSize,
@@ -174,7 +175,7 @@ func (r *LogRelay) waitErr() {
 	var data interface{}
 	if err := r.client.Recv(data); err != nil {
 		r.connectedChan <- false
-		r.internal("Lost connection")
+		r.internal(fmt.Sprintf("Lost connection: %s", err))
 	}
 }
 
@@ -264,8 +265,8 @@ func (r *LogRelay) setLogLevel(level int) {
 
 func (r *LogRelay) setLogFile(logFile string) {
 	if logFile == "" {
-		r.logFile = nil
-		r.logFileName = ""
+		r.logger = nil
+		r.logFile = ""
 		return
 	}
 
@@ -283,6 +284,7 @@ func (r *LogRelay) setLogFile(logFile string) {
 		}
 	}
 	logger := log.New(file, "", log.Ldate | log.Ltime | log.Lmicroseconds)
-	r.logFile = logger
-	r.logFileName = file.Name()
+	r.logger = logger
+	r.logFile = file.Name()
+	r.logger.Println("logFile=" + r.logFile)
 }

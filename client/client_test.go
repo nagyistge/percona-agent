@@ -17,6 +17,7 @@ func Test(t *testing.T) { TestingT(t) }
 
 type TestSuite struct {
 	server *mock.WebsocketServer
+	auth *proto.AgentAuth
 }
 
 var _ = Suite(&TestSuite{})
@@ -33,6 +34,8 @@ func (s *TestSuite) SetUpSuite(t *C) {
 	s.server = new(mock.WebsocketServer)
 	go s.server.Run(ADDR, ENDPOINT)
 	time.Sleep(100 * time.Millisecond)
+
+	s.auth = new(proto.AgentAuth) // todo
 }
 
 func (s *TestSuite) TearDownTest(t *C) {
@@ -47,11 +50,13 @@ func (s *TestSuite) TearDownTest(t *C) {
 
 func (s *TestSuite) TestSend(t *C) {
 	origin := "http://localhost:1"
-	ws, err := client.NewWebsocketClient(URL+ENDPOINT, origin)
+	ws, err := client.NewWebsocketClient(URL+ENDPOINT, origin, s.auth)
 	t.Assert(err, IsNil)
 
 	err = ws.Connect()
-	t.Assert(err, IsNil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	logEntry := &proto.LogEntry{
 		Level:   2,
@@ -90,20 +95,17 @@ func (s *TestSuite) TestSend(t *C) {
 // Test channel-based interface.
 func (s *TestSuite) TestChannels(t *C) {
 	origin := "http://localhost:2"
-	ws, err := client.NewWebsocketClient(URL+ENDPOINT, origin)
+	ws, err := client.NewWebsocketClient(URL+ENDPOINT, origin, s.auth)
 	t.Assert(err, IsNil)
 
 	err = ws.Connect()
-	t.Assert(err, IsNil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := <-mock.ClientConnectChan
 
 	// todo: stop the threads
 	go ws.Run()
-
-	// todo: this is probably prone to deadlocks, not thread-safe
-	c, ok := mock.Clients[origin]
-	if !t.Check(ok, Equals, true) {
-		return
-	}
 
 	// API sends Cmd to client.
 	cmd := &proto.Cmd{
@@ -140,17 +142,14 @@ func (s *TestSuite) TestChannels(t *C) {
 
 func (s *TestSuite) TestApiDisconnect(t *C) {
 	origin := "http://localhost:3"
-	ws, err := client.NewWebsocketClient(URL+ENDPOINT, origin)
+	ws, err := client.NewWebsocketClient(URL+ENDPOINT, origin, s.auth)
 	t.Assert(err, IsNil)
 
 	err = ws.Connect()
-	t.Assert(err, IsNil)
-
-	// todo: this is probably prone to deadlocks, not thread-safe
-	c, ok := mock.Clients[origin]
-	if !t.Check(ok, Equals, true) {
-		return
+	if err != nil {
+		t.Fatal(err)
 	}
+	c := <-mock.ClientConnectChan
 
 	// No error yet.
 	got := test.WaitErr(ws.ErrorChan())
@@ -172,19 +171,16 @@ func (s *TestSuite) TestApiDisconnect(t *C) {
 
 func (s *TestSuite) TestApiDisconnectChan(t *C) {
 	origin := "http://localhost:4"
-	ws, err := client.NewWebsocketClient(URL+ENDPOINT, origin)
+	ws, err := client.NewWebsocketClient(URL+ENDPOINT, origin, s.auth)
 	t.Assert(err, IsNil)
 
 	err = ws.Connect()
-	t.Assert(err, IsNil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := <-mock.ClientConnectChan
 
 	go ws.Run()
-
-	// todo: this is probably prone to deadlocks, not thread-safe
-	c, ok := mock.Clients[origin]
-	if !t.Check(ok, Equals, true) {
-		return
-	}
 
 	// No error yet.
 	got := test.WaitErr(ws.ErrorChan())
@@ -213,17 +209,14 @@ func (s *TestSuite) TestApiDisconnectChan(t *C) {
 
 func (s *TestSuite) TestConnectBackoff(t *C) {
 	origin := "http://localhost:137"
-	ws, err := client.NewWebsocketClient(URL+ENDPOINT, origin)
+	ws, err := client.NewWebsocketClient(URL+ENDPOINT, origin, s.auth)
 	t.Assert(err, IsNil)
 
 	err = ws.Connect()
-	t.Assert(err, IsNil)
-
-	// todo: this is probably prone to deadlocks, not thread-safe
-	c, ok := mock.Clients[origin]
-	if !t.Check(ok, Equals, true) {
-		return
+	if err != nil {
+		t.Fatal(err)
 	}
+	c := <-mock.ClientConnectChan
 
 	// 0s wait, connect, err="Lost connection",
 	// 1s wait, connect, err="Lost connection",

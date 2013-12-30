@@ -4,7 +4,7 @@ import (
 	// Core
 	"encoding/json"
 	"fmt"
-	golog "log"
+	"log"
 	"sync"
 	"time"
 	// External
@@ -68,19 +68,19 @@ func NewAgent(auth *proto.AgentAuth, logRelay *logrelay.LogRelay, logger *pct.Lo
 // @goroutine
 func (agent *Agent) Run() (stopReason string, update bool) {
 	logger := agent.logger
-	logger.Info("Running agent")
+	logger.Debug("start")
+
+	// Try and block forever to connect because the agent can't do anything
+	// until connected.
+	agent.connect()
 
 	// Start client goroutines for sending/receving cmd/reply via channels
 	// so we can do non-blocking send/recv.  This only needs to be done once.
 	// The chans are buffered, so they work for awhile if not connected.
 	client := agent.client
-	client.Run()
+	go client.Run()
 	cmdChan := client.RecvChan()
 	replyChan := client.SendChan()
-
-	// Try and block forever to connect because the agent can't do anything
-	// until connected.
-	agent.connect()
 
 	/*
 	 * Start the status and cmd handlers.  Most messages must be serialized because,
@@ -104,13 +104,18 @@ func (agent *Agent) Run() (stopReason string, update bool) {
 	statusHandlerErrors := 0
 
 	agent.status.Update("agent", "Ready")
-
+	logger.Info("Ready")
 AGENT_LOOP:
 	for {
 		select {
 		case cmd := <-cmdChan: // from API
+			logger.Debug("recv:%s", cmd)
+
 			if cmd.Cmd == "Abort" {
-				golog.Panicf("%s\n", cmd)
+				// Try to log the abort, but this cmd should be fail-safe so don't wait too long.
+				agent.logger.Fatal("ABORT: %s", cmd)
+				time.Sleep(3 * time.Second)
+				log.Panicf("%s\n", cmd)
 			}
 
 			if agent.stopping {
@@ -123,12 +128,15 @@ AGENT_LOOP:
 			switch cmd.Cmd {
 			case "Stop", "Update":
 				agent.stopping = true
+				var reason string
 				if cmd.Cmd == "Stop" {
-					agent.stopReason = fmt.Sprintf("agent received Stop command [%s]", cmd)
+					reason = fmt.Sprintf("agent received Stop command [%s]", cmd)
 				} else {
-					agent.stopReason = fmt.Sprintf("agent received Update command [%s]", cmd)
+					reason = fmt.Sprintf("agent received Update command [%s]", cmd)
 					update = true
 				}
+				logger.Info("STOP: " + reason)
+				agent.stopReason = reason
 				go agent.stop(cmd)
 			case "Status":
 				agent.status.UpdateRe("agent", "Queueing", cmd)
@@ -154,6 +162,7 @@ AGENT_LOOP:
 				go agent.cmdHandler()
 			} else {
 				logger.Fatal("Too many cmdHandler errors")
+				// todo: return or exit?
 			}
 		case <-agent.statusHandlerSync.CrashChan:
 			statusHandlerErrors++
@@ -162,6 +171,7 @@ AGENT_LOOP:
 				go agent.statusHandler()
 			} else {
 				logger.Fatal("Too many statusHandler errors")
+				// todo: return or exit?
 			}
 		case err := <-client.ErrorChan():
 			// websocket closed/crashed/err
@@ -330,6 +340,7 @@ func (agent *Agent) Status() *proto.StatusData {
 
 func (agent *Agent) handleSetLogLevel(cmd *proto.Cmd) error {
 	agent.status.UpdateRe("cmd", "SetLogLevel", cmd)
+	agent.logger.Info(cmd)
 
 	log := new(proto.LogLevel)
 	if err := json.Unmarshal(cmd.Data, log); err != nil {
@@ -344,6 +355,7 @@ func (agent *Agent) handleSetLogLevel(cmd *proto.Cmd) error {
 
 func (agent *Agent) handleStartService(cmd *proto.Cmd) error {
 	agent.status.UpdateRe("cmd", "StartService", cmd)
+	agent.logger.Info(cmd)
 
 	// Unmarshal the data to get the service name and config.
 	s := new(proto.ServiceData)
@@ -371,6 +383,7 @@ func (agent *Agent) handleStartService(cmd *proto.Cmd) error {
 
 func (agent *Agent) handleStopService(cmd *proto.Cmd) error {
 	agent.status.UpdateRe("cmd", "StopService", cmd)
+	agent.logger.Info(cmd)
 
 	// Unmarshal the data to get the service name.
 	s := new(proto.ServiceData)
@@ -402,37 +415,17 @@ func (agent *Agent) handleStopService(cmd *proto.Cmd) error {
 
 func (agent *Agent) connect() {
 	agent.status.Update("agent", "Connecting to API")
-	agent.logger.Info("Connecting to API")
-	client := agent.client
-	authResponse := new(proto.AuthResponse)
+	agent.client.Disconnect()
+	// No need sleep in the loop: Connect() has a built-in backoff algo.
 	for {
-		client.Disconnect()
-		if err := client.Connect(); err != nil {
+		agent.logger.Info("Connecting to API")
+		if err := agent.client.Connect(); err != nil {
 			agent.logger.Warn(err)
-			time.Sleep(5 * time.Second)
 			continue
 		}
-
-		if err := client.Send(agent.auth); err != nil {
-			agent.logger.Warn(err)
-			time.Sleep(5 * time.Second)
-			continue
-		}
-
-		if err := client.Recv(authResponse); err != nil {
-			agent.logger.Warn(err)
-			time.Sleep(5 * time.Second)
-			continue
-		}
-
-		if authResponse.Error != "" {
-			agent.logger.Warn(authResponse.Error)
-			time.Sleep(5 * time.Second)
-			continue
-		}
-
 		break // auth success
 	}
+	agent.logger.Info("Connected to API")
 }
 
 // @goroutine

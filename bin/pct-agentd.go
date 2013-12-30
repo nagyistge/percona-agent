@@ -1,76 +1,91 @@
 package main
 
-
 import (
+	"fmt"
+	"log"
 	"os"
 	"os/user"
-	"fmt"
-	"flag"
-	golog "log"
 	proto "github.com/percona/cloud-protocol"
+	pct "github.com/percona/cloud-tools"
 	"github.com/percona/cloud-tools/agent"
-	pctlog "github.com/percona/cloud-tools/log"
+	"github.com/percona/cloud-tools/client"
+	"github.com/percona/cloud-tools/logrelay"
 )
 
 const (
-	API_HOSTNAME = "cloud-api.percona.com"
-	LOG_FILE     = "/var/log/pct-agentd.log"
-	LOG_WS       = "/log/agent/write"
+	VERSION = "1.0.0"
+	DEFAULT_CONFIG_FILE  = "/etc/percona/pct-agentd.conf"
+	LOG_WS       = "/agent/log"
 	AGENT_WS     = "/cmd/agent"
+	QAN_DATA_URL = "/qan"
+	MM_DATA_URL  = "/mm"
 )
 
-// There are 3 configs, in asc order of precedence: /etc config files,
-// env vars, cmd line.
-var config agent.Config
-
-func init() {
-	flag.StringVar(&config.ApiKey,      "api-hostname", API_HOSTNAME, "API hostname")
-	flag.StringVar(&config.ApiKey,      "api-key",      "",           "API key")
-	flag.StringVar(&config.AgentUuid,   "agent-uuid",   "",           "Agent UUID")
-	flag.StringVar(&config.LogFilename, "log-file",     LOG_FILE,     "Log file")
-	flag.StringVar(&config.PidFilename, "pid-file",     ""            "PID file")
-}
-
 func main() {
-	// Parse command line into config.
-	flag.Parse()
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 
-	// PID file must not exist if given.
+	// Parse command line.
+	var arg string
+	if len(os.Args) == 2 {
+		arg = os.Args[1]
+		switch arg {
+		case "version":
+			fmt.Printf("pct-agentd %s\n", VERSION)
+			os.Exit(0)
+		default:
+			fmt.Printf("Invalid arg: %s\n", arg)
+			os.Exit(-1)
+		}
+	} else if len(os.Args) > 2 {
+		fmt.Println("Unknown extra args")
+		os.Exit(-1)
+	}
+
+	// Create default config.
+	config := &agent.Config{
+		ApiHostname: "cloud-api.percona.com",
+		LogFile: "/var/log/pct-agentd.log",
+	}
+
+	// Overwrite default config with config file.
+	configFile := arg
+	if configFile == "" {
+		configFile = DEFAULT_CONFIG_FILE
+	}
+	config.Apply(agent.LoadConfig(configFile))
+
+	// Check for required config values.
+	haveRequiredVals := true
+	if config.ApiHostname == "" {
+		fmt.Printf("No ApiHostname in %s\n", configFile) // shouldn't happen
+		haveRequiredVals = false
+	}
+	if config.ApiKey == "" {
+		fmt.Printf("No ApiKey in %s\n", configFile)
+		haveRequiredVals = false
+	}
+	if config.AgentUuid == "" {
+		log.Printf("No AgentUuid in %s\n", configFile)
+		haveRequiredVals = false
+	}
+	if !haveRequiredVals {
+		os.Exit(-1)
+	}
+
+	// Check/create PID file.
 	if config.PidFile != "" {
-		if err := writePidFile(newConfig.PidFile); err != nil {
-			golog.Fatalln(err)
+		if err := writePidFile(config.PidFile); err != nil {
+			log.Fatalln(err)
 		}
 		defer removeFile(config.PidFile)
 	}
 
-	// Read agent UUID from file if not given.
-	if config.AgentUuid = "" {
-		uuid, err := GetAgentUuid(AGENT_UUID_FILE)
-		if err != nil {
-			golog.Fatalf("No agent UUID: -agent-uuid not given and %s\n", err)
-		}
-		config.AgentUuid = uuid
-	}
-
-	u, _ := user.Current()
+	// Get some values we'll need later.
 	hostname, _ := os.Hostname()
-	username, _ := u.Username
+	u, _ := user.Current()
+	username := u.Username
 	origin := "http://" + username + "@" + hostname
 
-	// Start the central logger.  It doesn't stop until we stop.
-	logClient, err := client.NewWebsocketClient("ws://" + config.ApiHostname + LOG_WS, origin)
-	if err != nil {
-		golog.Fatalln(err)
-	}
-	logChan := make(chan *proto.LogEntry, 100)
-	logFile, err := pctlog.OpenLogFile(config.LogFile)
-	if err != nil {
-		golog.Fatalln(err)
-	}
-	logRelay := pctlog.NewLogRelay(logClient, logChan, logFile)
-	go logRelay.Run()
-
-	// Create and run the agent.
 	auth := &proto.AgentAuth{
 		ApiKey: config.ApiKey,
 		Uuid: config.AgentUuid,
@@ -78,23 +93,38 @@ func main() {
 		Username: username,
 	}
 
-	logger := pct.NewLogger(logChan, "agent")
+	// Start the log relay (sends pct.Logger log entries to API and/or log file).
+	var logRelay *logrelay.LogRelay
+	if config.LogFileOnly {
+		log.Println("LogFileOnly=true")
+		logRelay = logrelay.NewLogRelay(nil, config.LogFile)
+	} else {
+		wsClient, err := client.NewWebsocketClient("ws://" + config.ApiHostname + LOG_WS, origin, auth)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		logRelay = logrelay.NewLogRelay(wsClient, config.LogFile)
+	}
+	go logRelay.Run()
 
-	agentClient, err := client.NewWebsocketClient("ws://" + config.ApiHostname + AGENT_WS, origin)
+	// Create and run the agent.
+	logger := pct.NewLogger(logRelay.LogChan(), "agent")
+
+	agentClient, err := client.NewWebsocketClient("ws://" + config.ApiHostname + AGENT_WS, origin, auth)
 	if err != nil {
-		golog.Fatalln(err)
+		log.Fatalln(err)
 	}
 
-	services := map[string]*pct.ServiceManager{
+	services := map[string]pct.ServiceManager{
 		"qan": nil,
 		"mm": nil,
 	}
 
 	agent := agent.NewAgent(auth, logRelay, logger, agentClient, services)
-	stopReason, upgrade := agent.Run()
+	agent.Run()
 }
 
-func (agent *Agent) writePidFile(pidFile string) error {
+func writePidFile(pidFile string) error {
 	flags := os.O_CREATE | os.O_EXCL | os.O_WRONLY
 	file, err := os.OpenFile(pidFile, flags, 0644)
 	if err != nil {

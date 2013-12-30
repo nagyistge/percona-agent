@@ -70,7 +70,7 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 	}
 
 	nullClient := mock.NewNullClient()
-	s.logRelay = logrelay.NewLogRelay(nullClient)
+	s.logRelay = logrelay.NewLogRelay(nullClient, "")
 	go s.logRelay.Run()
 	s.logChan = s.logRelay.LogChan()
 	s.logger = pct.NewLogger(s.logChan, "agent-test")
