@@ -61,7 +61,9 @@ func (s *TestSuite) TestDataSender(t *C) {
 	dataSender.Start()
 
 	// Doesn't matter what data we send; just send some bytes...
+	ts, _ := time.Parse("2006-01-02 15:04:05", "2013-12-12 15:00:00")
 	data := &proto.LogEntry{
+		Ts: ts,
 		Level: 1,
 		Service: "mm",
 		Msg: "hello world",
@@ -86,7 +88,7 @@ func (s *TestSuite) TestDataSender(t *C) {
 	s.tickerChan <-true
 	time.Sleep(10 * time.Millisecond) // yield thread
 	posted = test.WaitPost(s.postChan)
-	t.Assert(string(posted), Equals, `{"Level":1,"Service":"mm","Msg":"hello world"}`)
+	t.Assert(string(posted), Equals, `{"Ts":"2013-12-12T15:00:00Z","Level":1,"Service":"mm","Msg":"hello world"}`)
 
 	// After successfully sending the data, the sender should remove the file.
 	files = test.WaitFiles(s.dataDir)

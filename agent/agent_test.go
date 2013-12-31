@@ -108,13 +108,11 @@ func (s *AgentTestSuite) SetUpTest(t *C) {
 	// so this ensures each test starts with an agent with known values.
 	s.agent = agent.NewAgent(s.auth, s.logRelay, s.logger, s.client, s.services)
 
-	// Run and authorize agent
+	// Run the agent.
 	go func() {
 		s.stopReason, s.upgrade = s.agent.Run()
 		s.doneChan <- true
 	}()
-	_ = <-s.recvDataChan                    // recv AgentAuth
-	s.sendDataChan <- &proto.AuthResponse{} // send AuthResponse
 }
 
 func (s *AgentTestSuite) TearDownTest(t *C) {

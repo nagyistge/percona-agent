@@ -175,7 +175,6 @@ func (r *LogRelay) waitErr() {
 	var data interface{}
 	if err := r.client.Recv(data); err != nil {
 		r.connectedChan <- false
-		r.internal(fmt.Sprintf("Lost connection: %s", err))
 	}
 }
 

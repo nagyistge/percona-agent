@@ -49,6 +49,9 @@ func (s *TestSuite) TearDownSuite(t *C) {
 
 func (s *TestSuite) SetUpTest(t *C) {
 	s.relay.LogLevelChan() <- proto.LOG_INFO
+
+	// Drain the log so one test doesn't affect another.
+	_ = test.WaitLog(s.recvChan, 0)
 }
 
 func (s *TestSuite) TearDownTest(t *C) {
@@ -74,11 +77,11 @@ func (s *TestSuite) TestLogLevel(t *C) {
 	l.Fatal("fatal")
 	got := test.WaitLog(s.recvChan, 5)
 	expect := []proto.LogEntry{
-		{Level: proto.LOG_DEBUG, Service: "test", Msg: "debug"},
-		{Level: proto.LOG_INFO, Service: "test", Msg: "info"},
-		{Level: proto.LOG_WARNING, Service: "test", Msg: "warning"},
-		{Level: proto.LOG_ERROR, Service: "test", Msg: "error"},
-		{Level: proto.LOG_CRITICAL, Service: "test", Msg: "fatal"},
+		{Ts: test.Ts, Level: proto.LOG_DEBUG, Service: "test", Msg: "debug"},
+		{Ts: test.Ts, Level: proto.LOG_INFO, Service: "test", Msg: "info"},
+		{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "test", Msg: "warning"},
+		{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: "error"},
+		{Ts: test.Ts, Level: proto.LOG_CRITICAL, Service: "test", Msg: "fatal"},
 	}
 	t.Check(got, DeepEquals, expect)
 
@@ -90,9 +93,9 @@ func (s *TestSuite) TestLogLevel(t *C) {
 	l.Fatal("fatal")
 	got = test.WaitLog(s.recvChan, 3)
 	expect = []proto.LogEntry{
-		{Level: proto.LOG_WARNING, Service: "test", Msg: "warning"},
-		{Level: proto.LOG_ERROR, Service: "test", Msg: "error"},
-		{Level: proto.LOG_CRITICAL, Service: "test", Msg: "fatal"},
+		{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "test", Msg: "warning"},
+		{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: "error"},
+		{Ts: test.Ts, Level: proto.LOG_CRITICAL, Service: "test", Msg: "fatal"},
 	}
 	t.Check(got, DeepEquals, expect)
 }
@@ -111,7 +114,7 @@ func (s *TestSuite) TestLogFile(t *C) {
 	l.Warn("It's a trap!")
 	got := test.WaitLog(s.recvChan, 1)
 	expect := []proto.LogEntry{
-		{Level: proto.LOG_WARNING, Service: "test", Msg: "It's a trap!"},
+		{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "test", Msg: "It's a trap!"},
 	}
 	t.Check(got, DeepEquals, expect)
 
@@ -127,7 +130,7 @@ func (s *TestSuite) TestLogFile(t *C) {
 	l.Warn("It's another trap!")
 	got = test.WaitLog(s.recvChan, 1)
 	expect = []proto.LogEntry{
-		{Level: proto.LOG_WARNING, Service: "test", Msg: "It's another trap!"},
+		{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "test", Msg: "It's another trap!"},
 	}
 	t.Check(got, DeepEquals, expect)
 
@@ -220,9 +223,10 @@ func (s *TestSuite) TestOfflineBuffering(t *C) {
 	// Wait for the relay resend what it had ^ buffered.
 	got = test.WaitLog(s.recvChan, 3)
 	expect := []proto.LogEntry{
-		{Level: proto.LOG_WARNING, Service: "logrelay", Msg: "Lost connection"},
-		{Level: proto.LOG_ERROR, Service: "test", Msg: "err1"},
-		{Level: proto.LOG_ERROR, Service: "test", Msg: "err2"},
+		{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "logrelay", Msg: "connected: false"},
+		{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: "err1"},
+		{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: "err2"},
+		{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "logrelay", Msg: "connected: true"},
 	}
 	t.Check(got, DeepEquals, expect)
 }
@@ -250,13 +254,14 @@ func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
 	s.client.ConnectChan <-nil
 
 	// Wait for the relay resend what it had ^ buffered.
-	// Extra +1 is for "Lost connection".
-	got := test.WaitLog(s.recvChan, logrelay.BUFFER_SIZE+1+1)
-	expect := make([]proto.LogEntry, logrelay.BUFFER_SIZE+1+1)
-	expect[0] = proto.LogEntry{Level: proto.LOG_WARNING, Service: "logrelay", Msg: "Lost connection"}
+	// +2 for "connected: false" and "connected: true".
+	got := test.WaitLog(s.recvChan, logrelay.BUFFER_SIZE+1+2)
+	expect := make([]proto.LogEntry, logrelay.BUFFER_SIZE+1+2)
+	expect[0] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "logrelay", Msg: "connected: false"}
 	for i, n := 0, 1; i < logrelay.BUFFER_SIZE+1; i, n = i+1, n+1 {
-		expect[n] = proto.LogEntry{Level: proto.LOG_ERROR, Service: "test", Msg: fmt.Sprintf("%d", i)}
+		expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: fmt.Sprintf("%d", i)}
 	}
+	expect[logrelay.BUFFER_SIZE+1+1] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "logrelay", Msg: "connected: true"}
 	t.Check(got, DeepEquals, expect)
 
 	// Force the relay offline again, then overflow both buffers. We should get
@@ -278,10 +283,10 @@ func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
 	// Unblock the relay's connect attempt.
 	s.client.ConnectChan <-nil
 
-	// +2 for "Lost connection" and "Lost N entries".
-	got = test.WaitLog(s.recvChan, logrelay.BUFFER_SIZE+overflow+2)
-	expect = make([]proto.LogEntry, logrelay.BUFFER_SIZE+overflow+2)
-	expect[0] = proto.LogEntry{Level: proto.LOG_WARNING, Service: "logrelay", Msg: "Lost connection"}
+	// +3 for "connected: false", "Lost N entries", and "connected: true".
+	got = test.WaitLog(s.recvChan, logrelay.BUFFER_SIZE+overflow+3)
+	expect = make([]proto.LogEntry, logrelay.BUFFER_SIZE+overflow+3)
+	expect[0] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "logrelay", Msg: "connected: false"}
 	n := 1
 	// If buf size is 10, then we should "Lost connection", get 0-8, a "Lost 10" message for 9-18, then 19-22.
 	/**
@@ -304,16 +309,15 @@ func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
 	 * 4		entry 22
 	 */
 	for i := 0; i < logrelay.BUFFER_SIZE-1; i++ {
-		expect[n] = proto.LogEntry{Level: proto.LOG_ERROR, Service: "test", Msg: fmt.Sprintf("%d", i)}
+		expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: fmt.Sprintf("%d", i)}
 		n++
 	}
-	expect[n] = proto.LogEntry{Level: proto.LOG_WARNING, Service: "logrelay", Msg: fmt.Sprintf("Lost %d log entries", logrelay.BUFFER_SIZE)}
+	expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "logrelay", Msg: fmt.Sprintf("Lost %d log entries", logrelay.BUFFER_SIZE)}
 	n++
 	for i, j := logrelay.BUFFER_SIZE, logrelay.BUFFER_SIZE*2-1; i < logrelay.BUFFER_SIZE+overflow+1; i, j = i+1, j+1 {
-		expect[n] = proto.LogEntry{Level: proto.LOG_ERROR, Service: "test", Msg: fmt.Sprintf("%d", j)}
+		expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: fmt.Sprintf("%d", j)}
 		n++
 	}
+	expect[logrelay.BUFFER_SIZE+overflow+2] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "logrelay", Msg: "connected: true"}
 	t.Check(got, DeepEquals, expect)
 }
-
-

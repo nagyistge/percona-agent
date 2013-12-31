@@ -7,6 +7,9 @@ import (
 	proto "github.com/percona/cloud-protocol"
 )
 
+
+var Ts, _ = time.Parse("2006-01-02 15:04:05", "2013-12-30 18:36:00")
+
 func WaitCmd(replyChan chan *proto.Cmd) []proto.Cmd {
 	var buf []proto.Cmd
 	var haveData bool = true
@@ -57,7 +60,9 @@ func WaitLog(recvDataChan chan interface{}, n int) []proto.LogEntry {
 	for {
 		select {
 		case data := <-recvDataChan:
-			buf = append(buf, *data.(*proto.LogEntry))
+			logEntry := *data.(*proto.LogEntry)
+			logEntry.Ts = Ts
+			buf = append(buf, logEntry)
 			cnt++
 			if n > 0 && cnt >= n {
 				break FIRST_LOOP
@@ -71,7 +76,10 @@ func WaitLog(recvDataChan chan interface{}, n int) []proto.LogEntry {
 		for {
 			select {
 			case data := <-recvDataChan:
-				buf = append(buf, *data.(*proto.LogEntry))
+				logEntry := *data.(*proto.LogEntry)
+				logEntry.Ts = Ts
+				buf = append(buf, logEntry)
+				cnt++
 			case <-time.After(100 * time.Millisecond):
 				break SECOND_LOOP
 			}
