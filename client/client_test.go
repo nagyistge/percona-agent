@@ -123,7 +123,7 @@ func (s *TestSuite) TestChannels(t *C) {
 	t.Assert(got[0], DeepEquals, *cmd)
 
 	// Client sends Reply in response to Cmd.
-	reply := cmd.Reply("", nil)
+	reply := cmd.Reply(nil, nil)
 	ws.SendChan() <- reply
 
 	// If client's sendChan is working, we/API will receive the Reply.

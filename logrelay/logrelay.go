@@ -2,10 +2,11 @@ package logrelay
 
 import (
 	"fmt"
+	pct "github.com/percona/cloud-tools"
+	proto "github.com/percona/cloud-protocol"
 	"log"
 	"os"
 	"time"
-	proto "github.com/percona/cloud-protocol"
 )
 
 const (
@@ -13,14 +14,14 @@ const (
 )
 
 type LogRelay struct {
-	client        proto.WebsocketClient
+	client        pct.WebsocketClient
 	connectedChan chan bool
 	connected     bool
 	logChan       chan *proto.LogEntry
 	logLevel      int
 	logLevelChan  chan int
-	logger       *log.Logger
-	logFile   string
+	logger        *log.Logger
+	logFile       string
 	logFileChan   chan string
 	firstBuf      []*proto.LogEntry
 	firstBufSize  int
@@ -42,11 +43,11 @@ type Status struct {
  * client is optional.  If not given, only file logging is enabled if a log file
  * is sent to the LogFileChan().
  */
-func NewLogRelay(client proto.WebsocketClient, logFile string) *LogRelay {
+func NewLogRelay(client pct.WebsocketClient, logFile string, logLevel int) *LogRelay {
 	r := &LogRelay{
 		client:        client,
-		logFile:   logFile,
-		logLevel:      proto.LOG_INFO,
+		logFile:       logFile,
+		logLevel:      logLevel,
 		logLevelChan:  make(chan int),
 		logChan:       make(chan *proto.LogEntry, BUFFER_SIZE*2),
 		logFileChan:   make(chan string),
@@ -231,7 +232,7 @@ func (r *LogRelay) resend() {
 
 	if r.lost > 0 {
 		logEntry := &proto.LogEntry{
-			Ts:		 time.Now().UTC(),
+			Ts:      time.Now().UTC(),
 			Level:   proto.LOG_WARNING,
 			Service: "logrelay",
 			Msg:     fmt.Sprintf("Lost %d log entries", r.lost),
@@ -282,7 +283,7 @@ func (r *LogRelay) setLogFile(logFile string) {
 			return
 		}
 	}
-	logger := log.New(file, "", log.Ldate | log.Ltime | log.Lmicroseconds)
+	logger := log.New(file, "", log.Ldate|log.Ltime|log.Lmicroseconds)
 	r.logger = logger
 	r.logFile = file.Name()
 	r.logger.Println("logFile=" + r.logFile)

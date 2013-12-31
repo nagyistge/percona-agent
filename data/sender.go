@@ -7,14 +7,13 @@ import (
 	"os"
 	"time"
 	// External
-	proto "github.com/percona/cloud-protocol"
 	pct "github.com/percona/cloud-tools"
 	"github.com/peterbourgon/diskv"
 )
 
 type Sender struct {
 	logger     *pct.Logger
-	client     proto.HttpClient
+	client     pct.HttpClient
 	dataChan   chan interface{}
 	dataDir    string
 	tickerChan chan bool
@@ -23,7 +22,7 @@ type Sender struct {
 	sync  *pct.SyncChan
 }
 
-func NewSender(logger *pct.Logger, client proto.HttpClient, dataChan chan interface{}, dataDir string, tickerChan chan bool) *Sender {
+func NewSender(logger *pct.Logger, client pct.HttpClient, dataChan chan interface{}, dataDir string, tickerChan chan bool) *Sender {
 	cache := diskv.New(diskv.Options{
 		BasePath:     dataDir,
 		Transform:    func(s string) []string { return []string{} },

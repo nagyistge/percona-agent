@@ -5,14 +5,17 @@ import (
 	"io/ioutil"
 	"os"
 	"log"
+	"errors"
+	proto "github.com/percona/cloud-protocol"
 )
 
 type Config struct {
 	ApiHostname    string
 	ApiKey         string
 	AgentUuid      string
-	LogFile        string
 	PidFile        string
+	LogFile        string
+	LogLevel       string
 	LogFileOnly    bool
 }
 
@@ -32,7 +35,7 @@ func LoadConfig(file string) *Config {
 	return config
 }
 
-func (c *Config) Apply(d *Config) {
+func (c *Config) Apply(d *Config) error {
 	if d.ApiHostname != "" {
 		c.ApiHostname = d.ApiHostname
 	}
@@ -43,4 +46,12 @@ func (c *Config) Apply(d *Config) {
 	if d.LogFile != "" {
 		c.LogFile = d.LogFile
 	}
+	if d.LogLevel != "" {
+		_, ok := proto.LogLevels[d.LogLevel]
+		if !ok {
+			return errors.New("Invalid log level: " + d.LogLevel)
+		}
+		c.LogLevel = d.LogLevel
+	}
+	return nil
 }

@@ -22,7 +22,7 @@ type TestSuite struct {
 	logChan    chan *proto.LogEntry
 	logger     *pct.Logger
 	postChan   chan []byte
-	client     proto.HttpClient
+	client     pct.HttpClient
 	dataChan   chan interface{}
 	dataDir    string
 	tickerChan chan bool

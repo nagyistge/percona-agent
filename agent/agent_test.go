@@ -33,7 +33,7 @@ type AgentTestSuite struct {
 	logRelay  *logrelay.LogRelay
 	logger    *pct.Logger
 	logChan   chan *proto.LogEntry
-	client    proto.WebsocketClient
+	client    pct.WebsocketClient
 	services  map[string]pct.ServiceManager
 	readyChan chan bool
 	traceChan chan string
@@ -70,7 +70,7 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 	}
 
 	nullClient := mock.NewNullClient()
-	s.logRelay = logrelay.NewLogRelay(nullClient, "")
+	s.logRelay = logrelay.NewLogRelay(nullClient, "", proto.LOG_INFO)
 	go s.logRelay.Run()
 	s.logChan = s.logRelay.LogChan()
 	s.logger = pct.NewLogger(s.logChan, "agent-test")

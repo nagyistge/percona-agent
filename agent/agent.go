@@ -25,7 +25,7 @@ type Agent struct {
 	auth       *proto.AgentAuth
 	logRelay *logrelay.LogRelay
 	logger     *pct.Logger
-	client     proto.WebsocketClient
+	client     pct.WebsocketClient
 	services   map[string]pct.ServiceManager
 	// --
 	cmdSync *pct.SyncChan
@@ -46,7 +46,7 @@ type Agent struct {
 	stopChan          chan bool
 }
 
-func NewAgent(auth *proto.AgentAuth, logRelay *logrelay.LogRelay, logger *pct.Logger, client proto.WebsocketClient, services map[string]pct.ServiceManager) *Agent {
+func NewAgent(auth *proto.AgentAuth, logRelay *logrelay.LogRelay, logger *pct.Logger, client pct.WebsocketClient, services map[string]pct.ServiceManager) *Agent {
 	agent := &Agent{
 		auth:       auth,
 		logRelay: logRelay,
@@ -121,7 +121,7 @@ AGENT_LOOP:
 			if agent.stopping {
 				// Already received Stop or Update, so reject further cmds.
 				err := pct.CmdRejectedError{Cmd: cmd.Cmd, Reason: agent.stopReason}
-				replyChan <- cmd.Reply(err.Error(), nil)
+				replyChan <- cmd.Reply(err, nil)
 				continue AGENT_LOOP
 			}
 
@@ -144,7 +144,7 @@ AGENT_LOOP:
 				case agent.statusChan <- cmd: // to statusHandler
 				default:
 					err := pct.QueueFullError{Cmd: cmd.Cmd, Name: "statusQueue", Size: STATUS_QUEUE_SIZE}
-					replyChan <- cmd.Reply(err.Error(), nil)
+					replyChan <- cmd.Reply(err, nil)
 				}
 			default:
 				agent.status.UpdateRe("agent", "Queueing", cmd)
@@ -152,7 +152,7 @@ AGENT_LOOP:
 				case agent.cmdChan <- cmd: // to cmdHandler
 				default:
 					err := pct.QueueFullError{Cmd: cmd.Cmd, Name: "cmdQueue", Size: CMD_QUEUE_SIZE}
-					replyChan <- cmd.Reply(err.Error(), nil)
+					replyChan <- cmd.Reply(err, nil)
 				}
 			}
 		case <-agent.cmdHandlerSync.CrashChan:
@@ -267,9 +267,9 @@ func (agent *Agent) cmdHandler() {
 			// function by calling LogWriter.Re().
 			agent.status.UpdateRe("cmd", "Replying", cmd)
 			if err != nil {
-				replyChan <- cmd.Reply(err.Error(), nil)
+				replyChan <- cmd.Reply(err, nil)
 			} else {
-				replyChan <- cmd.Reply("", nil)
+				replyChan <- cmd.Reply(nil, nil)  // success
 			}
 
 			// Pop the cmd from the queue.
@@ -299,7 +299,7 @@ func (agent *Agent) statusHandler() {
 			return
 		case cmd := <-agent.statusChan:
 			status := agent.Status()
-			replyChan <- cmd.Reply("", status)
+			replyChan <- cmd.Reply(nil, status)
 		}
 	}
 }

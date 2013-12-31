@@ -38,7 +38,7 @@ func (s *TestSuite) SetUpSuite(t *C) {
 	s.recvChan = make(chan interface{}, 5)
 	s.client = mock.NewWebsocketClient(nil, nil, s.sendChan, s.recvChan)
 
-	s.relay = logrelay.NewLogRelay(s.client, "")
+	s.relay = logrelay.NewLogRelay(s.client, "", proto.LOG_INFO)
 	s.logger = pct.NewLogger(s.relay.LogChan(), "test")
 	go s.relay.Run() // calls client.Connect()
 }
@@ -218,7 +218,7 @@ func (s *TestSuite) TestOfflineBuffering(t *C) {
 	}
 
 	// Unblock the relay's connect attempt.
-	s.client.ConnectChan <-nil
+	s.client.ConnectChan <- nil
 
 	// Wait for the relay resend what it had ^ buffered.
 	got = test.WaitLog(s.recvChan, 3)
@@ -251,7 +251,7 @@ func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
 	}
 
 	// Unblock the relay's connect attempt.
-	s.client.ConnectChan <-nil
+	s.client.ConnectChan <- nil
 
 	// Wait for the relay resend what it had ^ buffered.
 	// +2 for "connected: false" and "connected: true".
@@ -281,7 +281,7 @@ func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
 	}
 
 	// Unblock the relay's connect attempt.
-	s.client.ConnectChan <-nil
+	s.client.ConnectChan <- nil
 
 	// +3 for "connected: false", "Lost N entries", and "connected: true".
 	got = test.WaitLog(s.recvChan, logrelay.BUFFER_SIZE+overflow+3)

@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	VERSION = "1.0.0"
-	DEFAULT_CONFIG_FILE  = "/etc/percona/pct-agentd.conf"
+	VERSION      = "1.0.0"
+	CONFIG_FILE  = "/etc/percona/pct-agentd.conf"
 	LOG_WS       = "/agent/log"
 	AGENT_WS     = "/cmd/agent"
 	QAN_DATA_URL = "/qan"
@@ -45,14 +45,17 @@ func main() {
 	config := &agent.Config{
 		ApiHostname: "cloud-api.percona.com",
 		LogFile: "/var/log/pct-agentd.log",
+		LogLevel: "info",
 	}
 
 	// Overwrite default config with config file.
 	configFile := arg
 	if configFile == "" {
-		configFile = DEFAULT_CONFIG_FILE
+		configFile = CONFIG_FILE
 	}
-	config.Apply(agent.LoadConfig(configFile))
+	if err := config.Apply(agent.LoadConfig(configFile)); err != nil {
+		log.Fatal(err)
+	}
 
 	// Check for required config values.
 	haveRequiredVals := true
@@ -94,16 +97,17 @@ func main() {
 	}
 
 	// Start the log relay (sends pct.Logger log entries to API and/or log file).
+	logLevel := proto.LogLevels[config.LogLevel]
 	var logRelay *logrelay.LogRelay
 	if config.LogFileOnly {
 		log.Println("LogFileOnly=true")
-		logRelay = logrelay.NewLogRelay(nil, config.LogFile)
+		logRelay = logrelay.NewLogRelay(nil, config.LogFile, logLevel)
 	} else {
 		wsClient, err := client.NewWebsocketClient("ws://" + config.ApiHostname + LOG_WS, origin, auth)
 		if err != nil {
 			log.Fatalln(err)
 		}
-		logRelay = logrelay.NewLogRelay(wsClient, config.LogFile)
+		logRelay = logrelay.NewLogRelay(wsClient, config.LogFile, logLevel)
 	}
 	go logRelay.Run()
 
