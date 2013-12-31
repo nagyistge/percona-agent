@@ -4,6 +4,7 @@ import (
 //	"fmt"
 	"os"
 	"time"
+	"io/ioutil"
 	proto "github.com/percona/cloud-protocol"
 )
 
@@ -88,6 +89,40 @@ func WaitLog(recvDataChan chan interface{}, n int) []proto.LogEntry {
 	return buf
 }
 
+func WaitLogChan(logChan chan *proto.LogEntry, n int) []proto.LogEntry {
+	var buf []proto.LogEntry
+	var cnt int = 0
+	timeout := time.After(300 * time.Millisecond)
+	FIRST_LOOP:
+	for {
+		select {
+		case logEntry := <-logChan:
+			logEntry.Ts = Ts
+			buf = append(buf, *logEntry)
+			cnt++
+			if n > 0 && cnt >= n {
+				break FIRST_LOOP
+			}
+		case <-timeout:
+			break FIRST_LOOP
+		}
+	}
+	if n > 0 && cnt >= n {
+		SECOND_LOOP:
+		for {
+			select {
+			case logEntry := <-logChan:
+				logEntry.Ts = Ts
+				buf = append(buf, *logEntry)
+				cnt++
+			case <-time.After(100 * time.Millisecond):
+				break SECOND_LOOP
+			}
+		}
+	}
+	return buf
+}
+
 func WaitTrace(traceChan chan string) []string {
 	var buf []string
 	var haveData bool = true
@@ -149,4 +184,25 @@ func fileSize(fileName string) (int64, error) {
 		return -1, err
 	}
 	return stat.Size(), nil
+}
+
+func WaitFiles(dir string) []os.FileInfo {
+	for i := 0; i < 3; i++ {
+		files, _ := ioutil.ReadDir(dir)
+		if len(files) > 0 {
+			return files
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	files, _ := ioutil.ReadDir(dir)
+	return files
+}
+
+func WaitPost(postChan chan []byte) []byte {
+	select {
+	case data := <-postChan:
+		return data
+	case <-time.After(100 * time.Millisecond):
+		return nil
+	}
 }

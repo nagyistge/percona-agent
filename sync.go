@@ -39,3 +39,7 @@ func (sync *SyncChan) Done() {
 func (sync *SyncChan) Graceful() {
 	sync.Crash = false
 }
+
+func (sync *SyncChan) IsGraceful() bool {
+	return !sync.Crash
+}
