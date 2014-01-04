@@ -1,0 +1,8 @@
+{
+  "StartTs":1257894000,
+  "Metrics":[
+    {"Name":"host1/a","Value":1.111},
+    {"Name":"host1/b","Value":2.222},
+    {"Name":"host1/c","Value":3.333}
+  ]
+}
