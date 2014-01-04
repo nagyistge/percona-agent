@@ -112,9 +112,11 @@ func deepEquals(got reflect.Value, expect reflect.Value, level uint) (bool, stri
 			return true, ""
 		}
 		for i := 0; i < got.Len(); i++ {
+			push(fmt.Sprintf("slice[%d]", i))
 			if equals, err := deepEquals(got.Index(i), expect.Index(i), level + 1); !equals {
 				return false, err
 			}
+			pop()
 		}
 	default:
 		if equal, err := checkPrimitives(got, expect); !equal {
@@ -122,7 +124,7 @@ func deepEquals(got reflect.Value, expect reflect.Value, level uint) (bool, stri
 		}
 	}
 
-	pop()
+//	pop()
 
 	// No differences; all the events are identical (or there's a bug in this func).
 	return true, ""
@@ -139,7 +141,6 @@ func checkPrimitives(got reflect.Value, expect reflect.Value) (bool, string) {
 	switch expect.Kind() {
 	case reflect.Float32, reflect.Float64:
 		if got.IsValid() {
-			fmt.Printf("%f == %f\n", got.Float(), expect.Float())
 			if got.Float() != expect.Float() {
 				err := fmt.Sprintf("     got: %f\nexpected: %f\n",
 					 got.Float(), expect.Float())

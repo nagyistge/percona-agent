@@ -1,11 +1,11 @@
 package test
 
 import (
-//	"fmt"
 	"os"
 	"time"
 	"io/ioutil"
 	proto "github.com/percona/cloud-protocol"
+	"github.com/percona/cloud-tools/mm"
 )
 
 
@@ -202,6 +202,15 @@ func WaitPost(postChan chan []byte) []byte {
 	select {
 	case data := <-postChan:
 		return data
+	case <-time.After(100 * time.Millisecond):
+		return nil
+	}
+}
+
+func WaitMmReport(reportChan chan *mm.Report) *mm.Report {
+	select {
+	case report := <-reportChan:
+		return report
 	case <-time.After(100 * time.Millisecond):
 		return nil
 	}
