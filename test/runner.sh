@@ -1,7 +1,7 @@
 #!/bin/bash
 
-if [ ! -d "bin" ]; then
-   echo "./bin directory not found.  Run this script from the root dir of the repo." >&2
+if [ ! -d ".git" ]; then
+   echo "./.git directory not found.  Run this script from the root dir of the repo." >&2
    exit 1
 fi
 
