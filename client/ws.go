@@ -3,6 +3,7 @@ package client
 import (
 	"code.google.com/p/go.net/websocket"
 	"errors"
+	pct "github.com/percona/cloud-tools"
 	proto "github.com/percona/cloud-protocol"
 	"time"
 )
@@ -21,7 +22,7 @@ type WebsocketClient struct {
 	recvChan chan *proto.Cmd
 	sendChan chan *proto.Reply
 	errChan  chan error
-	backoff  *Backoff
+	backoff  *pct.Backoff
 }
 
 func NewWebsocketClient(url string, origin string, auth *proto.AgentAuth) (*WebsocketClient, error) {
@@ -38,7 +39,7 @@ func NewWebsocketClient(url string, origin string, auth *proto.AgentAuth) (*Webs
 		recvChan: make(chan *proto.Cmd, RECV_BUFFER_SIZE),
 		sendChan: make(chan *proto.Reply, SEND_BUFFER_SIZE),
 		errChan:  make(chan error, 2),
-		backoff:  NewBackoff(),
+		backoff:  pct.NewBackoff(5 * time.Minute),
 	}
 	return c, nil
 }

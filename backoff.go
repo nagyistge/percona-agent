@@ -1,4 +1,4 @@
-package client
+package pct
 
 import (
 	"time"
@@ -9,10 +9,15 @@ import (
 type Backoff struct {
 	try int
 	lastSuccess time.Time
+	resetAfter time.Duration
+	NowFunc func() time.Time
 }
 
-func NewBackoff() *Backoff {
-	b := new(Backoff)
+func NewBackoff(resetAfter time.Duration) *Backoff {
+	b := &Backoff{
+		resetAfter: resetAfter,
+		NowFunc: time.Now,
+	}
 	return b
 }
 
@@ -38,7 +43,7 @@ func (b *Backoff) Success() {
 		// is flapping, there maybe be other tries real soon, so we want the
 		// backoff wait to take effect.
 		b.lastSuccess = time.Now()
-	} else if b.lastSuccess.Sub(time.Now()) > 5 * time.Minute {
+	} else if b.lastSuccess.Sub(b.NowFunc()) > b.resetAfter {
 		// If it's been > 5m since the last success and this success,
 		// then the remote end was flapping at least stopped for 5 minutes,
 		// so we reset the backoff.
