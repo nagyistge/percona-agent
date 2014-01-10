@@ -12,6 +12,7 @@ package mm
 type Monitor interface {
 	Start(config []byte) error // mysql/config.go
 	Stop() error
+	Status() string
 }
 
 type Metric struct {
