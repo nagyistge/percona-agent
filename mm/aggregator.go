@@ -1,29 +1,60 @@
 package mm
 
 import (
-	pct "github.com/percona/cloud-tools"
 	"time"
+	"github.com/percona/cloud-tools/pct"
 )
 
 type Aggregator struct {
-	tickerChan     chan time.Time
+	ticker     pct.Ticker
 	collectionChan chan *Collection
-	reportChan     chan *Report
-	Sync           *pct.SyncChan
+	dataChan       chan interface{}
+	sync           *pct.SyncChan
+	running         bool
 }
 
-func NewAggregator(tickerChan chan time.Time, collectionChan chan *Collection, reportChan chan *Report) *Aggregator {
+func NewAggregator(ticker pct.Ticker, collectionChan chan *Collection, dataChan chan interface{}) *Aggregator {
 	a := &Aggregator{
-		tickerChan:     tickerChan,
+		ticker:     ticker,
 		collectionChan: collectionChan,
-		reportChan:     reportChan,
-		Sync:           pct.NewSyncChan(),
+		dataChan:       dataChan,
+		sync:           pct.NewSyncChan(),
 	}
 	return a
 }
 
-func (a *Aggregator) Run() {
-	defer a.Sync.Done()
+/////////////////////////////////////////////////////////////////////////////
+// Interface
+/////////////////////////////////////////////////////////////////////////////
+
+// @goroutine[0]
+func (a *Aggregator) Start() {
+	a.ticker.Sync(time.Now().UnixNano())
+	a.running = true // XXX: not guarded
+	go a.run()
+}
+
+// @goroutine[0]
+func (a *Aggregator) Stop() {
+	a.sync.Stop()
+	a.sync.Wait()
+}
+
+// @goroutine[0]
+func (a *Aggregator) IsRunning() bool {
+	return a.running  // XXX: not guarded
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Implementation
+/////////////////////////////////////////////////////////////////////////////
+
+// @goroutine[1]
+func (a *Aggregator) run() {
+	defer func() {
+		a.running = false // XXX: not guarded
+		a.sync.Done()
+	}()
 
 	/**
 	 * We aggregate on even intervals, from clock tick to clock tick.
@@ -38,7 +69,7 @@ func (a *Aggregator) Run() {
 
 	for {
 		select {
-		case now := <-a.tickerChan:
+		case now := <-a.ticker.TickerChan():
 			// Even interval clock tick, e.g. 00:01:00.000, 00:02:00.000, etc.
 			if !startTs.IsZero() {
 				a.report(startTs, cur)
@@ -47,6 +78,7 @@ func (a *Aggregator) Run() {
 			startTs = now
 			cur = make(map[string]*Stats)
 		case collection := <-a.collectionChan:
+			// todo: if colllect.Ts < lastNow, then discard: it missed its period
 			for _, metric := range collection.Metrics {
 				stats, haveStats := cur[metric.Name]
 				if haveStats {
@@ -57,12 +89,13 @@ func (a *Aggregator) Run() {
 					cur[metric.Name] = stats
 				}
 			}
-		case <-a.Sync.StopChan:
+		case <-a.sync.StopChan:
 			return
 		}
 	}
 }
 
+// @goroutine[1]
 func (a *Aggregator) report(startTs time.Time, stats map[string]*Stats) {
 	for _, s := range stats {
 		s.Summarize()
@@ -72,8 +105,9 @@ func (a *Aggregator) report(startTs time.Time, stats map[string]*Stats) {
 		Metrics: stats,
 	}
 	select {
-	case a.reportChan <- report:
+	case a.dataChan <- report:
 	default:
+		// todo: timeout instead
 		// todo: lost report
 	}
 }

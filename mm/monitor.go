@@ -1,5 +1,9 @@
 package mm
 
+import (
+	"github.com/percona/cloud-tools/pct"
+)
+
 /**
  * A Monitor collects one or more Metric, usually many.  The MySQL monitor
  * (mysql/monitor.go) collects most SHOW STATUS and SHOW VARIABLE variables,
@@ -9,8 +13,9 @@ package mm
  * a Report is sent to a data spool (../data/sender.go).
  */
 
+// Using given config, collect metrics when tickerChan ticks, and send to collecitonChan.
 type Monitor interface {
-	Start(config []byte) error // mysql/config.go
+	Start(config []byte, ticker pct.Ticker, collectionChan chan *Collection) error
 	Stop() error
 	Status() string
 }
@@ -26,7 +31,6 @@ type Collection struct {
 }
 
 type Report struct {
-	Hostname string
 	StartTs  int64
 	Metrics  map[string]*Stats
 }
