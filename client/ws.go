@@ -3,7 +3,7 @@ package client
 import (
 	"code.google.com/p/go.net/websocket"
 	"errors"
-	pct "github.com/percona/cloud-tools"
+	"github.com/percona/cloud-tools/pct"
 	proto "github.com/percona/cloud-protocol"
 	"time"
 )

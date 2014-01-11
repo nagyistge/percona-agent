@@ -4,7 +4,7 @@ import (
 	"fmt"
 	proto "github.com/percona/cloud-protocol"
 	"github.com/percona/cloud-protocol/test/mock"
-	pct "github.com/percona/cloud-tools"
+	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/test"
 	"io/ioutil"
 	. "launchpad.net/gocheck"

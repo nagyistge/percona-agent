@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 	// External
-	pct "github.com/percona/cloud-tools"
+	"github.com/percona/cloud-tools/pct"
 	"github.com/peterbourgon/diskv"
 )
 

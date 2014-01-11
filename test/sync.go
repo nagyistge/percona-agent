@@ -207,9 +207,10 @@ func WaitPost(postChan chan []byte) []byte {
 	}
 }
 
-func WaitMmReport(reportChan chan *mm.Report) *mm.Report {
+func WaitMmReport(dataChan chan interface{}) *mm.Report {
 	select {
-	case report := <-reportChan:
+	case data := <-dataChan:
+		report := data.(*mm.Report)
 		return report
 	case <-time.After(100 * time.Millisecond):
 		return nil

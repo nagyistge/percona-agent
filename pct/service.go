@@ -5,9 +5,11 @@ import (
 )
 
 type ServiceManager interface {
-	Start(cmd *proto.Cmd, data []byte) error
+	// @goroutine[0]
+	Start(cmd *proto.Cmd, config []byte) error
 	Stop(cmd *proto.Cmd) error
-	Status() string
 	IsRunning() bool
-	Do(cmd *proto.Cmd) error
+	Handle(cmd *proto.Cmd) error
+	// @goroutine[1]
+	Status() string
 }

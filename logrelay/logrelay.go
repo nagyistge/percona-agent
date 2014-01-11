@@ -2,7 +2,7 @@ package logrelay
 
 import (
 	"fmt"
-	pct "github.com/percona/cloud-tools"
+	"github.com/percona/cloud-tools/pct"
 	proto "github.com/percona/cloud-protocol"
 	"log"
 	"os"

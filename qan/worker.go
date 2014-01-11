@@ -1,7 +1,7 @@
 package qan
 
 import (
-	pct "github.com/percona/cloud-tools"
+	"github.com/percona/cloud-tools/pct"
 	mysqlLog "github.com/percona/percona-go-mysql/log"
 	"github.com/percona/percona-go-mysql/log/parser"
 	"os"

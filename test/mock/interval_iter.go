@@ -1,7 +1,7 @@
 package mock
 
 import (
-	pct "github.com/percona/cloud-tools"
+	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/qan"
 )
 

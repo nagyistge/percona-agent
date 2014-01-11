@@ -6,7 +6,7 @@ import (
 	"os"
 	"os/user"
 	proto "github.com/percona/cloud-protocol"
-	pct "github.com/percona/cloud-tools"
+	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/agent"
 	"github.com/percona/cloud-tools/client"
 	"github.com/percona/cloud-tools/logrelay"

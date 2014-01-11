@@ -10,7 +10,7 @@ import (
 	// External
 	proto "github.com/percona/cloud-protocol"
 	// Internal
-	pct "github.com/percona/cloud-tools"
+	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/logrelay"
 )
 

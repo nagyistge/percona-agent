@@ -44,6 +44,16 @@ func (checker *eventsChecker) Check(params []interface{}, names []string) (resul
 	return true, ""
 }
 
+func IsDeeply(got, expect interface{}) (result bool, error string) {
+	gotVal := reflect.ValueOf(got)
+	expectVal := reflect.ValueOf(expect)
+	loc = []string{}
+	equal, err := deepEquals(gotVal, expectVal, 0)
+	if !equal {
+		return false, fmt.Sprintf("%s:\n%s", strings.Join(loc, "."), err)
+	}
+	return true, ""
+}
 
 func deepEquals(got reflect.Value, expect reflect.Value, level uint) (bool, string) {
 	if level > 10 {
