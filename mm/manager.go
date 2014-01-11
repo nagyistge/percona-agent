@@ -14,6 +14,9 @@ type Binding struct {
 	aggregator  *Aggregator
 }
 
+// todo: remember originating cmd for start service and start monitor,
+//       return with ServiceIsRunningError
+
 type Manager struct {
 	logger   *pct.Logger
 	monitors map[string]Monitor
@@ -46,6 +49,10 @@ func NewManager(logger *pct.Logger, monitors map[string]Monitor, tickerFactory p
 
 // @goroutine[0]
 func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
+	if m.IsRunning() {
+		return pct.ServiceIsRunningError{"mm"}
+	}
+
 	c := new(Config)
 	if err := json.Unmarshal(config, c); err != nil {
 		return err
@@ -83,11 +90,22 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 
 // @goroutine[0]
 func (m *Manager) Stop(cmd *proto.Cmd) error {
+	// Stop all monitors.
 	for name, monitor := range m.monitors {
-		m.status.UpdateRe("mm", "Stopping "+name, cmd)
+		m.status.UpdateRe("mm", "Stopping " + name, cmd)
 		monitor.Stop()
 	}
+
+	// Stop and remove all aggregators.
+	for n, b := range m.aggregators {
+		b.aggregator.Stop()
+		b.ticker.Stop()
+		delete(m.aggregators, n)
+	}
+
+	m.config = nil
 	m.status.UpdateRe("mm", "Stopped", cmd)
+
 	return nil
 }
 
@@ -101,25 +119,34 @@ func (m *Manager) IsRunning() bool {
 
 // @goroutine[0]
 func (m *Manager) Handle(cmd *proto.Cmd) error {
+	defer m.status.Update("mm", "Ready")
+
+	// Agent should check IsRunning() and only call if true,
+	// else return SerivceIsNotRunningError on our behalf.
+
+	// Data contains name of sub-service (monitor) and its config.
 	mm := new(proto.ServiceData)
 	if err := json.Unmarshal(cmd.Data, mm); err != nil {
 		return err
 	}
 
+	// Agent doesn't know which monitors we have; only we know.
 	monitor, haveMonitor := m.monitors[mm.Name]
 	if !haveMonitor {
 		return errors.New("Unknown monitor: " + mm.Name)
 	}
 
+	// Start or stop the monitor.
 	var err error
 	switch cmd.Cmd {
 	case "Start":
+		m.status.UpdateRe("mm", "Starting " + mm.Name + " monitor", cmd)
 		interval := m.config.Intervals[mm.Name]
 		ticker := m.tickerFactory.Make(interval.Collect)
 		collectionChan := m.aggregators[interval.Report].collectionChan
-
 		err = monitor.Start(mm.Config, ticker, collectionChan)
 	case "Stop":
+		m.status.UpdateRe("mm", "Stopping " + mm.Name + " monitor", cmd)
 		err = monitor.Stop()
 	default:
 		err = pct.UnknownCmdError{Cmd: cmd.Cmd}
@@ -130,5 +157,5 @@ func (m *Manager) Handle(cmd *proto.Cmd) error {
 
 // @goroutine[1]
 func (m *Manager) Status() string {
-	return ""
+	return m.status.Get("mm", true)
 }

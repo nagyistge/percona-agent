@@ -46,6 +46,6 @@ func (m *MockServiceManager) IsRunning() bool {
 	return m.IsRunningVal
 }
 
-func (m *MockServiceManager) Do(cmd *proto.Cmd) error {
+func (m *MockServiceManager) Handle(cmd *proto.Cmd) error {
 	return nil
 }

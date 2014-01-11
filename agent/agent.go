@@ -240,7 +240,7 @@ func (agent *Agent) cmdHandler() {
 					manager, ok := agent.services[cmd.Service]
 					if ok {
 						if manager.IsRunning() {
-							err = manager.Do(cmd)
+							err = manager.Handle(cmd)
 						} else {
 							err = pct.ServiceIsNotRunningError{Service: cmd.Service}
 						}

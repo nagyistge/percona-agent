@@ -7,6 +7,7 @@ import (
 type Ticker struct {
 	syncChan chan bool
 	tickerChan chan time.Time
+	Running bool
 }
 
 func NewTicker(syncChan chan bool, tickerChan chan time.Time) *Ticker {
@@ -21,6 +22,7 @@ func (t *Ticker) Sync(now int64) {
 	if t.syncChan != nil {
 		<-t.syncChan
 	}
+	t.Running = true
 	return
 }
 
@@ -29,5 +31,7 @@ func (t *Ticker) TickerChan() <-chan time.Time {
 }
 
 func (t *Ticker) Stop() {
+	t.Running = false
 	return
 }
+

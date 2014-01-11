@@ -3,6 +3,7 @@ package pct_test
 import (
 	"testing"
 	"time"
+	"github.com/percona/cloud-tools/pct"
 )
 
 // Fake time.Sleep()
@@ -27,8 +28,8 @@ func TestSleepTime2s(t *testing.T) {
 
 	// The next 2s interval, 18:11:38.000, is 0.61488 seconds away,
 	// so that's how long syncer should tell our sleep func to sleep.
-	et := NewEvenTicker(2, sleep)
-	_ = et.Sync(now)
+	et := pct.NewEvenTicker(2, sleep)
+	et.Sync(now)
 	got := slept.Nanoseconds()
 	expect := int64(614879744)
 	if got != expect {
@@ -40,8 +41,8 @@ func TestSleepTime60s(t *testing.T) {
 	// Fri Sep 27 18:11:37.385120 -0700 PDT 2013 =
 	now := int64(1380330697385120263)
 
-	et := NewEvenTicker(60, sleep)
-	_ = et.Sync(now)
+	et := pct.NewEvenTicker(60, sleep)
+	et.Sync(now)
 	got := slept.Nanoseconds()
 	expect := int64(614879744 + (22 * time.Second))
 	if got != expect {
@@ -60,12 +61,12 @@ func TestTickerTime(t *testing.T) {
 	 *   00:00:02.000123456
 	 *   00:00:04.000123456
 	 */
-	et := NewEvenTicker(2, time.Sleep)
-	ticker := et.Sync(time.Now().UnixNano())
+	et := pct.NewEvenTicker(2, time.Sleep)
+	et.Sync(time.Now().UnixNano())
 	maxOffBy := 100000
 	for i := 0; i < 2; i++ {
 		select {
-		case tick := <-ticker.C:
+		case tick := <-et.TickerChan():
 			// 0.000 100 000
 			sec := tick.Second()
 			if sec%2 > 0 {
