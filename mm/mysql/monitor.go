@@ -2,21 +2,21 @@ package mysql
 
 import (
 	"database/sql"
-	_ "github.com/go-sql-driver/mysql"
 	"encoding/json"
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/percona/cloud-tools/mm"
+	"github.com/percona/cloud-tools/pct"
 	"strconv"
 	"strings"
 	"time"
-	"github.com/percona/cloud-tools/mm"
-	"github.com/percona/cloud-tools/pct"
 )
 
 type Monitor struct {
-	logger        *pct.Logger
+	logger *pct.Logger
 	// --
-	config        *Config
-	ticker        pct.Ticker
-	collectionChan      chan *mm.Collection
+	config         *Config
+	ticker         pct.Ticker
+	collectionChan chan *mm.Collection
 	// --
 	conn          *sql.DB
 	connected     bool
@@ -24,7 +24,7 @@ type Monitor struct {
 	status        *pct.Status
 	backoff       *pct.Backoff
 	sync          *pct.SyncChan
-	stats map[string]bool
+	stats         map[string]bool
 }
 
 func NewMonitor(logger *pct.Logger) *Monitor {
@@ -32,9 +32,9 @@ func NewMonitor(logger *pct.Logger) *Monitor {
 		logger: logger,
 		// --
 		connectedChan: make(chan bool, 1),
-		status: pct.NewStatus([]string{"mysql-monitor"}),
-		backoff: pct.NewBackoff(5 * time.Second),
-		sync: pct.NewSyncChan(),
+		status:        pct.NewStatus([]string{"monitor", "mysql"}),
+		backoff:       pct.NewBackoff(5 * time.Second),
+		sync:          pct.NewSyncChan(),
 	}
 	return m
 }
@@ -57,7 +57,6 @@ func (m *Monitor) Start(config []byte, ticker pct.Ticker, collectionChan chan *m
 	m.ticker = ticker
 	m.collectionChan = collectionChan
 
-	m.status.Update("mysql-monitor", "Starting")
 
 	// Map SHOW STATUS vars to collect so we can quickly skip ones we don't need
 	// in GetShowStatusMetrics().
@@ -67,7 +66,9 @@ func (m *Monitor) Start(config []byte, ticker pct.Ticker, collectionChan chan *m
 	}
 	m.stats = stats
 
+	m.status.Update("monitor", "Synchronizing")
 	m.ticker.Sync(time.Now().UnixNano())
+
 	go m.run()
 
 	return nil
@@ -76,22 +77,24 @@ func (m *Monitor) Start(config []byte, ticker pct.Ticker, collectionChan chan *m
 // @goroutine[0]
 func (m *Monitor) Stop() {
 	if m.config == nil {
-		return  // already stopped
+		return // already stopped
 	}
 
 	// Stop run().  When it returns, it updates status to "Stopped".
-	m.status.Update("mysql-monitor", "Stopping")
+	m.status.Update("monitor", "Stopping")
 	m.sync.Stop()
 	m.sync.Wait()
 
-	m.config = nil  // no config if not running
+	m.config = nil // no config if not running
+
+	// Do not update status to "Stopped" here; run() does that on return.
 
 	return
 }
 
 // @goroutine[0]
-func (m *Monitor) Status() string {
-	return m.status.Get("mysql-monitor", true)  // true = read lock
+func (m *Monitor) Status() map[string]string {
+	return m.status.All()
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -100,7 +103,8 @@ func (m *Monitor) Status() string {
 
 // @goroutine[1]
 func (m *Monitor) connect() {
-	m.status.Update("mysql-monitor", "Connecting to MySQL")
+	m.status.Update("monitor", "Offline")
+	m.status.Update("mysql", "Connecting")
 
 	// Close/release previous connection, if any.
 	if m.conn != nil {
@@ -116,16 +120,15 @@ func (m *Monitor) connect() {
 		// Open connection to MySQL but...
 		db, err := sql.Open("mysql", m.config.DSN)
 		if err != nil {
-			m.logger.Error("sql.Open error: ", err)
+			m.logger.Error("sql.Open: ", err)
 			continue
 		}
 
 		// ...try to use the connection for real.
-		if err := m.conn.Ping(); err != nil {
+		if err := db.Ping(); err != nil {
 			// Connection failed.  Wrong username or password?
-			m.logger.Warn(err)
-			m.conn.Close()
-			m.conn = nil
+			m.logger.Warn("db.Ping: ", err)
+			db.Close()
 			continue
 		}
 
@@ -161,7 +164,7 @@ func (m *Monitor) run() {
 		if m.conn != nil {
 			m.conn.Close()
 		}
-		m.status.Update("mysql-monitor", "Stopped")
+		m.status.Update("monitor", "Stopped")
 	}()
 
 	prefix := "mysql/"
@@ -173,6 +176,8 @@ func (m *Monitor) run() {
 		select {
 		case now := <-m.ticker.TickerChan():
 			if m.connected {
+				m.status.Update("monitor", "Running")
+
 				c := &mm.Collection{
 					StartTs: now.Unix(),
 					Metrics: []mm.Metric{},
@@ -199,13 +204,16 @@ func (m *Monitor) run() {
 				} else {
 					m.logger.Debug("No metrics")
 				}
+
+				m.status.Update("monitor", "Ready")
 			} else {
 				m.logger.Debug("Not connected")
 			}
 		case connected := <-m.connectedChan:
 			m.connected = connected
 			if connected {
-				m.status.Update("mysql-monitor", "Running")
+				m.status.Update("monitor", "Ready")
+				m.status.Update("mysql", "Connected")
 			} else {
 				go m.connect()
 			}
@@ -217,35 +225,35 @@ func (m *Monitor) run() {
 
 // @goroutine[2]
 func (m *Monitor) GetShowStatusMetrics(conn *sql.DB, prefix string, c *mm.Collection) error {
-		rows, err := conn.Query("SHOW /*!50002 GLOBAL */ STATUS")
-		if err != nil {
+	rows, err := conn.Query("SHOW /*!50002 GLOBAL */ STATUS")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var statName string
+		var statValue string
+		if err = rows.Scan(&statName, &statValue); err != nil {
 			return err
 		}
-		defer rows.Close()
-		for rows.Next() {
-			var statName string
-			var statValue string
-			if err = rows.Scan(&statName, &statValue); err != nil {
-				return err
-			}
 
-			if !m.stats[statName] {
-				continue  // not collecting this stat
-			}
-
-			metricName := prefix + strings.ToLower(statName)
-			metricValue, err := strconv.ParseFloat(statValue, 64)
-			if err != nil {
-				metricValue = 0.0
-			}
-
-			c.Metrics = append(c.Metrics, mm.Metric{metricName, metricValue})
+		if !m.stats[statName] {
+			continue // not collecting this stat
 		}
-		err = rows.Err()
+
+		metricName := prefix + strings.ToLower(statName)
+		metricValue, err := strconv.ParseFloat(statValue, 64)
 		if err != nil {
-			return err
+			metricValue = 0.0
 		}
-		return nil
+
+		c.Metrics = append(c.Metrics, mm.Metric{metricName, metricValue})
+	}
+	err = rows.Err()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // @goroutine[2]
@@ -307,15 +315,15 @@ func (m *Monitor) GetTableStatMetrics(conn *sql.DB, prefix string, c *mm.Collect
 		}
 
 		c.Metrics = append(c.Metrics, mm.Metric{
-			Name: prefix+"db."+tableSchema+"/t."+tableName+"/rows_read",
+			Name:  prefix + "db." + tableSchema + "/t." + tableName + "/rows_read",
 			Value: float64(rowsRead),
 		})
 		c.Metrics = append(c.Metrics, mm.Metric{
-			Name: prefix+"db."+tableSchema+"/t."+tableName+"/rows_changed",
+			Name:  prefix + "db." + tableSchema + "/t." + tableName + "/rows_changed",
 			Value: float64(rowsChanged),
 		})
 		c.Metrics = append(c.Metrics, mm.Metric{
-			Name: prefix+"db."+tableSchema+"/t."+tableName+"/rows_changed_x_indexes",
+			Name:  prefix + "db." + tableSchema + "/t." + tableName + "/rows_changed_x_indexes",
 			Value: float64(rowsChangedIndexes),
 		})
 	}
@@ -353,7 +361,7 @@ func (m *Monitor) GetIndexStatMetrics(conn *sql.DB, prefix string, c *mm.Collect
 			return err
 		}
 
-		metricName := prefix+"db."+tableSchema+"/t."+tableName+"/idx."+indexName+"/rows_read"
+		metricName := prefix + "db." + tableSchema + "/t." + tableName + "/idx." + indexName + "/rows_read"
 		metricValue := float64(rowsRead)
 		c.Metrics = append(c.Metrics, mm.Metric{metricName, metricValue})
 	}

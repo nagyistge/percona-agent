@@ -6,6 +6,11 @@ import (
 	"sync"
 )
 
+// test/sync/WaitStatus
+type StatusReporter interface {
+	Status() map[string]string
+}
+
 type Status struct {
 	status map[string]string
 	mux    map[string]*sync.RWMutex
@@ -54,6 +59,14 @@ func (s *Status) Get(proc string, lock bool) string {
 	}
 
 	return s.status[proc]
+}
+
+func (s *Status) All() map[string]string {
+	all := make(map[string]string)
+	for proc, _ := range s.status {
+		all[proc] = s.Get(proc, true)
+	}
+	return all
 }
 
 func (s *Status) Lock() {

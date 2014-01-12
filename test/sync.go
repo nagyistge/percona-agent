@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	proto "github.com/percona/cloud-protocol"
 	"github.com/percona/cloud-tools/mm"
+	"github.com/percona/cloud-tools/pct"
 )
 
 
@@ -215,4 +216,56 @@ func WaitMmReport(dataChan chan interface{}) *mm.Report {
 	case <-time.After(100 * time.Millisecond):
 		return nil
 	}
+}
+
+func WaitStatus(timeout int, r pct.StatusReporter, proc string, state string) bool {
+	waitTimeout := time.After(time.Duration(timeout) * time.Second)
+	for {
+		select {
+		case <-waitTimeout:
+			return false
+		case <-time.After(100 * time.Millisecond):
+			status := r.Status()
+			if s, ok := status[proc]; !ok {
+				panic("StatusReporter does not have " + proc)
+			} else {
+				if s == state {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func WaitCollection(cChan chan *mm.Collection, n int) []*mm.Collection {
+	var buf []*mm.Collection
+	var cnt int = 0
+	timeout := time.After(300 * time.Millisecond)
+	FIRST_LOOP:
+	for {
+		select {
+		case c := <-cChan:
+			buf = append(buf, c)
+			cnt++
+			if n > 0 && cnt >= n {
+				break FIRST_LOOP
+			}
+		case <-timeout:
+			break FIRST_LOOP
+		}
+	}
+	if n > 0 && cnt >= n {
+		SECOND_LOOP:
+		for {
+			select {
+			case c := <-cChan:
+				buf = append(buf, c)
+				cnt++
+			case <-time.After(100 * time.Millisecond):
+				break SECOND_LOOP
+			}
+		}
+	}
+	return buf
 }

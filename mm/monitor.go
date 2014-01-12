@@ -17,7 +17,7 @@ import (
 type Monitor interface {
 	Start(config []byte, ticker pct.Ticker, collectionChan chan *Collection) error
 	Stop() error
-	Status() string
+	Status() map[string]string
 }
 
 type Metric struct {
