@@ -31,6 +31,6 @@ type Collection struct {
 }
 
 type Report struct {
-	StartTs  int64
-	Metrics  map[string]*Stats
+	StartTs int64
+	Metrics map[string]*Stats
 }

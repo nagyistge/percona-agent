@@ -1,36 +1,36 @@
 package mm_test
 
 import (
-	"time"
-	"testing"
-	"strings"
 	"encoding/json"
-	"github.com/percona/cloud-tools/pct"
+	proto "github.com/percona/cloud-protocol"
 	"github.com/percona/cloud-tools/mm"
 	"github.com/percona/cloud-tools/mm/mysql"
+	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/test"
 	"github.com/percona/cloud-tools/test/mock"
-	proto "github.com/percona/cloud-protocol"
+	"strings"
+	"testing"
+	"time"
 )
 
 type managerTestSuite struct {
-	logChan chan *proto.LogEntry
-	logger *pct.Logger
-	mockMonitor mm.Monitor
-	monitors map[string]mm.Monitor
-	tickerChan chan time.Time
-	mockTicker *mock.Ticker
+	logChan       chan *proto.LogEntry
+	logger        *pct.Logger
+	mockMonitor   mm.Monitor
+	monitors      map[string]mm.Monitor
+	tickerChan    chan time.Time
+	mockTicker    *mock.Ticker
 	tickerFactory *mock.TickerFactory
-	dataChan chan interface{}
-	traceChan chan string
-	readyChan chan bool
+	dataChan      chan interface{}
+	traceChan     chan string
+	readyChan     chan bool
 }
 
 var mT = &managerTestSuite{
-	logChan: make(chan *proto.LogEntry, 10),
+	logChan:     make(chan *proto.LogEntry, 10),
 	mockMonitor: mock.NewMonitor(),
-	tickerChan: make(chan time.Time),
-	dataChan: make(chan interface{}, 1),
+	tickerChan:  make(chan time.Time),
+	dataChan:    make(chan interface{}, 1),
 }
 
 func (mT *managerTestSuite) Setup() {
@@ -75,7 +75,7 @@ func TestStartStopManager(t *testing.T) {
 	// First the API marshals an mm.Config.
 	config := &mm.Config{
 		Intervals: map[string]mm.Interval{
-			"mysql": mm.Interval{Collect:1, Report:60},
+			"mysql": mm.Interval{Collect: 1, Report: 60},
 		},
 	}
 	data, err := json.Marshal(config)
@@ -86,7 +86,7 @@ func TestStartStopManager(t *testing.T) {
 	// Then it sends a StartService cmd with the config data.
 	cmd := &proto.Cmd{
 		User: "daniel",
-		Cmd: "StartService",
+		Cmd:  "StartService",
 		Data: data,
 	}
 
@@ -172,7 +172,7 @@ func TestStartStopMonitor(t *testing.T) {
 
 	config := &mm.Config{
 		Intervals: map[string]mm.Interval{
-			"mysql": mm.Interval{Collect:1, Report:60},
+			"mysql": mm.Interval{Collect: 1, Report: 60},
 		},
 	}
 	data, err := json.Marshal(config)
@@ -182,7 +182,7 @@ func TestStartStopMonitor(t *testing.T) {
 
 	cmd := &proto.Cmd{
 		User: "daniel",
-		Cmd: "StartService",
+		Cmd:  "StartService",
 		Data: data,
 	}
 
@@ -198,20 +198,19 @@ func TestStartStopMonitor(t *testing.T) {
 	 * Manager is running, now we can start a monitor.
 	 */
 
-
 	// Starting a monitor is like starting the manager: it requires
 	// a "Start" cmd and the monitor's config.
 	mysqlConfig := &mysql.Config{
-		DSN: "user:host@tcp:(127.0.0.1:3306)",
+		DSN:          "user:host@tcp:(127.0.0.1:3306)",
 		InstanceName: "db1",
-		Status: []string{"Threads_connected","Threads_running"},
+		Status:       []string{"Threads_connected", "Threads_running"},
 	}
 	configData, err := json.Marshal(mysqlConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
 	service := &proto.ServiceData{
-		Name: "mysql",
+		Name:   "mysql",
 		Config: configData,
 	}
 	serviceData, err := json.Marshal(service)
@@ -219,10 +218,10 @@ func TestStartStopMonitor(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmd = &proto.Cmd{
-		User: "daniel",
-		Cmd: "Start",
+		User:    "daniel",
+		Cmd:     "Start",
 		Service: "mm",
-		Data: serviceData,
+		Data:    serviceData,
 	}
 
 	// The agent calls mm.Handle() with the cmd (for logging and status) and the config data.
@@ -237,4 +236,90 @@ func TestStartStopMonitor(t *testing.T) {
 	if status != "Running" {
 		t.Error("Monitor running")
 	}
+
+	// There should be a 60s report ticker for the aggregator and a 1s collect ticker
+	// for the monitor.
+	if ok, diff := test.IsDeeply(mT.tickerFactory.Made, []uint{60, 1}); !ok {
+		t.Errorf("Make 1s ticker for collect interval\n%s", diff)
+	}
+
+	// The collect ticker should *not* be running yet; it's the monitor's job
+	// to start it (and mock.Monitor doesn't).  By contrast, the manager does
+	// start the report ticker; that's tested in StartStopManager().
+	if collectTicker.Running {
+		t.Error("Collect ticker not started by manager")
+	}
+
+	// Fake like the monitor starts its ticker so we can test later that
+	// the manager stops it.
+	collectTicker.Running = true
+
+	/**
+	 * Stop the monitor.
+	 */
+
+	// Starting a monitor is like starting the manager: it requires
+	// a "Start" cmd and the monitor's config.
+	service = &proto.ServiceData{
+		Name: "mysql",
+	}
+	serviceData, err = json.Marshal(service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd = &proto.Cmd{
+		User:    "daniel",
+		Cmd:     "Stop",
+		Service: "mm",
+		Data:    serviceData,
+	}
+
+	err = m.Handle(cmd)
+	if err != nil {
+		t.Fatalf("Stop monitor without error, got %s", err)
+	}
+
+	status = mT.mockMonitor.Status()
+	if status != "Stopped" {
+		t.Error("Monitor stopped")
+	}
+
+	// After stopping the monitor, the manager should also stop the ticker.
+	if collectTicker.Running {
+		t.Error("Collect ticker stopped by manager")
+	}
+
+	/**
+	 * While we're all setup and working, let's sneak in an unknown cmd test.
+	 */
+
+	service = &proto.ServiceData{
+		Name: "mysql",
+	}
+	serviceData, err = json.Marshal(service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd = &proto.Cmd{
+		User:    "daniel",
+		Cmd:     "Pontificate",
+		Service: "mm",
+		Data:    serviceData,
+	}
+
+	err = m.Handle(cmd)
+	if err == nil {
+		t.Fatalf("Unknown Cmd to Handle() causes error")
+	}
+	switch err.(type) { // todo: ugly hack to access and test error type
+	case pct.UnknownCmdError:
+		// ok
+	default:
+		t.Error("Error is type pct.UnknownCmdError, got %T", err)
+	}
+
+	/**
+	 * Clean up
+	 */
+	m.Stop(cmd)
 }

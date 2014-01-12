@@ -1,21 +1,21 @@
 package mm
 
 import (
-	"time"
 	"github.com/percona/cloud-tools/pct"
+	"time"
 )
 
 type Aggregator struct {
-	ticker     pct.Ticker
+	ticker         pct.Ticker
 	collectionChan chan *Collection
 	dataChan       chan interface{}
 	sync           *pct.SyncChan
-	running         bool
+	running        bool
 }
 
 func NewAggregator(ticker pct.Ticker, collectionChan chan *Collection, dataChan chan interface{}) *Aggregator {
 	a := &Aggregator{
-		ticker:     ticker,
+		ticker:         ticker,
 		collectionChan: collectionChan,
 		dataChan:       dataChan,
 		sync:           pct.NewSyncChan(),
@@ -42,7 +42,7 @@ func (a *Aggregator) Stop() {
 
 // @goroutine[0]
 func (a *Aggregator) IsRunning() bool {
-	return a.running  // XXX: not guarded
+	return a.running // XXX: not guarded
 }
 
 /////////////////////////////////////////////////////////////////////////////

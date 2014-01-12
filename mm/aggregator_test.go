@@ -1,31 +1,31 @@
 package mm_test
 
 import (
-	"fmt"
-	"os"
-	"io/ioutil"
 	"encoding/json"
-	"time"
-	"testing"
-	"github.com/percona/cloud-tools/pct"
+	"fmt"
 	"github.com/percona/cloud-tools/mm"
+	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/test"
 	"github.com/percona/cloud-tools/test/mock"
+	"io/ioutil"
+	"os"
+	"testing"
+	"time"
 )
 
 var sample = os.Getenv("GOPATH") + "/src/github.com/percona/cloud-tools/test/mm"
 
 type aggregatorTestSuite struct {
-	tickerChan chan time.Time
-	ticker pct.Ticker
+	tickerChan     chan time.Time
+	ticker         pct.Ticker
 	collectionChan chan *mm.Collection
-	dataChan chan interface{}
+	dataChan       chan interface{}
 }
 
 var aT = &aggregatorTestSuite{
-	tickerChan: make(chan time.Time),
+	tickerChan:     make(chan time.Time),
 	collectionChan: make(chan *mm.Collection),
-	dataChan: make(chan interface{}, 1),
+	dataChan:       make(chan interface{}, 1),
 }
 
 func sendCollection(file string, collectionChan chan *mm.Collection) error {
@@ -70,7 +70,7 @@ func TestC001(t *testing.T) {
 	defer a.Stop()
 
 	// Send load collection from file and send to aggregator.
-	if err := sendCollection(sample + "/c001.json", aT.collectionChan); err != nil {
+	if err := sendCollection(sample+"/c001.json", aT.collectionChan); err != nil {
 		t.Fatal(err)
 	}
 
@@ -82,18 +82,18 @@ func TestC001(t *testing.T) {
 		t.Error("No report before tick, got: %+v", got)
 	}
 
-	aT.tickerChan <-t1
+	aT.tickerChan <- t1
 
 	got = test.WaitMmReport(aT.dataChan)
 	if got != nil {
 		t.Error("No report after 1st tick, got: %+v", got)
 	}
 
-	if err := sendCollection(sample + "/c001.json", aT.collectionChan); err != nil {
+	if err := sendCollection(sample+"/c001.json", aT.collectionChan); err != nil {
 		t.Fatal(err)
 	}
 
-	aT.tickerChan <-t2
+	aT.tickerChan <- t2
 
 	got = test.WaitMmReport(aT.dataChan)
 	if got == nil {
@@ -104,7 +104,7 @@ func TestC001(t *testing.T) {
 	}
 
 	expect := &mm.Report{}
-	if err := loadReport(sample + "/c001r.json", expect); err != nil {
+	if err := loadReport(sample+"/c001r.json", expect); err != nil {
 		t.Fatal(err)
 	}
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
@@ -120,7 +120,7 @@ func TestC002(t *testing.T) {
 	defer a.Stop()
 
 	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
-	aT.tickerChan <-t1
+	aT.tickerChan <- t1
 
 	for i := 1; i <= 5; i++ {
 		file := fmt.Sprintf("%s/c002-%d.json", sample, i)
@@ -130,11 +130,11 @@ func TestC002(t *testing.T) {
 	}
 
 	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
-	aT.tickerChan <-t2
+	aT.tickerChan <- t2
 
 	got := test.WaitMmReport(aT.dataChan)
 	expect := &mm.Report{}
-	if err := loadReport(sample + "/c002r.json", expect); err != nil {
+	if err := loadReport(sample+"/c002r.json", expect); err != nil {
 		t.Fatal("c002r.json ", err)
 	}
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
@@ -150,7 +150,7 @@ func TestC000(t *testing.T) {
 	defer a.Stop()
 
 	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
-	aT.tickerChan <-t1
+	aT.tickerChan <- t1
 
 	// collection 000 is all zero values
 	file := sample + "/c000.json"
@@ -159,11 +159,11 @@ func TestC000(t *testing.T) {
 	}
 
 	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
-	aT.tickerChan <-t2
+	aT.tickerChan <- t2
 
 	got := test.WaitMmReport(aT.dataChan)
 	expect := &mm.Report{}
-	if err := loadReport(sample + "/c000r.json", expect); err != nil {
+	if err := loadReport(sample+"/c000r.json", expect); err != nil {
 		t.Fatal("c000r.json ", err)
 	}
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {

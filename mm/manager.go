@@ -1,44 +1,45 @@
 package mm
 
 import (
-	"fmt"
 	"encoding/json"
 	"errors"
+	"fmt"
 	proto "github.com/percona/cloud-protocol"
 	"github.com/percona/cloud-tools/pct"
 )
 
 type Binding struct {
-	ticker pct.Ticker
+	ticker         pct.Ticker
 	collectionChan chan *Collection
-	aggregator  *Aggregator
+	aggregator     *Aggregator
 }
 
 // todo: remember originating cmd for start service and start monitor,
 //       return with ServiceIsRunningError
 
 type Manager struct {
-	logger   *pct.Logger
-	monitors map[string]Monitor
+	logger        *pct.Logger
+	monitors      map[string]Monitor
 	tickerFactory pct.TickerFactory
-	dataChan chan interface{}
+	dataChan      chan interface{}
 	// --
-	config *Config // nil if not running
-	status *pct.Status
-	aggregators map[uint]*Binding
-
+	config         *Config // nil if not running
+	status         *pct.Status
+	aggregators    map[uint]*Binding
+	collectTickers map[string]pct.Ticker
 }
 
 func NewManager(logger *pct.Logger, monitors map[string]Monitor, tickerFactory pct.TickerFactory, dataChan chan interface{}) *Manager {
 	m := &Manager{
-		logger:   logger,
-		monitors: monitors,
+		logger:        logger,
+		monitors:      monitors,
 		tickerFactory: tickerFactory,
-		dataChan: dataChan,
+		dataChan:      dataChan,
 		// --
-		config: nil, // not running yet
-		status: pct.NewStatus([]string{"mm"}),
-		aggregators: make(map[uint]*Binding),
+		config:         nil, // not running yet
+		status:         pct.NewStatus([]string{"mm"}),
+		aggregators:    make(map[uint]*Binding),
+		collectTickers: make(map[string]pct.Ticker),
 	}
 	return m
 }
@@ -72,7 +73,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 
 		if _, ok := m.aggregators[interval.Report]; !ok {
 			ticker := m.tickerFactory.Make(interval.Report)
-			collectionChan := make(chan *Collection, 2 * len(c.Intervals))
+			collectionChan := make(chan *Collection, 2*len(c.Intervals))
 			aggregator := NewAggregator(ticker, collectionChan, m.dataChan)
 
 			msg := fmt.Sprintf("Synchronizing %d second report interval", interval.Report)
@@ -92,7 +93,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 func (m *Manager) Stop(cmd *proto.Cmd) error {
 	// Stop all monitors.
 	for name, monitor := range m.monitors {
-		m.status.UpdateRe("mm", "Stopping " + name, cmd)
+		m.status.UpdateRe("mm", "Stopping "+name, cmd)
 		monitor.Stop()
 	}
 
@@ -140,14 +141,16 @@ func (m *Manager) Handle(cmd *proto.Cmd) error {
 	var err error
 	switch cmd.Cmd {
 	case "Start":
-		m.status.UpdateRe("mm", "Starting " + mm.Name + " monitor", cmd)
+		m.status.UpdateRe("mm", "Starting "+mm.Name+" monitor", cmd)
 		interval := m.config.Intervals[mm.Name]
-		ticker := m.tickerFactory.Make(interval.Collect)
+		m.collectTickers[mm.Name] = m.tickerFactory.Make(interval.Collect)
 		collectionChan := m.aggregators[interval.Report].collectionChan
-		err = monitor.Start(mm.Config, ticker, collectionChan)
+		err = monitor.Start(mm.Config, m.collectTickers[mm.Name], collectionChan)
 	case "Stop":
-		m.status.UpdateRe("mm", "Stopping " + mm.Name + " monitor", cmd)
+		m.status.UpdateRe("mm", "Stopping "+mm.Name+" monitor", cmd)
 		err = monitor.Stop()
+		m.collectTickers[mm.Name].Stop()
+		delete(m.collectTickers, mm.Name)
 	default:
 		err = pct.UnknownCmdError{Cmd: cmd.Cmd}
 	}
