@@ -81,13 +81,11 @@ func (a *Aggregator) run() {
 			// todo: if colllect.Ts < lastNow, then discard: it missed its period
 			for _, metric := range collection.Metrics {
 				stats, haveStats := cur[metric.Name]
-				if haveStats {
-					stats.Add(metric.Value)
-				} else {
-					stats = NewStats()
-					stats.Add(metric.Value)
+				if !haveStats {
+					stats = NewStats(metric.Type)
 					cur[metric.Name] = stats
 				}
+				stats.Add(&metric)
 			}
 		case <-a.sync.StopChan:
 			return

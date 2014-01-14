@@ -29,9 +29,12 @@ func (m *Monitor) Stop() error {
 	return nil
 }
 
-func (m *Monitor) Status() string {
+func (m *Monitor) Status() map[string]string {
+	status := make(map[string]string)
 	if m.running {
-		return "Running"
+		status["monitor"] = "Running"
+	} else {
+		status["monitor"] = "Stopped"
 	}
-	return "Stopped"
+	return status
 }

@@ -1,6 +1,6 @@
 {
   "StartTs":1257894000,
   "Metrics":[
-    {"Name":"host1/a","Value":0}
+    {"Name":"host1/a","Type":1,"Number":0}
   ]
 }

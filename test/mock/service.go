@@ -36,9 +36,9 @@ func (m *MockServiceManager) Stop(msg *proto.Cmd) error {
 	return m.StopErr
 }
 
-func (m *MockServiceManager) Status() string {
+func (m *MockServiceManager) Status() map[string]string {
 	m.traceChan <- "Status " + m.name
-	return "AOK"
+	return map[string]string{"manager":"OK"}
 }
 
 func (m *MockServiceManager) IsRunning() bool {

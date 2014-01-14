@@ -159,6 +159,6 @@ func (m *Manager) Handle(cmd *proto.Cmd) error {
 }
 
 // @goroutine[1]
-func (m *Manager) Status() string {
-	return m.status.Get("mm", true)
+func (m *Manager) Status() map[string]string {
+	return m.status.All()
 }

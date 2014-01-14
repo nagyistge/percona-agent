@@ -21,9 +21,24 @@ type Monitor interface {
 }
 
 type Metric struct {
-	Name  string  // mysql/status/Threads_running
-	Value float64 // 13
+	Name   string  // mysql/status/Threads_running
+	Type   byte    // see below
+	Number float64 // Type=NUMBER|COUNTER
+	String string  // Type=STRING
 }
+
+/**
+ * Metric.Type is one of:
+ *    NUMBER: standard metric type for which we calc full Stats: pct5, min, med, etc.
+ *   COUNTER: value only increases or decreases; we only calc rate; e.g. Bytes_sent
+ *    STRING: value is a string, used to collect config/setting values
+ */
+const (
+	_ byte = iota
+	NUMBER
+	COUNTER
+	STRING
+)
 
 type Collection struct {
 	StartTs int64

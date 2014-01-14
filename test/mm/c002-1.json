@@ -1,7 +1,7 @@
 {
   "StartTs":1257894000,
   "Metrics":[
-    {"Name":"host1/Foo","Value":2},
-    {"Name":"host1/Bar","Value":5.5}
+    {"Name":"host1/Foo","Type":1,"Number":2},
+    {"Name":"host1/Bar","Type":1,"Number":5.5}
   ]
 }

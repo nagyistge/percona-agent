@@ -247,7 +247,7 @@ func (m *Monitor) GetShowStatusMetrics(conn *sql.DB, prefix string, c *mm.Collec
 			metricValue = 0.0
 		}
 
-		c.Metrics = append(c.Metrics, mm.Metric{metricName, metricValue})
+		c.Metrics = append(c.Metrics, mm.Metric{metricName, mm.NUMBER, metricValue, ""})
 	}
 	err = rows.Err()
 	if err != nil {
@@ -278,7 +278,7 @@ func (m *Monitor) GetInnoDBMetrics(conn *sql.DB, prefix string, c *mm.Collection
 		if err != nil {
 			metricValue = 0.0
 		}
-		c.Metrics = append(c.Metrics, mm.Metric{metricName, metricValue})
+		c.Metrics = append(c.Metrics, mm.Metric{metricName, mm.NUMBER, metricValue, ""})
 	}
 	err = rows.Err()
 	if err != nil {
@@ -316,15 +316,18 @@ func (m *Monitor) GetTableStatMetrics(conn *sql.DB, prefix string, c *mm.Collect
 
 		c.Metrics = append(c.Metrics, mm.Metric{
 			Name:  prefix + "db." + tableSchema + "/t." + tableName + "/rows_read",
-			Value: float64(rowsRead),
+			Type: mm.NUMBER,
+			Number: float64(rowsRead),
 		})
 		c.Metrics = append(c.Metrics, mm.Metric{
 			Name:  prefix + "db." + tableSchema + "/t." + tableName + "/rows_changed",
-			Value: float64(rowsChanged),
+			Type: mm.NUMBER,
+			Number: float64(rowsChanged),
 		})
 		c.Metrics = append(c.Metrics, mm.Metric{
 			Name:  prefix + "db." + tableSchema + "/t." + tableName + "/rows_changed_x_indexes",
-			Value: float64(rowsChangedIndexes),
+			Type: mm.NUMBER,
+			Number: float64(rowsChangedIndexes),
 		})
 	}
 	err = rows.Err()
@@ -363,7 +366,7 @@ func (m *Monitor) GetIndexStatMetrics(conn *sql.DB, prefix string, c *mm.Collect
 
 		metricName := prefix + "db." + tableSchema + "/t." + tableName + "/idx." + indexName + "/rows_read"
 		metricValue := float64(rowsRead)
-		c.Metrics = append(c.Metrics, mm.Metric{metricName, metricValue})
+		c.Metrics = append(c.Metrics, mm.Metric{metricName, mm.NUMBER, metricValue, ""})
 	}
 	err = rows.Err()
 	if err != nil {

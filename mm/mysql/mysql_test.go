@@ -110,13 +110,13 @@ func TestStart(t *testing.T) {
 	if c.Metrics[0].Name != prefix + "/threads_connected" {
 		t.Error("First metric is ", prefix + "/threads_connected; got", c.Metrics[0].Name)
 	}
-	if c.Metrics[0].Value < 1 {
-		t.Error("threads_connected > 1; got", c.Metrics[0].Value)
+	if c.Metrics[0].Number < 1 {
+		t.Error("threads_connected > 1; got", c.Metrics[0].Number)
 	}
 	if c.Metrics[1].Name != prefix + "/threads_running" {
 		t.Error("Second metric is ", prefix + "/threads_running got", c.Metrics[1].Name)
 	}
-	if c.Metrics[1].Value < 1 {
-		t.Error("threads_running > 1; got", c.Metrics[0].Value)
+	if c.Metrics[1].Number < 1 {
+		t.Error("threads_running > 1; got", c.Metrics[0].Number)
 	}
 }

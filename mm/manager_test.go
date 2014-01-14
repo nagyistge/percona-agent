@@ -115,11 +115,11 @@ func TestStartStopManager(t *testing.T) {
 	// After starting, its status should be "Ready [cmd]" where cmd is
 	// the originating ^ cmd.
 	status := m.Status()
-	if !strings.Contains(status, "Ready") {
-		t.Error("Status is \"Ready\", got ", status)
+	if !strings.Contains(status["mm"], "Ready") {
+		t.Error("Status is \"Ready\", got ", status["mm"])
 	}
-	if !strings.Contains(status, "User:daniel") {
-		t.Error("Status has originating cmd, got ", status)
+	if !strings.Contains(status["mm"], "User:daniel") {
+		t.Error("Status has originating cmd, got ", status["mm"])
 	}
 
 	// Starting an already started service should result in a ServiceIsRunningError.
@@ -151,10 +151,10 @@ func TestStartStopManager(t *testing.T) {
 		t.Error("Report ticker is not running")
 	}
 	status = m.Status()
-	if !strings.Contains(status, "Stopped") {
+	if !strings.Contains(status["mm"], "Stopped") {
 		t.Error("Status is \"Stopped\", got ", status)
 	}
-	if !strings.Contains(status, "User:daniel") {
+	if !strings.Contains(status["mm"], "User:daniel") {
 		t.Error("Status has originating cmd, got ", status)
 	}
 }
@@ -233,7 +233,7 @@ func TestStartStopMonitor(t *testing.T) {
 	// The monitor should be running.  The mock monitor returns "Running" if
 	// Start() has been called; else it returns "Stopped".
 	status := mT.mockMonitor.Status()
-	if status != "Running" {
+	if status["monitor"] != "Running" {
 		t.Error("Monitor running")
 	}
 
@@ -280,7 +280,7 @@ func TestStartStopMonitor(t *testing.T) {
 	}
 
 	status = mT.mockMonitor.Status()
-	if status != "Stopped" {
+	if status["monitor"] != "Stopped" {
 		t.Error("Monitor stopped")
 	}
 

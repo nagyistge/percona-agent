@@ -11,5 +11,5 @@ type ServiceManager interface {
 	IsRunning() bool
 	Handle(cmd *proto.Cmd) error
 	// @goroutine[1]
-	Status() string
+	Status() map[string]string
 }
