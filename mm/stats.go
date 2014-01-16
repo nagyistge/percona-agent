@@ -7,8 +7,11 @@ import (
 type Stats struct {
 	metricType byte      `json:"-"` // ignore
 	str        string    `json:",omitempty"`
-	vals       []float64 `json:"-"` // ignore
-	sum        float64   `json:"-"` // ignore
+	firstVal   bool      `json:"-"`
+	prevTs     int64     `json:"-"`
+	prevVal    float64   `json:"-"`
+	vals       []float64 `json:"-"`
+	sum        float64   `json:"-"`
 	Cnt        int
 	Min        float64
 	Pct5       float64
@@ -22,21 +25,53 @@ func NewStats(metricType byte) *Stats {
 	s := &Stats{
 		metricType: metricType,
 		vals:       []float64{},
+		firstVal:   true,
 	}
 	return s
 }
 
-func (s *Stats) Add(m *Metric) {
-	if s.metricType == NUMBER {
+func (s *Stats) Add(m *Metric, ts int64) {
+	switch s.metricType {
+	case NUMBER:
 		s.vals = append(s.vals, m.Number)
 		s.sum += m.Number
-	} else if s.metricType == STRING {
-		s.str = m.String
+	case COUNTER:
+		if !s.firstVal {
+			if m.Number >= s.prevVal {
+				// Metric value increased (or stayed same); this is what we expect.
+
+				// Per-second rate of value = increase / duration
+				inc := m.Number - s.prevVal
+				dur := ts - s.prevTs
+				val := inc / float64(dur)
+				s.vals = append(s.vals, val)
+
+				// Keep running total to calc Avg.
+				s.sum += inc
+
+				// Current values become previous values.
+				s.prevTs = ts
+				s.prevVal = m.Number
+			} else {
+				// Metric value reset, e.g. FLUSH GLOBAL STATUS.
+				s.prevTs = ts
+				s.prevVal = m.Number
+			}
+		} else {
+			s.prevTs = ts
+			s.prevVal = m.Number
+			s.firstVal = false
+		}
+	case STRING:
+		if s.str == "" {
+			s.str = m.String
+		}
 	}
 }
 
 func (s *Stats) Summarize() {
-	if s.metricType == NUMBER {
+	switch s.metricType {
+	case NUMBER, COUNTER:
 		s.Cnt = len(s.vals)
 		if s.Cnt > 1 {
 			sort.Float64s(s.vals)
@@ -54,9 +89,6 @@ func (s *Stats) Summarize() {
 			s.Med = s.vals[0]
 			s.Pct95 = s.vals[0]
 			s.Max = s.vals[0]
-		} else {
-			// no values, all zeros
 		}
-	} else if s.metricType == COUNTER {
 	}
 }

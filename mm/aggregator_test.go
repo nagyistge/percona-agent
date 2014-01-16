@@ -142,6 +142,7 @@ func TestC002(t *testing.T) {
 	}
 }
 
+// All zero values
 func TestC000(t *testing.T) {
 	aT.Setup()
 
@@ -152,7 +153,6 @@ func TestC000(t *testing.T) {
 	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
 	aT.tickerChan <- t1
 
-	// collection 000 is all zero values
 	file := sample + "/c000.json"
 	if err := sendCollection(file, aT.collectionChan); err != nil {
 		t.Fatal(file, err)
@@ -165,6 +165,49 @@ func TestC000(t *testing.T) {
 	expect := &mm.Report{}
 	if err := loadReport(sample+"/c000r.json", expect); err != nil {
 		t.Fatal("c000r.json ", err)
+	}
+	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
+		t.Fatal(diff)
+	}
+}
+
+// COUNTER
+func TestC003(t *testing.T) {
+	aT.Setup()
+
+	a := mm.NewAggregator(aT.ticker, aT.collectionChan, aT.dataChan)
+	go a.Start()
+	defer a.Stop()
+
+	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
+	aT.tickerChan <- t1
+
+	for i := 1; i <= 5; i++ {
+		file := fmt.Sprintf("%s/c003-%d.json", sample, i)
+		if err := sendCollection(file, aT.collectionChan); err != nil {
+			t.Fatal(file, err)
+		}
+	}
+
+	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
+	aT.tickerChan <- t2
+
+	/**
+	 * Pretend we're monitoring Bytes_sents every second:
+	 * first val = 100
+	 *           prev this diff val/s
+	 * next val  100   200  100   100
+	 * next val  200   400  200   200
+	 * next val  400   800  400   400
+	 * next val  800  1600  800   800
+	 * 
+	 * So min bytes/s = 100, max = 800, avg = 375.  These are
+	 * the values in c003r.json.
+	 */
+	got := test.WaitMmReport(aT.dataChan)
+	expect := &mm.Report{}
+	if err := loadReport(sample+"/c003r.json", expect); err != nil {
+		t.Fatal("c003r.json ", err)
 	}
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)

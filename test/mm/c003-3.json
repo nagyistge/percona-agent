@@ -1,0 +1,6 @@
+{
+  "StartTs":1257894002,
+  "Metrics":[
+    {"Name":"bytes_sent","Type":2,"Number":400}
+  ]
+}
