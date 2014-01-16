@@ -213,3 +213,42 @@ func TestC003(t *testing.T) {
 		t.Fatal(diff)
 	}
 }
+
+func TestC003Lost(t *testing.T) {
+	aT.Setup()
+
+	a := mm.NewAggregator(aT.ticker, aT.collectionChan, aT.dataChan)
+	go a.Start()
+	defer a.Stop()
+
+	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
+	aT.tickerChan <- t1
+
+	// The full sequence is files 1-5, but we send only 1 and 5,
+	// simulating monitor failure during 2-4.  More below...
+	file := fmt.Sprintf("%s/c003-1.json", sample)
+	if err := sendCollection(file, aT.collectionChan); err != nil {
+		t.Fatal(file, err)
+	}
+	file = fmt.Sprintf("%s/c003-5.json", sample)
+	if err := sendCollection(file, aT.collectionChan); err != nil {
+		t.Fatal(file, err)
+	}
+
+	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
+	aT.tickerChan <- t2
+
+	/**
+	 * Values we did get are 100 and 1600 and ts 00 to 04.  So that looks like
+	 * 1500 bytes / 4s = 375.  And since there was only 1 interval, we expect
+	 * 375 for all stat values.
+	 */
+	got := test.WaitMmReport(aT.dataChan)
+	expect := &mm.Report{}
+	if err := loadReport(sample+"/c003rlost.json", expect); err != nil {
+		t.Fatal("c003r.json ", err)
+	}
+	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
+		t.Fatal(diff)
+	}
+}
