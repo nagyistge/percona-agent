@@ -197,6 +197,18 @@ func checkPrimitives(got reflect.Value, expect reflect.Value) (bool, string) {
 				expect.Uint())
 			return false, err
 		}
+	case reflect.String:
+		if got.IsValid() {
+			if got.String() != expect.String() {
+				err := fmt.Sprintf("     got: %s\nexpected: %s\n",
+					got.String(), expect.String())
+				return false, err
+			}
+		} else {
+			err := fmt.Sprintf("     got: undef\nexpected: %s\n",
+				expect.String())
+			return false, err
+		}
 	default:
 		return false, fmt.Sprintf("checkPrimitives() cannot handle %s", expect.Kind())
 	}

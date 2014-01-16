@@ -36,7 +36,7 @@ func NewManager(logger *pct.Logger, iter IntervalIter, dataChan chan interface{}
 		configMux:           new(sync.RWMutex),
 		workers:             make(map[*Worker]bool),
 		workersMux:          new(sync.RWMutex),
-		status:              pct.NewStatus([]string{"manager", "runWorkers", "sendData"}),
+		status:              pct.NewStatus([]string{"QanManager", "QanLogParser", "QanDataProcessor"}),
 		runWorkersDoneChan:  make(chan bool, 1),
 		reapWorkersDoneChan: make(chan bool, 1),
 		sendDataDoneChan:    make(chan bool, 1),
@@ -50,8 +50,8 @@ func NewManager(logger *pct.Logger, iter IntervalIter, dataChan chan interface{}
 
 // @goroutine
 func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
-	m.status.UpdateRe("manager", "Starting", cmd)
-	defer m.status.UpdateRe("manager", "Ready", cmd)
+	m.status.UpdateRe("Qan", "Starting", cmd)
+	defer m.status.UpdateRe("Qan", "Ready", cmd)
 
 	logger := m.logger
 	logger.InResponseTo(cmd)
@@ -91,8 +91,8 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 }
 
 func (m *Manager) Stop(cmd *proto.Cmd) error {
-	m.status.UpdateRe("manager", "Stopping", cmd)
-	defer m.status.UpdateRe("manager", "Ready", cmd)
+	m.status.UpdateRe("Qan", "Stopping", cmd)
+	defer m.status.UpdateRe("Qan", "Ready", cmd)
 
 	m.logger.InResponseTo(cmd)
 	defer m.logger.InResponseTo(nil)
@@ -104,16 +104,16 @@ func (m *Manager) Stop(cmd *proto.Cmd) error {
 
 	// Wait for the goroutines to terminate.  If this takes too long,
 	// let the caller timeout.
-	m.status.UpdateRe("manager", "Stopping, waiting for runWorkers", cmd)
+	m.status.UpdateRe("Qan", "Stopping, waiting for runWorkers", cmd)
 	<-m.runWorkersDoneChan
 
-	m.status.UpdateRe("manager", "Stopping, waiting for reapWorker", cmd)
+	m.status.UpdateRe("Qan", "Stopping, waiting for reapWorker", cmd)
 	<-m.reapWorkersDoneChan
 
-	m.status.UpdateRe("manager", "Stopping, waiting for sendData", cmd)
+	m.status.UpdateRe("Qan", "Stopping, waiting for sendData", cmd)
 	<-m.sendDataDoneChan
 
-	m.status.UpdateRe("manager", "Stopping, unsetting config", cmd)
+	m.status.UpdateRe("Qan", "Stopping, unsetting config", cmd)
 	m.configMux.Lock()
 	defer m.configMux.Unlock()
 	m.config = nil
@@ -152,8 +152,8 @@ SendData: %s
 		running,
 		config,
 		len(m.workers),
-		m.status.Get("manager", false),
-		m.status.Get("runWorkers", false),
+		m.status.Get("Qan", false),
+		m.status.Get("QanLogParser", false),
 		m.status.Get("sendData", false))
 
 	return status
@@ -184,7 +184,7 @@ func (m *Manager) Do(cmd *proto.Cmd) error {
 func (m *Manager) runWorkers(config *Config) {
 	defer func() { m.runWorkersDoneChan <- true }()
 
-	m.status.Update("runWorkers", "Waiting for first interval")
+	m.status.Update("QanLogParser", "Waiting for first interval")
 
 	m.iter.Start()
 	intervalChan := m.iter.IntervalChan()
@@ -197,7 +197,7 @@ func (m *Manager) runWorkers(config *Config) {
 			continue
 		}
 
-		m.status.Update("runWorkers", "running worker")
+		m.status.Update("QanLogParser", "running worker")
 		logger := pct.NewLogger(m.logger.LogChan(), "qan-worker")
 		job := &Job{
 			SlowLogFile:    interval.Filename,
@@ -213,7 +213,7 @@ func (m *Manager) runWorkers(config *Config) {
 		m.workers[w] = true
 		m.workersMux.Unlock()
 
-		m.status.Update("runWorkers", "Ready")
+		m.status.Update("QanLogParser", "Ready")
 	}
 }
 
@@ -221,7 +221,7 @@ func (m *Manager) runWorkers(config *Config) {
 func (m *Manager) reapWorkers() {
 	defer func() { m.reapWorkersDoneChan <- true }()
 	for worker := range m.workersDoneChan {
-		m.status.Update("runWorkers", "reaping worker")
+		m.status.Update("QanLogParser", "reaping worker")
 		m.workersMux.Lock()
 		delete(m.workers, worker)
 		m.workersMux.Unlock()
@@ -235,7 +235,7 @@ func (m *Manager) reapWorkers() {
 // @goroutine
 func (m *Manager) sendData() {
 	defer func() { m.sendDataDoneChan <- true }()
-	m.status.Update("sendData", "Waiting for first result")
+	m.status.Update("QanDataProcessor", "Waiting for first result")
 	for result := range m.resultChan {
 		m.status.Update("sendData", "Sending result")
 		// todo: make {agent:{...}, meta:{...}, data:{...}}

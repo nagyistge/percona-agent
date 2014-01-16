@@ -37,7 +37,7 @@ func NewManager(logger *pct.Logger, monitors map[string]Monitor, tickerFactory p
 		dataChan:      dataChan,
 		// --
 		config:         nil, // not running yet
-		status:         pct.NewStatus([]string{"mm"}),
+		status:         pct.NewStatus([]string{"Mm"}),
 		aggregators:    make(map[uint]*Binding),
 		collectTickers: make(map[string]pct.Ticker),
 	}
@@ -51,7 +51,7 @@ func NewManager(logger *pct.Logger, monitors map[string]Monitor, tickerFactory p
 // @goroutine[0]
 func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 	if m.IsRunning() {
-		return pct.ServiceIsRunningError{"mm"}
+		return pct.ServiceIsRunningError{"Mm"}
 	}
 
 	c := new(Config)
@@ -59,7 +59,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 		return err
 	}
 
-	m.status.UpdateRe("mm", "Starting", cmd)
+	m.status.UpdateRe("Mm", "Starting", cmd)
 
 	// We need one aggregator for each unique report interval.  There's usually
 	// just one: 60s.  Remember: report interval != collect interval.  Monitors
@@ -77,7 +77,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 			aggregator := NewAggregator(ticker, collectionChan, m.dataChan)
 
 			msg := fmt.Sprintf("Synchronizing %d second report interval", interval.Report)
-			m.status.UpdateRe("mm", msg, cmd)
+			m.status.UpdateRe("Mm", msg, cmd)
 			aggregator.Start()
 
 			m.aggregators[interval.Report] = &Binding{ticker, collectionChan, aggregator}
@@ -85,7 +85,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 	}
 
 	m.config = c
-	m.status.UpdateRe("mm", "Ready", cmd)
+	m.status.UpdateRe("Mm", "Ready", cmd)
 	return nil
 }
 
@@ -93,7 +93,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 func (m *Manager) Stop(cmd *proto.Cmd) error {
 	// Stop all monitors.
 	for name, monitor := range m.monitors {
-		m.status.UpdateRe("mm", "Stopping "+name, cmd)
+		m.status.UpdateRe("Mm", "Stopping "+name, cmd)
 		monitor.Stop()
 	}
 
@@ -105,7 +105,7 @@ func (m *Manager) Stop(cmd *proto.Cmd) error {
 	}
 
 	m.config = nil
-	m.status.UpdateRe("mm", "Stopped", cmd)
+	m.status.UpdateRe("Mm", "Stopped", cmd)
 
 	return nil
 }
@@ -120,7 +120,7 @@ func (m *Manager) IsRunning() bool {
 
 // @goroutine[0]
 func (m *Manager) Handle(cmd *proto.Cmd) error {
-	defer m.status.Update("mm", "Ready")
+	defer m.status.Update("Mm", "Ready")
 
 	// Agent should check IsRunning() and only call if true,
 	// else return SerivceIsNotRunningError on our behalf.
@@ -141,13 +141,13 @@ func (m *Manager) Handle(cmd *proto.Cmd) error {
 	var err error
 	switch cmd.Cmd {
 	case "Start":
-		m.status.UpdateRe("mm", "Starting "+mm.Name+" monitor", cmd)
+		m.status.UpdateRe("Mm", "Starting "+mm.Name+" monitor", cmd)
 		interval := m.config.Intervals[mm.Name]
 		m.collectTickers[mm.Name] = m.tickerFactory.Make(interval.Collect)
 		collectionChan := m.aggregators[interval.Report].collectionChan
 		err = monitor.Start(mm.Config, m.collectTickers[mm.Name], collectionChan)
 	case "Stop":
-		m.status.UpdateRe("mm", "Stopping "+mm.Name+" monitor", cmd)
+		m.status.UpdateRe("Mm", "Stopping "+mm.Name+" monitor", cmd)
 		err = monitor.Stop()
 		m.collectTickers[mm.Name].Stop()
 		delete(m.collectTickers, mm.Name)

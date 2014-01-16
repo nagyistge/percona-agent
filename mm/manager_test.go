@@ -115,11 +115,11 @@ func TestStartStopManager(t *testing.T) {
 	// After starting, its status should be "Ready [cmd]" where cmd is
 	// the originating ^ cmd.
 	status := m.Status()
-	if !strings.Contains(status["mm"], "Ready") {
-		t.Error("Status is \"Ready\", got ", status["mm"])
+	if !strings.Contains(status["Mm"], "Ready") {
+		t.Error("Status is \"Ready\", got ", status["Mm"])
 	}
-	if !strings.Contains(status["mm"], "User:daniel") {
-		t.Error("Status has originating cmd, got ", status["mm"])
+	if !strings.Contains(status["Mm"], "User:daniel") {
+		t.Error("Status has originating cmd, got ", status["Mm"])
 	}
 
 	// Starting an already started service should result in a ServiceIsRunningError.
@@ -151,10 +151,10 @@ func TestStartStopManager(t *testing.T) {
 		t.Error("Report ticker is not running")
 	}
 	status = m.Status()
-	if !strings.Contains(status["mm"], "Stopped") {
+	if !strings.Contains(status["Mm"], "Stopped") {
 		t.Error("Status is \"Stopped\", got ", status)
 	}
-	if !strings.Contains(status["mm"], "User:daniel") {
+	if !strings.Contains(status["Mm"], "User:daniel") {
 		t.Error("Status has originating cmd, got ", status)
 	}
 }

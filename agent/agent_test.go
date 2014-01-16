@@ -90,8 +90,8 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 	s.readyChan = make(chan bool, 2)
 	s.traceChan = make(chan string, 10)
 	services := make(map[string]pct.ServiceManager)
-	services["qan"] = mock.NewMockServiceManager("qan", s.readyChan, s.traceChan)
-	services["mm"] = mock.NewMockServiceManager("mm", s.readyChan, s.traceChan)
+	services["qan"] = mock.NewMockServiceManager("Qan", s.readyChan, s.traceChan)
+	services["mm"] = mock.NewMockServiceManager("Mm", s.readyChan, s.traceChan)
 	s.services = services
 
 	s.doneChan = make(chan bool, 1)
@@ -143,23 +143,24 @@ func (s *AgentTestSuite) TestStatus(t *C) {
 	// Get msgs sent by agent to API (i.e. us).  There should only
 	// be one: a proto.StatusData.
 	got := test.WaitReply(s.recvChan)
-	if !t.Check(len(got), Equals, 1) {
-		return
+	if len(got) == 0 {
+		t.Fatal("Got reply")
 	}
+	gotReply := proto.StatusData{}
+	json.Unmarshal(got[0].Data, &gotReply)
 
 	// The agent should have sent back the original cmd's routing info
 	// (user and id) with Data=StatusData.
-	expect := statusCmd
-	statusReply := &proto.StatusData{
-		Agent:    "Agent: Ready\nStopping: false\nCommand: Ready\nStatus: 0\n",
-		CmdQueue: make([]string, agent.CMD_QUEUE_SIZE),
-		Service: map[string]string{
-			"qan": "AOK",
-			"mm":  "AOK",
-		},
+	expectReply := proto.StatusData{
+		Agent:           "Ready",
+		AgentCmdHandler: "Ready",
+		AgentCmdQueue:   []string{},
+		Qan:             "OK",
+		Mm:              "OK",
 	}
-	expect.Data, _ = json.Marshal(statusReply)
-	t.Check(string(got[0].Data), Equals, string(expect.Data)) // status reply
+	if ok, diff := test.IsDeeply(gotReply, expectReply); !ok {
+		t.Error(diff)
+	}
 }
 
 func (s *AgentTestSuite) TestStartService(t *C) {
@@ -202,8 +203,8 @@ func (s *AgentTestSuite) TestStartService(t *C) {
 	// then start it.  It should do this only for the requested service (qan).
 	got := test.WaitTrace(s.traceChan)
 	expect := []string{
-		`IsRunning qan`,
-		`Start qan {"Interval":60,"LongQueryTime":0.123,"MaxSlowLogSize":1073741824,"RemoveOldSlowLogs":true,"ExampleQueries":true,"MysqlDsn":"","MaxWorkers":2,"WorkerRuntime":120}`,
+		`IsRunning Qan`,
+		`Start Qan {"Interval":60,"LongQueryTime":0.123,"MaxSlowLogSize":1073741824,"RemoveOldSlowLogs":true,"ExampleQueries":true,"MysqlDsn":"","MaxWorkers":2,"WorkerRuntime":120}`,
 	}
 	t.Check(got, DeepEquals, expect)
 
@@ -259,7 +260,8 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
 	// Agent should be able to reply on status chan, indicating that it's
 	// still starting the service.
 	gotStatus := test.GetStatus(s.sendChan, s.recvChan)
-	t.Check(gotStatus.Agent, Equals, fmt.Sprintf("Agent: Ready\nStopping: false\nCommand: StartService [%s]\nStatus: 0\n", cmd))
+	t.Check(gotStatus.Agent, Equals, "Ready")
+	t.Check(gotStatus.AgentCmdQueue, DeepEquals, []string{cmd.String()})
 
 	// Make it seem like service has started now.
 	// time.Sleep(1 * time.Second)
