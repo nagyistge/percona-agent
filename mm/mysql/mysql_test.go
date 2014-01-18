@@ -151,28 +151,18 @@ func TestCollectInnoDBStats(t *testing.T) {
 	defer db.Close()
 
 	/**
-	 * Set up these values:
-	 *
-	 * mysql> SELECT NAME, SUBSYSTEM, COUNT, TYPE FROM INFORMATION_SCHEMA.INNODB_METRICS WHERE STATUS='enabled';
-	 * +-------------+-----------+-------+----------------+
-	 * | NAME        | SUBSYSTEM | COUNT | TYPE           |
-	 * +-------------+-----------+-------+----------------+
-	 * | dml_reads   | dml       |     0 | status_counter |
-	 * | dml_inserts | dml       |     1 | status_counter |
-	 * | dml_deletes | dml       |     0 | status_counter |
-	 * | dml_updates | dml       |     0 | status_counter |
-	 * +-------------+-----------+-------+----------------+
-     */
+	 * Disable and reset InnoDB metrics so we can test that the monitor enables and sets them.
+	 */
 	if _, err := db.Exec("set global innodb_monitor_disable = '%'"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec("set global innodb_monitor_enable = 'dml_%'"); err != nil {
+	if _, err := db.Exec("set global innodb_monitor_reset_all = '%'"); err != nil {
 		t.Fatal(err)
 	}
+
 	db.Exec("drop database if exists test_pct")
 	db.Exec("create database test_pct")
 	db.Exec("create table test_pct.t (i int) engine=innodb")
-	db.Exec("insert into test_pct.t (i) values (42)")
 	defer db.Exec("drop database if exists test_pct")
 
 	// Start a monitor with InnoDB metrics.
@@ -201,8 +191,11 @@ func TestCollectInnoDBStats(t *testing.T) {
 		t.Fatal("Monitor is ready")
 	}
 
-	now := time.Now()
-	tickerChan <- now
+	// Do INSERT to increment dml_inserts before monitor collects.  If it enabled
+	// the InnoDB metrics and collects them, we should get dml_inserts=1 this later..
+	db.Exec("insert into test_pct.t (i) values (42)")
+
+	tickerChan <- time.Now()
 	got := test.WaitCollection(collectionChan, 1)
 	if len(got) == 0 {
 		t.Fatal("Got a collection after tick")
@@ -210,14 +203,24 @@ func TestCollectInnoDBStats(t *testing.T) {
 	c := got[0]
 
 	/**
-	 * Here's the test: monitor should have collected the InnoDB metrics.
+	 * ...monitor should have collected the InnoDB metrics:
+	 *
+	 * mysql> SELECT NAME, SUBSYSTEM, COUNT, TYPE FROM INFORMATION_SCHEMA.INNODB_METRICS WHERE STATUS='enabled';
+	 * +-------------+-----------+-------+----------------+
+	 * | NAME        | SUBSYSTEM | COUNT | TYPE           |
+	 * +-------------+-----------+-------+----------------+
+	 * | dml_reads   | dml       |     0 | status_counter |
+	 * | dml_inserts | dml       |     1 | status_counter |
+	 * | dml_deletes | dml       |     0 | status_counter |
+	 * | dml_updates | dml       |     0 | status_counter |
+	 * +-------------+-----------+-------+----------------+
 	 */
 	if len(c.Metrics) != 4 {
 		t.Fatal("Collect 4 InnoDB metrics; got %+v", c.Metrics)
 	}
 	expect := []mm.Metric{
 		{Name:"mysql/innodb/dml/dml_reads",   Type:2, Number:0},
-		{Name:"mysql/innodb/dml/dml_inserts", Type:2, Number:1},
+		{Name:"mysql/innodb/dml/dml_inserts", Type:2, Number:1}, // <-- our INSERT
 		{Name:"mysql/innodb/dml/dml_deletes", Type:2, Number:0},
 		{Name:"mysql/innodb/dml/dml_updates", Type:2, Number:0},
 	}
