@@ -1,9 +1,9 @@
 package mysql
 
 import (
-	"fmt"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/percona/cloud-tools/mm"
 	"github.com/percona/cloud-tools/pct"
@@ -136,7 +136,7 @@ func (m *Monitor) connect() {
 			}
 		}
 
-		if m.config.Userstat {
+		if m.config.UserStats {
 			// 5.1.49 <= v <= 5.5.10: SET GLOBAL userstat_running=ON
 			// 5.5.10 <  v:           SET GLOBAL userstat=ON
 			sql := "SET GLOBAL userstat=ON"
@@ -184,9 +184,9 @@ func (m *Monitor) run() {
 				if m.config.InnoDB != "" {
 					m.GetInnoDBMetrics(m.conn, prefix, c)
 				}
-				if m.config.Userstat {
-					m.GetTableStatMetrics(m.conn, prefix, c, m.config.UserstatIgnoreDb)
-					m.GetIndexStatMetrics(m.conn, prefix, c, m.config.UserstatIgnoreDb)
+				if m.config.UserStats {
+					m.getTableUserStats(m.conn, prefix, c, m.config.UserStatsIgnoreDb)
+					m.getIndexUserStats(m.conn, prefix, c, m.config.UserStatsIgnoreDb)
 				}
 
 				// Send the metrics (to an mm.Aggregator).
@@ -305,17 +305,18 @@ func (m *Monitor) GetInnoDBMetrics(conn *sql.DB, prefix string, c *mm.Collection
 // --------------------------------------------------------------------------
 
 // @goroutine[2]
-func (m *Monitor) GetTableStatMetrics(conn *sql.DB, prefix string, c *mm.Collection, ignoreDb string) error {
-	/*
-	   SELECT * FROM INFORMATION_SCHEMA.TABLE_STATISTICS;
-	   +--------------+-------------+-----------+--------------+------------------------+
-	   | TABLE_SCHEMA | TABLE_NAME  | ROWS_READ | ROWS_CHANGED | ROWS_CHANGED_X_INDEXES |
-	*/
-	tableStatSQL := "SELECT TABLE_SCHEMA,TABLE_NAME,ROWS_READ,ROWS_CHANGED,ROWS_CHANGED_X_INDEXES FROM INFORMATION_SCHEMA.TABLE_STATISTICS"
+func (m *Monitor) getTableUserStats(conn *sql.DB, prefix string, c *mm.Collection, ignoreDb string) error {
+	/**
+	 *  SELECT * FROM INFORMATION_SCHEMA.TABLE_STATISTICS;
+	 *  +--------------+-------------+-----------+--------------+------------------------+
+	 *  | TABLE_SCHEMA | TABLE_NAME  | ROWS_READ | ROWS_CHANGED | ROWS_CHANGED_X_INDEXES |
+	 */
+	sql := "SELECT TABLE_SCHEMA, TABLE_NAME, ROWS_READ, ROWS_CHANGED, ROWS_CHANGED_X_INDEXES" +
+		" FROM INFORMATION_SCHEMA.TABLE_STATISTICS"
 	if ignoreDb != "" {
-		tableStatSQL = tableStatSQL + " WHERE TABLE_SCHEMA NOT LIKE '" + ignoreDb + "'"
+		sql += " WHERE TABLE_SCHEMA NOT LIKE '" + ignoreDb + "'"
 	}
-	rows, err := conn.Query(tableStatSQL)
+	rows, err := conn.Query(sql)
 	if err != nil {
 		return err
 	}
@@ -332,18 +333,18 @@ func (m *Monitor) GetTableStatMetrics(conn *sql.DB, prefix string, c *mm.Collect
 		}
 
 		c.Metrics = append(c.Metrics, mm.Metric{
-			Name:  prefix + "/db." + tableSchema + "/t." + tableName + "/rows_read",
-			Type: mm.NUMBER,
+			Name:   prefix + "/db." + tableSchema + "/t." + tableName + "/rows_read",
+			Type:   mm.COUNTER,
 			Number: float64(rowsRead),
 		})
 		c.Metrics = append(c.Metrics, mm.Metric{
-			Name:  prefix + "/db." + tableSchema + "/t." + tableName + "/rows_changed",
-			Type: mm.NUMBER,
+			Name:   prefix + "/db." + tableSchema + "/t." + tableName + "/rows_changed",
+			Type:   mm.COUNTER,
 			Number: float64(rowsChanged),
 		})
 		c.Metrics = append(c.Metrics, mm.Metric{
-			Name:  prefix + "/db." + tableSchema + "/t." + tableName + "/rows_changed_x_indexes",
-			Type: mm.NUMBER,
+			Name:   prefix + "/db." + tableSchema + "/t." + tableName + "/rows_changed_x_indexes",
+			Type:   mm.COUNTER,
 			Number: float64(rowsChangedIndexes),
 		})
 	}
@@ -355,18 +356,19 @@ func (m *Monitor) GetTableStatMetrics(conn *sql.DB, prefix string, c *mm.Collect
 }
 
 // @goroutine[2]
-func (m *Monitor) GetIndexStatMetrics(conn *sql.DB, prefix string, c *mm.Collection, ignoreDb string) error {
-	/*
-	   SELECT * FROM INFORMATION_SCHEMA.INDEX_STATISTICS;
-	   +--------------+-------------+------------+-----------+
-	   | TABLE_SCHEMA | TABLE_NAME  | INDEX_NAME | ROWS_READ | select * from INFORMATION_SCHEMA.INDEX_STATISTICS;
-	   +--------------+-------------+------------+-----------+
-	*/
-	indexStatSQL := "SELECT TABLE_SCHEMA,TABLE_NAME,INDEX_NAME,ROWS_READ FROM INFORMATION_SCHEMA.INDEX_STATISTICS"
+func (m *Monitor) getIndexUserStats(conn *sql.DB, prefix string, c *mm.Collection, ignoreDb string) error {
+	/**
+	 *  SELECT * FROM INFORMATION_SCHEMA.INDEX_STATISTICS;
+	 *  +--------------+-------------+------------+-----------+
+	 *  | TABLE_SCHEMA | TABLE_NAME  | INDEX_NAME | ROWS_READ |
+	 *  +--------------+-------------+------------+-----------+
+	 */
+	sql := "SELECT TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, ROWS_READ" +
+		" FROM INFORMATION_SCHEMA.INDEX_STATISTICS"
 	if ignoreDb != "" {
-		indexStatSQL = indexStatSQL + " WHERE TABLE_SCHEMA NOT LIKE '" + ignoreDb + "'"
+		sql = sql + " WHERE TABLE_SCHEMA NOT LIKE '" + ignoreDb + "'"
 	}
-	rows, err := conn.Query(indexStatSQL)
+	rows, err := conn.Query(sql)
 	if err != nil {
 		return err
 	}
@@ -383,7 +385,7 @@ func (m *Monitor) GetIndexStatMetrics(conn *sql.DB, prefix string, c *mm.Collect
 
 		metricName := prefix + "/db." + tableSchema + "/t." + tableName + "/idx." + indexName + "/rows_read"
 		metricValue := float64(rowsRead)
-		c.Metrics = append(c.Metrics, mm.Metric{metricName, mm.NUMBER, metricValue, ""})
+		c.Metrics = append(c.Metrics, mm.Metric{metricName, mm.COUNTER, metricValue, ""})
 	}
 	err = rows.Err()
 	if err != nil {

@@ -3,4 +3,4 @@
 bin/agent
 test/mock/ws-client/ws-client
 test/mock/ws-server/ws-server
-metrics-monitor/
+coverage.out

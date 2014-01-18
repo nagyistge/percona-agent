@@ -1,8 +1,6 @@
 package mysql_test
 
 import (
-	"log"
-	"os"
 	"encoding/json"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/mm"
@@ -10,6 +8,8 @@ import (
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/test"
 	"github.com/percona/cloud-tools/test/mock"
+	"log"
+	"os"
 	"testing"
 	"time"
 )
@@ -56,12 +56,12 @@ func TestStartCollectStop(t *testing.T) {
 	config := &mysql.Config{
 		DSN:          dsn,
 		InstanceName: instance,
-		Status:       map[string]byte{
+		Status: map[string]byte{
 			"Threads_connected": mm.NUMBER,
-			"Threads_running": mm.NUMBER,
+			"Threads_running":   mm.NUMBER,
 		},
 	}
-	data , err := json.Marshal(config)
+	data, err := json.Marshal(config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,14 +109,14 @@ func TestStartCollectStop(t *testing.T) {
 	if len(c.Metrics) != 2 {
 		t.Fatal("Collected only configured metrics; got %+v", c.Metrics)
 	}
-	if c.Metrics[0].Name != prefix + "/threads_connected" {
-		t.Error("First metric is ", prefix + "/threads_connected; got", c.Metrics[0].Name)
+	if c.Metrics[0].Name != prefix+"/threads_connected" {
+		t.Error("First metric is ", prefix+"/threads_connected; got", c.Metrics[0].Name)
 	}
 	if c.Metrics[0].Number < 1 {
 		t.Error("threads_connected > 1; got", c.Metrics[0].Number)
 	}
-	if c.Metrics[1].Name != prefix + "/threads_running" {
-		t.Error("Second metric is ", prefix + "/threads_running got", c.Metrics[1].Name)
+	if c.Metrics[1].Name != prefix+"/threads_running" {
+		t.Error("Second metric is ", prefix+"/threads_running got", c.Metrics[1].Name)
 	}
 	if c.Metrics[1].Number < 1 {
 		t.Error("threads_running > 1; got", c.Metrics[0].Number)
@@ -175,9 +175,9 @@ func TestCollectInnoDBStats(t *testing.T) {
 	config := &mysql.Config{
 		DSN:    dsn,
 		Status: map[string]byte{},
-		InnoDB: "dml_%",  // same as above ^
+		InnoDB: "dml_%", // same as above ^
 	}
-	data , err := json.Marshal(config)
+	data, err := json.Marshal(config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,13 +219,100 @@ func TestCollectInnoDBStats(t *testing.T) {
 		t.Fatal("Collect 4 InnoDB metrics; got %+v", c.Metrics)
 	}
 	expect := []mm.Metric{
-		{Name:"mysql/innodb/dml/dml_reads",   Type:2, Number:0},
-		{Name:"mysql/innodb/dml/dml_inserts", Type:2, Number:1}, // <-- our INSERT
-		{Name:"mysql/innodb/dml/dml_deletes", Type:2, Number:0},
-		{Name:"mysql/innodb/dml/dml_updates", Type:2, Number:0},
+		{Name: "mysql/innodb/dml/dml_reads", Type: 2, Number: 0},
+		{Name: "mysql/innodb/dml/dml_inserts", Type: 2, Number: 1}, // <-- our INSERT
+		{Name: "mysql/innodb/dml/dml_deletes", Type: 2, Number: 0},
+		{Name: "mysql/innodb/dml/dml_updates", Type: 2, Number: 0},
 	}
 	if ok, diff := test.IsDeeply(c.Metrics, expect); !ok {
 		t.Error(diff)
+	}
+
+	// Stop montior, clean up.
+	m.Stop()
+}
+
+func TestCollectUserstats(t *testing.T) {
+	//debug()
+	if dsn == "" {
+		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
+	}
+
+	// Get our own connection to MySQL.
+	db, err := test.ConnectMySQL(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	/**
+	 * Disable and reset user stats.
+	 */
+	if _, err := db.Exec("set global userstat = off"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("flush user_statistics"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Start a monitor with user stats.
+	// See TestStartCollectStop() for description of these steps.
+	m := mysql.NewMonitor(logger)
+	if m == nil {
+		t.Fatal("Make new mysql.Monitor")
+	}
+
+	config := &mysql.Config{
+		DSN:       dsn,
+		UserStats: true,
+	}
+	data, err := json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = m.Start(data, mockTicker, collectionChan)
+	if err != nil {
+		t.Fatalf("Start monitor without error, got %s", err)
+	}
+
+	if ok := test.WaitStatus(5, m, "mysql", "Ready"); !ok {
+		t.Fatal("Monitor is ready")
+	}
+
+	tickerChan <- time.Now()
+	got := test.WaitCollection(collectionChan, 1)
+	if len(got) == 0 {
+		t.Fatal("Got a collection after tick")
+	}
+	c := got[0]
+
+	/**
+	 * Monitor should have collected the user stats: just table and index.
+	 * Values vary a little, but there should be a table metric for mysql.user
+	 * because login uses this table.
+	 */
+	if len(c.Metrics) < 1 {
+		t.Fatalf("Collect at least 1 user stat metric; got %+v", c.Metrics)
+	}
+
+	metricName := "mysql/db.mysql/t.user/rows_read"
+	var tblStat *mm.Metric
+	for _, m := range c.Metrics {
+		if m.Name == metricName {
+			tblStat = &m
+		}
+	}
+
+	if tblStat == nil {
+		t.Error("Got " + metricName + " table stats")
+	}
+
+	// At least 2 rows should have been read from mysql.user:
+	//   1: our db connection
+	//   2: the monitor's db connection
+	if tblStat.Number < 2 {
+		t.Error(metricName + " >= 2")
 	}
 
 	// Stop montior, clean up.
