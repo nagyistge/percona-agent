@@ -2,7 +2,7 @@ package mock
 
 import (
 	"code.google.com/p/go.net/websocket"
-	proto "github.com/percona/cloud-protocol"
+	"github.com/percona/cloud-protocol/proto"
 )
 
 type NullClient struct {

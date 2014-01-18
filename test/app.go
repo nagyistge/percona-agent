@@ -2,7 +2,7 @@ package test
 
 import (
 	"encoding/json"
-	proto "github.com/percona/cloud-protocol"
+	"github.com/percona/cloud-protocol/proto"
 	"io/ioutil"
 	"os"
 	"time"

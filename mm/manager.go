@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	proto "github.com/percona/cloud-protocol"
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
 )
 

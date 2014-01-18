@@ -1,7 +1,7 @@
 package pct
 
 import (
-	proto "github.com/percona/cloud-protocol"
+	"github.com/percona/cloud-protocol/proto"
 )
 
 type ServiceManager interface {

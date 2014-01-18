@@ -2,7 +2,7 @@ package client_test
 
 import (
 	//	"log"
-	proto "github.com/percona/cloud-protocol"
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/client"
 	"github.com/percona/cloud-tools/test"
 	"github.com/percona/cloud-tools/test/mock"

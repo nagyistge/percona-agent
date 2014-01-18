@@ -6,7 +6,7 @@ import (
 	"os"
 	"log"
 	"errors"
-	proto "github.com/percona/cloud-protocol"
+	"github.com/percona/cloud-protocol/proto"
 )
 
 type Config struct {

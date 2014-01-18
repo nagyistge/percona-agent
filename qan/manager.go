@@ -3,7 +3,7 @@ package qan
 import (
 	"encoding/json"
 	"fmt"
-	proto "github.com/percona/cloud-protocol"
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
 	"sync"
 	"time"

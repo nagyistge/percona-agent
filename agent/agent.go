@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 	// External
-	proto "github.com/percona/cloud-protocol"
+	"github.com/percona/cloud-protocol/proto"
 	// Internal
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/logrelay"

@@ -3,7 +3,7 @@ package mock
 import (
 	//"fmt"
 	"code.google.com/p/go.net/websocket"
-	proto "github.com/percona/cloud-protocol"
+	"github.com/percona/cloud-protocol/proto"
 )
 
 type WebsocketClient struct {

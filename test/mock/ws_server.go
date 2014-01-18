@@ -4,7 +4,7 @@ import (
 	"code.google.com/p/go.net/websocket"
 	"log"
 	"net/http"
-	proto "github.com/percona/cloud-protocol"
+	"github.com/percona/cloud-protocol/proto"
 )
 
 type WebsocketServer struct {

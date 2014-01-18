@@ -2,7 +2,7 @@ package mm_test
 
 import (
 	"encoding/json"
-	proto "github.com/percona/cloud-protocol"
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/mm"
 	"github.com/percona/cloud-tools/mm/mysql"
 	"github.com/percona/cloud-tools/pct"

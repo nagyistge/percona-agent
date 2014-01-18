@@ -4,7 +4,7 @@ import (
 	"code.google.com/p/go.net/websocket"
 	"errors"
 	"github.com/percona/cloud-tools/pct"
-	proto "github.com/percona/cloud-protocol"
+	"github.com/percona/cloud-protocol/proto"
 	"time"
 )
 

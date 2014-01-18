@@ -2,7 +2,7 @@ package logrelay_test
 
 import (
 	"fmt"
-	proto "github.com/percona/cloud-protocol"
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/test"
 	"github.com/percona/cloud-tools/test/mock"

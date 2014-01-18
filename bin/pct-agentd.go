@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 	"os/user"
-	proto "github.com/percona/cloud-protocol"
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/agent"
 	"github.com/percona/cloud-tools/client"

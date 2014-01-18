@@ -3,7 +3,7 @@ package qan_test
 import (
 	"encoding/json"
 	"fmt"
-	proto "github.com/percona/cloud-protocol"
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/qan"
 	"github.com/percona/cloud-tools/test"
