@@ -254,6 +254,9 @@ func TestCollectUserstats(t *testing.T) {
 	if _, err := db.Exec("flush user_statistics"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Exec("flush index_statistics"); err != nil {
+		t.Fatal(err)
+	}
 
 	// Start a monitor with user stats.
 	// See TestStartCollectStop() for description of these steps.
@@ -280,6 +283,13 @@ func TestCollectUserstats(t *testing.T) {
 		t.Fatal("Monitor is ready")
 	}
 
+	// To get index stats, we need to use an index: mysq.user PK <host, user>
+	rows, err := db.Query("select * from mysql.user where host='%' and user='msandbox'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
 	tickerChan <- time.Now()
 	got := test.WaitCollection(collectionChan, 1)
 	if len(got) == 0 {
@@ -296,23 +306,27 @@ func TestCollectUserstats(t *testing.T) {
 		t.Fatalf("Collect at least 1 user stat metric; got %+v", c.Metrics)
 	}
 
-	metricName := "mysql/db.mysql/t.user/rows_read"
-	var tblStat *mm.Metric
+	var tblStat mm.Metric
+	var idxStat mm.Metric
 	for _, m := range c.Metrics {
-		if m.Name == metricName {
-			tblStat = &m
+		switch m.Name {
+		case "mysql/db.mysql/t.user/rows_read":
+			tblStat = m
+		case "mysql/db.mysql/t.user/idx.PRIMARY/rows_read":
+			idxStat = m
 		}
-	}
-
-	if tblStat == nil {
-		t.Error("Got " + metricName + " table stats")
 	}
 
 	// At least 2 rows should have been read from mysql.user:
 	//   1: our db connection
 	//   2: the monitor's db connection
 	if tblStat.Number < 2 {
-		t.Error(metricName + " >= 2")
+		t.Errorf("mysql/db.mysql/t.user/rows_read >= 2, got %+v", tblStat)
+	}
+
+	// At least 1 index read on mysql.user PK due to our SELECT ^.
+	if idxStat.Number < 1 {
+		t.Errorf("mysql/db.mysql/t.user/idx.PRIMARY/rows_read >= 1, got %+v", idxStat)
 	}
 
 	// Stop montior, clean up.
