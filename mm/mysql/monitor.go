@@ -137,6 +137,8 @@ func (m *Monitor) connect() {
 		}
 
 		if m.config.Userstat {
+			// 5.1.49 <= v <= 5.5.10: SET GLOBAL userstat_running=ON
+			// 5.5.10 <  v:           SET GLOBAL userstat=ON
 			sql := "SET GLOBAL userstat=ON"
 			if _, err := db.Exec(sql); err != nil {
 				m.logger.Error(sql, err)
@@ -216,6 +218,10 @@ func (m *Monitor) run() {
 	}
 }
 
+// --------------------------------------------------------------------------
+// SHOW STATUS
+// --------------------------------------------------------------------------
+
 // @goroutine[2]
 func (m *Monitor) GetShowStatusMetrics(conn *sql.DB, prefix string, c *mm.Collection) error {
 	rows, err := conn.Query("SHOW /*!50002 GLOBAL */ STATUS")
@@ -249,6 +255,12 @@ func (m *Monitor) GetShowStatusMetrics(conn *sql.DB, prefix string, c *mm.Collec
 	}
 	return nil
 }
+
+// --------------------------------------------------------------------------
+// InnoDB Metrics
+// http://dev.mysql.com/doc/refman/5.6/en/innodb-metrics-table.html
+// https://blogs.oracle.com/mysqlinnodb/entry/get_started_with_innodb_metrics
+// --------------------------------------------------------------------------
 
 // @goroutine[2]
 func (m *Monitor) GetInnoDBMetrics(conn *sql.DB, prefix string, c *mm.Collection) error {
@@ -286,6 +298,11 @@ func (m *Monitor) GetInnoDBMetrics(conn *sql.DB, prefix string, c *mm.Collection
 	}
 	return nil
 }
+
+// --------------------------------------------------------------------------
+// User Statistics
+// http://www.percona.com/doc/percona-server/5.5/diagnostics/user_stats.html
+// --------------------------------------------------------------------------
 
 // @goroutine[2]
 func (m *Monitor) GetTableStatMetrics(conn *sql.DB, prefix string, c *mm.Collection, ignoreDb string) error {
