@@ -2,24 +2,24 @@ package main
 
 import (
 	"fmt"
-	"log"
-	"os"
-	"os/user"
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/agent"
 	"github.com/percona/cloud-tools/client"
 	"github.com/percona/cloud-tools/logrelay"
+	"github.com/percona/cloud-tools/pct"
+	"log"
+	"os"
+	"os/user"
+	"time"
 )
 
 const (
-	VERSION      = "1.0.0"
-	CONFIG_FILE  = "/etc/percona/pct-agentd.conf"
-	LOG_WS       = "/agent/log"
-	AGENT_WS     = "/cmd/agent"
-	QAN_DATA_URL = "/qan"
-	MM_DATA_URL  = "/mm"
+	VERSION = "1.0.0"
 )
+
+type apiLinks struct {
+	links map[string]string
+}
 
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
@@ -43,15 +43,16 @@ func main() {
 
 	// Create default config.
 	config := &agent.Config{
-		ApiHostname: "cloud-api.percona.com",
-		LogFile: "/var/log/pct-agentd.log",
-		LogLevel: "info",
+		ApiHostname: agent.API_HOSTNAME,
+		LogFile:     agent.LOG_FILE,
+		LogLevel:    agent.LOG_LEVEL,
+		DataDir:     agent.DATA_DIR,
 	}
 
 	// Overwrite default config with config file.
 	configFile := arg
 	if configFile == "" {
-		configFile = CONFIG_FILE
+		configFile = agent.CONFIG_FILE
 	}
 	if err := config.Apply(agent.LoadConfig(configFile)); err != nil {
 		log.Fatal(err)
@@ -83,6 +84,14 @@ func main() {
 		defer removeFile(config.PidFile)
 	}
 
+	// Get entry links: URLs for websockets, sending service data, etc.
+	httpClient := client.NewHttpClient(config.ApiKey)
+	links, err := GetLinks(httpClient, agent.API_HOSTNAME)
+	if err != nil {
+		log.Fatal(err)
+	}
+	config.Links = links
+
 	// Get some values we'll need later.
 	hostname, _ := os.Hostname()
 	u, _ := user.Current()
@@ -90,8 +99,8 @@ func main() {
 	origin := "http://" + username + "@" + hostname
 
 	auth := &proto.AgentAuth{
-		ApiKey: config.ApiKey,
-		Uuid: config.AgentUuid,
+		ApiKey:   config.ApiKey,
+		Uuid:     config.AgentUuid,
 		Hostname: hostname,
 		Username: username,
 	}
@@ -103,7 +112,7 @@ func main() {
 		log.Println("LogFileOnly=true")
 		logRelay = logrelay.NewLogRelay(nil, config.LogFile, logLevel)
 	} else {
-		wsClient, err := client.NewWebsocketClient("ws://" + config.ApiHostname + LOG_WS, origin, auth)
+		wsClient, err := client.NewWebsocketClient(config.Links["log"], origin, auth)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -114,18 +123,26 @@ func main() {
 	// Create and run the agent.
 	logger := pct.NewLogger(logRelay.LogChan(), "agent")
 
-	agentClient, err := client.NewWebsocketClient("ws://" + config.ApiHostname + AGENT_WS, origin, auth)
+	cmdClient, err := client.NewWebsocketClient(config.Links["cmd"], origin, auth)
 	if err != nil {
 		log.Fatalln(err)
 	}
 
 	services := map[string]pct.ServiceManager{
 		"qan": nil,
-		"mm": nil,
+		"mm":  nil,
 	}
 
-	agent := agent.NewAgent(auth, logRelay, logger, agentClient, services)
+	agent := agent.NewAgent(config, auth, logRelay, logger, cmdClient, services)
 	agent.Run()
+}
+
+func GetLinks(client pct.HttpClient, link string) (map[string]string, error) {
+	links := &apiLinks{}
+	if err := client.Get(link, links, time.Hour*24*7); err != nil {
+		return nil, err
+	}
+	return links.links, nil
 }
 
 func writePidFile(pidFile string) error {
@@ -142,7 +159,7 @@ func writePidFile(pidFile string) error {
 	return err
 }
 
-func removeFile (file string) error {
+func removeFile(file string) error {
 	if file != "" {
 		err := os.Remove(file)
 		if !os.IsNotExist(err) {

@@ -2,21 +2,33 @@ package agent
 
 import (
 	"encoding/json"
-	"io/ioutil"
-	"os"
-	"log"
 	"errors"
 	"github.com/percona/cloud-protocol/proto"
+	"io/ioutil"
+	"log"
+	"os"
+)
+
+// Defaults
+const (
+	API_HOSTNAME = "cloud-api.percona.com"
+	CONFIG_FILE  = "/etc/percona/agent.conf"
+	LOG_FILE     = "/var/log/percona/agent.log"
+	LOG_LEVEL    = "info"
+	DATA_DIR     = "/var/spool/percona/agent"
 )
 
 type Config struct {
-	ApiHostname    string
-	ApiKey         string
-	AgentUuid      string
-	PidFile        string
-	LogFile        string
-	LogLevel       string
-	LogFileOnly    bool
+	ApiHostname   string
+	ApiKey        string
+	AgentUuid     string
+	PidFile       string
+	LogFile       string
+	LogLevel      string
+	LogFileOnly   bool
+	DataDir       string
+	SpoolDataOnly bool
+	Links         map[string]string
 }
 
 // Load config from JSON file.

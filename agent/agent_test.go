@@ -10,9 +10,9 @@ import (
 	// External
 	"github.com/percona/cloud-protocol/proto"
 	// Internal
-	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/agent"
 	"github.com/percona/cloud-tools/logrelay"
+	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/qan"
 	// Testing
 	"github.com/percona/cloud-tools/test"
@@ -28,6 +28,7 @@ func Test(t *testing.T) { TestingT(t) }
 type AgentTestSuite struct {
 	tmpDir string
 	// agent and what it needs
+	config    *agent.Config
 	auth      *proto.AgentAuth
 	agent     *agent.Agent
 	logRelay  *logrelay.LogRelay
@@ -62,6 +63,13 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 	// logFile := s.tmpDir + "/log"
 
 	// Agent
+	s.config = &agent.Config{
+		ApiHostname: agent.API_HOSTNAME,
+		LogFile:     agent.LOG_FILE,
+		LogLevel:    agent.LOG_LEVEL,
+		DataDir:     agent.DATA_DIR,
+	}
+
 	s.auth = &proto.AgentAuth{
 		ApiKey:   "123",
 		Uuid:     "abc-123",
@@ -106,7 +114,7 @@ func (s *AgentTestSuite) TearDownSuite(t *C) {
 func (s *AgentTestSuite) SetUpTest(t *C) {
 	// Before each test, create and agent.  Tests make change the agent,
 	// so this ensures each test starts with an agent with known values.
-	s.agent = agent.NewAgent(s.auth, s.logRelay, s.logger, s.client, s.services)
+	s.agent = agent.NewAgent(s.config, s.auth, s.logRelay, s.logger, s.client, s.services)
 
 	// Run the agent.
 	go func() {

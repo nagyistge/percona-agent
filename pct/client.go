@@ -1,6 +1,7 @@
 package pct
 
 import (
+	"time"
 	"code.google.com/p/go.net/websocket"
 	"github.com/percona/cloud-protocol/proto"
 )
@@ -24,5 +25,6 @@ type WebsocketClient interface {
 }
 
 type HttpClient interface {
+	Get(url string, v interface{}, timeout time.Duration) error
 	Post(url string, data []byte) error
 }

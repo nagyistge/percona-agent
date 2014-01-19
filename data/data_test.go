@@ -3,7 +3,7 @@ package data_test
 import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/cloud-protocol/test/mock"
+	"github.com/percona/cloud-tools/test/mock"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/test"
 	"io/ioutil"

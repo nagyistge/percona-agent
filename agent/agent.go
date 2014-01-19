@@ -10,8 +10,8 @@ import (
 	// External
 	"github.com/percona/cloud-protocol/proto"
 	// Internal
-	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/logrelay"
+	"github.com/percona/cloud-tools/pct"
 )
 
 const (
@@ -22,11 +22,12 @@ const (
 )
 
 type Agent struct {
-	auth       *proto.AgentAuth
+	config   *Config
+	auth     *proto.AgentAuth
 	logRelay *logrelay.LogRelay
-	logger     *pct.Logger
-	client     pct.WebsocketClient
-	services   map[string]pct.ServiceManager
+	logger   *pct.Logger
+	client   pct.WebsocketClient
+	services map[string]pct.ServiceManager
 	// --
 	cmdSync *pct.SyncChan
 	cmdChan chan *proto.Cmd
@@ -46,20 +47,21 @@ type Agent struct {
 	stopChan          chan bool
 }
 
-func NewAgent(auth *proto.AgentAuth, logRelay *logrelay.LogRelay, logger *pct.Logger, client pct.WebsocketClient, services map[string]pct.ServiceManager) *Agent {
+func NewAgent(config *Config, auth *proto.AgentAuth, logRelay *logrelay.LogRelay, logger *pct.Logger, client pct.WebsocketClient, services map[string]pct.ServiceManager) *Agent {
 	agent := &Agent{
-		auth:       auth,
+		config:   config,
+		auth:     auth,
 		logRelay: logRelay,
-		logger:     logger,
-		client:     client,
-		services:   services,
+		logger:   logger,
+		client:   client,
+		services: services,
 		// --
 		cmdq:       make([]*proto.Cmd, CMD_QUEUE_SIZE),
 		cmdqMux:    new(sync.RWMutex),
 		status:     pct.NewStatus([]string{"Agent", "AgentCmdHandler"}),
 		cmdChan:    make(chan *proto.Cmd, CMD_QUEUE_SIZE),
 		statusChan: make(chan *proto.Cmd, STATUS_QUEUE_SIZE),
-		stopChan: make(chan bool, 1),
+		stopChan:   make(chan bool, 1),
 	}
 	return agent
 }
@@ -311,7 +313,7 @@ func (agent *Agent) cmdHandler() {
 			if err != nil {
 				replyChan <- cmd.Reply(err, nil)
 			} else {
-				replyChan <- cmd.Reply(nil, nil)  // success
+				replyChan <- cmd.Reply(nil, nil) // success
 			}
 
 			// Pop the cmd from the queue.
@@ -335,7 +337,7 @@ func (agent *Agent) handleSetLogLevel(cmd *proto.Cmd) error {
 		return err
 	}
 
-	agent.logRelay.LogLevelChan() <-log.Level
+	agent.logRelay.LogLevelChan() <- log.Level
 
 	return nil
 }
