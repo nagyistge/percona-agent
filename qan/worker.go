@@ -9,15 +9,15 @@ import (
 )
 
 type Worker struct {
-	logger          *pct.Logger
-	job             *Job
-	resultChan      chan *Result
-	workersDoneChan chan *Worker
+	logger         *pct.Logger
+	job            *Job
+	dataChan       chan interface{}
+	workerDoneChan chan *Worker
 }
 
 type Job struct {
 	SlowLogFile    string
-	Runtime        time.Duration
+	RunTime        time.Duration
 	StartOffset    int64
 	StopOffset     int64
 	ExampleQueries bool
@@ -29,12 +29,12 @@ type Result struct {
 	Classes []*mysqlLog.QueryClass `json:",omitempty"`
 }
 
-func NewWorker(logger *pct.Logger, job *Job, resultChan chan *Result, workersDoneChan chan *Worker) *Worker {
+func NewWorker(logger *pct.Logger, job *Job, dataChan chan interface{}, workerDoneChan chan *Worker) *Worker {
 	w := &Worker{
-		logger:          logger,
-		job:             job,
-		resultChan:      resultChan,
-		workersDoneChan: workersDoneChan,
+		logger:         logger,
+		job:            job,
+		dataChan:       dataChan,
+		workerDoneChan: workerDoneChan,
 	}
 	return w
 }
@@ -46,11 +46,11 @@ func (w *Worker) Run() {
 	result := new(Result)
 	defer func() {
 		select {
-		case w.resultChan <- result:
+		case w.dataChan <- result:
 		default:
 			// todo: lost results
 		}
-		w.workersDoneChan <- w
+		w.workerDoneChan <- w
 	}()
 
 	// Open the slow log file.
