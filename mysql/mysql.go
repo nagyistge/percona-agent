@@ -18,6 +18,10 @@ func NewConnection(dsn string) *Connection {
 	return c
 }
 
+func (c *Connection) DB() *sql.DB {
+	return c.conn
+}
+
 func (c *Connection) Connect() error {
 	if c.conn != nil {
 		c.conn.Close()
@@ -36,6 +40,8 @@ func (c *Connection) Connect() error {
 		return err
 	}
 
+	c.conn = db
+
 	// Connected
 	return nil
 }
@@ -50,4 +56,22 @@ func (c *Connection) Set(queries []Query) error {
 		}
 	}
 	return nil
+}
+
+func (c *Connection) GetGlobalVarString(varName string) string {
+	if c.conn == nil {
+		return ""
+	}
+	var varValue string
+	c.conn.QueryRow("SELECT @@GLOBAL." + varName).Scan(&varValue)
+	return varValue
+}
+
+func (c *Connection) GetGlobalVarNumber(varName string) float64 {
+	if c.conn == nil {
+		return 0
+	}
+	var varValue float64
+	c.conn.QueryRow("SELECT @@GLOBAL." + varName).Scan(&varValue)
+	return varValue
 }

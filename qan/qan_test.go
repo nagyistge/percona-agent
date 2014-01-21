@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/qan"
 	"github.com/percona/cloud-tools/test"
@@ -101,6 +102,8 @@ func (s *WorkerTestSuite) TestWorkerSlow001Resume(c *gocheck.C) {
 
 type ManagerTestSuite struct {
 	dsn string
+	mysql *mysql.Connection
+	reset []mysql.Query
 }
 
 var _ = gocheck.Suite(&ManagerTestSuite{})
@@ -110,16 +113,36 @@ func (s *ManagerTestSuite) SetUpSuite(c *gocheck.C) {
 	if s.dsn == "" {
 		c.Fatal("PCT_TEST_MYSQL_DSN is not set")
 	}
+	s.mysql = mysql.NewConnection(s.dsn)
+	if err := s.mysql.Connect(); err != nil {
+		c.Fatal(err)
+	}
+	if err := s.mysql.Connect(); err != nil {
+		c.Fatal(err)
+	}
+	s.reset = []mysql.Query{
+		mysql.Query{Set:"SET GLOBAL slow_query_log=OFF"},
+		mysql.Query{Set:"SET GLOBAL long_query_time=10"},
+	}
+}
+
+func (s *ManagerTestSuite) SetUpTest(c *gocheck.C) {
+	err := s.mysql.Set(s.reset)
+	if err != nil {
+		c.Fatal(err)
+	}
+}
+
+func (s *ManagerTestSuite) TearDownTest(c *gocheck.C) {
+	err := s.mysql.Set(s.reset)
+	if err != nil {
+		c.Fatal(err)
+	}
 }
 
 func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	logChan := make(chan *proto.LogEntry, 1000)
 	logger := pct.NewLogger(logChan, "qan-test")
-
-	sendChan := make(chan *proto.Cmd, 5)
-	recvChan := make(chan *proto.Reply, 5)
-	client := mock.NewWebsocketClient(sendChan, recvChan, nil, nil)
-	go client.Run()
 
 	intervalChan := make(chan *qan.Interval, 1)
 	iter := mock.NewMockIntervalIter(intervalChan)
@@ -135,11 +158,20 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	tmpFile := fmt.Sprintf("/tmp/qan_test.TestStartService.%d", os.Getpid())
 	defer func() { os.Remove(tmpFile) }()
 	config := &qan.Config{
+		DSN:               s.dsn,
+		Start:             []mysql.Query{
+			mysql.Query{Set:"SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set:"SET GLOBAL long_query_time=0.123"},
+			mysql.Query{Set:"SET GLOBAL slow_query_log=ON"},
+		},
+		Stop:              []mysql.Query{
+			mysql.Query{Set:"SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set:"SET GLOBAL long_query_time=10"},
+		},
 		Interval:          300,        // 5 min
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
 		ExampleQueries:    false,
-		DSN:               s.dsn,
 		MaxWorkers:        2,
 		WorkerRunTime:     600, // 10 min
 	}
@@ -166,6 +198,13 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	if !m.IsRunning() {
 		c.Error("Manager.IsRunning() is false after Start()")
 	}
+
+	// It should have enabled the slow log.
+	slowLog := s.mysql.GetGlobalVarNumber("slow_query_log")
+	c.Assert(slowLog, gocheck.Equals, float64(1))
+
+	longQueryTime := s.mysql.GetGlobalVarNumber("long_query_time")
+	c.Assert(longQueryTime, gocheck.Equals, 0.123)
 
 	////////////////////////////////////////////////////////////////////////////
 	// Status
@@ -217,6 +256,13 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	if m.IsRunning() {
 		c.Error("Manager.IsRunning() is false after Start()")
 	}
+
+	// It should disable the slow log.
+	slowLog = s.mysql.GetGlobalVarNumber("slow_query_log")
+	c.Assert(slowLog, gocheck.Equals, float64(0))
+
+	longQueryTime = s.mysql.GetGlobalVarNumber("long_query_time")
+	c.Assert(longQueryTime, gocheck.Equals, 10.0)
 }
 
 /////////////////////////////////////////////////////////////////////////////

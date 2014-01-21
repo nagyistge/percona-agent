@@ -94,16 +94,16 @@ func (m *Manager) Stop(cmd *proto.Cmd) error {
 	m.sync.Stop()
 	m.sync.Wait()
 
-	m.config = nil
-	m.workerDoneChan = nil
-	m.status.UpdateRe("Qan", "Stopped", cmd)
-
 	var err error
 	if err = m.mysql.Set(m.config.Stop); err != nil {
 		m.logger.Warn(err)
 	} else {
 		m.logger.Info("Stopped")
 	}
+
+	m.config = nil
+	m.workerDoneChan = nil
+	m.status.UpdateRe("Qan", "Stopped", cmd)
 
 	return err
 }
