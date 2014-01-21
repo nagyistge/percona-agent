@@ -1,9 +1,9 @@
 package pct
 
 import (
-	"time"
 	"code.google.com/p/go.net/websocket"
 	"github.com/percona/cloud-protocol/proto"
+	"time"
 )
 
 type WebsocketClient interface {

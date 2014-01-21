@@ -1,22 +1,22 @@
 package pct
 
 import (
-	"time"
 	"math"
 	"math/rand"
+	"time"
 )
 
 type Backoff struct {
-	try int
+	try         int
 	lastSuccess time.Time
-	resetAfter time.Duration
-	NowFunc func() time.Time
+	resetAfter  time.Duration
+	NowFunc     func() time.Time
 }
 
 func NewBackoff(resetAfter time.Duration) *Backoff {
 	b := &Backoff{
 		resetAfter: resetAfter,
-		NowFunc: time.Now,
+		NowFunc:    time.Now,
 	}
 	return b
 }
