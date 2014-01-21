@@ -2,9 +2,11 @@ package qan
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
+	"os"
 	"time"
 )
 
@@ -19,6 +21,7 @@ type Manager struct {
 	workerDoneChan chan *Worker
 	status         *pct.Status
 	sync           *pct.SyncChan
+	oldSlowLogs    map[string]int
 }
 
 func NewManager(logger *pct.Logger, iter IntervalIter, dataChan chan interface{}) *Manager {
@@ -69,10 +72,9 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 	}
 	m.mysql = mysql
 
-	m.config = c
-
 	m.workerDoneChan = make(chan *Worker, c.MaxWorkers)
-	go m.run(m.config)
+	m.config = c
+	go m.run()
 
 	m.status.UpdateRe("Qan", "Ready", cmd)
 	logger.Info("Running")
@@ -93,6 +95,7 @@ func (m *Manager) Stop(cmd *proto.Cmd) error {
 	m.sync.Wait()
 
 	m.config = nil
+	m.workerDoneChan = nil
 	m.status.UpdateRe("Qan", "Stopped", cmd)
 
 	var err error
@@ -126,7 +129,7 @@ func (m *Manager) Do(cmd *proto.Cmd) error {
 /////////////////////////////////////////////////////////////////////////////
 
 // @goroutine[1]
-func (m *Manager) run(config *Config) {
+func (m *Manager) run() {
 	defer m.sync.Done()
 
 	m.status.Update("QanLogParser", "Waiting for first interval")
@@ -137,9 +140,15 @@ func (m *Manager) run(config *Config) {
 		select {
 		case interval := <-intervalChan:
 			runningWorkers := len(m.workers)
-			if runningWorkers >= config.MaxWorkers {
+			if runningWorkers >= m.config.MaxWorkers {
 				m.logger.Warn("All workers busy, interval dropped")
 				continue
+			}
+
+			if interval.StopOffset >= m.config.MaxSlowLogSize {
+				if err := m.rotateSlowLog(interval); err != nil {
+					m.logger.Error(err)
+				}
 			}
 
 			m.status.Update("QanLogParser", "Running worker")
@@ -148,8 +157,8 @@ func (m *Manager) run(config *Config) {
 				SlowLogFile:    interval.Filename,
 				StartOffset:    interval.StartOffset,
 				StopOffset:     interval.StopOffset,
-				RunTime:        time.Duration(config.WorkerRunTime) * time.Second,
-				ExampleQueries: config.ExampleQueries,
+				RunTime:        time.Duration(m.config.WorkerRunTime) * time.Second,
+				ExampleQueries: m.config.ExampleQueries,
 			}
 			w := NewWorker(logger, job, m.dataChan, m.workerDoneChan)
 			go w.Run()
@@ -159,8 +168,55 @@ func (m *Manager) run(config *Config) {
 		case worker := <-m.workerDoneChan:
 			m.status.Update("QanLogParser", "Reaping worker")
 			delete(m.workers, worker)
+
+			for file, cnt := range m.oldSlowLogs {
+				if cnt == 1 {
+					m.status.Update("QanLogParser", "Removing old slow log: "+file)
+					if err := os.Remove(file); err != nil {
+						m.logger.Warn(err)
+					} else {
+						delete(m.oldSlowLogs, file)
+						m.logger.Info("Removed " + file)
+					}
+				} else {
+					m.oldSlowLogs[file] = cnt - 1
+				}
+			}
+
+			m.status.Update("QanLogParser", "Ready")
 		case <-m.sync.StopChan:
 			return
 		}
 	}
+}
+
+// @goroutine[1]
+func (m *Manager) rotateSlowLog(interval *Interval) error {
+	// Stop slow log so we don't move it while MySQL is using it.
+	if err := m.mysql.Set(m.config.Stop); err != nil {
+		return err
+	}
+
+	// Move current slow log by renaming it.
+	newSlowLogFile := fmt.Sprintf("%s-%d", interval.Filename, time.Now().UTC().Unix())
+	if err := os.Rename(interval.Filename, newSlowLogFile); err != nil {
+		return err
+	}
+
+	// Re-enable slow log.
+	if err := m.mysql.Set(m.config.Start); err != nil {
+		return err
+	}
+
+	// Modify interval so worker parses the rest of the old slow log.
+	interval.Filename = newSlowLogFile
+	interval.StopOffset, _ = pct.FileSize(newSlowLogFile) // todo: handle err
+
+	// Save old slow log and remove later if configured to do so.
+	if m.config.RemoveOldSlowLogs {
+		m.oldSlowLogs[newSlowLogFile] = len(m.workers) + 1
+	}
+
+	// notify iter of change
+	return nil
 }

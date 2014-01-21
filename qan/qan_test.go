@@ -26,13 +26,13 @@ func Test(t *testing.T) { gocheck.TestingT(t) }
 func RunWorker(job *qan.Job) string {
 	logChan := make(chan *proto.LogEntry, 1000)
 	logger := pct.NewLogger(logChan, "qan-test")
-	resultChan := make(chan *qan.Result, 1)
+	dataChan := make(chan interface{}, 1)
 	doneChan := make(chan *qan.Worker, 1)
 
-	w := qan.NewWorker(logger, job, resultChan, doneChan)
+	w := qan.NewWorker(logger, job, dataChan, doneChan)
 	go w.Run()
 
-	result := <-resultChan
+	result := <-dataChan
 	_ = <-doneChan
 
 	// Write the result as formatted JSON to a file...
@@ -52,7 +52,7 @@ func (s *WorkerTestSuite) TestWorkerSlow001(c *gocheck.C) {
 		SlowLogFile:    testlog.Sample + "slow001.log",
 		StartOffset:    0,
 		StopOffset:     524,
-		Runtime:        time.Duration(3 * time.Second),
+		RunTime:        time.Duration(3 * time.Second),
 		ExampleQueries: true,
 	}
 	tmpFilename := RunWorker(job)
@@ -71,7 +71,7 @@ func (s *WorkerTestSuite) TestWorkerSlow001Half(c *gocheck.C) {
 		SlowLogFile:    testlog.Sample + "slow001.log",
 		StartOffset:    0,
 		StopOffset:     358,
-		Runtime:        time.Duration(3 * time.Second),
+		RunTime:        time.Duration(3 * time.Second),
 		ExampleQueries: true,
 	}
 	tmpFilename := RunWorker(job)
@@ -87,7 +87,7 @@ func (s *WorkerTestSuite) TestWorkerSlow001Resume(c *gocheck.C) {
 		SlowLogFile:    testlog.Sample + "slow001.log",
 		StartOffset:    359,
 		StopOffset:     524,
-		Runtime:        time.Duration(3 * time.Second),
+		RunTime:        time.Duration(3 * time.Second),
 		ExampleQueries: true,
 	}
 	tmpFilename := RunWorker(job)
@@ -99,9 +99,18 @@ func (s *WorkerTestSuite) TestWorkerSlow001Resume(c *gocheck.C) {
 // Manager test suite
 /////////////////////////////////////////////////////////////////////////////
 
-type ManagerTestSuite struct{}
+type ManagerTestSuite struct {
+	dsn string
+}
 
 var _ = gocheck.Suite(&ManagerTestSuite{})
+
+func (s *ManagerTestSuite) SetUpSuite(c *gocheck.C) {
+	s.dsn = os.Getenv("PCT_TEST_MYSQL_DSN")
+	if s.dsn == "" {
+		c.Fatal("PCT_TEST_MYSQL_DSN is not set")
+	}
+}
 
 func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	logChan := make(chan *proto.LogEntry, 1000)
@@ -126,14 +135,13 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	tmpFile := fmt.Sprintf("/tmp/qan_test.TestStartService.%d", os.Getpid())
 	defer func() { os.Remove(tmpFile) }()
 	config := &qan.Config{
-		Interval:          300, // 5 min
-		LongQueryTime:     0.000000,
+		Interval:          300,        // 5 min
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
 		ExampleQueries:    false,
-		MysqlDsn:          "test:test@tcp(127.0.0.1:3306)/",
+		DSN:               s.dsn,
 		MaxWorkers:        2,
-		WorkerRuntime:     600, // 10 min
+		WorkerRunTime:     600, // 10 min
 	}
 
 	// Create the StartService cmd which contains the qan config.
@@ -215,9 +223,9 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 // IntervalIter test suite
 /////////////////////////////////////////////////////////////////////////////
 
-type IntervalIterTestSuite struct{}
+type IntervalTestSuite struct{}
 
-var _ = gocheck.Suite(&IntervalIterTestSuite{})
+var _ = gocheck.Suite(&IntervalTestSuite{})
 
 var fileName string
 
@@ -225,7 +233,7 @@ func getFilename() (string, error) {
 	return fileName, nil
 }
 
-func (s *IntervalIterTestSuite) TestIntervalIter(c *gocheck.C) {
+func (s *IntervalTestSuite) TestIterFile(c *gocheck.C) {
 	tickerChan := make(chan time.Time)
 
 	// This is the file we iterate.  It's 3 bytes large to start,
@@ -251,8 +259,7 @@ func (s *IntervalIterTestSuite) TestIntervalIter(c *gocheck.C) {
 	t2 := time.Now()
 	tickerChan <- t2
 
-	// Stop the interator and get the interval it sent us
-	i.Stop()
+	// Get the interval
 	got := <-i.IntervalChan()
 	expect := &qan.Interval{
 		Filename:    fileName,
@@ -261,5 +268,53 @@ func (s *IntervalIterTestSuite) TestIntervalIter(c *gocheck.C) {
 		StartOffset: 3,
 		StopOffset:  6,
 	}
-	c.Check(got, gocheck.DeepEquals, expect)
+	c.Check(got, test.DeepEquals, expect)
+
+	/**
+	 * Rename the file, then re-create it.  The file change should be detected.
+	 */
+
+	oldFileName := tmpFile.Name() + "-old"
+	os.Rename(tmpFile.Name(), oldFileName)
+	defer os.Remove(oldFileName)
+
+	// Re-create original file and write new data.  We expect StartOffset=0
+	// because the file is new, and StopOffset=10 because that's the len of
+	// the new data.  The old ^ file/data had start/stop offset 3/6, so those
+	// should not appear in next interval; if they do, then iter failed to
+	// detect file change and is still reading old file.
+	tmpFile, _ = os.Create(fileName)
+	tmpFile.Close()
+	_ = ioutil.WriteFile(fileName, []byte("123456789A"), 0777)
+
+	t3 := time.Now()
+	tickerChan <- t3
+
+	got = <-i.IntervalChan()
+	expect = &qan.Interval{
+		Filename:    fileName,
+		StartTime:   t2,
+		StopTime:    t3,
+		StartOffset: 0,
+		StopOffset:  10,
+	}
+	c.Check(got, test.DeepEquals, expect)
+
+	// Iter should no longer detect file change.
+	_ = ioutil.WriteFile(fileName, []byte("123456789ABCDEF"), 0777)
+	// ^^^^^ new data
+	t4 := time.Now()
+	tickerChan <- t4
+
+	got = <-i.IntervalChan()
+	expect = &qan.Interval{
+		Filename:    fileName,
+		StartTime:   t3,
+		StopTime:    t4,
+		StartOffset: 10,
+		StopOffset:  15,
+	}
+	c.Check(got, test.DeepEquals, expect)
+
+	i.Stop()
 }

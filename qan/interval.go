@@ -64,7 +64,9 @@ func (i *FileIntervalIter) run() {
 		i.sync.Done()
 	}()
 
-	cur := new(Interval)
+	var prevFileInfo os.FileInfo
+	cur := &Interval{}
+
 	for {
 		select {
 		case <-i.sync.StopChan:
@@ -78,44 +80,50 @@ func (i *FileIntervalIter) run() {
 			}
 
 			// Get the current size of the MySQL slow log.
-			curSize, err := fileSize(curFile)
+			curSize, err := pct.FileSize(curFile)
 			if err != nil {
 				cur = new(Interval)
 				continue
 			}
 
+			// File changed if prev file not same as current file.
+			// @todo: Normally this only changes when QAN manager rotates slow log
+			//        at interval.  If it changes for another reason (e.g. user
+			//        renames slow log) then StartOffset=0 may not be ideal.
+			curFileInfo, _ := os.Stat(curFile)
+			fileChanged := !os.SameFile(prevFileInfo, curFileInfo)
+			prevFileInfo = curFileInfo
+
 			if !cur.StartTime.IsZero() { // StartTime is set
-				// End of interval
+				// End of current interval:
 				cur.Filename = curFile
+				if fileChanged {
+					// Start from beginning of new file.
+					cur.StartOffset = 0
+				}
 				cur.StopOffset = curSize
 				cur.StopTime = now
 
 				// Send interval non-blocking: if reciever is not ready,
 				// that's ok, the system may be busy, so drop the interval.
-				// todo: count dropped intervals
 				select {
 				case i.intervalChan <- cur:
 				default:
+					// @todo: handle, count lost intervals
 				}
 
-				// Start of next interval
-				cur := new(Interval)
-				cur.StartOffset = curSize
-				cur.StartTime = now
+				// Next interval:
+				cur = &Interval{
+					StartTime:   now,
+					StartOffset: curSize,
+				}
 			} else {
 				// First interval, either due to first tick or because an error
 				// occurred earlier so a new interval was started.
 				cur.StartOffset = curSize
 				cur.StartTime = now
+				prevFileInfo, _ = os.Stat(curFile)
 			}
 		}
 	}
-}
-
-func fileSize(fileName string) (int64, error) {
-	stat, err := os.Stat(fileName)
-	if err != nil {
-		return -1, err
-	}
-	return stat.Size(), nil
 }
