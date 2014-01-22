@@ -223,6 +223,5 @@ func (m *Manager) rotateSlowLog(interval *Interval) error {
 		m.oldSlowLogs[newSlowLogFile] = len(m.workers) + 1
 	}
 
-	// notify iter of change
 	return nil
 }
