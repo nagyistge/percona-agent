@@ -2,9 +2,9 @@ package mock
 
 import (
 	"code.google.com/p/go.net/websocket"
+	"github.com/percona/cloud-protocol/proto"
 	"log"
 	"net/http"
-	"github.com/percona/cloud-protocol/proto"
 )
 
 type WebsocketServer struct {
@@ -88,7 +88,7 @@ func run() {
 			Clients[c.origin] = c
 			// log.Printf("connect: %+v\n", c)
 			select {
-			case ClientConnectChan <-c:
+			case ClientConnectChan <- c:
 			default:
 			}
 		case c := <-ClientDisconnectChan:

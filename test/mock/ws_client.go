@@ -37,7 +37,7 @@ func (c *WebsocketClient) Connect() error {
 	var err error
 	if c.ConnectChan != nil {
 		select {
-		case c.ConnectChan <-nil:
+		case c.ConnectChan <- nil:
 		default:
 		}
 		err = <-c.ConnectChan

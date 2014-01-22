@@ -5,7 +5,7 @@ import (
 )
 
 type NullMySQL struct {
-	dsn  string
+	dsn string
 	set []mysql.Query
 }
 
@@ -22,7 +22,9 @@ func (n *NullMySQL) Connect(dsn string) error {
 }
 
 func (n *NullMySQL) Set(queries []mysql.Query) error {
-	n.set = queries
+	for _, q := range queries {
+		n.set = append(n.set, q)
+	}
 	return nil
 }
 

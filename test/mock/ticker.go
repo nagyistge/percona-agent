@@ -5,14 +5,14 @@ import (
 )
 
 type Ticker struct {
-	syncChan chan bool
+	syncChan   chan bool
 	tickerChan chan time.Time
-	Running bool
+	Running    bool
 }
 
 func NewTicker(syncChan chan bool, tickerChan chan time.Time) *Ticker {
 	t := &Ticker{
-		syncChan: syncChan,
+		syncChan:   syncChan,
 		tickerChan: tickerChan,
 	}
 	return t
@@ -34,4 +34,3 @@ func (t *Ticker) Stop() {
 	t.Running = false
 	return
 }
-

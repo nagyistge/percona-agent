@@ -1,18 +1,17 @@
 package mock
 
 import (
-	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/mm"
+	"github.com/percona/cloud-tools/pct"
 )
 
 type Monitor struct {
 	ReadyChan chan bool
-	running bool
+	running   bool
 }
 
 func NewMonitor() *Monitor {
-	m := &Monitor{
-	}
+	m := &Monitor{}
 	return m
 }
 
