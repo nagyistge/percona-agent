@@ -208,6 +208,16 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 		c.Error("Manager.IsRunning() is false after Start()")
 	}
 
+	// And status should be "Running" and "Ready".
+	test.WaitStatus(1, m, "QanLogParser", "Ready")
+	status := m.Status()
+	if status["Qan"] != "Running [" + cmd.String() + "]" {
+		c.Error("Qan status is \"Ready\", got " + status["Qan"])
+	}
+	if status["QanLogParser"] != "Ready" {
+		c.Error("QanLogParser status is \"Ready\", got " + status["QanLogParser"])
+	}
+
 	// It should have enabled the slow log.
 	slowLog := s.mysql.GetGlobalVarNumber("slow_query_log")
 	c.Assert(slowLog, gocheck.Equals, float64(1))

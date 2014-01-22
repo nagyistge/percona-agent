@@ -76,7 +76,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 	m.config = c
 	go m.run()
 
-	m.status.UpdateRe("Qan", "Ready", cmd)
+	m.status.UpdateRe("Qan", "Running", cmd)
 	logger.Info("Running")
 
 	return nil
@@ -84,7 +84,6 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 
 func (m *Manager) Stop(cmd *proto.Cmd) error {
 	m.status.UpdateRe("Qan", "Stopping", cmd)
-	defer m.status.UpdateRe("Qan", "Ready", cmd)
 
 	m.logger.InResponseTo(cmd)
 	defer m.logger.InResponseTo(nil)
@@ -130,13 +129,22 @@ func (m *Manager) Do(cmd *proto.Cmd) error {
 
 // @goroutine[1]
 func (m *Manager) run() {
-	defer m.sync.Done()
+	defer func() {
+		if m.sync.IsGraceful() {
+			m.status.Update("QanLogParser", "Stopped")
+		} else {
+			m.status.Update("QanLogParser", "Crashed")
+		}
+		m.sync.Done()
+	}()
 
 	m.status.Update("QanLogParser", "Waiting for first interval")
-
 	m.iter.Start()
 	intervalChan := m.iter.IntervalChan()
+
 	for {
+		m.status.Update("QanLogParser", "Ready")
+
 		select {
 		case interval := <-intervalChan:
 			runningWorkers := len(m.workers)
@@ -163,8 +171,6 @@ func (m *Manager) run() {
 			w := NewWorker(logger, job, m.dataChan, m.workerDoneChan)
 			go w.Run()
 			m.workers[w] = true
-
-			m.status.Update("QanLogParser", "Ready")
 		case worker := <-m.workerDoneChan:
 			m.status.Update("QanLogParser", "Reaping worker")
 			delete(m.workers, worker)
@@ -182,9 +188,8 @@ func (m *Manager) run() {
 					m.oldSlowLogs[file] = cnt - 1
 				}
 			}
-
-			m.status.Update("QanLogParser", "Ready")
 		case <-m.sync.StopChan:
+			m.sync.Graceful()
 			return
 		}
 	}
