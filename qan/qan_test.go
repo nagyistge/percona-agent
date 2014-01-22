@@ -14,9 +14,9 @@ import (
 	"launchpad.net/gocheck"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
-	"path/filepath"
 )
 
 // Hook up gocheck into the "go test" runner.
@@ -214,7 +214,7 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	// And status should be "Running" and "Ready".
 	test.WaitStatus(1, m, "QanLogParser", "Ready (0 of 2 running)")
 	status := m.Status()
-	if status["Qan"] != "Running [" + cmd.String() + "]" {
+	if status["Qan"] != "Running ["+cmd.String()+"]" {
 		c.Error("Qan status is \"Ready\", got " + status["Qan"])
 	}
 	if status["QanLogParser"] != "Ready (0 of 2 running)" {
@@ -313,10 +313,10 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
 		c.Fatal("Create qan.Manager")
 	}
 	config := &qan.Config{
-		DSN: s.dsn,
+		DSN:               s.dsn,
 		Interval:          300,
-		MaxSlowLogSize:    1000,  // <-- HERE
-		RemoveOldSlowLogs: true,  // <-- HERE too
+		MaxSlowLogSize:    1000, // <-- HERE
+		RemoveOldSlowLogs: true, // <-- HERE too
 		ExampleQueries:    false,
 		MaxWorkers:        2,
 		WorkerRunTime:     600,
@@ -332,9 +332,9 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
 	}
 	qanConfig, _ := json.Marshal(config)
 	cmd := &proto.Cmd{
-		Ts:        time.Now(),
-		Cmd:       "StartService",
-		Data:      qanConfig,
+		Ts:   time.Now(),
+		Cmd:  "StartService",
+		Data: qanConfig,
 	}
 	err := m.Start(cmd, cmd.Data)
 	if err != nil {
@@ -343,7 +343,7 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
 	test.WaitStatus(1, m, "QanLogParser", "Ready")
 
 	// Make copy of slow log because test will mv/rename it.
-	cp := exec.Command("cp", testlog.Sample + slowlog, "/tmp/" + slowlog)
+	cp := exec.Command("cp", testlog.Sample+slowlog, "/tmp/"+slowlog)
 	cp.Run()
 
 	// First interval: 0 - 736
@@ -408,8 +408,9 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
 }
 
 func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
-	
+
 	// Same as TestRotateAndRemoveSlowLog, but with qan.Config.RemoveOldSlowLogs=false
+	// and testing that Start and Stop queries were executed.
 
 	slowlog := "slow006.log"
 	files, _ := filepath.Glob("/tmp/" + slowlog + "-[0-9]*")
@@ -422,10 +423,10 @@ func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
 		c.Fatal("Create qan.Manager")
 	}
 	config := &qan.Config{
-		DSN: s.dsn,
+		DSN:               s.dsn,
 		Interval:          300,
 		MaxSlowLogSize:    1000,
-		RemoveOldSlowLogs: false,  // <-- HERE
+		RemoveOldSlowLogs: false, // <-- HERE
 		ExampleQueries:    false,
 		MaxWorkers:        2,
 		WorkerRunTime:     600,
@@ -441,9 +442,9 @@ func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
 	}
 	qanConfig, _ := json.Marshal(config)
 	cmd := &proto.Cmd{
-		Ts:        time.Now(),
-		Cmd:       "StartService",
-		Data:      qanConfig,
+		Ts:   time.Now(),
+		Cmd:  "StartService",
+		Data: qanConfig,
 	}
 	err := m.Start(cmd, cmd.Data)
 	if err != nil {
@@ -451,7 +452,9 @@ func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
 	}
 	test.WaitStatus(1, m, "QanLogParser", "Ready")
 
-	cp := exec.Command("cp", testlog.Sample + slowlog, "/tmp/" + slowlog)
+	s.nullmysql.Reset()
+
+	cp := exec.Command("cp", testlog.Sample+slowlog, "/tmp/"+slowlog)
 	cp.Run()
 
 	// First interval: 0 - 736
@@ -510,9 +513,23 @@ func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
 		}
 	}()
 
+	expect := []mysql.Query{}
+	for _, q := range config.Stop {
+		expect = append(expect, q)
+	}
+	for _, q := range config.Start {
+		expect = append(expect, q)
+	}
+	if same, diff := test.IsDeeply(s.nullmysql.GetSet(), expect); !same {
+		c.Logf("%+v", s.nullmysql.GetSet())
+		c.Logf("%+v", expect)
+		c.Error(diff)
+	}
+
 	// Stop manager
 	err = m.Stop(&proto.Cmd{Cmd: "StopService"})
 	c.Assert(err, gocheck.IsNil)
+
 }
 
 /////////////////////////////////////////////////////////////////////////////

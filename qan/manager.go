@@ -11,10 +11,10 @@ import (
 )
 
 type Manager struct {
-	logger   *pct.Logger
-	mysqlConn    mysql.Connector
-	iter     IntervalIter
-	dataChan chan interface{}
+	logger    *pct.Logger
+	mysqlConn mysql.Connector
+	iter      IntervalIter
+	dataChan  chan interface{}
 	// --
 	config         *Config // nil if not running
 	workers        map[*Worker]bool
@@ -26,14 +26,14 @@ type Manager struct {
 
 func NewManager(logger *pct.Logger, mysqlConn mysql.Connector, iter IntervalIter, dataChan chan interface{}) *Manager {
 	m := &Manager{
-		logger:   logger,
+		logger:    logger,
 		mysqlConn: mysqlConn,
-		iter:     iter,
-		dataChan: dataChan,
+		iter:      iter,
+		dataChan:  dataChan,
 		// --
-		workers: make(map[*Worker]bool),
-		status:  pct.NewStatus([]string{"Qan", "QanLogParser"}),
-		sync:    pct.NewSyncChan(),
+		workers:     make(map[*Worker]bool),
+		status:      pct.NewStatus([]string{"Qan", "QanLogParser"}),
+		sync:        pct.NewSyncChan(),
 		oldSlowLogs: make(map[string]int),
 	}
 	return m
