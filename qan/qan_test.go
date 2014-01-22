@@ -101,9 +101,14 @@ func (s *WorkerTestSuite) TestWorkerSlow001Resume(c *gocheck.C) {
 /////////////////////////////////////////////////////////////////////////////
 
 type ManagerTestSuite struct {
-	dsn string
-	mysql *mysql.Connection
-	reset []mysql.Query
+	dsn          string
+	mysql        *mysql.Connection
+	reset        []mysql.Query
+	logChan      chan *proto.LogEntry
+	logger       *pct.Logger
+	intervalChan chan *qan.Interval
+	iter         qan.IntervalIter
+	dataChan     chan interface{}
 }
 
 var _ = gocheck.Suite(&ManagerTestSuite{})
@@ -121,9 +126,16 @@ func (s *ManagerTestSuite) SetUpSuite(c *gocheck.C) {
 		c.Fatal(err)
 	}
 	s.reset = []mysql.Query{
-		mysql.Query{Set:"SET GLOBAL slow_query_log=OFF"},
-		mysql.Query{Set:"SET GLOBAL long_query_time=10"},
+		mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+		mysql.Query{Set: "SET GLOBAL long_query_time=10"},
 	}
+
+	s.logChan = make(chan *proto.LogEntry, 1000)
+	s.logger = pct.NewLogger(s.logChan, "qan-test")
+
+	s.intervalChan = make(chan *qan.Interval, 1)
+	s.iter = mock.NewMockIntervalIter(s.intervalChan)
+	s.dataChan = make(chan interface{}, 2)
 }
 
 func (s *ManagerTestSuite) SetUpTest(c *gocheck.C) {
@@ -141,32 +153,29 @@ func (s *ManagerTestSuite) TearDownTest(c *gocheck.C) {
 }
 
 func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
-	logChan := make(chan *proto.LogEntry, 1000)
-	logger := pct.NewLogger(logChan, "qan-test")
 
-	intervalChan := make(chan *qan.Interval, 1)
-	iter := mock.NewMockIntervalIter(intervalChan)
-	dataChan := make(chan interface{}, 2)
+	/**
+	 * Create and start manager.
+	 */
 
-	m := qan.NewManager(logger, iter, dataChan)
-
-	////////////////////////////////////////////////////////////////////////////
-	// Start
-	////////////////////////////////////////////////////////////////////////////
+	m := qan.NewManager(s.logger, s.iter, s.dataChan)
+	if m == nil {
+		c.Fatal("Create qan.Manager")
+	}
 
 	// Create the qan config.
 	tmpFile := fmt.Sprintf("/tmp/qan_test.TestStartService.%d", os.Getpid())
 	defer func() { os.Remove(tmpFile) }()
 	config := &qan.Config{
-		DSN:               s.dsn,
-		Start:             []mysql.Query{
-			mysql.Query{Set:"SET GLOBAL slow_query_log=OFF"},
-			mysql.Query{Set:"SET GLOBAL long_query_time=0.123"},
-			mysql.Query{Set:"SET GLOBAL slow_query_log=ON"},
+		DSN: s.dsn,
+		Start: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=0.123"},
+			mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
 		},
-		Stop:              []mysql.Query{
-			mysql.Query{Set:"SET GLOBAL slow_query_log=OFF"},
-			mysql.Query{Set:"SET GLOBAL long_query_time=10"},
+		Stop: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
 		},
 		Interval:          300,        // 5 min
 		MaxSlowLogSize:    1073741824, // 1 GiB
@@ -206,16 +215,10 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	longQueryTime := s.mysql.GetGlobalVarNumber("long_query_time")
 	c.Assert(longQueryTime, gocheck.Equals, 0.123)
 
-	////////////////////////////////////////////////////////////////////////////
-	// Status
-	////////////////////////////////////////////////////////////////////////////
-	//time.Sleep(100 * time.Millisecond)
-	//status := m.Status()
-	//fmt.Println(status)
+	/**
+	 * Have manager run a worker, parse, and send data.
+	 */
 
-	////////////////////////////////////////////////////////////////////////////
-	// runWorkers and sendData
-	////////////////////////////////////////////////////////////////////////////
 	// Send an Interval which should trigger a worker, and that worker will
 	// send to the result which the sendData process will receive and then
 	// send it via the dataChan.
@@ -226,16 +229,17 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 		StartTime:   now,
 		StopTime:    now,
 	}
-	intervalChan <- interv
+	s.intervalChan <- interv
 
-	resultData := <-dataChan
+	resultData := <-s.dataChan
 	c.Assert(resultData, gocheck.NotNil)
+
 	test.WriteData(resultData, tmpFile)
 	c.Check(tmpFile, testlog.FileEquals, sample+"slow001.json")
 
-	////////////////////////////////////////////////////////////////////////////
-	// Stop
-	////////////////////////////////////////////////////////////////////////////
+	/**
+	 * Stop manager like API would: by sending StopService cmd.
+	 */
 
 	now = time.Now()
 	cmd = &proto.Cmd{
@@ -348,7 +352,7 @@ func (s *IntervalTestSuite) TestIterFile(c *gocheck.C) {
 
 	// Iter should no longer detect file change.
 	_ = ioutil.WriteFile(fileName, []byte("123456789ABCDEF"), 0777)
-	// ^^^^^ new data
+	//                                               ^^^^^ new data
 	t4 := time.Now()
 	tickerChan <- t4
 
