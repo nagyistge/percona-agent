@@ -1,7 +1,7 @@
 {
  "Global": {
   "TotalQueries": 1,
-  "UniqueQueriess": 1,
+  "UniqueQueries": 1,
   "Metrics": {
    "TimeMetrics": {
     "Lock_time": {

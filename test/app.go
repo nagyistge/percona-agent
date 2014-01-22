@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"time"
+	"fmt"
 )
 
 func GetStatus(sendChan chan *proto.Cmd, recvChan chan *proto.Reply) *proto.StatusData {
@@ -82,4 +83,9 @@ func FileSize(fileName string) (int64, error) {
 		return -1, err
 	}
 	return stat.Size(), nil
+}
+
+func Dump(v interface {}) {
+	bytes, _ := json.MarshalIndent(v, "", "  ")
+	fmt.Println(string(bytes))
 }

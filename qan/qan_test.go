@@ -13,8 +13,10 @@ import (
 	"io/ioutil"
 	"launchpad.net/gocheck"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
+	"path/filepath"
 )
 
 // Hook up gocheck into the "go test" runner.
@@ -102,7 +104,8 @@ func (s *WorkerTestSuite) TestWorkerSlow001Resume(c *gocheck.C) {
 
 type ManagerTestSuite struct {
 	dsn          string
-	mysql        *mysql.Connection
+	realmysql    *mysql.Connection
+	nullmysql    *mock.NullMySQL
 	reset        []mysql.Query
 	logChan      chan *proto.LogEntry
 	logger       *pct.Logger
@@ -118,17 +121,16 @@ func (s *ManagerTestSuite) SetUpSuite(c *gocheck.C) {
 	if s.dsn == "" {
 		c.Fatal("PCT_TEST_MYSQL_DSN is not set")
 	}
-	s.mysql = mysql.NewConnection(s.dsn)
-	if err := s.mysql.Connect(); err != nil {
-		c.Fatal(err)
-	}
-	if err := s.mysql.Connect(); err != nil {
+	s.realmysql = mysql.NewConnection()
+	if err := s.realmysql.Connect(s.dsn); err != nil {
 		c.Fatal(err)
 	}
 	s.reset = []mysql.Query{
 		mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
 		mysql.Query{Set: "SET GLOBAL long_query_time=10"},
 	}
+
+	s.nullmysql = mock.NewNullMySQL()
 
 	s.logChan = make(chan *proto.LogEntry, 1000)
 	s.logger = pct.NewLogger(s.logChan, "qan-test")
@@ -139,14 +141,15 @@ func (s *ManagerTestSuite) SetUpSuite(c *gocheck.C) {
 }
 
 func (s *ManagerTestSuite) SetUpTest(c *gocheck.C) {
-	err := s.mysql.Set(s.reset)
+	err := s.realmysql.Set(s.reset)
 	if err != nil {
 		c.Fatal(err)
 	}
+	s.nullmysql.Reset()
 }
 
 func (s *ManagerTestSuite) TearDownTest(c *gocheck.C) {
-	err := s.mysql.Set(s.reset)
+	err := s.realmysql.Set(s.reset)
 	if err != nil {
 		c.Fatal(err)
 	}
@@ -158,7 +161,7 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	 * Create and start manager.
 	 */
 
-	m := qan.NewManager(s.logger, s.iter, s.dataChan)
+	m := qan.NewManager(s.logger, s.realmysql, s.iter, s.dataChan)
 	if m == nil {
 		c.Fatal("Create qan.Manager")
 	}
@@ -209,20 +212,20 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	}
 
 	// And status should be "Running" and "Ready".
-	test.WaitStatus(1, m, "QanLogParser", "Ready")
+	test.WaitStatus(1, m, "QanLogParser", "Ready (0 of 2 running)")
 	status := m.Status()
 	if status["Qan"] != "Running [" + cmd.String() + "]" {
 		c.Error("Qan status is \"Ready\", got " + status["Qan"])
 	}
-	if status["QanLogParser"] != "Ready" {
-		c.Error("QanLogParser status is \"Ready\", got " + status["QanLogParser"])
+	if status["QanLogParser"] != "Ready (0 of 2 running)" {
+		c.Error("QanLogParser status is \"Ready (0 of 2 running)\", got " + status["QanLogParser"])
 	}
 
 	// It should have enabled the slow log.
-	slowLog := s.mysql.GetGlobalVarNumber("slow_query_log")
+	slowLog := s.realmysql.GetGlobalVarNumber("slow_query_log")
 	c.Assert(slowLog, gocheck.Equals, float64(1))
 
-	longQueryTime := s.mysql.GetGlobalVarNumber("long_query_time")
+	longQueryTime := s.realmysql.GetGlobalVarNumber("long_query_time")
 	c.Assert(longQueryTime, gocheck.Equals, 0.123)
 
 	/**
@@ -272,11 +275,244 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	}
 
 	// It should disable the slow log.
-	slowLog = s.mysql.GetGlobalVarNumber("slow_query_log")
+	slowLog = s.realmysql.GetGlobalVarNumber("slow_query_log")
 	c.Assert(slowLog, gocheck.Equals, float64(0))
 
-	longQueryTime = s.mysql.GetGlobalVarNumber("long_query_time")
+	longQueryTime = s.realmysql.GetGlobalVarNumber("long_query_time")
 	c.Assert(longQueryTime, gocheck.Equals, 10.0)
+}
+
+func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
+
+	// Clean up files that may interfere with test.
+	slowlog := "slow006.log"
+	files, _ := filepath.Glob("/tmp/" + slowlog + "-[0-9]*")
+	for _, file := range files {
+		os.Remove(file)
+	}
+
+	/**
+	 * slow006.log is 2200 bytes large.  Rotation happens when manager
+	 * see interval.StopOffset >= MaxSlowLogSize.  So we'll use these
+	 * intervals,
+	 *      0 -  736
+	 *    736 - 1833
+	 *   1833 - 2200
+	 * and set MaxSlowLogSize=1000 which should make manager rotate the log
+	 * after the 2nd interval.  When manager rotates log, it 1) renames log
+	 * to NAME-TS where NAME is the original name and TS is the current Unix
+	 * timestamp (UTC); and 2) it sets interval.StopOff = file size of NAME-TS
+	 * to finish parsing the log.  Therefore, results for 2nd interval should
+	 * include our 3rd interval. -- Manager also calls Start and Stop so the
+	 * nullmysql conn should record the queries being set.
+	 */
+
+	// See TestStartService() for description of these startup tasks.
+	m := qan.NewManager(s.logger, s.nullmysql, s.iter, s.dataChan)
+	if m == nil {
+		c.Fatal("Create qan.Manager")
+	}
+	config := &qan.Config{
+		DSN: s.dsn,
+		Interval:          300,
+		MaxSlowLogSize:    1000,  // <-- HERE
+		RemoveOldSlowLogs: true,  // <-- HERE too
+		ExampleQueries:    false,
+		MaxWorkers:        2,
+		WorkerRunTime:     600,
+		Start: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=0.456"},
+			mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+		},
+		Stop: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
+		},
+	}
+	qanConfig, _ := json.Marshal(config)
+	cmd := &proto.Cmd{
+		Ts:        time.Now(),
+		Cmd:       "StartService",
+		Data:      qanConfig,
+	}
+	err := m.Start(cmd, cmd.Data)
+	if err != nil {
+		c.Fatal(err)
+	}
+	test.WaitStatus(1, m, "QanLogParser", "Ready")
+
+	// Make copy of slow log because test will mv/rename it.
+	cp := exec.Command("cp", testlog.Sample + slowlog, "/tmp/" + slowlog)
+	cp.Run()
+
+	// First interval: 0 - 736
+	now := time.Now()
+	i1 := &qan.Interval{
+		Filename:    "/tmp/" + slowlog,
+		StartOffset: 0,
+		StopOffset:  736,
+		StartTime:   now,
+		StopTime:    now,
+	}
+	s.intervalChan <- i1
+	resultData := <-s.dataChan
+	result := *resultData.(*qan.Result)
+	if result.Global.TotalQueries != 2 {
+		c.Error("First interval has 2 queries, got ", result.Global.TotalQueries)
+	}
+	if result.Global.UniqueQueries != 1 {
+		c.Error("First interval has 1 unique query, got ", result.Global.UniqueQueries)
+	}
+
+	// Second interval: 736 - 1833, but will actually go to end: 2200, if not
+	// the next two test will fail.
+	i2 := &qan.Interval{
+		Filename:    "/tmp/" + slowlog,
+		StartOffset: 736,
+		StopOffset:  1833,
+		StartTime:   now,
+		StopTime:    now,
+	}
+	s.intervalChan <- i2
+	resultData = <-s.dataChan
+	result = *resultData.(*qan.Result)
+	if result.Global.TotalQueries != 4 {
+		c.Error("Second interval has 2 queries, got ", result.Global.TotalQueries)
+	}
+	if result.Global.UniqueQueries != 2 {
+		c.Error("Second interval has 2 unique queries, got ", result.Global.UniqueQueries)
+	}
+
+	test.WaitStatus(1, m, "QanLogParser", "Ready (0 of 2 running)")
+
+	// Original slow log should no longer exist; it was rotated away.
+	if _, err := os.Stat("/tmp/" + slowlog); !os.IsNotExist(err) {
+		c.Error("/tmp/" + slowlog + " no longer exists")
+	}
+
+	// The original slow log should have been renamed to slow006-TS, parsed, and removed.
+	files, _ = filepath.Glob("/tmp/" + slowlog + "-[0-9]*")
+	if len(files) != 0 {
+		c.Errorf("Old slow log removed, got %+v", files)
+	}
+	defer func() {
+		for _, file := range files {
+			os.Remove(file)
+		}
+	}()
+
+	// Stop manager
+	err = m.Stop(&proto.Cmd{Cmd: "StopService"})
+	c.Assert(err, gocheck.IsNil)
+}
+
+func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
+	
+	// Same as TestRotateAndRemoveSlowLog, but with qan.Config.RemoveOldSlowLogs=false
+
+	slowlog := "slow006.log"
+	files, _ := filepath.Glob("/tmp/" + slowlog + "-[0-9]*")
+	for _, file := range files {
+		os.Remove(file)
+	}
+
+	m := qan.NewManager(s.logger, s.nullmysql, s.iter, s.dataChan)
+	if m == nil {
+		c.Fatal("Create qan.Manager")
+	}
+	config := &qan.Config{
+		DSN: s.dsn,
+		Interval:          300,
+		MaxSlowLogSize:    1000,
+		RemoveOldSlowLogs: false,  // <-- HERE
+		ExampleQueries:    false,
+		MaxWorkers:        2,
+		WorkerRunTime:     600,
+		Start: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=0.456"},
+			mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+		},
+		Stop: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
+		},
+	}
+	qanConfig, _ := json.Marshal(config)
+	cmd := &proto.Cmd{
+		Ts:        time.Now(),
+		Cmd:       "StartService",
+		Data:      qanConfig,
+	}
+	err := m.Start(cmd, cmd.Data)
+	if err != nil {
+		c.Fatal(err)
+	}
+	test.WaitStatus(1, m, "QanLogParser", "Ready")
+
+	cp := exec.Command("cp", testlog.Sample + slowlog, "/tmp/" + slowlog)
+	cp.Run()
+
+	// First interval: 0 - 736
+	now := time.Now()
+	i1 := &qan.Interval{
+		Filename:    "/tmp/" + slowlog,
+		StartOffset: 0,
+		StopOffset:  736,
+		StartTime:   now,
+		StopTime:    now,
+	}
+	s.intervalChan <- i1
+	resultData := <-s.dataChan
+	result := *resultData.(*qan.Result)
+	if result.Global.TotalQueries != 2 {
+		c.Error("First interval has 2 queries, got ", result.Global.TotalQueries)
+	}
+	if result.Global.UniqueQueries != 1 {
+		c.Error("First interval has 1 unique query, got ", result.Global.UniqueQueries)
+	}
+
+	// Second interval: 736 - 1833, but will actually go to end: 2200, if not
+	// the next two test will fail.
+	i2 := &qan.Interval{
+		Filename:    "/tmp/" + slowlog,
+		StartOffset: 736,
+		StopOffset:  1833,
+		StartTime:   now,
+		StopTime:    now,
+	}
+	s.intervalChan <- i2
+	resultData = <-s.dataChan
+	result = *resultData.(*qan.Result)
+	if result.Global.TotalQueries != 4 {
+		c.Error("Second interval has 2 queries, got ", result.Global.TotalQueries)
+	}
+	if result.Global.UniqueQueries != 2 {
+		c.Error("Second interval has 2 unique queries, got ", result.Global.UniqueQueries)
+	}
+
+	test.WaitStatus(1, m, "QanLogParser", "Ready (0 of 2 running)")
+
+	// Original slow log should no longer exist; it was rotated away.
+	if _, err := os.Stat("/tmp/" + slowlog); !os.IsNotExist(err) {
+		c.Error("/tmp/" + slowlog + " no longer exists")
+	}
+
+	// The original slow log should NOT have been removed.
+	files, _ = filepath.Glob("/tmp/" + slowlog + "-[0-9]*")
+	if len(files) != 1 {
+		c.Errorf("Old slow log not removed, got %+v", files)
+	}
+	defer func() {
+		for _, file := range files {
+			os.Remove(file)
+		}
+	}()
+
+	// Stop manager
+	err = m.Stop(&proto.Cmd{Cmd: "StopService"})
+	c.Assert(err, gocheck.IsNil)
 }
 
 /////////////////////////////////////////////////////////////////////////////

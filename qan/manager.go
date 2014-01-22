@@ -12,11 +12,11 @@ import (
 
 type Manager struct {
 	logger   *pct.Logger
+	mysqlConn    mysql.Connector
 	iter     IntervalIter
 	dataChan chan interface{}
 	// --
 	config         *Config // nil if not running
-	mysql          *mysql.Connection
 	workers        map[*Worker]bool
 	workerDoneChan chan *Worker
 	status         *pct.Status
@@ -24,15 +24,17 @@ type Manager struct {
 	oldSlowLogs    map[string]int
 }
 
-func NewManager(logger *pct.Logger, iter IntervalIter, dataChan chan interface{}) *Manager {
+func NewManager(logger *pct.Logger, mysqlConn mysql.Connector, iter IntervalIter, dataChan chan interface{}) *Manager {
 	m := &Manager{
 		logger:   logger,
+		mysqlConn: mysqlConn,
 		iter:     iter,
 		dataChan: dataChan,
 		// --
 		workers: make(map[*Worker]bool),
 		status:  pct.NewStatus([]string{"Qan", "QanLogParser"}),
 		sync:    pct.NewSyncChan(),
+		oldSlowLogs: make(map[string]int),
 	}
 	return m
 }
@@ -63,14 +65,12 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 	}
 
 	// Connect to MySQL and set global vars to config/enable slow log.
-	mysql := mysql.NewConnection(c.DSN)
-	if err := mysql.Connect(); err != nil {
+	if err := m.mysqlConn.Connect(c.DSN); err != nil {
 		return err
 	}
-	if err := mysql.Set(c.Start); err != nil {
+	if err := m.mysqlConn.Set(c.Start); err != nil {
 		return err
 	}
-	m.mysql = mysql
 
 	m.workerDoneChan = make(chan *Worker, c.MaxWorkers)
 	m.config = c
@@ -94,7 +94,7 @@ func (m *Manager) Stop(cmd *proto.Cmd) error {
 	m.sync.Wait()
 
 	var err error
-	if err = m.mysql.Set(m.config.Stop); err != nil {
+	if err = m.mysqlConn.Set(m.config.Stop); err != nil {
 		m.logger.Warn(err)
 	} else {
 		m.logger.Info("Stopped")
@@ -143,7 +143,8 @@ func (m *Manager) run() {
 	intervalChan := m.iter.IntervalChan()
 
 	for {
-		m.status.Update("QanLogParser", "Ready")
+		runningWorkers := len(m.workers)
+		m.status.Update("QanLogParser", fmt.Sprintf("Ready (%d of %d running)", runningWorkers, m.config.MaxWorkers))
 
 		select {
 		case interval := <-intervalChan:
@@ -198,7 +199,7 @@ func (m *Manager) run() {
 // @goroutine[1]
 func (m *Manager) rotateSlowLog(interval *Interval) error {
 	// Stop slow log so we don't move it while MySQL is using it.
-	if err := m.mysql.Set(m.config.Stop); err != nil {
+	if err := m.mysqlConn.Set(m.config.Stop); err != nil {
 		return err
 	}
 
@@ -209,7 +210,7 @@ func (m *Manager) rotateSlowLog(interval *Interval) error {
 	}
 
 	// Re-enable slow log.
-	if err := m.mysql.Set(m.config.Start); err != nil {
+	if err := m.mysqlConn.Set(m.config.Start); err != nil {
 		return err
 	}
 

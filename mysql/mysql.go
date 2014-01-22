@@ -6,15 +6,18 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
+type Connector interface {
+	Connect(dsn string) error
+	Set([]Query) error
+}
+
 type Connection struct {
 	dsn  string
 	conn *sql.DB
 }
 
-func NewConnection(dsn string) *Connection {
-	c := &Connection{
-		dsn: dsn,
-	}
+func NewConnection() *Connection {
+	c := &Connection{}
 	return c
 }
 
@@ -22,13 +25,13 @@ func (c *Connection) DB() *sql.DB {
 	return c.conn
 }
 
-func (c *Connection) Connect() error {
+func (c *Connection) Connect(dsn string) error {
 	if c.conn != nil {
 		c.conn.Close()
 	}
 
 	// Open connection to MySQL but...
-	db, err := sql.Open("mysql", c.dsn)
+	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return err
 	}
@@ -40,6 +43,7 @@ func (c *Connection) Connect() error {
 		return err
 	}
 
+	c.dsn = dsn
 	c.conn = db
 
 	// Connected
