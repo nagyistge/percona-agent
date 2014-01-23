@@ -11,27 +11,29 @@ import (
 )
 
 type Manager struct {
-	logger    *pct.Logger
-	mysqlConn mysql.Connector
-	iter      IntervalIter
-	dataChan  chan interface{}
+	logger        *pct.Logger
+	mysqlConn     mysql.Connector
+	iter          IntervalIter
+	workerFactory WorkerFactory
+	dataChan      chan interface{}
 	// --
 	config         *Config // nil if not running
-	workers        map[*Worker]bool
-	workerDoneChan chan *Worker
+	workers        map[Worker]bool
+	workerDoneChan chan Worker
 	status         *pct.Status
 	sync           *pct.SyncChan
 	oldSlowLogs    map[string]int
 }
 
-func NewManager(logger *pct.Logger, mysqlConn mysql.Connector, iter IntervalIter, dataChan chan interface{}) *Manager {
+func NewManager(logger *pct.Logger, mysqlConn mysql.Connector, iter IntervalIter, workerFactory WorkerFactory, dataChan chan interface{}) *Manager {
 	m := &Manager{
-		logger:    logger,
-		mysqlConn: mysqlConn,
-		iter:      iter,
-		dataChan:  dataChan,
+		logger:        logger,
+		mysqlConn:     mysqlConn,
+		iter:          iter,
+		workerFactory: workerFactory,
+		dataChan:      dataChan,
 		// --
-		workers:     make(map[*Worker]bool),
+		workers:     make(map[Worker]bool),
 		status:      pct.NewStatus([]string{"Qan", "QanLogParser"}),
 		sync:        pct.NewSyncChan(),
 		oldSlowLogs: make(map[string]int),
@@ -72,7 +74,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 		return err
 	}
 
-	m.workerDoneChan = make(chan *Worker, c.MaxWorkers)
+	m.workerDoneChan = make(chan Worker, c.MaxWorkers)
 	m.config = c
 	go m.run()
 
@@ -161,7 +163,6 @@ func (m *Manager) run() {
 			}
 
 			m.status.Update("QanLogParser", "Running worker")
-			logger := pct.NewLogger(m.logger.LogChan(), "qan-worker")
 			job := &Job{
 				SlowLogFile:    interval.Filename,
 				StartOffset:    interval.StartOffset,
@@ -169,9 +170,17 @@ func (m *Manager) run() {
 				RunTime:        time.Duration(m.config.WorkerRunTime) * time.Second,
 				ExampleQueries: m.config.ExampleQueries,
 			}
-			w := NewWorker(logger, job, m.dataChan, m.workerDoneChan)
-			go w.Run()
+			w := m.workerFactory.Make()
 			m.workers[w] = true
+			go func() {
+				result, err := w.Run(job)
+				if err != nil {
+					m.logger.Error(err)
+				} else {
+					m.dataChan <- result
+				}
+				m.workerDoneChan <- w
+			}()
 		case worker := <-m.workerDoneChan:
 			m.status.Update("QanLogParser", "Reaping worker")
 			delete(m.workers, worker)

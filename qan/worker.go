@@ -1,19 +1,11 @@
 package qan
 
 import (
-	"github.com/percona/cloud-tools/pct"
 	mysqlLog "github.com/percona/percona-go-mysql/log"
 	"github.com/percona/percona-go-mysql/log/parser"
 	"os"
 	"time"
 )
-
-type Worker struct {
-	logger         *pct.Logger
-	job            *Job
-	dataChan       chan interface{}
-	workerDoneChan chan *Worker
-}
 
 type Job struct {
 	SlowLogFile    string
@@ -24,55 +16,58 @@ type Job struct {
 }
 
 type Result struct {
-	Error   error                  `json:",omitempty"`
-	Global  *mysqlLog.GlobalClass  `json:",omitempty"`
-	Classes []*mysqlLog.QueryClass `json:",omitempty"`
+	Global  *mysqlLog.GlobalClass
+	Classes []*mysqlLog.QueryClass
 }
 
-func NewWorker(logger *pct.Logger, job *Job, dataChan chan interface{}, workerDoneChan chan *Worker) *Worker {
-	w := &Worker{
-		logger:         logger,
-		job:            job,
-		dataChan:       dataChan,
-		workerDoneChan: workerDoneChan,
-	}
+type Worker interface {
+	Run(job *Job) (*Result, error)
+}
+
+type WorkerFactory interface {
+	Make() Worker
+}
+
+type SlowLogWorker struct {
+}
+
+type SlowLogWorkerFactory struct {
+}
+
+func NewSlowLogWorkerFactory() *SlowLogWorkerFactory {
+	f := &SlowLogWorkerFactory{}
+	return f
+}
+
+func (f *SlowLogWorkerFactory) Make() Worker {
+	return NewSlowLogWorker()
+}
+
+func NewSlowLogWorker() Worker {
+	w := &SlowLogWorker{}
 	return w
 }
 
-func (w *Worker) Run() {
-	// Whenever and however we return, send qa-manager our result and
-	// tell it we're done so it frees our spot for another concurrent
-	// worker.
-	result := new(Result)
-	defer func() {
-		select {
-		case w.dataChan <- result:
-		default:
-			// todo: lost results
-		}
-		w.workerDoneChan <- w
-	}()
+func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 
 	// Open the slow log file.
-	file, err := os.Open(w.job.SlowLogFile)
+	file, err := os.Open(job.SlowLogFile)
 	if err != nil {
-		result.Error = err
-		return
+		return nil, err
 	}
 
 	// Seek to the start offset, if any.
 	// @todo error if start off > file size
-	if w.job.StartOffset != 0 {
+	if job.StartOffset != 0 {
 		// @todo handle error
-		file.Seek(int64(w.job.StartOffset), os.SEEK_SET)
+		file.Seek(int64(job.StartOffset), os.SEEK_SET)
 	}
 
 	// Create a slow log parser and run it.  It sends events log events
 	// via its channel.
 	p := parser.NewSlowLogParser(file, false) // false=debug off
 	if err != nil {
-		result.Error = err
-		return
+		return nil, err
 	}
 	go p.Run()
 
@@ -81,7 +76,7 @@ func (w *Worker) Run() {
 	global := mysqlLog.NewGlobalClass()
 	queries := make(map[string]*mysqlLog.QueryClass)
 	for event := range p.EventChan {
-		if int64(event.Offset) > w.job.StopOffset {
+		if int64(event.Offset) > job.StopOffset {
 			break
 		}
 
@@ -116,10 +111,10 @@ func (w *Worker) Run() {
 		classes[nQueries] = class
 	}
 
-	// Save the result.  It will be sent by defer when we return.
-	result.Error = nil
-	result.Global = global
-	result.Classes = classes
+	result := &Result{
+		Global:  global,
+		Classes: classes,
+	}
 
-	return
+	return result, nil
 }

@@ -22,33 +22,25 @@ import (
 // Hook up gocheck into the "go test" runner.
 func Test(t *testing.T) { gocheck.TestingT(t) }
 
+var sample = os.Getenv("GOPATH") + "/src/github.com/percona/cloud-tools/test/qan/"
+
 /////////////////////////////////////////////////////////////////////////////
 // Worker test suite
 /////////////////////////////////////////////////////////////////////////////
 
+type WorkerTestSuite struct{}
+
+var _ = gocheck.Suite(&WorkerTestSuite{})
+
 func RunWorker(job *qan.Job) string {
-	logChan := make(chan *proto.LogEntry, 1000)
-	logger := pct.NewLogger(logChan, "qan-test")
-	dataChan := make(chan interface{}, 1)
-	doneChan := make(chan *qan.Worker, 1)
-
-	w := qan.NewWorker(logger, job, dataChan, doneChan)
-	go w.Run()
-
-	result := <-dataChan
-	_ = <-doneChan
+	w := qan.NewSlowLogWorker()
+	result, _ := w.Run(job)
 
 	// Write the result as formatted JSON to a file...
 	tmpFilename := fmt.Sprintf("/tmp/pct-test.%d", os.Getpid())
 	test.WriteData(result, tmpFilename)
 	return tmpFilename
 }
-
-type WorkerTestSuite struct{}
-
-var _ = gocheck.Suite(&WorkerTestSuite{})
-
-var sample = os.Getenv("GOPATH") + "/src/github.com/percona/cloud-tools/test/qan/"
 
 func (s *WorkerTestSuite) TestWorkerSlow001(c *gocheck.C) {
 	job := &qan.Job{
@@ -103,15 +95,16 @@ func (s *WorkerTestSuite) TestWorkerSlow001Resume(c *gocheck.C) {
 /////////////////////////////////////////////////////////////////////////////
 
 type ManagerTestSuite struct {
-	dsn          string
-	realmysql    *mysql.Connection
-	nullmysql    *mock.NullMySQL
-	reset        []mysql.Query
-	logChan      chan *proto.LogEntry
-	logger       *pct.Logger
-	intervalChan chan *qan.Interval
-	iter         qan.IntervalIter
-	dataChan     chan interface{}
+	dsn           string
+	realmysql     *mysql.Connection
+	nullmysql     *mock.NullMySQL
+	reset         []mysql.Query
+	logChan       chan *proto.LogEntry
+	logger        *pct.Logger
+	intervalChan  chan *qan.Interval
+	iter          qan.IntervalIter
+	dataChan      chan interface{}
+	workerFactory qan.WorkerFactory
 }
 
 var _ = gocheck.Suite(&ManagerTestSuite{})
@@ -138,6 +131,8 @@ func (s *ManagerTestSuite) SetUpSuite(c *gocheck.C) {
 	s.intervalChan = make(chan *qan.Interval, 1)
 	s.iter = mock.NewMockIntervalIter(s.intervalChan)
 	s.dataChan = make(chan interface{}, 2)
+
+	s.workerFactory = qan.NewSlowLogWorkerFactory()
 }
 
 func (s *ManagerTestSuite) SetUpTest(c *gocheck.C) {
@@ -161,7 +156,7 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	 * Create and start manager.
 	 */
 
-	m := qan.NewManager(s.logger, s.realmysql, s.iter, s.dataChan)
+	m := qan.NewManager(s.logger, s.realmysql, s.iter, s.workerFactory, s.dataChan)
 	if m == nil {
 		c.Fatal("Create qan.Manager")
 	}
@@ -308,7 +303,7 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
 	 */
 
 	// See TestStartService() for description of these startup tasks.
-	m := qan.NewManager(s.logger, s.nullmysql, s.iter, s.dataChan)
+	m := qan.NewManager(s.logger, s.nullmysql, s.iter, s.workerFactory, s.dataChan)
 	if m == nil {
 		c.Fatal("Create qan.Manager")
 	}
@@ -418,7 +413,7 @@ func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
 		os.Remove(file)
 	}
 
-	m := qan.NewManager(s.logger, s.nullmysql, s.iter, s.dataChan)
+	m := qan.NewManager(s.logger, s.nullmysql, s.iter, s.workerFactory, s.dataChan)
 	if m == nil {
 		c.Fatal("Create qan.Manager")
 	}
