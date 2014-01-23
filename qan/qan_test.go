@@ -224,6 +224,18 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	longQueryTime := s.realmysql.GetGlobalVarNumber("long_query_time")
 	c.Assert(longQueryTime, gocheck.Equals, 0.123)
 
+	// Starting an already started service should result in a ServiceIsRunningError.
+	err = m.Start(cmd, cmd.Data)
+	if err == nil {
+		c.Error("Start manager when already start cauess error")
+	}
+	switch err.(type) { // todo: ugly hack to access and test error type
+	case pct.ServiceIsRunningError:
+		// ok
+	default:
+		c.Error("Error is type pct.ServiceIsRunningError, got %T", err)
+	}
+
 	/**
 	 * Have manager run a worker, parse, and send data.
 	 */
