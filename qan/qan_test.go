@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -519,6 +520,140 @@ func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
 		c.Logf("%+v", s.nullmysql.GetSet())
 		c.Logf("%+v", expect)
 		c.Error(diff)
+	}
+
+	// Stop manager
+	err = m.Stop(&proto.Cmd{Cmd: "StopService"})
+	c.Assert(err, gocheck.IsNil)
+
+}
+
+func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
+
+	// Same as TestRotateAndRemoveSlowLog, but we use mock workers so we can
+	// test that slow log is not removed until previous workers are done.
+	// Mock worker factory will return our mock workers when manager calls Make().
+	w1StopChan := make(chan bool)
+	w1 := mock.NewQanWorker(w1StopChan, nil, nil)
+
+	w2StopChan := make(chan bool)
+	w2 := mock.NewQanWorker(w2StopChan, nil, nil)
+
+	// Let's take this time to also test that MaxWorkers is enforced.
+	w3 := mock.NewQanWorker(nil, nil, nil)
+
+	f := mock.NewQanWorkerFactory([]*mock.QanWorker{w1, w2, w3})
+
+	// Clean up files that may interfere with test.  Then copy the test log.
+	slowlog := "slow006.log"
+	files, _ := filepath.Glob("/tmp/" + slowlog + "-[0-9]*")
+	for _, file := range files {
+		os.Remove(file)
+	}
+	cp := exec.Command("cp", testlog.Sample+slowlog, "/tmp/"+slowlog)
+	cp.Run()
+
+	// Create and start manager with mock workers.
+	m := qan.NewManager(s.logger, s.nullmysql, s.iter, f, s.dataChan)
+	if m == nil {
+		c.Fatal("Create qan.Manager")
+	}
+	config := &qan.Config{
+		// very abbreviated qan.Config because we're mocking a lot
+		MaxSlowLogSize:    1000,
+		RemoveOldSlowLogs: true, // done after w2 and w1 done
+		MaxWorkers:        2,    // w1 and w2 but not w3
+	}
+	qanConfig, _ := json.Marshal(config)
+	cmd := &proto.Cmd{
+		Ts:   time.Now(),
+		Cmd:  "StartService",
+		Data: qanConfig,
+	}
+	err := m.Start(cmd, cmd.Data)
+	if err != nil {
+		c.Fatal(err)
+	}
+	test.WaitStatus(1, m, "QanLogParser", "Ready")
+
+	// Start first mock worker (w1) with interval 0 - 736.  The worker's Run()
+	// func won't return until we send true to its stop chan, so manager will
+	// think worker is still running until then.
+	now := time.Now()
+	i1 := &qan.Interval{
+		Filename:    "/tmp/" + slowlog,
+		StartOffset: 0,
+		StopOffset:  736,
+		StartTime:   now,
+		StopTime:    now,
+	}
+	s.intervalChan <- i1
+	<-w1.Running() // wait for manager to run worker
+
+	// Start 2nd mock worker (w2) with interval 736 - 1833.  Manager will rotate
+	// but not remove original slow log because w1 is still running.
+	i2 := &qan.Interval{
+		Filename:    "/tmp/" + slowlog,
+		StartOffset: 736,
+		StopOffset:  1833,
+		StartTime:   now,
+		StopTime:    now,
+	}
+	s.intervalChan <- i2
+	<-w2.Running()
+
+	test.WaitStatus(1, m, "QanLogParser", "Ready (2 of 2 running)")
+
+	/**
+	 * Quick side test: qan.Config.MaxWorkers is enforced.
+	 */
+	test.DrainLogChan(s.logChan)
+	s.intervalChan <- i2
+	logs := test.WaitLogChan(s.logChan, 3)
+	test.WaitStatus(1, m, "QanLogParser", "Ready (2 of 2 running)")
+	gotWarning := false
+	for _, log := range logs {
+		if log.Level == proto.LOG_WARNING && strings.Contains(log.Msg, "All workers busy") {
+			gotWarning = true
+			break
+		}
+	}
+	if !gotWarning {
+		c.Error("Too many workers causes \"All workers busy\" warning")
+	}
+
+	// Original slow log should no longer exist; it was rotated away, but...
+	if _, err := os.Stat("/tmp/" + slowlog); !os.IsNotExist(err) {
+		c.Error("/tmp/" + slowlog + " no longer exists")
+	}
+
+	// ...old slow log should exist because w1 is still running.
+	files, _ = filepath.Glob("/tmp/" + slowlog + "-[0-9]*")
+	if len(files) != 1 {
+		c.Errorf("w1 running so old slow log not removed, got %+v", files)
+	}
+	defer func() {
+		for _, file := range files {
+			os.Remove(file)
+		}
+	}()
+
+	// Stop w2 which is holding "holding" the "lock" on removing the old
+	// slog log (figuratively speaking; there are no real locks).  Because
+	// w1 is still running, manager should not remove the old log yet because
+	// w2 could still be parsing it.
+	w2StopChan <- true
+	test.WaitStatus(1, m, "QanLogParser", "Ready (1 of 2 running)")
+	if _, err := os.Stat(files[0]); os.IsNotExist(err) {
+		c.Errorf("w1 still running so old slow log not removed")
+	}
+
+	// Stop w1 and now, even though slow log was rotated for w2, manager
+	// should remove old slow log.
+	w1StopChan <- true
+	test.WaitStatus(1, m, "QanLogParser", "Ready (0 of 2 running)")
+	if _, err := os.Stat(files[0]); !os.IsNotExist(err) {
+		c.Errorf("w1 done running so old slow log removed")
 	}
 
 	// Stop manager
