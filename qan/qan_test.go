@@ -641,7 +641,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
 	// Stop w2 which is holding "holding" the "lock" on removing the old
 	// slog log (figuratively speaking; there are no real locks).  Because
 	// w1 is still running, manager should not remove the old log yet because
-	// w2 could still be parsing it.
+	// w1 could still be parsing it.
 	w2StopChan <- true
 	test.WaitStatus(1, m, "QanLogParser", "Ready (1 of 2 running)")
 	if _, err := os.Stat(files[0]); os.IsNotExist(err) {
