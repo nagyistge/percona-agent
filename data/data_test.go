@@ -1,76 +1,86 @@
 package data_test
 
 import (
-	"fmt"
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/cloud-tools/test/mock"
+	"github.com/percona/cloud-tools/data"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/test"
+	"io"
 	"io/ioutil"
 	. "launchpad.net/gocheck"
+	"log"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
-	// Testing
-	"github.com/percona/cloud-tools/data"
 )
 
 // Hook up gocheck into the "go test" runner.
 func Test(t *testing.T) { TestingT(t) }
 
-type TestSuite struct {
-	logChan    chan *proto.LogEntry
-	logger     *pct.Logger
-	postChan   chan []byte
-	client     pct.HttpClient
-	dataChan   chan interface{}
-	dataDir    string
-	tickerChan chan bool
+func debug(logChan chan *proto.LogEntry) {
+	for logEntry := range logChan {
+		log.Println(logEntry)
+	}
 }
 
-var _ = Suite(&TestSuite{})
+/////////////////////////////////////////////////////////////////////////////
+// JsonGzip serializer test suite
+/////////////////////////////////////////////////////////////////////////////
 
-func (s *TestSuite) SetUpSuite(t *C) {
+/////////////////////////////////////////////////////////////////////////////
+// DiskvSpooler test suite
+/////////////////////////////////////////////////////////////////////////////
+
+type DiskvSpoolerTestSuite struct {
+	logChan chan *proto.LogEntry
+	logger  *pct.Logger
+	dataDir string
+}
+
+var _ = Suite(&DiskvSpoolerTestSuite{})
+
+func (s *DiskvSpoolerTestSuite) SetUpSuite(t *C) {
 	s.logChan = make(chan *proto.LogEntry, 10)
 	s.logger = pct.NewLogger(s.logChan, "data_test")
 
-	s.postChan = make(chan []byte, 2)
-	s.client = &mock.HttpClient{PostChan: s.postChan}
-
-	s.dataChan = make(chan interface{}, 3)
-
-	dir, _ := ioutil.TempDir("/tmp", "pct-data-sender")
+	dir, _ := ioutil.TempDir("/tmp", "pct-data-spooler-test")
 	s.dataDir = dir
-
-	s.tickerChan = make(chan bool, 1)
 }
 
-func (s *TestSuite) TearDownSuite(t *C) {
+func (s *DiskvSpoolerTestSuite) TearDownSuite(t *C) {
 	if err := os.RemoveAll(s.dataDir); err != nil {
-		fmt.Println(err)
+		t.Error(err)
 	}
 }
 
-func (s *TestSuite) SetUpTeset(t *C) {
-	if s.tickerChan == nil {
-		s.tickerChan = make(chan bool, 1)
+func (s *DiskvSpoolerTestSuite) SetUpTest(t *C) {
+	files, _ := filepath.Glob(s.dataDir + "/*")
+	for _, file := range files {
+		if err := os.Remove(file); err != nil {
+			t.Error(err)
+		}
 	}
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// Test cases
-/////////////////////////////////////////////////////////////////////////////
+func (s *DiskvSpoolerTestSuite) TestSpoolData(t *C) {
+	sz := data.NewJsonSerializer()
 
-func (s *TestSuite) TestSpoolAndSend(t *C) {
-	// Create the data sender
-	dataSender := data.NewSender(s.logger, s.client, s.dataChan, s.dataDir, s.tickerChan)
-	t.Assert(dataSender, NotNil)
+	// Create and start the spooler.
+	spool := data.NewDiskvSpooler(s.logger, s.dataDir, sz)
+	if spool == nil {
+		t.Fatal("NewDiskvSpooler")
+	}
 
-	// Run the data sender: one gorutine receives data on dataChan and writes
-	// it to disk, so let's test that first...
-	dataSender.Start()
+	err := spool.Start()
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	// Doesn't matter what data we send; just send some bytes...
+	// Doesn't matter what data we spool; just send some bytes...
 	ts, _ := time.Parse("2006-01-02 15:04:05", "2013-12-12 15:00:00")
 	logEntry := &proto.LogEntry{
 		Ts:      ts,
@@ -78,89 +88,157 @@ func (s *TestSuite) TestSpoolAndSend(t *C) {
 		Service: "mm",
 		Msg:     "hello world",
 	}
-	s.dataChan <- logEntry
+	spool.Write(logEntry)
 
-	// Sender should receive the data and write it to disk.
-	files := test.WaitFiles(s.dataDir)
+	// Spooler should write data to disk, in format of serializer.
+	files := test.WaitFiles(s.dataDir, 1)
 	if len(files) != 1 {
 		t.Fatalf("Expected 1 file, got %d\n", len(files))
 	}
 
-	// Because we haven't sent a tick yet, the 2nd sender goroutine which
-	// sends the data (HTTP POST) should not have sent anything yet.
-	posted := test.WaitPost(s.postChan)
-	if posted != nil {
-		t.Fatalf("Sender sent, expected no data: %s\n", string(posted))
+	gotFiles := []string{}
+	filesChan := spool.Files()
+	for file := range filesChan {
+		gotFiles = append(gotFiles, file)
+	}
+	if gotFiles[0] != files[0].Name() {
+		t.Error("Spool writes and returns " + files[0].Name())
+	}
+	if len(gotFiles) != len(files) {
+		t.Error("Spool writes and returns ", len(files), " file")
 	}
 
-	// Now send a tick to simulate that it's time to send data.
-	// The sender should sent (POST) the original data.
-	s.tickerChan <- true
-	posted = test.WaitPost(s.postChan)
-	t.Assert(string(posted), Equals, `{"Ts":"2013-12-12T15:00:00Z","Level":1,"Service":"mm","Msg":"hello world"}`)
+	gotData, err := spool.Read(gotFiles[0])
+	if err != nil {
+		t.Error(err)
+	}
+	t.Assert(string(gotData), Equals, `{"Ts":"2013-12-12T15:00:00Z","Level":1,"Service":"mm","Msg":"hello world"}`)
 
-	// After successfully sending the data, the sender should remove the file.
-	files = test.WaitFiles(s.dataDir)
+	spool.Remove(gotFiles[0])
+
+	files = test.WaitFiles(s.dataDir, -1)
 	if len(files) != 0 {
 		t.Fatalf("Expected no files, got %d\n", len(files))
+	}
+
+	spool.Stop()
+}
+
+func (s *DiskvSpoolerTestSuite) TestSpoolGzipData(t *C) {
+	//go debug(s.logChan)
+
+	sz := data.NewJsonGzipSerializer()
+
+	// See TestSpoolData() for description of these tasks.
+	spool := data.NewDiskvSpooler(s.logger, s.dataDir, sz)
+	if spool == nil {
+		t.Fatal("NewDiskvSpooler")
+	}
+
+	err := spool.Start()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ts, _ := time.Parse("2006-01-02 15:04:05", "2013-12-12 15:00:00")
+	logEntry := &proto.LogEntry{
+		Ts:      ts,
+		Level:   1,
+		Service: "mm",
+		Msg:     "hello world",
+	}
+	spool.Write(logEntry)
+
+	files := test.WaitFiles(s.dataDir, 1)
+	if len(files) != 1 {
+		t.Fatalf("Expected 1 file, got %d\n", len(files))
+	}
+
+	gotFiles := []string{}
+	filesChan := spool.Files()
+	for file := range filesChan {
+		gotFiles = append(gotFiles, file)
+	}
+
+	gotData, err := spool.Read(gotFiles[0])
+	if err != nil {
+		t.Error(err)
+	}
+	if len(gotData) <= 0 {
+		t.Fatal("1st file has data")
+	}
+
+	// Decompress and decode and we should have the same LogEntry.
+	b := bytes.NewBuffer(gotData)
+
+	g, err := gzip.NewReader(b)
+	if err != nil {
+		t.Error(err)
+	}
+
+	d := json.NewDecoder(g)
+	gotLogEntry := &proto.LogEntry{}
+	err = d.Decode(gotLogEntry)
+	if err := d.Decode(gotLogEntry); err != io.EOF {
+		t.Error(err)
+	}
+
+	if same, diff := test.IsDeeply(gotLogEntry, logEntry); !same {
+		t.Error(diff)
 	}
 
 	/**
-	 * Try to stop it by closing the ticker chan.  This is important because it allows
-	 * the agent to change data dirs by stopping one send and starting another with the
-	 * same dataChan.
+	 * Do it again to test that serialize is stateless, so to speak.
 	 */
-	close(s.tickerChan)
-	s.tickerChan = nil
 
-	files = test.WaitFiles(s.dataDir)
-	if len(files) > 0 {
-		t.Fatalf("Expected no files, got %d\n", len(files))
+	logEntry2 := &proto.LogEntry{
+		Ts:      ts,
+		Level:   2,
+		Service: "mm",
+		Msg:     "number 2",
+	}
+	spool.Write(logEntry2)
+
+	files = test.WaitFiles(s.dataDir, 2)
+	if len(files) != 2 {
+		t.Fatalf("Expected 2 file, got %d\n", len(files))
 	}
 
-	posted = test.WaitPost(s.postChan)
-	if posted != nil {
-		t.Fatalf("Expected no data, got %s\n", string(posted))
+	gotFiles = []string{}
+	filesChan = spool.Files()
+	for file := range filesChan {
+		gotFiles = append(gotFiles, file)
 	}
 
-	// Data send should log its shutdown (or crash).
-	logs := test.WaitLogChan(s.logChan, 2)
-	if len(logs) < 2 {
-		t.Fatalf("Expected 2 log entries, got %+v", logs)
+	gotData, err = spool.Read(gotFiles[1]) // 2nd data, 2nd file
+	if err != nil {
+		t.Error(err)
 	}
-	if logs[0].Msg != "sendData stop" || logs[1].Msg != "spoolData stop" {
-		t.Error("Wrong log messages: %+v", logs)
-	}
-
-	// Pretend tool sends data while data sender is down/being changed.
-	// This data should not be lost; it should be read by the new data sender.
-	logEntry.Service = "qan"
-	s.dataChan <- logEntry
-
-	// Start a new sender: same dataChan but different data dir.
-	newDir, _ := ioutil.TempDir("/tmp", "pct-data-sender2")
-	defer func() { os.RemoveAll(newDir) }()
-	s.tickerChan = make(chan bool, 1) // recreate because we closed it ^
-	dataSender = data.NewSender(s.logger, s.client, s.dataChan, newDir, s.tickerChan)
-	t.Assert(dataSender, NotNil)
-	dataSender.Start()
-
-	// New data should only be in the new dir.
-	files = test.WaitFiles(newDir)
-	if len(files) != 1 {
-		t.Fatalf("Expected 1 file in new dir, got %d\n", len(files))
-	}
-	files = test.WaitFiles(s.dataDir)
-	if len(files) != 0 {
-		t.Fatalf("Expected no files in old dir, got %d\n", len(files))
+	if len(gotData) <= 0 {
+		t.Fatal("2nd file has data")
 	}
 
-	s.tickerChan <- true
-	posted = test.WaitPost(s.postChan)
-	t.Assert(string(posted), Equals, `{"Ts":"2013-12-12T15:00:00Z","Level":1,"Service":"qan","Msg":"hello world"}`)
-
-	files = test.WaitFiles(newDir)
-	if len(files) != 0 {
-		t.Fatalf("Expected no files, got %d\n", len(files))
+	b = bytes.NewBuffer(gotData)
+	g, err = gzip.NewReader(b)
+	if err != nil {
+		t.Error(err)
 	}
+	d = json.NewDecoder(g)
+	gotLogEntry = &proto.LogEntry{}
+	err = d.Decode(gotLogEntry)
+	if err := d.Decode(gotLogEntry); err != io.EOF {
+		t.Error(err)
+	}
+
+	if same, diff := test.IsDeeply(gotLogEntry, logEntry2); !same {
+		t.Error(diff)
+	}
+
+	spool.Stop()
 }
+
+/////////////////////////////////////////////////////////////////////////////
+// Sender test suite
+/////////////////////////////////////////////////////////////////////////////
+
+// todo

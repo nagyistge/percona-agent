@@ -187,10 +187,11 @@ func fileSize(fileName string) (int64, error) {
 	return stat.Size(), nil
 }
 
-func WaitFiles(dir string) []os.FileInfo {
-	for i := 0; i < 3; i++ {
+func WaitFiles(dir string, n int) []os.FileInfo {
+	for i := 0; i < 5; i++ {
 		files, _ := ioutil.ReadDir(dir)
-		if len(files) > 0 {
+		nFiles := len(files)
+		if nFiles >= n {
 			return files
 		}
 		time.Sleep(100 * time.Millisecond)
