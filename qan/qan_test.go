@@ -9,7 +9,9 @@ import (
 	"github.com/percona/cloud-tools/qan"
 	"github.com/percona/cloud-tools/test"
 	"github.com/percona/cloud-tools/test/mock"
+	mysqlLog "github.com/percona/percona-go-mysql/log"
 	"github.com/percona/percona-go-mysql/test"
+
 	"io/ioutil"
 	"launchpad.net/gocheck"
 	"os"
@@ -47,7 +49,7 @@ func (s *WorkerTestSuite) TestWorkerSlow001(c *gocheck.C) {
 	job := &qan.Job{
 		SlowLogFile:    testlog.Sample + "slow001.log",
 		StartOffset:    0,
-		StopOffset:     524,
+		EndOffset:      524,
 		RunTime:        time.Duration(3 * time.Second),
 		ExampleQueries: true,
 	}
@@ -66,7 +68,7 @@ func (s *WorkerTestSuite) TestWorkerSlow001Half(c *gocheck.C) {
 	job := &qan.Job{
 		SlowLogFile:    testlog.Sample + "slow001.log",
 		StartOffset:    0,
-		StopOffset:     358,
+		EndOffset:      358,
 		RunTime:        time.Duration(3 * time.Second),
 		ExampleQueries: true,
 	}
@@ -82,7 +84,7 @@ func (s *WorkerTestSuite) TestWorkerSlow001Resume(c *gocheck.C) {
 	job := &qan.Job{
 		SlowLogFile:    testlog.Sample + "slow001.log",
 		StartOffset:    359,
-		StopOffset:     524,
+		EndOffset:      524,
 		RunTime:        time.Duration(3 * time.Second),
 		ExampleQueries: true,
 	}
@@ -105,6 +107,7 @@ type ManagerTestSuite struct {
 	intervalChan  chan *qan.Interval
 	iter          qan.IntervalIter
 	dataChan      chan interface{}
+	spool         *mock.Spooler
 	workerFactory qan.WorkerFactory
 }
 
@@ -133,6 +136,7 @@ func (s *ManagerTestSuite) SetUpSuite(c *gocheck.C) {
 	s.iter = mock.NewMockIntervalIter(s.intervalChan)
 	s.dataChan = make(chan interface{}, 2)
 
+	s.spool = mock.NewSpooler(s.dataChan)
 	s.workerFactory = qan.NewSlowLogWorkerFactory()
 }
 
@@ -157,7 +161,7 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	 * Create and start manager.
 	 */
 
-	m := qan.NewManager(s.logger, s.realmysql, s.iter, s.workerFactory, s.dataChan)
+	m := qan.NewManager(s.logger, s.realmysql, s.iter, s.workerFactory, s.spool)
 	if m == nil {
 		c.Fatal("Create qan.Manager")
 	}
@@ -240,22 +244,34 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	 * Have manager run a worker, parse, and send data.
 	 */
 
-	// Send an Interval which should trigger a worker, and that worker will
-	// send to the result which the sendData process will receive and then
-	// send it via the dataChan.
 	interv := &qan.Interval{
 		Filename:    testlog.Sample + "slow001.log",
 		StartOffset: 0,
-		StopOffset:  524,
+		EndOffset:   524,
 		StartTime:   now,
 		StopTime:    now,
 	}
 	s.intervalChan <- interv
 
 	resultData := <-s.dataChan
-	c.Assert(resultData, gocheck.NotNil)
+	if resultData == nil {
+		c.Fatal("Got result from worker ran by manager")
+	}
 
-	test.WriteData(resultData, tmpFile)
+	report := *resultData.(*proto.QanReport)
+	global := &mysqlLog.GlobalClass{}
+	json.Unmarshal(report.Global, global)
+	classes := []*mysqlLog.QueryClass{}
+	err = json.Unmarshal(report.Class, &classes)
+	if err != nil {
+		c.Error(err)
+	}
+	result := &qan.Result{
+		StopOffset: report.StopOffset,
+		Global:     global,
+		Classes:    classes,
+	}
+	test.WriteData(result, tmpFile)
 	c.Check(tmpFile, testlog.FileEquals, sample+"slow001.json")
 
 	/**
@@ -301,7 +317,7 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
 
 	/**
 	 * slow006.log is 2200 bytes large.  Rotation happens when manager
-	 * see interval.StopOffset >= MaxSlowLogSize.  So we'll use these
+	 * see interval.EndOffset >= MaxSlowLogSize.  So we'll use these
 	 * intervals,
 	 *      0 -  736
 	 *    736 - 1833
@@ -316,7 +332,7 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
 	 */
 
 	// See TestStartService() for description of these startup tasks.
-	m := qan.NewManager(s.logger, s.nullmysql, s.iter, s.workerFactory, s.dataChan)
+	m := qan.NewManager(s.logger, s.nullmysql, s.iter, s.workerFactory, s.spool)
 	if m == nil {
 		c.Fatal("Create qan.Manager")
 	}
@@ -359,18 +375,20 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
 	i1 := &qan.Interval{
 		Filename:    "/tmp/" + slowlog,
 		StartOffset: 0,
-		StopOffset:  736,
+		EndOffset:   736,
 		StartTime:   now,
 		StopTime:    now,
 	}
 	s.intervalChan <- i1
 	resultData := <-s.dataChan
-	result := *resultData.(*qan.Result)
-	if result.Global.TotalQueries != 2 {
-		c.Error("First interval has 2 queries, got ", result.Global.TotalQueries)
+	result := *resultData.(*proto.QanReport)
+	global := &mysqlLog.GlobalClass{}
+	json.Unmarshal(result.Global, global)
+	if global.TotalQueries != 2 {
+		c.Error("First interval has 2 queries, got ", global.TotalQueries)
 	}
-	if result.Global.UniqueQueries != 1 {
-		c.Error("First interval has 1 unique query, got ", result.Global.UniqueQueries)
+	if global.UniqueQueries != 1 {
+		c.Error("First interval has 1 unique query, got ", global.UniqueQueries)
 	}
 
 	// Second interval: 736 - 1833, but will actually go to end: 2200, if not
@@ -378,18 +396,20 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
 	i2 := &qan.Interval{
 		Filename:    "/tmp/" + slowlog,
 		StartOffset: 736,
-		StopOffset:  1833,
+		EndOffset:   1833,
 		StartTime:   now,
 		StopTime:    now,
 	}
 	s.intervalChan <- i2
 	resultData = <-s.dataChan
-	result = *resultData.(*qan.Result)
-	if result.Global.TotalQueries != 4 {
-		c.Error("Second interval has 2 queries, got ", result.Global.TotalQueries)
+	result = *resultData.(*proto.QanReport)
+	global = &mysqlLog.GlobalClass{}
+	json.Unmarshal(result.Global, global)
+	if global.TotalQueries != 4 {
+		c.Error("Second interval has 2 queries, got ", global.TotalQueries)
 	}
-	if result.Global.UniqueQueries != 2 {
-		c.Error("Second interval has 2 unique queries, got ", result.Global.UniqueQueries)
+	if global.UniqueQueries != 2 {
+		c.Error("Second interval has 2 unique queries, got ", global.UniqueQueries)
 	}
 
 	test.WaitStatus(1, m, "QanLogParser", "Ready (0 of 2 running)")
@@ -426,7 +446,7 @@ func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
 		os.Remove(file)
 	}
 
-	m := qan.NewManager(s.logger, s.nullmysql, s.iter, s.workerFactory, s.dataChan)
+	m := qan.NewManager(s.logger, s.nullmysql, s.iter, s.workerFactory, s.spool)
 	if m == nil {
 		c.Fatal("Create qan.Manager")
 	}
@@ -470,18 +490,20 @@ func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
 	i1 := &qan.Interval{
 		Filename:    "/tmp/" + slowlog,
 		StartOffset: 0,
-		StopOffset:  736,
+		EndOffset:   736,
 		StartTime:   now,
 		StopTime:    now,
 	}
 	s.intervalChan <- i1
 	resultData := <-s.dataChan
-	result := *resultData.(*qan.Result)
-	if result.Global.TotalQueries != 2 {
-		c.Error("First interval has 2 queries, got ", result.Global.TotalQueries)
+	result := *resultData.(*proto.QanReport)
+	global := &mysqlLog.GlobalClass{}
+	json.Unmarshal(result.Global, global)
+	if global.TotalQueries != 2 {
+		c.Error("First interval has 2 queries, got ", global.TotalQueries)
 	}
-	if result.Global.UniqueQueries != 1 {
-		c.Error("First interval has 1 unique query, got ", result.Global.UniqueQueries)
+	if global.UniqueQueries != 1 {
+		c.Error("First interval has 1 unique query, got ", global.UniqueQueries)
 	}
 
 	// Second interval: 736 - 1833, but will actually go to end: 2200, if not
@@ -489,18 +511,20 @@ func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
 	i2 := &qan.Interval{
 		Filename:    "/tmp/" + slowlog,
 		StartOffset: 736,
-		StopOffset:  1833,
+		EndOffset:   1833,
 		StartTime:   now,
 		StopTime:    now,
 	}
 	s.intervalChan <- i2
 	resultData = <-s.dataChan
-	result = *resultData.(*qan.Result)
-	if result.Global.TotalQueries != 4 {
-		c.Error("Second interval has 2 queries, got ", result.Global.TotalQueries)
+	result = *resultData.(*proto.QanReport)
+	global = &mysqlLog.GlobalClass{}
+	json.Unmarshal(result.Global, global)
+	if global.TotalQueries != 4 {
+		c.Error("Second interval has 2 queries, got ", global.TotalQueries)
 	}
-	if result.Global.UniqueQueries != 2 {
-		c.Error("Second interval has 2 unique queries, got ", result.Global.UniqueQueries)
+	if global.UniqueQueries != 2 {
+		c.Error("Second interval has 2 unique queries, got ", global.UniqueQueries)
 	}
 
 	test.WaitStatus(1, m, "QanLogParser", "Ready (0 of 2 running)")
@@ -566,7 +590,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
 	cp.Run()
 
 	// Create and start manager with mock workers.
-	m := qan.NewManager(s.logger, s.nullmysql, s.iter, f, s.dataChan)
+	m := qan.NewManager(s.logger, s.nullmysql, s.iter, f, s.spool)
 	if m == nil {
 		c.Fatal("Create qan.Manager")
 	}
@@ -595,7 +619,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
 	i1 := &qan.Interval{
 		Filename:    "/tmp/" + slowlog,
 		StartOffset: 0,
-		StopOffset:  736,
+		EndOffset:   736,
 		StartTime:   now,
 		StopTime:    now,
 	}
@@ -607,7 +631,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
 	i2 := &qan.Interval{
 		Filename:    "/tmp/" + slowlog,
 		StartOffset: 736,
-		StopOffset:  1833,
+		EndOffset:   1833,
 		StartTime:   now,
 		StopTime:    now,
 	}
@@ -721,7 +745,7 @@ func (s *IntervalTestSuite) TestIterFile(c *gocheck.C) {
 		StartTime:   t1,
 		StopTime:    t2,
 		StartOffset: 3,
-		StopOffset:  6,
+		EndOffset:   6,
 	}
 	c.Check(got, test.DeepEquals, expect)
 
@@ -734,7 +758,7 @@ func (s *IntervalTestSuite) TestIterFile(c *gocheck.C) {
 	defer os.Remove(oldFileName)
 
 	// Re-create original file and write new data.  We expect StartOffset=0
-	// because the file is new, and StopOffset=10 because that's the len of
+	// because the file is new, and EndOffset=10 because that's the len of
 	// the new data.  The old ^ file/data had start/stop offset 3/6, so those
 	// should not appear in next interval; if they do, then iter failed to
 	// detect file change and is still reading old file.
@@ -751,7 +775,7 @@ func (s *IntervalTestSuite) TestIterFile(c *gocheck.C) {
 		StartTime:   t2,
 		StopTime:    t3,
 		StartOffset: 0,
-		StopOffset:  10,
+		EndOffset:   10,
 	}
 	c.Check(got, test.DeepEquals, expect)
 
@@ -767,7 +791,7 @@ func (s *IntervalTestSuite) TestIterFile(c *gocheck.C) {
 		StartTime:   t3,
 		StopTime:    t4,
 		StartOffset: 10,
-		StopOffset:  15,
+		EndOffset:   15,
 	}
 	c.Check(got, test.DeepEquals, expect)
 

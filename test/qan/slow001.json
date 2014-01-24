@@ -1,4 +1,6 @@
 {
+ "StopOffset": 524,
+ "RunTime": 0,
  "Global": {
   "TotalQueries": 2,
   "UniqueQueries": 2,

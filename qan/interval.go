@@ -12,7 +12,7 @@ type Interval struct {
 	StartTime   time.Time
 	StopTime    time.Time
 	StartOffset int64
-	StopOffset  int64
+	EndOffset   int64
 }
 
 type IntervalIter interface {
@@ -101,7 +101,7 @@ func (i *FileIntervalIter) run() {
 					// Start from beginning of new file.
 					cur.StartOffset = 0
 				}
-				cur.StopOffset = curSize
+				cur.EndOffset = curSize
 				cur.StopTime = now
 
 				// Send interval non-blocking: if reciever is not ready,

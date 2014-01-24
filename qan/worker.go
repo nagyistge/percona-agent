@@ -11,13 +11,15 @@ type Job struct {
 	SlowLogFile    string
 	RunTime        time.Duration
 	StartOffset    int64
-	StopOffset     int64
+	EndOffset      int64
 	ExampleQueries bool
 }
 
 type Result struct {
-	Global  *mysqlLog.GlobalClass
-	Classes []*mysqlLog.QueryClass
+	StopOffset int64
+	RunTime    time.Duration
+	Global     *mysqlLog.GlobalClass
+	Classes    []*mysqlLog.QueryClass
 }
 
 type Worker interface {
@@ -73,10 +75,12 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 
 	// The global class has info and stats for all events.
 	// Each query has its own class, defined by the checksum of its fingerprint.
+	result := &Result{}
 	global := mysqlLog.NewGlobalClass()
 	queries := make(map[string]*mysqlLog.QueryClass)
 	for event := range p.EventChan {
-		if int64(event.Offset) > job.StopOffset {
+		if int64(event.Offset) >= job.EndOffset {
+			result.StopOffset = int64(event.Offset)
 			break
 		}
 
@@ -96,6 +100,10 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 		class.AddEvent(event)
 	}
 
+	if result.StopOffset == 0 {
+		result.StopOffset, _ = file.Seek(0, os.SEEK_CUR)
+	}
+
 	// Done parsing the slow log.  Finalize the global and query classes (calculate
 	// averages, etc.).
 	for _, class := range queries {
@@ -111,10 +119,8 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 		classes[nQueries] = class
 	}
 
-	result := &Result{
-		Global:  global,
-		Classes: classes,
-	}
+	result.Global = global
+	result.Classes = classes
 
 	return result, nil
 }

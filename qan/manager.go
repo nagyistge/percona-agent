@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-tools/data"
 	"github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
 	"os"
@@ -15,7 +16,7 @@ type Manager struct {
 	mysqlConn     mysql.Connector
 	iter          IntervalIter
 	workerFactory WorkerFactory
-	dataChan      chan interface{}
+	spool         data.Spooler
 	// --
 	config         *Config // nil if not running
 	workers        map[Worker]bool
@@ -25,13 +26,13 @@ type Manager struct {
 	oldSlowLogs    map[string]int
 }
 
-func NewManager(logger *pct.Logger, mysqlConn mysql.Connector, iter IntervalIter, workerFactory WorkerFactory, dataChan chan interface{}) *Manager {
+func NewManager(logger *pct.Logger, mysqlConn mysql.Connector, iter IntervalIter, workerFactory WorkerFactory, spool data.Spooler) *Manager {
 	m := &Manager{
 		logger:        logger,
 		mysqlConn:     mysqlConn,
 		iter:          iter,
 		workerFactory: workerFactory,
-		dataChan:      dataChan,
+		spool:         spool,
 		// --
 		workers:     make(map[Worker]bool),
 		status:      pct.NewStatus([]string{"Qan", "QanLogParser"}),
@@ -156,7 +157,7 @@ func (m *Manager) run() {
 				continue
 			}
 
-			if interval.StopOffset >= m.config.MaxSlowLogSize {
+			if interval.EndOffset >= m.config.MaxSlowLogSize {
 				if err := m.rotateSlowLog(interval); err != nil {
 					m.logger.Error(err)
 				}
@@ -166,20 +167,32 @@ func (m *Manager) run() {
 			job := &Job{
 				SlowLogFile:    interval.Filename,
 				StartOffset:    interval.StartOffset,
-				StopOffset:     interval.StopOffset,
+				EndOffset:      interval.EndOffset,
 				RunTime:        time.Duration(m.config.WorkerRunTime) * time.Second,
 				ExampleQueries: m.config.ExampleQueries,
 			}
 			w := m.workerFactory.Make()
 			m.workers[w] = true
 			go func() {
+				defer func() { m.workerDoneChan <- w }()
+				t0 := time.Now()
 				result, err := w.Run(job)
+				t1 := time.Now()
 				if err != nil {
 					m.logger.Error(err)
-				} else {
-					m.dataChan <- result
+					return
 				}
-				m.workerDoneChan <- w
+				if result == nil {
+					m.logger.Error("Nil result", fmt.Sprintf("+%v", job))
+					return
+				}
+				result.RunTime = t1.Sub(t0)
+				data, err := prepareResult(interval, job, result)
+				if err != nil {
+					m.logger.Error(err)
+					return
+				}
+				m.spool.Write(data)
 			}()
 		case worker := <-m.workerDoneChan:
 			m.status.Update("QanLogParser", "Reaping worker")
@@ -225,7 +238,7 @@ func (m *Manager) rotateSlowLog(interval *Interval) error {
 
 	// Modify interval so worker parses the rest of the old slow log.
 	interval.Filename = newSlowLogFile
-	interval.StopOffset, _ = pct.FileSize(newSlowLogFile) // todo: handle err
+	interval.EndOffset, _ = pct.FileSize(newSlowLogFile) // todo: handle err
 
 	// Save old slow log and remove later if configured to do so.
 	if m.config.RemoveOldSlowLogs {
@@ -233,4 +246,29 @@ func (m *Manager) rotateSlowLog(interval *Interval) error {
 	}
 
 	return nil
+}
+
+func prepareResult(interval *Interval, job *Job, result *Result) (*proto.QanReport, error) {
+	global, err := json.Marshal(result.Global)
+	if err != nil {
+		return nil, err
+	}
+	class, err := json.Marshal(result.Classes)
+	if err != nil {
+		return nil, err
+	}
+
+	qanReport := &proto.QanReport{
+		StartTs:     interval.StartTime,
+		EndTs:       interval.StopTime,
+		SlowLogFile: interval.Filename,
+		StartOffset: interval.StartOffset,
+		EndOffset:   interval.EndOffset,
+		StopOffset:  result.StopOffset,
+		RunTime:     result.RunTime.Seconds(),
+		Global:      global,
+		Class:       class,
+	}
+
+	return qanReport, nil
 }

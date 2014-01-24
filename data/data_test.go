@@ -241,9 +241,9 @@ func (s *DiskvSpoolerTestSuite) TestSpoolGzipData(t *C) {
 /////////////////////////////////////////////////////////////////////////////
 
 type SenderTestSuite struct {
-	logChan chan *proto.LogEntry
-	logger  *pct.Logger
-	client *mock.HttpClient
+	logChan    chan *proto.LogEntry
+	logger     *pct.Logger
+	client     *mock.HttpClient
 	tickerChan chan bool
 }
 
@@ -272,7 +272,7 @@ func (s *SenderTestSuite) TestSendData(t *C) {
 		t.Fatal(err)
 	}
 
-	spool.FilesOut = []string{"slow001.json"};
+	spool.FilesOut = []string{"slow001.json"}
 	spool.DataOut = map[string][]byte{"slow001.json": slow001}
 
 	sender := data.NewSender(s.logger, s.client, "url", spool, s.tickerChan)

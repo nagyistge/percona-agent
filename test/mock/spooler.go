@@ -4,10 +4,12 @@ type Spooler struct {
 	FilesOut []string          // test provides
 	DataOut  map[string][]byte // test provides
 	DataIn   []interface{}
+	dataChan chan interface{}
 }
 
-func NewSpooler() *Spooler {
+func NewSpooler(dataChan chan interface{}) *Spooler {
 	s := &Spooler{
+		dataChan: dataChan,
 		DataIn: []interface{}{},
 	}
 	return s
@@ -22,7 +24,11 @@ func (s *Spooler) Stop() error {
 }
 
 func (s *Spooler) Write(data interface{}) error {
-	s.DataIn = append(s.DataIn, data)
+	if s.dataChan != nil {
+		s.dataChan <- data
+	} else {
+		s.DataIn = append(s.DataIn, data)
+	}
 	return nil
 }
 
