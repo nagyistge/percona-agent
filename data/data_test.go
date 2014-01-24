@@ -263,7 +263,7 @@ func (s *SenderTestSuite) SetUpTest(t *C) {
 }
 
 func (s *SenderTestSuite) TestSendData(t *C) {
-	go debug(s.logChan)
+	//go debug(s.logChan)
 
 	spool := mock.NewSpooler()
 
