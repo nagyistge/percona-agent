@@ -265,7 +265,7 @@ func (s *SenderTestSuite) SetUpTest(t *C) {
 func (s *SenderTestSuite) TestSendData(t *C) {
 	//go debug(s.logChan)
 
-	spool := mock.NewSpooler()
+	spool := mock.NewSpooler(nil)
 
 	slow001, err := ioutil.ReadFile(sample + "slow001.json")
 	if err != nil {
