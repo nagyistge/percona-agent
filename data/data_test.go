@@ -8,6 +8,7 @@ import (
 	"github.com/percona/cloud-tools/data"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/test"
+	"github.com/percona/cloud-tools/test/mock"
 	"io"
 	"io/ioutil"
 	. "launchpad.net/gocheck"
@@ -21,15 +22,13 @@ import (
 // Hook up gocheck into the "go test" runner.
 func Test(t *testing.T) { TestingT(t) }
 
+var sample = os.Getenv("GOPATH") + "/src/github.com/percona/cloud-tools/test/qan/"
+
 func debug(logChan chan *proto.LogEntry) {
 	for logEntry := range logChan {
 		log.Println(logEntry)
 	}
 }
-
-/////////////////////////////////////////////////////////////////////////////
-// JsonGzip serializer test suite
-/////////////////////////////////////////////////////////////////////////////
 
 /////////////////////////////////////////////////////////////////////////////
 // DiskvSpooler test suite
@@ -241,4 +240,62 @@ func (s *DiskvSpoolerTestSuite) TestSpoolGzipData(t *C) {
 // Sender test suite
 /////////////////////////////////////////////////////////////////////////////
 
-// todo
+type SenderTestSuite struct {
+	logChan chan *proto.LogEntry
+	logger  *pct.Logger
+	client *mock.HttpClient
+	tickerChan chan bool
+}
+
+var _ = Suite(&SenderTestSuite{})
+
+func (s *SenderTestSuite) SetUpSuite(t *C) {
+	s.logChan = make(chan *proto.LogEntry, 10)
+	s.logger = pct.NewLogger(s.logChan, "data_test")
+	s.client = &mock.HttpClient{PostChan: make(chan []byte, 1)}
+	s.tickerChan = make(chan bool, 1)
+}
+
+func (s *SenderTestSuite) TearDownSuite(t *C) {
+}
+
+func (s *SenderTestSuite) SetUpTest(t *C) {
+}
+
+func (s *SenderTestSuite) TestSendData(t *C) {
+	go debug(s.logChan)
+
+	spool := mock.NewSpooler()
+
+	slow001, err := ioutil.ReadFile(sample + "slow001.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	spool.FilesOut = []string{"slow001.json"};
+	spool.DataOut = map[string][]byte{"slow001.json": slow001}
+
+	sender := data.NewSender(s.logger, s.client, "url", spool, s.tickerChan)
+
+	err = sender.Start()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	postData := test.WaitPost(s.client.PostChan)
+	if postData != nil {
+		t.Errorf("No data sent before tick; got %+v", postData)
+	}
+
+	s.tickerChan <- true
+
+	postData = test.WaitPost(s.client.PostChan)
+	if same, diff := test.IsDeeply(postData, slow001); !same {
+		t.Error(diff)
+	}
+
+	err = sender.Stop()
+	if err != nil {
+		t.Fatal(err)
+	}
+}

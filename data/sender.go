@@ -47,15 +47,16 @@ func (s *Sender) run() {
 	defer func() {
 		if s.sync.IsGraceful() {
 			s.logger.Info("sendData stop")
-			s.sync.Stop()
 		} else {
 			s.logger.Error("sendData crash")
 		}
+		s.sync.Done()
 	}()
 
 	for {
 		select {
 		case <-s.tickerChan:
+			s.logger.Debug("Start sending")
 			filesChan := s.spool.Files()
 			for file := range filesChan {
 				data, err := s.spool.Read(file)
@@ -65,13 +66,16 @@ func (s *Sender) run() {
 				}
 
 				// POST the data
+				s.logger.Debug("Sending", file)
 				err = s.client.Post(s.url, data)
 				if err != nil {
 					s.logger.Error(err)
 				} else {
+					s.logger.Info("Sent", file)
 					s.spool.Remove(file)
 				}
 			}
+			s.logger.Debug("Done sending")
 		case <-s.sync.StopChan:
 			s.sync.Graceful()
 			return
