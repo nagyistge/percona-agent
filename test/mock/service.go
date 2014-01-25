@@ -58,3 +58,7 @@ func (m *MockServiceManager) IsRunning() bool {
 func (m *MockServiceManager) Handle(cmd *proto.Cmd) error {
 	return nil
 }
+
+func (m *MockServiceManager) Reset() {
+	m.status = ""
+}

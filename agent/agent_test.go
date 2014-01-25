@@ -30,7 +30,6 @@ type AgentTestSuite struct {
 	logger    *pct.Logger
 	logChan   chan *proto.LogEntry
 	client    pct.WebsocketClient
-	services  map[string]pct.ServiceManager
 	readyChan chan bool
 	traceChan chan string
 	// --
@@ -87,10 +86,6 @@ func (s *AgentTestSuite) SetUpSuite(t *gocheck.C) {
 
 	s.readyChan = make(chan bool, 2)
 	s.traceChan = make(chan string, 10)
-	services := make(map[string]pct.ServiceManager)
-	services["qan"] = mock.NewMockServiceManager("Qan", s.readyChan, s.traceChan)
-	services["mm"] = mock.NewMockServiceManager("Mm", s.readyChan, s.traceChan)
-	s.services = services
 
 	s.doneChan = make(chan bool, 1)
 }
@@ -102,9 +97,12 @@ func (s *AgentTestSuite) TearDownSuite(t *gocheck.C) {
 }
 
 func (s *AgentTestSuite) SetUpTest(t *gocheck.C) {
-	// Before each test, create and agent.  Tests make change the agent,
+	// Before each test, create an agent.  Tests make change the agent,
 	// so this ensures each test starts with an agent with known values.
-	s.agent = agent.NewAgent(s.config, s.auth, s.logRelay, s.logger, s.client, s.services)
+	services := make(map[string]pct.ServiceManager)
+	services["qan"] = mock.NewMockServiceManager("Qan", s.readyChan, s.traceChan)
+	services["mm"] = mock.NewMockServiceManager("Mm", s.readyChan, s.traceChan)
+	s.agent = agent.NewAgent(s.config, s.auth, s.logRelay, s.logger, s.client, services)
 
 	// Run the agent.
 	go func() {
@@ -133,7 +131,7 @@ func (s *AgentTestSuite) TestStatus(t *gocheck.C) {
 	// This is what the API would send:
 	statusCmd := &proto.Cmd{
 		Ts:   time.Now(),
-		User: "daniel",
+		User: "daniel@percona.com",
 		Cmd:  "Status",
 	}
 	s.sendChan <- statusCmd
@@ -153,17 +151,16 @@ func (s *AgentTestSuite) TestStatus(t *gocheck.C) {
 		Agent:           "Ready",
 		AgentCmdHandler: "Ready",
 		AgentCmdQueue:   []string{},
-		Qan:             "OK",
-		Mm:              "OK",
+		Qan:             "",
+		Mm:              "",
 	}
 	if ok, diff := test.IsDeeply(gotReply, expectReply); !ok {
 		t.Error(diff)
 	}
 }
 
-func (s *AgentTestSuite) TestStartService(t *gocheck.C) {
-	// This is what the API would send:
-	// First, the service's config:
+func (s *AgentTestSuite) TestStartStopService(t *gocheck.C) {
+	// To start a service, first we make a config for the service:
 	qanConfig := &qan.Config{
 		Interval:          60,         // seconds
 		MaxSlowLogSize:    1073741824, // 1 GiB
@@ -172,15 +169,16 @@ func (s *AgentTestSuite) TestStartService(t *gocheck.C) {
 		MaxWorkers:        2,
 		WorkerRunTime:     120, // seconds
 	}
+
+	// Second, the service config is encoded and encapsulated in a ServiceData:
 	qanConfigData, _ := json.Marshal(qanConfig)
-	qanConfigString := string(qanConfigData)
-	// Second, a ServiceData:
 	serviceCmd := &proto.ServiceData{
 		Name:   "qan",
 		Config: qanConfigData,
 	}
+
+	// Third and final, the service data is encoded and encapsulated in a Cmd:
 	serviceData, _ := json.Marshal(serviceCmd)
-	// Finally, the Cmd:
 	cmd := &proto.Cmd{
 		Ts:   time.Now(),
 		User: "daniel",
@@ -193,32 +191,94 @@ func (s *AgentTestSuite) TestStartService(t *gocheck.C) {
 	// this lets the service start immediately.
 	s.readyChan <- true
 
-	// Send the cmd to the client, tell the agent to stop, then wait for it.
+	// Send the StartService cmd to the client, then wait for the reply
+	// which should not have an error, indicating success.
 	s.sendChan <- cmd
+	gotReplies := test.WaitReply(s.recvChan)
+	if len(gotReplies) != 1 {
+		t.Fatal("Got Reply to Cmd:StartService")
+	}
+	reply := &proto.Reply{}
+	_ = json.Unmarshal(gotReplies[0].Data, reply)
+	if reply.Error != "" {
+		t.Error("No Reply.Error to Cmd:StartService; got ", reply.Error)
+	}
 
-	// The agent should first check that the service service is *not* running,
-	// then start it.  It should do this only for the requested service (qan).
+	// To double-check that the agent started without error, get its status
+	// which should show everything is "Ready".
+	status := test.GetStatus(s.sendChan, s.recvChan)
+	expectStatus := &proto.StatusData{
+		Agent:           "Ready",
+		AgentCmdHandler: "Ready",
+		AgentCmdQueue:   []string{},
+		Qan:             "Ready", // fake
+		QanLogParser:    "",
+		Mm:              "", // fake
+		MmMonitors:      make(map[string]string),
+	}
+	if same, diff := test.IsDeeply(status, expectStatus); !same {
+		t.Error(diff)
+	}
+
+	// Finally, since we're using mock objects, let's double check the
+	// execution trace, i.e. what calls the agent made based on all
+	// the previous ^.
 	got := test.WaitTrace(s.traceChan)
 	expect := []string{
 		`IsRunning Qan`,
-		`Start Qan ` + qanConfigString,
+		`Start Qan ` + string(qanConfigData),
+		`Status Qan`,
+		`Status Mm`,
 	}
 	t.Check(got, gocheck.DeepEquals, expect)
 
-	// The reply to that ^ should be Error=nil.
-	gotReplies := test.WaitReply(s.recvChan)
-	if t.Check(len(gotReplies), gocheck.Equals, 1) == false {
-		// Avoid "index out of range" panic by trying to access got[0] below.
-		t.Errorf("%q", gotReplies)
-		t.FailNow()
+	/**
+	 * Stop the service.
+	 */
+
+	 serviceCmd = &proto.ServiceData{
+		Name:   "qan",
 	}
-	reply := new(proto.Reply)
+	serviceData, _ = json.Marshal(serviceCmd)
+	cmd = &proto.Cmd{
+		Ts:   time.Now(),
+		User: "daniel",
+		Cmd:  "StopService",
+		Data: serviceData,
+	}
+
+	// Let fake qan service stop immediately.
+	s.readyChan <- true
+
+	s.sendChan <- cmd
+	gotReplies = test.WaitReply(s.recvChan)
+	if len(gotReplies) != 1 {
+		t.Fatal("Got Reply to Cmd:StopService")
+	}
+	reply = &proto.Reply{}
 	_ = json.Unmarshal(gotReplies[0].Data, reply)
-	t.Check(reply.Error, gocheck.Equals, "")
+	if reply.Error != "" {
+		t.Error("No Reply.Error to Cmd:StopService; got ", reply.Error)
+	}
+
+	status = test.GetStatus(s.sendChan, s.recvChan)
+	expectStatus = &proto.StatusData{
+		Agent:           "Ready",
+		AgentCmdHandler: "Ready",
+		AgentCmdQueue:   []string{},
+		Qan:             "Stopped", // fake
+		QanLogParser:    "",
+		Mm:              "",
+		MmMonitors:      make(map[string]string),
+	}
+	if same, diff := test.IsDeeply(status, expectStatus); !same {
+		t.Error(diff)
+	}
 }
 
-// See TestStartService ^.  This test is like it, but it simulates a slow start.
 func (s *AgentTestSuite) TestStartServiceSlow(t *gocheck.C) {
+	// This test is like TestStartService but simulates a slow starting service.
+
 	qanConfig := &qan.Config{
 		Interval:          60,         // seconds
 		MaxSlowLogSize:    1073741824, // 1 GiB
@@ -261,7 +321,6 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *gocheck.C) {
 	// Make it seem like service has started now.
 	// time.Sleep(1 * time.Second)
 	s.readyChan <- true
-	// test.DoneWait(s.cc)
 
 	// Agent sends reply: no error.
 	gotReplies = test.WaitReply(s.recvChan)

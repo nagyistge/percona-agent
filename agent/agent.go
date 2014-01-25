@@ -387,12 +387,6 @@ func (agent *Agent) handleStopService(cmd *proto.Cmd) error {
 		return nil
 	}
 
-	// If the service is not running, then return.  Stopping a service
-	// is an idempotent operation.
-	if !m.IsRunning() {
-		return nil
-	}
-
 	// Stop the service.
 	err := m.Stop(cmd)
 	return err
