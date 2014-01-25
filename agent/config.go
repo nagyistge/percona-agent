@@ -25,10 +25,10 @@ type Config struct {
 	PidFile       string
 	LogFile       string
 	LogLevel      string
-	LogFileOnly   bool
 	DataDir       string
-	SpoolDataOnly bool
 	Links         map[string]string
+	Enable        []string
+	Disable       []string
 }
 
 // Load config from JSON file.
@@ -47,23 +47,44 @@ func LoadConfig(file string) *Config {
 	return config
 }
 
-func (c *Config) Apply(d *Config) error {
-	if d.ApiHostname != "" {
-		c.ApiHostname = d.ApiHostname
+// Apply current config, i.e. overwrite this config with current config.
+func (c *Config) Apply(cur *Config) error {
+	if cur.ApiHostname != "" {
+		c.ApiHostname = cur.ApiHostname
 	}
-	c.ApiKey = d.ApiKey
-	c.AgentUuid = d.AgentUuid
-	c.PidFile = d.PidFile
-	c.LogFileOnly = d.LogFileOnly
-	if d.LogFile != "" {
-		c.LogFile = d.LogFile
+	c.ApiKey = cur.ApiKey
+	c.AgentUuid = cur.AgentUuid
+	c.PidFile = cur.PidFile
+	if cur.LogFile != "" {
+		c.LogFile = cur.LogFile
 	}
-	if d.LogLevel != "" {
-		_, ok := proto.LogLevels[d.LogLevel]
+	if cur.LogLevel != "" {
+		_, ok := proto.LogLevels[cur.LogLevel]
 		if !ok {
-			return errors.New("Invalid log level: " + d.LogLevel)
+			return errors.New("Invalid log level: " + cur.LogLevel)
 		}
-		c.LogLevel = d.LogLevel
+		c.LogLevel = cur.LogLevel
 	}
+	c.DataDir = cur.DataDir
+	c.Enable = cur.Enable
+	c.Disable = cur.Disable
 	return nil
+}
+
+func (c *Config) Enabled(option string) bool {
+	for _, o := range c.Enable {
+		if o == option {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Config) Disabled(option string) bool {
+	for _, o := range c.Disable {
+		if o == option {
+			return true
+		}
+	}
+	return false
 }

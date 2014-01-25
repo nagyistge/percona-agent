@@ -176,15 +176,14 @@ func (s *AgentTestSuite) TestStartService(t *C) {
 	// First, the service's config:
 	qanConfig := &qan.Config{
 		Interval:          60, // seconds
-		LongQueryTime:     0.123,
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
 		ExampleQueries:    true,
-		MysqlDsn:          "",
 		MaxWorkers:        2,
-		WorkerRuntime:     120, // seconds
+		WorkerRunTime:     120, // seconds
 	}
 	qanConfigData, _ := json.Marshal(qanConfig)
+	qanConfigString := string(qanConfigData)
 	// Second, a ServiceData:
 	serviceCmd := &proto.ServiceData{
 		Name:   "qan",
@@ -212,7 +211,7 @@ func (s *AgentTestSuite) TestStartService(t *C) {
 	got := test.WaitTrace(s.traceChan)
 	expect := []string{
 		`IsRunning Qan`,
-		`Start Qan {"Interval":60,"LongQueryTime":0.123,"MaxSlowLogSize":1073741824,"RemoveOldSlowLogs":true,"ExampleQueries":true,"MysqlDsn":"","MaxWorkers":2,"WorkerRuntime":120}`,
+		`Start Qan ` + qanConfigString,
 	}
 	t.Check(got, DeepEquals, expect)
 
@@ -232,13 +231,11 @@ func (s *AgentTestSuite) TestStartService(t *C) {
 func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
 	qanConfig := &qan.Config{
 		Interval:          60, // seconds
-		LongQueryTime:     0.123,
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
 		ExampleQueries:    true,
-		MysqlDsn:          "",
 		MaxWorkers:        2,
-		WorkerRuntime:     120, // seconds
+		WorkerRunTime:     120, // seconds
 	}
 	qanConfigData, _ := json.Marshal(qanConfig)
 	serviceCmd := &proto.ServiceData{
