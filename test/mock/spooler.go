@@ -10,7 +10,7 @@ type Spooler struct {
 func NewSpooler(dataChan chan interface{}) *Spooler {
 	s := &Spooler{
 		dataChan: dataChan,
-		DataIn: []interface{}{},
+		DataIn:   []interface{}{},
 	}
 	return s
 }

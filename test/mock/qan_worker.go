@@ -27,18 +27,18 @@ func (f *QanWorkerFactory) Make() qan.Worker {
 
 type QanWorker struct {
 	stopChan chan bool
-	result *qan.Result
-	err error
+	result   *qan.Result
+	err      error
 	// --
 	runningChan chan bool
-	Job *qan.Job
+	Job         *qan.Job
 }
 
 func NewQanWorker(stopChan chan bool, result *qan.Result, err error) *QanWorker {
 	w := &QanWorker{
-		stopChan: stopChan,
-		result: result,
-		err: err,
+		stopChan:    stopChan,
+		result:      result,
+		err:         err,
 		runningChan: make(chan bool, 1),
 	}
 	return w

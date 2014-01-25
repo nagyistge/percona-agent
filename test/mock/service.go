@@ -12,33 +12,42 @@ type MockServiceManager struct {
 	StartErr     error
 	StopErr      error
 	IsRunningVal bool
+	status       string
 }
 
 func NewMockServiceManager(name string, readyChan chan bool, traceChan chan string) *MockServiceManager {
-	m := new(MockServiceManager)
-	m.name = name
-	m.readyChan = readyChan
-	m.traceChan = traceChan
+	m := &MockServiceManager{
+		name:      name,
+		readyChan: readyChan,
+		traceChan: traceChan,
+		status:    "",
+	}
 	return m
 }
 
 func (m *MockServiceManager) Start(msg *proto.Cmd, config []byte) error {
 	m.traceChan <- fmt.Sprintf("Start %s %s", m.name, string(config))
 	// Return when caller is ready.  This allows us to simulate slow starts.
+	m.status = "Starting"
 	<-m.readyChan
+	m.IsRunningVal = true
+	m.status = "Ready"
 	return m.StartErr
 }
 
 func (m *MockServiceManager) Stop(msg *proto.Cmd) error {
 	m.traceChan <- "Stop " + m.name
 	// Return when caller is ready.  This allows us to simulate slow stops.
+	m.status = "Stopping"
 	<-m.readyChan
+	m.IsRunningVal = false
+	m.status = "Stopped"
 	return m.StopErr
 }
 
 func (m *MockServiceManager) Status() map[string]string {
 	m.traceChan <- "Status " + m.name
-	return map[string]string{m.name: "OK"}
+	return map[string]string{m.name: m.status}
 }
 
 func (m *MockServiceManager) IsRunning() bool {
