@@ -1,6 +1,7 @@
 package mm
 
 import (
+	"github.com/percona/cloud-tools/data"
 	"github.com/percona/cloud-tools/pct"
 	"time"
 )
@@ -8,16 +9,16 @@ import (
 type Aggregator struct {
 	ticker         pct.Ticker
 	collectionChan chan *Collection
-	dataChan       chan interface{}
+	spool          data.Spooler
 	sync           *pct.SyncChan
 	running        bool
 }
 
-func NewAggregator(ticker pct.Ticker, collectionChan chan *Collection, dataChan chan interface{}) *Aggregator {
+func NewAggregator(ticker pct.Ticker, collectionChan chan *Collection, spool data.Spooler) *Aggregator {
 	a := &Aggregator{
 		ticker:         ticker,
 		collectionChan: collectionChan,
-		dataChan:       dataChan,
+		spool:          spool,
 		sync:           pct.NewSyncChan(),
 	}
 	return a
@@ -65,7 +66,7 @@ func (a *Aggregator) run() {
 	 * neither should have to wait on or sync with the other.
 	 */
 	var startTs time.Time
-	cur := make(map[string]*Stats)
+	cur := make(Metrics)
 
 	for {
 		select {
@@ -76,7 +77,7 @@ func (a *Aggregator) run() {
 			}
 			// Next interval starts now.
 			startTs = now
-			cur = make(map[string]*Stats)
+			cur = make(Metrics)
 		case collection := <-a.collectionChan:
 			// todo: if colllect.Ts < lastNow, then discard: it missed its period
 			for _, metric := range collection.Metrics {
@@ -94,18 +95,13 @@ func (a *Aggregator) run() {
 }
 
 // @goroutine[1]
-func (a *Aggregator) report(startTs time.Time, stats map[string]*Stats) {
-	for _, s := range stats {
+func (a *Aggregator) report(startTs time.Time, metrics Metrics) {
+	for _, s := range metrics {
 		s.Summarize()
 	}
 	report := &Report{
-		StartTs: startTs.UTC().Unix(),
-		Metrics: stats,
+		Ts:      startTs,
+		Metrics: metrics,
 	}
-	select {
-	case a.dataChan <- report:
-	default:
-		// todo: timeout instead
-		// todo: lost report
-	}
+	a.spool.Write(report)
 }

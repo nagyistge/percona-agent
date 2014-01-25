@@ -2,15 +2,18 @@ package mm
 
 import (
 	"github.com/percona/cloud-tools/pct"
+	"time"
 )
 
 /**
  * A Monitor collects one or more Metric, usually many.  The MySQL monitor
- * (mysql/monitor.go) collects most SHOW STATUS and SHOW VARIABLE variables,
- * each as its own Metric.  Instead of sending metrics one-by-one to the
- * Aggregator (aggregator.go), they're sent as a Collection. The Aggregator
- * keeps Stats for each Metric in the Collection.  When the interval ends,
- * a Report is sent to a data spool (../data/sender.go).
+ * (mysql/monitor.go) collects most SHOW STATUS variables, each as its own
+ * Metric.  Each Metric collected during a single period are sent as a
+ * Collection to an Aggregator (aggregator.go).  The Aggregator keeps Stats
+ * for each unique Metric in a Metrics map/hash table.  When it's time to
+ * report, the Stats are summarized and the Metrics are encoded in a
+ * proto.MmReport (cloud-protocol/proto/data.go) and sent to a Spooler
+ * (data/spooler.go).
  */
 
 // Using given config, collect metrics when tickerChan ticks, and send to collecitonChan.
@@ -45,7 +48,10 @@ type Collection struct {
 	Metrics []Metric
 }
 
+type Metrics map[string]*Stats
+
 type Report struct {
-	StartTs int64
-	Metrics map[string]*Stats
+	Ts       time.Time // UTC
+	Duration uint      // seconds
+	Metrics  Metrics
 }

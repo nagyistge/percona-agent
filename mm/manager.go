@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-tools/data"
 	"github.com/percona/cloud-tools/pct"
 )
 
@@ -21,7 +22,7 @@ type Manager struct {
 	logger        *pct.Logger
 	monitors      map[string]Monitor
 	tickerFactory pct.TickerFactory
-	dataChan      chan interface{}
+	spool         data.Spooler
 	// --
 	config         *Config // nil if not running
 	status         *pct.Status
@@ -29,12 +30,12 @@ type Manager struct {
 	collectTickers map[string]pct.Ticker
 }
 
-func NewManager(logger *pct.Logger, monitors map[string]Monitor, tickerFactory pct.TickerFactory, dataChan chan interface{}) *Manager {
+func NewManager(logger *pct.Logger, monitors map[string]Monitor, tickerFactory pct.TickerFactory, spool data.Spooler) *Manager {
 	m := &Manager{
 		logger:        logger,
 		monitors:      monitors,
 		tickerFactory: tickerFactory,
-		dataChan:      dataChan,
+		spool:         spool,
 		// --
 		config:         nil, // not running yet
 		status:         pct.NewStatus([]string{"Mm"}),
@@ -74,7 +75,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 		if _, ok := m.aggregators[interval.Report]; !ok {
 			ticker := m.tickerFactory.Make(interval.Report)
 			collectionChan := make(chan *Collection, 2*len(c.Intervals))
-			aggregator := NewAggregator(ticker, collectionChan, m.dataChan)
+			aggregator := NewAggregator(ticker, collectionChan, m.spool)
 
 			msg := fmt.Sprintf("Synchronizing %d second report interval", interval.Report)
 			m.status.UpdateRe("Mm", msg, cmd)
