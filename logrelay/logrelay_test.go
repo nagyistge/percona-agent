@@ -17,7 +17,6 @@ import (
 )
 
 // Hook gocheck into the "go test" runner.
-// http://labix.org/gocheck
 func Test(t *testing.T) { TestingT(t) }
 
 type TestSuite struct {
@@ -228,7 +227,9 @@ func (s *TestSuite) TestOfflineBuffering(t *C) {
 		{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: "err2"},
 		{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "logrelay", Msg: "connected: true"},
 	}
-	t.Check(got, DeepEquals, expect)
+	if same, diff := test.IsDeeply(got, expect); !same {
+		t.Error(diff)
+	}
 }
 
 func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
@@ -262,7 +263,9 @@ func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
 		expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: fmt.Sprintf("%d", i)}
 	}
 	expect[logrelay.BUFFER_SIZE+1+1] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "logrelay", Msg: "connected: true"}
-	t.Check(got, DeepEquals, expect)
+	if same, diff := test.IsDeeply(got, expect); !same {
+		t.Error(diff)
+	}
 
 	// Force the relay offline again, then overflow both buffers. We should get
 	// the first buffer, an entry about lost entries (from the second buffer),
@@ -319,5 +322,8 @@ func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
 		n++
 	}
 	expect[logrelay.BUFFER_SIZE+overflow+2] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "logrelay", Msg: "connected: true"}
-	t.Check(got, DeepEquals, expect)
+	if same, diff := test.IsDeeply(got, expect); !same {
+		// @todo: this test is unstable
+		t.Error(diff)
+	}
 }

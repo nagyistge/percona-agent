@@ -18,8 +18,8 @@ type LogRelay struct {
 	connectedChan chan bool
 	connected     bool
 	logChan       chan *proto.LogEntry
-	logLevel      int
-	logLevelChan  chan int
+	logLevel      byte
+	logLevelChan  chan byte
 	logger        *log.Logger
 	logFile       string
 	logFileChan   chan string
@@ -32,7 +32,7 @@ type LogRelay struct {
 }
 
 type Status struct {
-	LogLevel  int
+	LogLevel  byte
 	LogFile   string
 	Connected bool
 	Channel   int
@@ -43,12 +43,12 @@ type Status struct {
  * client is optional.  If not given, only file logging is enabled if a log file
  * is sent to the LogFileChan().
  */
-func NewLogRelay(client pct.WebsocketClient, logFile string, logLevel int) *LogRelay {
+func NewLogRelay(client pct.WebsocketClient, logFile string, logLevel byte) *LogRelay {
 	r := &LogRelay{
 		client:        client,
 		logFile:       logFile,
 		logLevel:      logLevel,
-		logLevelChan:  make(chan int),
+		logLevelChan:  make(chan byte),
 		logChan:       make(chan *proto.LogEntry, BUFFER_SIZE*2),
 		logFileChan:   make(chan string),
 		firstBuf:      make([]*proto.LogEntry, BUFFER_SIZE),
@@ -63,7 +63,7 @@ func (r *LogRelay) LogChan() chan *proto.LogEntry {
 	return r.logChan
 }
 
-func (r *LogRelay) LogLevelChan() chan int {
+func (r *LogRelay) LogLevelChan() chan byte {
 	return r.logLevelChan
 }
 
@@ -255,7 +255,7 @@ func (r *LogRelay) resend() {
 	}
 }
 
-func (r *LogRelay) setLogLevel(level int) {
+func (r *LogRelay) setLogLevel(level byte) {
 	if level < proto.LOG_EMERGENCY || level > proto.LOG_DEBUG {
 		r.internal(fmt.Sprintf("Invalid log level: %d\n", level))
 	} else {
