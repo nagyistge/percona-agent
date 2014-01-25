@@ -24,6 +24,11 @@ type apiLinks struct {
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 
+	/**
+	 * Bootstrap the most basic components.  If all goes well,
+	 * we can create and start the agent.
+	 */
+
 	// Parse command line.
 	var arg string
 	if len(os.Args) == 2 {
@@ -58,58 +63,39 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Check for required config values.
-	haveRequiredVals := true
-	if config.ApiHostname == "" {
-		fmt.Printf("No ApiHostname in %s\n", configFile) // shouldn't happen
-		haveRequiredVals = false
-	}
-	if config.ApiKey == "" {
-		fmt.Printf("No ApiKey in %s\n", configFile)
-		haveRequiredVals = false
-	}
-	if config.AgentUuid == "" {
-		log.Printf("No AgentUuid in %s\n", configFile)
-		haveRequiredVals = false
-	}
-	if !haveRequiredVals {
+	// Make sure config has everything we need.
+	if valid, missing := CheckConfig(config, configFile); !valid {
+		log.Println("Invalid config:")
+		for _, m := range missing {
+			log.Printf("  - %s\n", m)
+		}
 		os.Exit(-1)
 	}
 
-	// Check/create PID file.
+	// Check for and create PID file.
 	if config.PidFile != "" {
-		if err := writePidFile(config.PidFile); err != nil {
+		if err := WritePidFile(config.PidFile); err != nil {
 			log.Fatalln(err)
 		}
 		defer removeFile(config.PidFile)
 	}
 
-	// Get entry links: URLs for websockets, sending service data, etc.
+	// Get entry links from API.  This only requires an API key.
 	httpClient := client.NewHttpClient(config.ApiKey)
-	links, err := GetLinks(httpClient, agent.API_HOSTNAME)
+	links, err := GetLinks(httpClient, config.ApiHostname)
 	if err != nil {
 		log.Fatal(err)
 	}
 	config.Links = links
 
-	// Get some values we'll need later.
-	hostname, _ := os.Hostname()
-	u, _ := user.Current()
-	username := u.Username
-	origin := "http://" + username + "@" + hostname
-
-	auth := &proto.AgentAuth{
-		ApiKey:   config.ApiKey,
-		Uuid:     config.AgentUuid,
-		Hostname: hostname,
-		Username: username,
-	}
+	// Make a proto.AgentAuth so we can connect websockets.
+	auth, origin := MakeAgentAuth(config)
 
 	// Start the log relay (sends pct.Logger log entries to API and/or log file).
 	logLevel := proto.LogLevels[config.LogLevel]
 	var logRelay *logrelay.LogRelay
-	if config.LogFileOnly {
-		log.Println("LogFileOnly=true")
+	if config.Disabled("LogFile") {
+		log.Println("LogFile disabled")
 		logRelay = logrelay.NewLogRelay(nil, config.LogFile, logLevel)
 	} else {
 		wsClient, err := client.NewWebsocketClient(config.Links["log"], origin, auth)
@@ -120,7 +106,10 @@ func main() {
 	}
 	go logRelay.Run()
 
-	// Create and run the agent.
+	/**
+	 * Create and start the agent.
+	 */
+
 	logger := pct.NewLogger(logRelay.LogChan(), "agent")
 
 	cmdClient, err := client.NewWebsocketClient(config.Links["cmd"], origin, auth)
@@ -137,6 +126,25 @@ func main() {
 	agent.Run()
 }
 
+func CheckConfig(config *agent.Config, configFile string) (bool, []string) {
+	isValid := true
+	missing := []string{}
+
+	if config.ApiHostname == "" {
+		isValid = false
+		missing = append(missing, fmt.Sprintf("No ApiHostname in %s\n", configFile)) // shouldn't happen
+	}
+	if config.ApiKey == "" {
+		isValid = false
+		missing = append(missing, fmt.Sprintf("No ApiKey in %s\n", configFile))
+	}
+	if config.AgentUuid == "" {
+		isValid = false
+		missing = append(missing, fmt.Sprintf("No AgentUuid in %s\n", configFile))
+	}
+	return isValid, missing
+}
+
 func GetLinks(client pct.HttpClient, link string) (map[string]string, error) {
 	links := &apiLinks{}
 	if err := client.Get(link, links, time.Hour*24*7); err != nil {
@@ -145,7 +153,7 @@ func GetLinks(client pct.HttpClient, link string) (map[string]string, error) {
 	return links.links, nil
 }
 
-func writePidFile(pidFile string) error {
+func WritePidFile(pidFile string) error {
 	flags := os.O_CREATE | os.O_EXCL | os.O_WRONLY
 	file, err := os.OpenFile(pidFile, flags, 0644)
 	if err != nil {
@@ -157,6 +165,21 @@ func writePidFile(pidFile string) error {
 	}
 	err = file.Close()
 	return err
+}
+
+func MakeAgentAuth(config *agent.Config) (*proto.AgentAuth, string) {
+	hostname, _ := os.Hostname()
+	u, _ := user.Current()
+	username := u.Username
+	origin := "http://" + username + "@" + hostname
+
+	auth := &proto.AgentAuth{
+		ApiKey:   config.ApiKey,
+		Uuid:     config.AgentUuid,
+		Hostname: hostname,
+		Username: username,
+	}
+	return auth, origin
 }
 
 func removeFile(file string) error {
