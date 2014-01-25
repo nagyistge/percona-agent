@@ -20,6 +20,8 @@ import (
 // Hook gocheck into the "go test" runner.
 func Test(t *testing.T) { gocheck.TestingT(t) }
 
+var sample = os.Getenv("GOPATH") + "/src/github.com/percona/cloud-tools/test/agent"
+
 type AgentTestSuite struct {
 	tmpDir string
 	// agent and what it needs
@@ -236,8 +238,8 @@ func (s *AgentTestSuite) TestStartStopService(t *gocheck.C) {
 	 * Stop the service.
 	 */
 
-	 serviceCmd = &proto.ServiceData{
-		Name:   "qan",
+	serviceCmd = &proto.ServiceData{
+		Name: "qan",
 	}
 	serviceData, _ = json.Marshal(serviceCmd)
 	cmd = &proto.Cmd{
@@ -331,4 +333,116 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *gocheck.C) {
 	reply := new(proto.Reply)
 	_ = json.Unmarshal(gotReplies[0].Data, reply)
 	t.Check(reply.Error, gocheck.Equals, "")
+}
+
+func (s *AgentTestSuite) TestLoadConfig(t *gocheck.C) {
+	config := agent.LoadConfig(sample + "/config001.json")
+	expect := &agent.Config{
+		ApiKey:    "123",
+		AgentUuid: "abc-123-def",
+		LogLevel:  "error",
+	}
+	// @todo: if expect is not ptr, IsDeeply dies with "got ptr, expected struct"
+	if same, diff := test.IsDeeply(config, expect); !same {
+		t.Error(diff)
+		t.Logf("got: %+v", config)
+	}
+
+	fullConfig := agent.LoadConfig(sample + "/full_config.json")
+	expect = &agent.Config{
+		ApiHostname: "agent hostname",
+		ApiKey:      "api key",
+		AgentUuid:   "agent uuid",
+		PidFile:     "pid file",
+		LogFile:     "log file",
+		LogLevel:    "info",
+		DataDir:     "data dir",
+		Links:       map[string]string{"home": "/"},
+		Enable:      []string{"enabled"},
+		Disable:     []string{"disabled"},
+	}
+	if same, diff := test.IsDeeply(fullConfig, expect); !same {
+		t.Error(diff)
+		t.Logf("got: %+v", config)
+	}
+}
+
+func (s *AgentTestSuite) TestApplyConfig(t *gocheck.C) {
+	config1 := agent.LoadConfig(sample + "/config001.json")
+	config2 := agent.LoadConfig(sample + "/config002.json")
+	config1.Apply(config2)
+	expect := &agent.Config{
+		ApiKey:    "123",                    // config1
+		AgentUuid: "abc-123-def",            // config1
+		LogLevel:  "warning",                // config2
+		LogFile:   "/tmp/percona-agent.log", // new
+		Disable:   []string{"LogFile"},      // new
+	}
+	// @todo: if expect is not ptr, IsDeeply dies with "got ptr, expected struct"
+	if same, diff := test.IsDeeply(config1, expect); !same {
+		t.Error(diff)
+		t.Logf("got: %+v", config1)
+	}
+}
+
+func (s *AgentTestSuite) TestEnableDisableConfig(t *gocheck.C) {
+	config := agent.LoadConfig(sample + "/config003.json")
+	if !config.Enabled("Turbo") {
+		t.Error("Turbo enabled in config003.json")
+		t.Logf("got: %+v", config)
+	}
+	if config.Enabled("Foo") {
+		t.Error("Foo is not enabled in config003.json")
+		t.Logf("got: %+v", config)
+	}
+	if !config.Disabled("Crashing") {
+		t.Error("Crashing is disabled in config003.json")
+		t.Logf("got: %+v", config)
+	}
+	if config.Disabled("Bar") {
+		t.Error("Bar is not disabled in config003.json")
+		t.Logf("got: %+v", config)
+	}
+}
+
+func (s *AgentTestSuite) TestRequiredConfig(t *gocheck.C) {
+	emptyConfig := agent.LoadConfig(sample + "/empty_config.json")
+	fullConfig := agent.LoadConfig(sample + "/full_config.json")
+	fullConfig.Apply(emptyConfig)
+	expect := &agent.Config{
+		ApiHostname: "agent hostname",
+		ApiKey:      "api key",
+		AgentUuid:   "agent uuid",
+		PidFile:     "",
+		LogFile:     "log file",
+		LogLevel:    "info",
+		DataDir:     "data dir",
+		Links:       map[string]string{},
+		Enable:      nil,
+		Disable:     nil,
+	}
+	if same, diff := test.IsDeeply(fullConfig, expect); !same {
+		t.Error(diff)
+		t.Logf("got: %+v", fullConfig)
+	}
+
+	fullConfig = agent.LoadConfig(sample + "/full_config.json")
+	emptyConfig = agent.LoadConfig(sample + "/empty_config.json")
+	emptyConfig.Apply(fullConfig)
+	expect = &agent.Config{
+		ApiHostname: "agent hostname",
+		ApiKey:      "api key",
+		AgentUuid:   "agent uuid",
+		PidFile:     "pid file",
+		LogFile:     "log file",
+		LogLevel:    "info",
+		DataDir:     "data dir",
+		Links:       map[string]string{"home": "/"},
+		Enable:      []string{"enabled"},
+		Disable:     []string{"disabled"},
+	}
+	if same, diff := test.IsDeeply(fullConfig, expect); !same {
+		t.Error(diff)
+		t.Logf("got: %+v", fullConfig)
+	}
 }

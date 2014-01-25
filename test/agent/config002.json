@@ -1,0 +1,7 @@
+{
+	"LogLevel": "warning",
+	"LogFile": "/tmp/percona-agent.log",
+	"Disable": [
+		"LogFile"
+	]
+}

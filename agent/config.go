@@ -33,7 +33,7 @@ type Config struct {
 
 // Load config from JSON file.
 func LoadConfig(file string) *Config {
-	config := new(Config)
+	config := &Config{}
 	data, err := ioutil.ReadFile(file)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -52,9 +52,12 @@ func (c *Config) Apply(cur *Config) error {
 	if cur.ApiHostname != "" {
 		c.ApiHostname = cur.ApiHostname
 	}
-	c.ApiKey = cur.ApiKey
-	c.AgentUuid = cur.AgentUuid
-	c.PidFile = cur.PidFile
+	if cur.ApiKey != "" {
+		c.ApiKey = cur.ApiKey
+	}
+	if cur.AgentUuid != "" {
+		c.AgentUuid = cur.AgentUuid
+	}
 	if cur.LogFile != "" {
 		c.LogFile = cur.LogFile
 	}
@@ -65,7 +68,11 @@ func (c *Config) Apply(cur *Config) error {
 		}
 		c.LogLevel = cur.LogLevel
 	}
-	c.DataDir = cur.DataDir
+	if cur.DataDir != "" {
+		c.DataDir = cur.DataDir
+	}
+	c.PidFile = cur.PidFile
+	c.Links = cur.Links
 	c.Enable = cur.Enable
 	c.Disable = cur.Disable
 	return nil

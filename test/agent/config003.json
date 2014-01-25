@@ -1,0 +1,10 @@
+{
+	"ApiKey": "123",
+	"AgentUuid": "abc-123-def",
+	"Enable": [
+		"Turbo"
+	],
+	"Disable": [
+		"Crashing"
+	]
+}
