@@ -336,18 +336,21 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *gocheck.C) {
 }
 
 func (s *AgentTestSuite) TestLoadConfig(t *gocheck.C) {
+	// Load a partial config to make sure LoadConfig() works in general but also
+	// when the config has missing options (which is normal).
 	config := agent.LoadConfig(sample + "/config001.json")
 	expect := &agent.Config{
 		ApiKey:    "123",
 		AgentUuid: "abc-123-def",
 		LogLevel:  "error",
 	}
-	// @todo: if expect is not ptr, IsDeeply dies with "got ptr, expected struct"
 	if same, diff := test.IsDeeply(config, expect); !same {
+		// @todo: if expect is not ptr, IsDeeply dies with "got ptr, expected struct"
 		t.Error(diff)
 		t.Logf("got: %+v", config)
 	}
 
+	// Load a config with all options to make sure LoadConfig() hasn't missed any.
 	fullConfig := agent.LoadConfig(sample + "/full_config.json")
 	expect = &agent.Config{
 		ApiHostname: "agent hostname",
@@ -368,6 +371,8 @@ func (s *AgentTestSuite) TestLoadConfig(t *gocheck.C) {
 }
 
 func (s *AgentTestSuite) TestApplyConfig(t *gocheck.C) {
+	// When we apply config2 to config1, certain values (that are set)
+	// in config2 should apply/overwrite the values in config1.
 	config1 := agent.LoadConfig(sample + "/config001.json")
 	config2 := agent.LoadConfig(sample + "/config002.json")
 	config1.Apply(config2)
@@ -406,6 +411,9 @@ func (s *AgentTestSuite) TestEnableDisableConfig(t *gocheck.C) {
 }
 
 func (s *AgentTestSuite) TestRequiredConfig(t *gocheck.C) {
+	// Apply an empty config to a full config.  The "required" options in
+	// the full config (ApiKey, LogFile, etc.) should *not* be overwritten
+	// with empty strings from the empty config.
 	emptyConfig := agent.LoadConfig(sample + "/empty_config.json")
 	fullConfig := agent.LoadConfig(sample + "/full_config.json")
 	fullConfig.Apply(emptyConfig)
@@ -426,6 +434,8 @@ func (s *AgentTestSuite) TestRequiredConfig(t *gocheck.C) {
 		t.Logf("got: %+v", fullConfig)
 	}
 
+	// Reverse that ^: apply full config to empty config and we should get
+	// the entire full config.
 	fullConfig = agent.LoadConfig(sample + "/full_config.json")
 	emptyConfig = agent.LoadConfig(sample + "/empty_config.json")
 	emptyConfig.Apply(fullConfig)
