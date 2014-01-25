@@ -19,16 +19,16 @@ const (
 )
 
 type Config struct {
-	ApiHostname   string
-	ApiKey        string
-	AgentUuid     string
-	PidFile       string
-	LogFile       string
-	LogLevel      string
-	DataDir       string
-	Links         map[string]string
-	Enable        []string
-	Disable       []string
+	ApiHostname string
+	ApiKey      string
+	AgentUuid   string
+	PidFile     string
+	LogFile     string
+	LogLevel    string
+	DataDir     string
+	Links       map[string]string
+	Enable      []string
+	Disable     []string
 }
 
 // Load config from JSON file.

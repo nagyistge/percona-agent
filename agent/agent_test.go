@@ -1,29 +1,24 @@
 package agent_test
 
 import (
-	// Core
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"os"
-	"time"
-	// External
 	"github.com/percona/cloud-protocol/proto"
-	// Internal
 	"github.com/percona/cloud-tools/agent"
 	"github.com/percona/cloud-tools/logrelay"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/qan"
-	// Testing
 	"github.com/percona/cloud-tools/test"
 	"github.com/percona/cloud-tools/test/mock"
-	. "launchpad.net/gocheck"
+	"io/ioutil"
+	"launchpad.net/gocheck"
+	"os"
 	"testing"
+	"time"
 )
 
 // Hook gocheck into the "go test" runner.
-// http://labix.org/gocheck
-func Test(t *testing.T) { TestingT(t) }
+func Test(t *testing.T) { gocheck.TestingT(t) }
 
 type AgentTestSuite struct {
 	tmpDir string
@@ -49,9 +44,9 @@ type AgentTestSuite struct {
 	upgrade    bool
 }
 
-var _ = Suite(&AgentTestSuite{})
+var _ = gocheck.Suite(&AgentTestSuite{})
 
-func (s *AgentTestSuite) SetUpSuite(t *C) {
+func (s *AgentTestSuite) SetUpSuite(t *gocheck.C) {
 	// Tmp dir
 	var err error
 	s.tmpDir, err = ioutil.TempDir("/tmp", "pt-agentd")
@@ -83,11 +78,6 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 	s.logChan = s.logRelay.LogChan()
 	s.logger = pct.NewLogger(s.logChan, "agent-test")
 
-	// mock client <-------------------------------------------------> API <---------------------> mock front end
-	// handler <- agent <- chan <- client (agent on user's server)  <- API (cloud-api.percona.com) <- front end <- user
-	//                      |         |                                  |                            |
-	// handler <- agent <- chan <- mock client <-                    sendChan                [Cmd] <- test
-	// handler -> agent -> chan -> mock client -> [Reply]            recvChan                      -> test
 	s.sendChan = make(chan *proto.Cmd, 5)
 	s.recvChan = make(chan *proto.Reply, 5)
 	s.sendDataChan = make(chan interface{}, 5)
@@ -105,13 +95,13 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 	s.doneChan = make(chan bool, 1)
 }
 
-func (s *AgentTestSuite) TearDownSuite(t *C) {
+func (s *AgentTestSuite) TearDownSuite(t *gocheck.C) {
 	if err := os.RemoveAll(s.tmpDir); err != nil {
 		fmt.Println(err)
 	}
 }
 
-func (s *AgentTestSuite) SetUpTest(t *C) {
+func (s *AgentTestSuite) SetUpTest(t *gocheck.C) {
 	// Before each test, create and agent.  Tests make change the agent,
 	// so this ensures each test starts with an agent with known values.
 	s.agent = agent.NewAgent(s.config, s.auth, s.logRelay, s.logger, s.client, s.services)
@@ -123,7 +113,7 @@ func (s *AgentTestSuite) SetUpTest(t *C) {
 	}()
 }
 
-func (s *AgentTestSuite) TearDownTest(t *C) {
+func (s *AgentTestSuite) TearDownTest(t *gocheck.C) {
 	s.readyChan <- true                   // qan.Stop() immediately
 	s.readyChan <- true                   // mm.Stop immediately
 	s.sendChan <- &proto.Cmd{Cmd: "Stop"} // tell agent to stop itself
@@ -138,7 +128,7 @@ func (s *AgentTestSuite) TearDownTest(t *C) {
 // Test cases
 // //////////////////////////////////////////////////////////////////////////
 
-func (s *AgentTestSuite) TestStatus(t *C) {
+func (s *AgentTestSuite) TestStatus(t *gocheck.C) {
 
 	// This is what the API would send:
 	statusCmd := &proto.Cmd{
@@ -171,11 +161,11 @@ func (s *AgentTestSuite) TestStatus(t *C) {
 	}
 }
 
-func (s *AgentTestSuite) TestStartService(t *C) {
+func (s *AgentTestSuite) TestStartService(t *gocheck.C) {
 	// This is what the API would send:
 	// First, the service's config:
 	qanConfig := &qan.Config{
-		Interval:          60, // seconds
+		Interval:          60,         // seconds
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
 		ExampleQueries:    true,
@@ -213,24 +203,24 @@ func (s *AgentTestSuite) TestStartService(t *C) {
 		`IsRunning Qan`,
 		`Start Qan ` + qanConfigString,
 	}
-	t.Check(got, DeepEquals, expect)
+	t.Check(got, gocheck.DeepEquals, expect)
 
 	// The reply to that ^ should be Error=nil.
 	gotReplies := test.WaitReply(s.recvChan)
-	if t.Check(len(gotReplies), Equals, 1) == false {
+	if t.Check(len(gotReplies), gocheck.Equals, 1) == false {
 		// Avoid "index out of range" panic by trying to access got[0] below.
 		t.Errorf("%q", gotReplies)
 		t.FailNow()
 	}
 	reply := new(proto.Reply)
 	_ = json.Unmarshal(gotReplies[0].Data, reply)
-	t.Check(reply.Error, Equals, "")
+	t.Check(reply.Error, gocheck.Equals, "")
 }
 
 // See TestStartService ^.  This test is like it, but it simulates a slow start.
-func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
+func (s *AgentTestSuite) TestStartServiceSlow(t *gocheck.C) {
 	qanConfig := &qan.Config{
-		Interval:          60, // seconds
+		Interval:          60,         // seconds
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
 		ExampleQueries:    true,
@@ -256,7 +246,7 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
 
 	// No replies yet.
 	gotReplies := test.WaitReply(s.recvChan)
-	if t.Check(len(gotReplies), Equals, 0) == false {
+	if t.Check(len(gotReplies), gocheck.Equals, 0) == false {
 		// Avoid "index out of range" panic by trying to access got[0] below.
 		t.Errorf("%q", gotReplies)
 		t.FailNow()
@@ -265,8 +255,8 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
 	// Agent should be able to reply on status chan, indicating that it's
 	// still starting the service.
 	gotStatus := test.GetStatus(s.sendChan, s.recvChan)
-	t.Check(gotStatus.Agent, Equals, "Ready")
-	t.Check(gotStatus.AgentCmdQueue, DeepEquals, []string{cmd.String()})
+	t.Check(gotStatus.Agent, gocheck.Equals, "Ready")
+	t.Check(gotStatus.AgentCmdQueue, gocheck.DeepEquals, []string{cmd.String()})
 
 	// Make it seem like service has started now.
 	// time.Sleep(1 * time.Second)
@@ -275,11 +265,11 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
 
 	// Agent sends reply: no error.
 	gotReplies = test.WaitReply(s.recvChan)
-	if t.Check(len(gotReplies), Equals, 1) == false {
+	if t.Check(len(gotReplies), gocheck.Equals, 1) == false {
 		t.Errorf("%q", gotReplies)
 		t.FailNow()
 	}
 	reply := new(proto.Reply)
 	_ = json.Unmarshal(gotReplies[0].Data, reply)
-	t.Check(reply.Error, Equals, "")
+	t.Check(reply.Error, gocheck.Equals, "")
 }

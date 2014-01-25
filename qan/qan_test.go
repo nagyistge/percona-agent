@@ -11,7 +11,6 @@ import (
 	"github.com/percona/cloud-tools/test/mock"
 	mysqlLog "github.com/percona/percona-go-mysql/log"
 	"github.com/percona/percona-go-mysql/test"
-
 	"io/ioutil"
 	"launchpad.net/gocheck"
 	"os"
