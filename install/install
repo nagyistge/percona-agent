@@ -1,0 +1,84 @@
+#!/bin/bash
+# Install from web
+# wget -qO- http://www.percona.com/downloads/TESTING/goagent/install |  bash /dev/stdin 
+
+# Check compatibility
+KERNEL=`uname -s`
+if [ "$KERNEL" != "Linux" ]; then
+    echo "Error: Percona-agent supports Linux only" >&2
+    echo "Error: Detected $KERNEL" >&2
+    exit 1
+fi
+
+PLATFORM=`uname -m`
+if [[ "$PLATFORM" != "x86_64" && "$PLATFORM" != "i686" ]]; then
+    echo "Error:  Percona-agent supports only x86_64 and i686 platforms" >&2
+    echo "Error: Detected $PLATFORM" >&2
+    exit 1
+fi
+
+echo "Setup detected $KERNEL $PLATFORM" 
+
+#setup variables
+TARGZ_NAME="percona-agent.tar.gz"
+DOWNLOADPATH="http://www.percona.com/downloads/TESTING/goagent/$TARGZ_NAME"
+INSTALL_DIR=/usr/local/percona/
+
+TMP_PATH=`mktemp -d /tmp/percona-agent.XXXX` || exit 1
+TMP_FILENAME=$TMP_PATH"/$TARGZ_NAME"
+
+#INIT_FILE=/usr/local/sealion-agent/etc/sealion
+
+echo "Downloading $DOWNLOADPATH to $TMP_FILENAME ..."
+
+wget $DOWNLOADPATH -O $TMP_FILENAME
+if [ $? -ne 0 ] ; then
+    echo "Error: Downloading source file failed" >&2
+    exit 117
+fi
+
+
+mkdir -p $INSTALL_DIR
+if [ $? -ne 0 ] ; then
+    echo "Error: Can't create directory $INSTALL_DIR!" >&2
+    exit 1
+fi
+
+echo "Extracting $TMP_FILENAME to $INSTALL_DIR..."
+
+tar -xzf $TMP_FILENAME -C $INSTALL_DIR --overwrite
+if [ $? -ne 0 ] ; then
+    echo "Error: Installation failed" >&2
+    exit 1
+fi
+
+echo "Files extracted successfully" 
+
+rm -rf $TMP_PATH
+if [ $? -ne 0 ] ; then
+    echo "Error: Failed to delete $TMP_PATH" >&2
+    echo "Continue setup anyway" >&2
+fi
+
+cp -f $INSTALL_DIR/percona-agent/percona-agentd /etc/init.d
+chmod a+x /etc/init.d/percona-agentd
+
+# check if the system  has chkconfig or update-rc.d
+
+if hash update-rc.d 2>/dev/null; then
+        echo "Using update-rc.d to install service" 
+        update-rc.d  percona-agentd defaults
+elif hash chkconfig 2>/dev/null; then
+        echo "Using chkconfig to install service" 
+        chkconfig percona-agentd on
+else
+        echo "Error: No chkconfig nor update-rc.d found " >&2
+        echo "Report following output to cloud-tools@percona.com: " >&2
+        cat /etc/*release >&2 
+        exit 1
+fi
+
+mkdir -p /etc/percona
+
+
+exit 0
