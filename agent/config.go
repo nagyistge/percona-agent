@@ -47,6 +47,22 @@ func LoadConfig(file string) *Config {
 	return config
 }
 
+// Write config into  JSON file.
+func WriteConfig(file string, cur *Config) error {
+
+	b, err := json.MarshalIndent(cur,"", "    ")
+	if err != nil {
+		log.Fatalln(err)
+	} 
+	
+	err = ioutil.WriteFile(file, b, 0644)
+	if err != nil {
+		log.Fatalln(err)
+	} 
+
+	return nil
+}
+
 // Apply current config, i.e. overwrite this config with current config.
 func (c *Config) Apply(cur *Config) error {
 	if cur.ApiHostname != "" {

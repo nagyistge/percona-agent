@@ -337,7 +337,7 @@ func (agent *Agent) handleSetLogLevel(cmd *proto.Cmd) error {
 		return err
 	}
 
-	agent.logRelay.LogLevelChan() <- log.Level
+	agent.logRelay.LogLevelChan() <- byte(log.Level)
 
 	return nil
 }
