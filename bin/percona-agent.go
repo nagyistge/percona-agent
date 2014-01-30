@@ -98,11 +98,15 @@ func main() {
 		log.Println("LogFile disabled")
 		logRelay = logrelay.NewLogRelay(nil, config.LogFile, logLevel)
 	} else {
-		wsClient, err := client.NewWebsocketClient(config.Links["log"], origin, auth)
-		if err != nil {
-			log.Fatalln(err)
+		logLink, exist := config.Links["log"]
+		if !exist || logLink == "" {
+			log.Fatalf("Unable to get log link")
 		}
-		logRelay = logrelay.NewLogRelay(wsClient, config.LogFile, logLevel)
+		logClient, err := client.NewWebsocketClient(logLink, origin, auth)
+		if err != nil {
+			log.Fatalf("Unable to create log websocket connection (link: %s): %s", logLink, err)
+		}
+		logRelay = logrelay.NewLogRelay(logClient, config.LogFile, logLevel)
 	}
 	go logRelay.Run()
 
@@ -112,9 +116,13 @@ func main() {
 
 	logger := pct.NewLogger(logRelay.LogChan(), "agent")
 
-	cmdClient, err := client.NewWebsocketClient(config.Links["cmd"], origin, auth)
+	cmdLink, exist := config.Links["cmd"]
+	if !exist || cmdLink == "" {
+		log.Fatalf("Unable to get cmd link")
+	}
+	cmdClient, err := client.NewWebsocketClient(cmdLink, origin, auth)
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatalf("Unable to create cmd websocket connection (link: %s): %s", cmdLink, err)
 	}
 
 	services := map[string]pct.ServiceManager{
