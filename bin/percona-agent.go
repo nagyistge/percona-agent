@@ -18,7 +18,7 @@ const (
 )
 
 type apiLinks struct {
-	links map[string]string
+	Links map[string]string
 }
 
 func main() {
@@ -84,7 +84,7 @@ func main() {
 	httpClient := client.NewHttpClient(config.ApiKey)
 	links, err := GetLinks(httpClient, config.ApiHostname)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Unable to get links: %s", err)
 	}
 	config.Links = links
 
@@ -150,7 +150,7 @@ func GetLinks(client pct.HttpClient, link string) (map[string]string, error) {
 	if err := client.Get(link, links, time.Hour*24*7); err != nil {
 		return nil, err
 	}
-	return links.links, nil
+	return links.Links, nil
 }
 
 func WritePidFile(pidFile string) error {
