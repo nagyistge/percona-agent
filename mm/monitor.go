@@ -11,9 +11,8 @@ import (
  * Metric.  Each Metric collected during a single period are sent as a
  * Collection to an Aggregator (aggregator.go).  The Aggregator keeps Stats
  * for each unique Metric in a Metrics map/hash table.  When it's time to
- * report, the Stats are summarized and the Metrics are encoded in a
- * proto.MmReport (cloud-protocol/proto/data.go) and sent to a Spooler
- * (data/spooler.go).
+ * report, the Stats are summarized and the Metrics are encoded in a Report
+ * and sent to a Spooler (data/spooler.go).
  */
 
 // Using given config, collect metrics when tickerChan ticks, and send to collecitonChan.

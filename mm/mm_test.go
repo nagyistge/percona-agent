@@ -58,17 +58,6 @@ func sendCollection(file string, collectionChan chan *mm.Collection) error {
 	return nil
 }
 
-func loadReport(file string, report *mm.Report) error {
-	bytes, err := ioutil.ReadFile(file)
-	if err != nil {
-		return err
-	}
-	if err = json.Unmarshal(bytes, report); err != nil {
-		return err
-	}
-	return nil
-}
-
 func (s *AggregatorTestSuite) TestC001(t *gocheck.C) {
 	a := mm.NewAggregator(s.ticker, s.collectionChan, s.spool)
 	go a.Start()
@@ -109,7 +98,7 @@ func (s *AggregatorTestSuite) TestC001(t *gocheck.C) {
 	}
 
 	expect := &mm.Report{}
-	if err := loadReport(sample+"/c001r.json", expect); err != nil {
+	if err := test.LoadMmReport(sample+"/c001r.json", expect); err != nil {
 		t.Fatal(err)
 	}
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
@@ -137,7 +126,7 @@ func (s *AggregatorTestSuite) TestC002(t *gocheck.C) {
 
 	got := test.WaitMmReport(s.dataChan)
 	expect := &mm.Report{}
-	if err := loadReport(sample+"/c002r.json", expect); err != nil {
+	if err := test.LoadMmReport(sample+"/c002r.json", expect); err != nil {
 		t.Fatal("c002r.json ", err)
 	}
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
@@ -164,7 +153,7 @@ func (s *AggregatorTestSuite) TestC000(t *gocheck.C) {
 
 	got := test.WaitMmReport(s.dataChan)
 	expect := &mm.Report{}
-	if err := loadReport(sample+"/c000r.json", expect); err != nil {
+	if err := test.LoadMmReport(sample+"/c000r.json", expect); err != nil {
 		t.Fatal("c000r.json ", err)
 	}
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
@@ -205,7 +194,7 @@ func (s *AggregatorTestSuite) TestC003(t *gocheck.C) {
 	 */
 	got := test.WaitMmReport(s.dataChan)
 	expect := &mm.Report{}
-	if err := loadReport(sample+"/c003r.json", expect); err != nil {
+	if err := test.LoadMmReport(sample+"/c003r.json", expect); err != nil {
 		t.Fatal("c003r.json ", err)
 	}
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
@@ -242,7 +231,7 @@ func (s *AggregatorTestSuite) TestC003Lost(t *gocheck.C) {
 	 */
 	got := test.WaitMmReport(s.dataChan)
 	expect := &mm.Report{}
-	if err := loadReport(sample+"/c003rlost.json", expect); err != nil {
+	if err := test.LoadMmReport(sample+"/c003rlost.json", expect); err != nil {
 		t.Fatal("c003r.json ", err)
 	}
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {

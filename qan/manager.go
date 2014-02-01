@@ -7,6 +7,7 @@ import (
 	"github.com/percona/cloud-tools/data"
 	"github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
+	mysqlLog "github.com/percona/percona-go-mysql/log"
 	"os"
 	"time"
 )
@@ -24,6 +25,18 @@ type Manager struct {
 	status         *pct.Status
 	sync           *pct.SyncChan
 	oldSlowLogs    map[string]int
+}
+
+type Report struct {
+	StartTs     time.Time // UTC
+	EndTs       time.Time // UTC
+	SlowLogFile string    // not slow_query_log_file if rotated
+	StartOffset int64     // parsing starts
+	EndOffset   int64     // parsing stops, but...
+	StopOffset  int64     // ...parsing didn't complete if stop < end
+	RunTime     float64   // seconds
+	Global      *mysqlLog.GlobalClass
+	Class       []*mysqlLog.QueryClass
 }
 
 func NewManager(logger *pct.Logger, mysqlConn mysql.Connector, iter IntervalIter, workerFactory WorkerFactory, spool data.Spooler) *Manager {
@@ -187,12 +200,18 @@ func (m *Manager) run() {
 					return
 				}
 				result.RunTime = t1.Sub(t0)
-				data, err := prepareResult(interval, job, result)
-				if err != nil {
-					m.logger.Error(err)
-					return
+				report := &Report{
+					StartTs:     interval.StartTime,
+					EndTs:       interval.StopTime,
+					SlowLogFile: interval.Filename,
+					StartOffset: interval.StartOffset,
+					EndOffset:   interval.EndOffset,
+					StopOffset:  result.StopOffset,
+					RunTime:     result.RunTime.Seconds(),
+					Global:      result.Global,
+					Class:       result.Classes,
 				}
-				m.spool.Write(data)
+				m.spool.Write(report)
 			}()
 		case worker := <-m.workerDoneChan:
 			m.status.Update("QanLogParser", "Reaping worker")
@@ -246,29 +265,4 @@ func (m *Manager) rotateSlowLog(interval *Interval) error {
 	}
 
 	return nil
-}
-
-func prepareResult(interval *Interval, job *Job, result *Result) (*proto.QanReport, error) {
-	global, err := json.Marshal(result.Global)
-	if err != nil {
-		return nil, err
-	}
-	class, err := json.Marshal(result.Classes)
-	if err != nil {
-		return nil, err
-	}
-
-	qanReport := &proto.QanReport{
-		StartTs:     interval.StartTime,
-		EndTs:       interval.StopTime,
-		SlowLogFile: interval.Filename,
-		StartOffset: interval.StartOffset,
-		EndOffset:   interval.EndOffset,
-		StopOffset:  result.StopOffset,
-		RunTime:     result.RunTime.Seconds(),
-		Global:      global,
-		Class:       class,
-	}
-
-	return qanReport, nil
 }

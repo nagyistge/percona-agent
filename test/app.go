@@ -89,3 +89,15 @@ func Dump(v interface {}) {
 	bytes, _ := json.MarshalIndent(v, "", "  ")
 	fmt.Println(string(bytes))
 }
+
+
+func LoadMmReport(file string, v interface{}) error {
+	bytes, err := ioutil.ReadFile(file)
+	if err != nil {
+		return err
+	}
+	if err = json.Unmarshal(bytes, v); err != nil {
+		return err
+	}
+	return nil
+}

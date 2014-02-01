@@ -9,7 +9,6 @@ import (
 	"github.com/percona/cloud-tools/qan"
 	"github.com/percona/cloud-tools/test"
 	"github.com/percona/cloud-tools/test/mock"
-	mysqlLog "github.com/percona/percona-go-mysql/log"
 	"github.com/percona/percona-go-mysql/test"
 	"io/ioutil"
 	"launchpad.net/gocheck"
@@ -133,8 +132,8 @@ func (s *ManagerTestSuite) SetUpSuite(c *gocheck.C) {
 
 	s.intervalChan = make(chan *qan.Interval, 1)
 	s.iter = mock.NewMockIntervalIter(s.intervalChan)
-	s.dataChan = make(chan interface{}, 2)
 
+	s.dataChan = make(chan interface{}, 2)
 	s.spool = mock.NewSpooler(s.dataChan)
 	s.workerFactory = qan.NewSlowLogWorkerFactory()
 }
@@ -252,23 +251,16 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	}
 	s.intervalChan <- interv
 
-	resultData := <-s.dataChan
-	if resultData == nil {
-		c.Fatal("Got result from worker ran by manager")
+	v := <-s.dataChan
+	if v == nil {
+		c.Fatal("Got report")
 	}
+	report := v.(*qan.Report)
 
-	report := *resultData.(*proto.QanReport)
-	global := &mysqlLog.GlobalClass{}
-	json.Unmarshal(report.Global, global)
-	classes := []*mysqlLog.QueryClass{}
-	err = json.Unmarshal(report.Class, &classes)
-	if err != nil {
-		c.Error(err)
-	}
 	result := &qan.Result{
 		StopOffset: report.StopOffset,
-		Global:     global,
-		Classes:    classes,
+		Global:     report.Global,
+		Classes:    report.Class,
 	}
 	test.WriteData(result, tmpFile)
 	c.Check(tmpFile, testlog.FileEquals, sample+"slow001.json")
@@ -380,14 +372,12 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
 	}
 	s.intervalChan <- i1
 	resultData := <-s.dataChan
-	result := *resultData.(*proto.QanReport)
-	global := &mysqlLog.GlobalClass{}
-	json.Unmarshal(result.Global, global)
-	if global.TotalQueries != 2 {
-		c.Error("First interval has 2 queries, got ", global.TotalQueries)
+	report := *resultData.(*qan.Report)
+	if report.Global.TotalQueries != 2 {
+		c.Error("First interval has 2 queries, got ", report.Global.TotalQueries)
 	}
-	if global.UniqueQueries != 1 {
-		c.Error("First interval has 1 unique query, got ", global.UniqueQueries)
+	if report.Global.UniqueQueries != 1 {
+		c.Error("First interval has 1 unique query, got ", report.Global.UniqueQueries)
 	}
 
 	// Second interval: 736 - 1833, but will actually go to end: 2200, if not
@@ -401,14 +391,12 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
 	}
 	s.intervalChan <- i2
 	resultData = <-s.dataChan
-	result = *resultData.(*proto.QanReport)
-	global = &mysqlLog.GlobalClass{}
-	json.Unmarshal(result.Global, global)
-	if global.TotalQueries != 4 {
-		c.Error("Second interval has 2 queries, got ", global.TotalQueries)
+	report = *resultData.(*qan.Report)
+	if report.Global.TotalQueries != 4 {
+		c.Error("Second interval has 2 queries, got ", report.Global.TotalQueries)
 	}
-	if global.UniqueQueries != 2 {
-		c.Error("Second interval has 2 unique queries, got ", global.UniqueQueries)
+	if report.Global.UniqueQueries != 2 {
+		c.Error("Second interval has 2 unique queries, got ", report.Global.UniqueQueries)
 	}
 
 	test.WaitStatus(1, m, "QanLogParser", "Ready (0 of 2 running)")
@@ -495,14 +483,12 @@ func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
 	}
 	s.intervalChan <- i1
 	resultData := <-s.dataChan
-	result := *resultData.(*proto.QanReport)
-	global := &mysqlLog.GlobalClass{}
-	json.Unmarshal(result.Global, global)
-	if global.TotalQueries != 2 {
-		c.Error("First interval has 2 queries, got ", global.TotalQueries)
+	report := *resultData.(*qan.Report)
+	if report.Global.TotalQueries != 2 {
+		c.Error("First interval has 2 queries, got ", report.Global.TotalQueries)
 	}
-	if global.UniqueQueries != 1 {
-		c.Error("First interval has 1 unique query, got ", global.UniqueQueries)
+	if report.Global.UniqueQueries != 1 {
+		c.Error("First interval has 1 unique query, got ", report.Global.UniqueQueries)
 	}
 
 	// Second interval: 736 - 1833, but will actually go to end: 2200, if not
@@ -516,14 +502,12 @@ func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
 	}
 	s.intervalChan <- i2
 	resultData = <-s.dataChan
-	result = *resultData.(*proto.QanReport)
-	global = &mysqlLog.GlobalClass{}
-	json.Unmarshal(result.Global, global)
-	if global.TotalQueries != 4 {
-		c.Error("Second interval has 2 queries, got ", global.TotalQueries)
+	report = *resultData.(*qan.Report)
+	if report.Global.TotalQueries != 4 {
+		c.Error("Second interval has 2 queries, got ", report.Global.TotalQueries)
 	}
-	if global.UniqueQueries != 2 {
-		c.Error("Second interval has 2 unique queries, got ", global.UniqueQueries)
+	if report.Global.UniqueQueries != 2 {
+		c.Error("Second interval has 2 unique queries, got ", report.Global.UniqueQueries)
 	}
 
 	test.WaitStatus(1, m, "QanLogParser", "Ready (0 of 2 running)")
