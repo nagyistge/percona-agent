@@ -17,10 +17,6 @@ const (
 	VERSION = "1.0.0"
 )
 
-type apiLinks struct {
-	Links map[string]string
-}
-
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 
@@ -81,12 +77,14 @@ func main() {
 	}
 
 	// Get entry links from API.  This only requires an API key.
-	httpClient := client.NewHttpClient(config.ApiKey)
-	links, err := GetLinks(httpClient, config.ApiHostname)
-	if err != nil {
-		log.Fatalf("Unable to get links: %s", err)
+	if len(config.Links) == 0 {
+		httpClient := client.NewHttpClient(config.ApiKey)
+		links, err := GetLinks(httpClient, config.ApiHostname)
+		if err != nil {
+			log.Fatal(err)
+		}
+		config.Links = links
 	}
-	config.Links = links
 
 	// Make a proto.AgentAuth so we can connect websockets.
 	auth, origin := MakeAgentAuth(config)
@@ -154,7 +152,7 @@ func CheckConfig(config *agent.Config, configFile string) (bool, []string) {
 }
 
 func GetLinks(client pct.HttpClient, link string) (map[string]string, error) {
-	links := &apiLinks{}
+	links := &proto.Links{}
 	if err := client.Get(link, links, time.Hour*24*7); err != nil {
 		return nil, err
 	}
@@ -182,7 +180,6 @@ func MakeAgentAuth(config *agent.Config) (*proto.AgentAuth, string) {
 	origin := "http://" + username + "@" + hostname
 
 	auth := &proto.AgentAuth{
-		ApiKey:   config.ApiKey,
 		Uuid:     config.AgentUuid,
 		Hostname: hostname,
 		Username: username,

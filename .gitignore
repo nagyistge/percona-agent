@@ -1,6 +1,5 @@
 *.swp
 *.tmp
-bin/agent
-test/mock/ws-client/ws-client
-test/mock/ws-server/ws-server
+bin/percona-agent
+bin/bin
 coverage.out
