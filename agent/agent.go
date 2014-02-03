@@ -421,6 +421,9 @@ func (agent *Agent) getStatus() *proto.StatusData {
 	status := agent.status.All()
 
 	for _, m := range agent.services {
+		if m == nil {
+			continue
+		}
 		for p, s := range m.Status() {
 			status[p] = s
 		}
