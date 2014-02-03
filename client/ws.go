@@ -81,10 +81,6 @@ func (c *WebsocketClient) Connect() error {
 
 func (c *WebsocketClient) Disconnect() error {
 	var err error
-	if c.sendChan != nil {
-		close(c.sendChan)
-		c.sendChan = nil
-	}
 	if c.conn != nil {
 		err = c.conn.Close()
 		c.conn = nil
