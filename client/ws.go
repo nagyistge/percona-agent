@@ -3,8 +3,8 @@ package client
 import (
 	"code.google.com/p/go.net/websocket"
 	"errors"
-	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-tools/pct"
 	"time"
 )
 
@@ -23,6 +23,9 @@ type WebsocketClient struct {
 	sendChan chan *proto.Reply
 	errChan  chan error
 	backoff  *pct.Backoff
+	started  bool
+	sendSync *pct.SyncChan
+	recvSync *pct.SyncChan
 }
 
 func NewWebsocketClient(url string, origin string, auth *proto.AgentAuth) (*WebsocketClient, error) {
@@ -40,8 +43,28 @@ func NewWebsocketClient(url string, origin string, auth *proto.AgentAuth) (*Webs
 		sendChan: make(chan *proto.Reply, SEND_BUFFER_SIZE),
 		errChan:  make(chan error, 2),
 		backoff:  pct.NewBackoff(5 * time.Minute),
+		sendSync: pct.NewSyncChan(),
+		recvSync: pct.NewSyncChan(),
 	}
 	return c, nil
+}
+
+func (c *WebsocketClient) Start() {
+	// Start send() and recv() goroutines, but they wait for successful Connect().
+	go c.send()
+	go c.recv()
+	c.started = true
+}
+
+func (c *WebsocketClient) Stop() {
+	if c.started {
+		c.sendSync.Stop()
+		c.recvSync.Stop()
+
+		c.sendSync.Wait()
+		c.recvSync.Wait()
+	}
+	c.started = false
 }
 
 func (c *WebsocketClient) Connect() error {
@@ -74,6 +97,12 @@ func (c *WebsocketClient) Connect() error {
 		return errors.New(authResponse.Error)
 	}
 
+	// Start/resume send() and recv() goroutines if Start() was called.
+	if c.started {
+		c.recvSync.Start()
+		c.sendSync.Start()
+	}
+
 	// Success!
 	c.backoff.Success()
 	return nil
@@ -88,44 +117,67 @@ func (c *WebsocketClient) Disconnect() error {
 	return err
 }
 
-// @goroutine
-func (c *WebsocketClient) Run() {
-	/**
-	 * If either Send or Recieve causes an error, send the error
-	 * to errChan.  The caller should watch this channel and take
-	 * action, e.g. reconnect client.
-	 */
-
+func (c *WebsocketClient) send() {
 	// Receive Reply from client and send to API.
-	go func() {
-		var err error
-		defer func() {
+	defer c.sendSync.Done()
+	for {
+		// Wait to start (connect) or be told to stop.
+		select {
+		case <-c.sendSync.StartChan:
+			c.sendSync.StartChan <- true
+		case <-c.sendSync.StopChan:
+			return
+		}
+
+	SEND_LOOP:
+		for {
 			select {
-			case c.errChan <- err:
+			case reply := <-c.sendChan:
+				if err := c.Send(reply); err != nil {
+					select {
+					case c.errChan <- err:
+					default:
+					}
+					break SEND_LOOP
+				}
+			case <-c.sendSync.StopChan:
+				return
+			}
+		}
+	}
+}
+
+func (c *WebsocketClient) recv() {
+	// Receive Cmd from API and send to client.
+	defer c.recvSync.Done()
+	for {
+		// Wait to start (connect) or be told to stop.
+		select {
+		case <-c.recvSync.StartChan:
+			c.recvSync.StartChan <- true
+		case <-c.recvSync.StopChan:
+			return
+		}
+
+	RECV_LOOP:
+		for {
+			// Before blocking on Recv, see if we're supposed to stop.
+			select {
+			case <-c.recvSync.StopChan:
+				return
 			default:
 			}
-		}()
-		for reply := range c.sendChan {
-			if err = c.Send(reply); err != nil {
-				break
-			}
-		}
-	}()
 
-	// Receive Cmd from API and send to client.
-	var err error
-	defer func() {
-		select {
-		case c.errChan <- err:
-		default:
+			cmd := &proto.Cmd{}
+			if err := c.Recv(cmd); err != nil {
+				select {
+				case c.errChan <- err:
+				default:
+				}
+				break RECV_LOOP
+			}
+			c.recvChan <- cmd
 		}
-	}()
-	for {
-		cmd := new(proto.Cmd)
-		if err = c.Recv(cmd); err != nil {
-			break
-		}
-		c.recvChan <- cmd
 	}
 }
 

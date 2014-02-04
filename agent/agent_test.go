@@ -10,6 +10,7 @@ import (
 	"github.com/percona/cloud-tools/qan"
 	"github.com/percona/cloud-tools/test"
 	"github.com/percona/cloud-tools/test/mock"
+	"io"
 	"io/ioutil"
 	"launchpad.net/gocheck"
 	"os"
@@ -31,14 +32,15 @@ type AgentTestSuite struct {
 	logRelay  *logrelay.LogRelay
 	logger    *pct.Logger
 	logChan   chan *proto.LogEntry
-	client    pct.WebsocketClient
 	readyChan chan bool
 	traceChan chan string
 	// --
+	client       *mock.WebsocketClient
 	sendDataChan chan interface{}
 	recvDataChan chan interface{}
 	sendChan     chan *proto.Cmd
 	recvChan     chan *proto.Reply
+	errChan      chan error
 	//
 	doneChan   chan bool
 	stopReason string
@@ -84,6 +86,8 @@ func (s *AgentTestSuite) SetUpSuite(t *gocheck.C) {
 	s.sendDataChan = make(chan interface{}, 5)
 	s.recvDataChan = make(chan interface{}, 5)
 	s.client = mock.NewWebsocketClient(s.sendChan, s.recvChan, s.sendDataChan, s.recvDataChan)
+	s.errChan = make(chan error)
+	s.client.ErrChan = s.errChan
 	go s.client.Run()
 
 	s.readyChan = make(chan bool, 2)
@@ -158,6 +162,43 @@ func (s *AgentTestSuite) TestStatus(t *gocheck.C) {
 	}
 	if ok, diff := test.IsDeeply(gotReply, expectReply); !ok {
 		t.Error(diff)
+	}
+}
+
+func (s *AgentTestSuite) TestStatusAfterConnFail(t *gocheck.C) {
+	// Use optional ConnectChan in mock ws client for this test only.
+	connectChan := make(chan error)
+	s.client.ConnectChan = connectChan
+	defer  func() { s.client.ConnectChan = nil }()
+
+	// Make agent disconnect by making it get error on recv.
+	s.errChan <- io.EOF
+
+	// Wait for agent to Connect() again.  Send error on connect, then
+	// send nil (no error, connect ok) to make sure agent tries again.
+	s.client.ConnectChan <- io.EOF
+	s.client.ConnectChan <- nil
+
+	// Agent has reconnected now.
+
+	// This is what the API would send:
+	statusCmd := &proto.Cmd{
+		Ts:   time.Now(),
+		User: "daniel@percona.com",
+		Cmd:  "Status",
+	}
+	s.sendChan <- statusCmd
+
+	// Get reply from agent.
+	got := test.WaitReply(s.recvChan)
+	if len(got) == 0 {
+		t.Fatal("Got reply")
+	}
+	gotReply := proto.StatusData{}
+	json.Unmarshal(got[0].Data, &gotReply)
+
+	if gotReply.Agent != "Ready" {
+		t.Errorf("Agent reply and ready after reconnect, got %#v", gotReply)
 	}
 }
 

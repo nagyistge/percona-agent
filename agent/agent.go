@@ -202,6 +202,10 @@ AGENT_LOOP:
 	return agent.stopReason, agent.update
 }
 
+func (agent *Agent) Status() map[string]string {
+	return agent.status.All()
+}
+
 // @goroutine[0]
 func (agent *Agent) connect() {
 	agent.status.Update("Agent", "Connecting to API")

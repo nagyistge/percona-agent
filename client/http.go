@@ -1,10 +1,10 @@
 package client
 
 import (
-	"time"
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
+	"time"
 )
 
 type HttpClient struct {

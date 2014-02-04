@@ -11,7 +11,7 @@ type WebsocketClient interface {
 	Disconnect() error
 
 	// Non-blocking cmd/reply channels:
-	Run()
+	Start()
 	RecvChan() chan *proto.Cmd
 	SendChan() chan *proto.Reply
 

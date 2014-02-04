@@ -13,8 +13,8 @@ type WebsocketClient struct {
 	testRecvChan     chan *proto.Reply
 	testSendDataChan chan interface{}
 	testRecvDataChan chan interface{}
-	errChan          chan error
 	conn             *websocket.Conn
+	ErrChan          chan error
 	RecvError        chan error
 	ConnectChan      chan error
 }
@@ -36,10 +36,7 @@ func NewWebsocketClient(sendChan chan *proto.Cmd, recvChan chan *proto.Reply, se
 func (c *WebsocketClient) Connect() error {
 	var err error
 	if c.ConnectChan != nil {
-		select {
-		case c.ConnectChan <- nil:
-		default:
-		}
+		// Wait for test to send error to send to agent/user.
 		err = <-c.ConnectChan
 	}
 	return err
@@ -88,7 +85,7 @@ func (c *WebsocketClient) Recv(data interface{}) error {
 }
 
 func (c *WebsocketClient) ErrorChan() chan error {
-	return c.errChan
+	return c.ErrChan
 }
 
 func (c *WebsocketClient) Conn() *websocket.Conn {
