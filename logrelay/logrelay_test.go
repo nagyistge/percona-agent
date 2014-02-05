@@ -3,6 +3,7 @@ package logrelay_test
 import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-tools/logrelay"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/test"
 	"github.com/percona/cloud-tools/test/mock"
@@ -12,20 +13,20 @@ import (
 	"os"
 	"strings"
 	"testing"
-	// Testing
-	"github.com/percona/cloud-tools/logrelay"
+	"time"
 )
 
 // Hook gocheck into the "go test" runner.
 func Test(t *testing.T) { TestingT(t) }
 
 type TestSuite struct {
-	logFile  string
-	sendChan chan interface{}
-	recvChan chan interface{}
-	client   *mock.WebsocketClient
-	relay    *logrelay.LogRelay
-	logger   *pct.Logger
+	logFile     string
+	sendChan    chan interface{}
+	recvChan    chan interface{}
+	connectChan chan bool
+	client      *mock.WebsocketClient
+	relay       *logrelay.LogRelay
+	logger      *pct.Logger
 }
 
 var _ = Suite(&TestSuite{})
@@ -35,6 +36,7 @@ func (s *TestSuite) SetUpSuite(t *C) {
 
 	s.sendChan = make(chan interface{}, 5)
 	s.recvChan = make(chan interface{}, 5)
+	s.connectChan = make(chan bool)
 	s.client = mock.NewWebsocketClient(nil, nil, s.sendChan, s.recvChan)
 
 	s.relay = logrelay.NewLogRelay(s.client, "", proto.LOG_INFO)
@@ -57,7 +59,7 @@ func (s *TestSuite) TearDownTest(t *C) {
 	// Drain the log so one test doesn't affect another.
 	_ = test.WaitLog(s.recvChan, 0)
 
-	s.client.ConnectChan = nil
+	s.client.SetConnectChan(nil)
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -192,7 +194,7 @@ func (s *TestSuite) TestOfflineBuffering(t *C) {
 	// We're going to cause the relay's client Recv() to get an error
 	// which will cause the relay to connect again.  We block this 2nd
 	// connect by blocking this chan.  End result: relay remains offline.
-	s.client.ConnectChan = make(chan error)
+	s.client.SetConnectChan(s.connectChan)
 	doneChan := make(chan bool, 1)
 	go func() {
 		s.client.RecvError <- io.EOF
@@ -202,7 +204,7 @@ func (s *TestSuite) TestOfflineBuffering(t *C) {
 	<-doneChan
 
 	// Wait for the relay to receive its own disconnect notice.
-	<-s.client.ConnectChan
+	<-s.connectChan
 
 	// Relay is offline and trying to connect again in another goroutine.
 	// These entries should therefore not be sent.  There's a minor race
@@ -217,7 +219,7 @@ func (s *TestSuite) TestOfflineBuffering(t *C) {
 	}
 
 	// Unblock the relay's connect attempt.
-	s.client.ConnectChan <- nil
+	s.connectChan <- true
 
 	// Wait for the relay resend what it had ^ buffered.
 	got = test.WaitLog(s.recvChan, 3)
@@ -235,14 +237,14 @@ func (s *TestSuite) TestOfflineBuffering(t *C) {
 func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
 	// Same magic as in TestOfflineBuffering to force relay offline.
 	l := s.logger
-	s.client.ConnectChan = make(chan error)
+	s.client.SetConnectChan(s.connectChan)
 	doneChan := make(chan bool, 1)
 	go func() {
 		s.client.RecvError <- io.EOF
 		doneChan <- true
 	}()
 	<-doneChan
-	<-s.client.ConnectChan
+	<-s.connectChan
 	// Relay is offline.
 
 	// Overflow the first buffer but not the second.  We should get all
@@ -252,7 +254,7 @@ func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
 	}
 
 	// Unblock the relay's connect attempt.
-	s.client.ConnectChan <- nil
+	s.connectChan <- true
 
 	// Wait for the relay resend what it had ^ buffered.
 	// +2 for "connected: false" and "connected: true".
@@ -275,7 +277,7 @@ func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
 		doneChan <- true
 	}()
 	<-doneChan
-	<-s.client.ConnectChan
+	<-s.connectChan
 	// Relay is offline.
 
 	overflow := 3
@@ -284,7 +286,8 @@ func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
 	}
 
 	// Unblock the relay's connect attempt.
-	s.client.ConnectChan <- nil
+	s.connectChan <- true
+	time.Sleep(100 * time.Millisecond)
 
 	// +3 for "connected: false", "Lost N entries", and "connected: true".
 	got = test.WaitLog(s.recvChan, logrelay.BUFFER_SIZE+overflow+3)

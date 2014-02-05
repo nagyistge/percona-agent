@@ -10,7 +10,7 @@ type SyncChan struct {
 
 func NewSyncChan() *SyncChan {
 	sc := &SyncChan{
-		StartChan:     make(chan bool),
+		StartChan: make(chan bool),
 		StopChan:  make(chan bool),
 		DoneChan:  make(chan bool, 1),
 		CrashChan: make(chan bool, 1),

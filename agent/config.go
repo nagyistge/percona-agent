@@ -50,15 +50,15 @@ func LoadConfig(file string) *Config {
 // Write config into  JSON file.
 func WriteConfig(file string, cur *Config) error {
 
-	b, err := json.MarshalIndent(cur,"", "    ")
+	b, err := json.MarshalIndent(cur, "", "    ")
 	if err != nil {
 		log.Fatalln(err)
-	} 
-	
+	}
+
 	err = ioutil.WriteFile(file, b, 0644)
 	if err != nil {
 		log.Fatalln(err)
-	} 
+	}
 
 	return nil
 }

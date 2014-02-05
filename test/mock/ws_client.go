@@ -1,7 +1,6 @@
 package mock
 
 import (
-	//"fmt"
 	"code.google.com/p/go.net/websocket"
 	"github.com/percona/cloud-protocol/proto"
 )
@@ -16,7 +15,9 @@ type WebsocketClient struct {
 	conn             *websocket.Conn
 	ErrChan          chan error
 	RecvError        chan error
-	ConnectChan      chan error
+	connectChan      chan bool
+	testConnectChan  chan bool
+	started          bool
 }
 
 func NewWebsocketClient(sendChan chan *proto.Cmd, recvChan chan *proto.Reply, sendDataChan chan interface{}, recvDataChan chan interface{}) *WebsocketClient {
@@ -29,24 +30,34 @@ func NewWebsocketClient(sendChan chan *proto.Cmd, recvChan chan *proto.Reply, se
 		testRecvDataChan: recvDataChan,
 		conn:             new(websocket.Conn),
 		RecvError:        make(chan error),
+		connectChan:      make(chan bool, 1),
 	}
 	return c
 }
 
 func (c *WebsocketClient) Connect() error {
-	var err error
-	if c.ConnectChan != nil {
-		// Wait for test to send error to send to agent/user.
-		err = <-c.ConnectChan
+	if c.testConnectChan != nil {
+		// Wait for test to let user/agent connect.
+		select {
+		case c.testConnectChan <- true:
+		default:
+		}
+		<-c.testConnectChan
 	}
-	return err
-}
-
-func (c *WebsocketClient) Disconnect() error {
+	c.connectChan <- true
 	return nil
 }
 
-func (c *WebsocketClient) Run() {
+func (c *WebsocketClient) Disconnect() error {
+	c.connectChan <- false
+	return nil
+}
+
+func (c *WebsocketClient) Start() {
+	if c.started {
+		return
+	}
+
 	go func() {
 		for cmd := range c.testSendChan { // test sends cmd
 			c.userRecvChan <- cmd // user receives cmd
@@ -58,6 +69,11 @@ func (c *WebsocketClient) Run() {
 			c.testRecvChan <- reply // test receives reply
 		}
 	}()
+
+	c.started = true
+}
+
+func (c *WebsocketClient) Stop() {
 }
 
 func (c *WebsocketClient) SendChan() chan *proto.Reply {
@@ -84,10 +100,18 @@ func (c *WebsocketClient) Recv(data interface{}) error {
 	return nil
 }
 
+func (c *WebsocketClient) ConnectChan() chan bool {
+	return c.connectChan
+}
+
 func (c *WebsocketClient) ErrorChan() chan error {
 	return c.ErrChan
 }
 
 func (c *WebsocketClient) Conn() *websocket.Conn {
 	return c.conn
+}
+
+func (c *WebsocketClient) SetConnectChan(connectChan chan bool) {
+	c.testConnectChan = connectChan
 }

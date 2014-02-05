@@ -200,15 +200,6 @@ func WaitFiles(dir string, n int) []os.FileInfo {
 	return files
 }
 
-func WaitPost(postChan chan []byte) []byte {
-	select {
-	case data := <-postChan:
-		return data
-	case <-time.After(100 * time.Millisecond):
-		return nil
-	}
-}
-
 func WaitMmReport(dataChan chan interface{}) *mm.Report {
 	select {
 	case data := <-dataChan:

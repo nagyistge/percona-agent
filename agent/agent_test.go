@@ -10,7 +10,6 @@ import (
 	"github.com/percona/cloud-tools/qan"
 	"github.com/percona/cloud-tools/test"
 	"github.com/percona/cloud-tools/test/mock"
-	"io"
 	"io/ioutil"
 	"launchpad.net/gocheck"
 	"os"
@@ -40,8 +39,7 @@ type AgentTestSuite struct {
 	recvDataChan chan interface{}
 	sendChan     chan *proto.Cmd
 	recvChan     chan *proto.Reply
-	errChan      chan error
-	//
+	// --
 	doneChan   chan bool
 	stopReason string
 	upgrade    bool
@@ -86,9 +84,8 @@ func (s *AgentTestSuite) SetUpSuite(t *gocheck.C) {
 	s.sendDataChan = make(chan interface{}, 5)
 	s.recvDataChan = make(chan interface{}, 5)
 	s.client = mock.NewWebsocketClient(s.sendChan, s.recvChan, s.sendDataChan, s.recvDataChan)
-	s.errChan = make(chan error)
-	s.client.ErrChan = s.errChan
-	go s.client.Run()
+	s.client.ErrChan = make(chan error)
+	go s.client.Start()
 
 	s.readyChan = make(chan bool, 2)
 	s.traceChan = make(chan string, 10)
@@ -118,10 +115,12 @@ func (s *AgentTestSuite) SetUpTest(t *gocheck.C) {
 }
 
 func (s *AgentTestSuite) TearDownTest(t *gocheck.C) {
-	s.readyChan <- true                   // qan.Stop() immediately
-	s.readyChan <- true                   // mm.Stop immediately
+	s.readyChan <- true // qan.Stop() immediately
+	s.readyChan <- true // mm.Stop immediately
+
 	s.sendChan <- &proto.Cmd{Cmd: "Stop"} // tell agent to stop itself
 	<-s.doneChan                          // wait for goroutine agent.Run() in test
+
 	test.DrainLogChan(s.logChan)
 	test.DrainSendChan(s.sendChan)
 	test.DrainRecvChan(s.recvChan)
@@ -167,21 +166,18 @@ func (s *AgentTestSuite) TestStatus(t *gocheck.C) {
 
 func (s *AgentTestSuite) TestStatusAfterConnFail(t *gocheck.C) {
 	// Use optional ConnectChan in mock ws client for this test only.
-	connectChan := make(chan error)
-	s.client.ConnectChan = connectChan
-	defer  func() { s.client.ConnectChan = nil }()
+	connectChan := make(chan bool)
+	s.client.SetConnectChan(connectChan)
+	defer s.client.SetConnectChan(nil)
 
-	// Make agent disconnect by making it get error on recv.
-	s.errChan <- io.EOF
+	// Disconnect agent.
+	s.client.Disconnect()
 
-	// Wait for agent to Connect() again.  Send error on connect, then
-	// send nil (no error, connect ok) to make sure agent tries again.
-	s.client.ConnectChan <- io.EOF
-	s.client.ConnectChan <- nil
+	// Wait for agent to reconnect.
+	<-connectChan
+	connectChan <- true
 
-	// Agent has reconnected now.
-
-	// This is what the API would send:
+	// Send cmd.
 	statusCmd := &proto.Cmd{
 		Ts:   time.Now(),
 		User: "daniel@percona.com",
@@ -189,7 +185,7 @@ func (s *AgentTestSuite) TestStatusAfterConnFail(t *gocheck.C) {
 	}
 	s.sendChan <- statusCmd
 
-	// Get reply from agent.
+	// Get reply.
 	got := test.WaitReply(s.recvChan)
 	if len(got) == 0 {
 		t.Fatal("Got reply")

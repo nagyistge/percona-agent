@@ -2,9 +2,9 @@ package pct_test
 
 import (
 	"github.com/percona/cloud-tools/pct"
+	"os"
 	"testing"
 	"time"
-	"os"
 )
 
 /////////////////////////////////////////////////////////////////////////////
@@ -61,7 +61,7 @@ func TestSameFile(t *testing.T) {
 
 	same, err = pct.SameFile(origFile, newFile)
 	if same {
-		t.Error(origFile, "and " + newFile + " not same after rename")
+		t.Error(origFile, "and "+newFile+" not same after rename")
 	}
 	if err != nil {
 		t.Error(err)
