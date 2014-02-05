@@ -3,28 +3,23 @@ package pct
 import (
 	"code.google.com/p/go.net/websocket"
 	"github.com/percona/cloud-protocol/proto"
-	"time"
 )
 
 type WebsocketClient interface {
 	Connect() error
 	Disconnect() error
 
-	// Non-blocking cmd/reply channels:
-	Run()
-	RecvChan() chan *proto.Cmd
+	// Channel interface:
+	Start()
+	Stop()
 	SendChan() chan *proto.Reply
+	RecvChan() chan *proto.Cmd
+	ConnectChan() chan bool
+	ErrorChan() chan error
 
-	// Blocking calls for logger:
+	// Direct interface:
+	SendBytes(data []byte) error
 	Send(data interface{}) error
 	Recv(data interface{}) error
-
-	// Notify user to stop or reconnect:
-	ErrorChan() chan error
 	Conn() *websocket.Conn
-}
-
-type HttpClient interface {
-	Get(url string, v interface{}, timeout time.Duration) error
-	Post(url string, data []byte) error
 }

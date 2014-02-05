@@ -46,7 +46,10 @@ func wsHandler(ws *websocket.Conn) {
 	authResponse := &proto.AuthResponse{}
 	websocket.JSON.Send(ws, authResponse)
 
-	defer func() { ClientDisconnectChan <- c }()
+	defer func() {
+		ClientRmChan <- c
+		ClientDisconnectChan <- c
+	}()
 	go c.send()
 	c.recv()
 }
@@ -78,26 +81,34 @@ func (c *client) send() {
 var internalClientConnectChan = make(chan *client)
 var ClientConnectChan = make(chan *client, 1)
 var ClientDisconnectChan = make(chan *client)
-var Clients = make(map[string]*client)
+var ClientRmChan = make(chan *client, 5)
+var Clients = make(map[*client]*client)
+
+func DisconnectClient(c *client) {
+	c, ok := Clients[c]
+	if ok {
+		close(c.SendChan)
+		c.ws.Close()
+		//log.Printf("disconnect: %+v\n", c)
+		<-ClientDisconnectChan
+	}
+}
 
 func run() {
 	for {
 		select {
 		case c := <-internalClientConnectChan:
 			// todo: this is probably prone to deadlocks, not thread-safe
-			Clients[c.origin] = c
+			Clients[c] = c
 			// log.Printf("connect: %+v\n", c)
 			select {
 			case ClientConnectChan <- c:
 			default:
 			}
-		case c := <-ClientDisconnectChan:
-			c, ok := Clients[c.origin]
-			if ok {
-				close(c.SendChan)
-				c.ws.Close()
-				//log.Printf("disconnect: %+v\n", c)
-				delete(Clients, c.origin)
+		case c := <-ClientRmChan:
+			if _, ok := Clients[c]; ok {
+				//log.Printf("remove : %+v\n", c)
+				delete(Clients, c)
 			}
 		}
 	}

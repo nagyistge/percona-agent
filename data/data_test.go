@@ -243,8 +243,11 @@ func (s *DiskvSpoolerTestSuite) TestSpoolGzipData(t *C) {
 type SenderTestSuite struct {
 	logChan    chan *proto.LogEntry
 	logger     *pct.Logger
-	client     *mock.HttpClient
 	tickerChan chan bool
+	// --
+	client       *mock.WebsocketClient
+	sendDataChan chan interface{}
+	recvDataChan chan interface{}
 }
 
 var _ = Suite(&SenderTestSuite{})
@@ -252,8 +255,13 @@ var _ = Suite(&SenderTestSuite{})
 func (s *SenderTestSuite) SetUpSuite(t *C) {
 	s.logChan = make(chan *proto.LogEntry, 10)
 	s.logger = pct.NewLogger(s.logChan, "data_test")
-	s.client = &mock.HttpClient{PostChan: make(chan []byte, 1)}
 	s.tickerChan = make(chan bool, 1)
+
+	s.sendDataChan = make(chan interface{}, 5)
+	s.recvDataChan = make(chan interface{}, 5)
+	s.client = mock.NewWebsocketClient(nil, nil, s.sendDataChan, s.recvDataChan)
+	s.client.ErrChan = make(chan error)
+	go s.client.Start()
 }
 
 func (s *SenderTestSuite) TearDownSuite(t *C) {
@@ -263,8 +271,6 @@ func (s *SenderTestSuite) SetUpTest(t *C) {
 }
 
 func (s *SenderTestSuite) TestSendData(t *C) {
-	//go debug(s.logChan)
-
 	spool := mock.NewSpooler(nil)
 
 	slow001, err := ioutil.ReadFile(sample + "slow001.json")
@@ -282,15 +288,15 @@ func (s *SenderTestSuite) TestSendData(t *C) {
 		t.Fatal(err)
 	}
 
-	postData := test.WaitPost(s.client.PostChan)
-	if postData != nil {
-		t.Errorf("No data sent before tick; got %+v", postData)
+	data := test.WaitBytes(s.client.RecvBytes)
+	if len(data) != 0 {
+		t.Errorf("No data sent before tick; got %+v", data)
 	}
 
 	s.tickerChan <- true
 
-	postData = test.WaitPost(s.client.PostChan)
-	if same, diff := test.IsDeeply(postData, slow001); !same {
+	data = test.WaitBytes(s.client.RecvBytes)
+	if same, diff := test.IsDeeply(data[0], slow001); !same {
 		t.Error(diff)
 	}
 
