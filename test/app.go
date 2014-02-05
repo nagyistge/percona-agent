@@ -7,7 +7,12 @@ import (
 	"os"
 	"time"
 	"fmt"
+	"log"
 )
+
+func init() {
+	log.SetFlags(log.Ltime | log.Lmicroseconds | log.Lshortfile)
+}
 
 func GetStatus(sendChan chan *proto.Cmd, recvChan chan *proto.Reply) *proto.StatusData {
 	statusCmd := &proto.Cmd{
@@ -100,4 +105,10 @@ func LoadMmReport(file string, v interface{}) error {
 		return err
 	}
 	return nil
+}
+
+func Debug(logChan chan *proto.LogEntry) {
+	for l := range logChan {
+		log.Println(l)
+	}
 }

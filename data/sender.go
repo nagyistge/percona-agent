@@ -6,16 +6,17 @@ import (
 
 type Sender struct {
 	logger     *pct.Logger
-	client     pct.HttpClient
+	client     pct.WebsocketClient
 	url        string
 	spool      Spooler
 	dataDir    string
 	tickerChan chan bool
 	// --
-	sync *pct.SyncChan
+	sync      *pct.SyncChan
+	connected bool
 }
 
-func NewSender(logger *pct.Logger, client pct.HttpClient, url string, spool Spooler, tickerChan chan bool) *Sender {
+func NewSender(logger *pct.Logger, client pct.WebsocketClient, url string, spool Spooler, tickerChan chan bool) *Sender {
 	s := &Sender{
 		logger:     logger,
 		client:     client,
@@ -53,9 +54,16 @@ func (s *Sender) run() {
 		s.sync.Done()
 	}()
 
+	// todo: only connect when needed
+	go s.client.Connect()
+
 	for {
 		select {
 		case <-s.tickerChan:
+			if !s.connected {
+				continue
+			}
+
 			s.logger.Debug("Start sending")
 			filesChan := s.spool.Files()
 			for file := range filesChan {
@@ -65,10 +73,9 @@ func (s *Sender) run() {
 					continue
 				}
 
-				// POST the data
+				// Send the data
 				s.logger.Debug("Sending", file)
-				err = s.client.Post(s.url, data)
-				if err != nil {
+				if err := s.client.SendBytes(data); err != nil {
 					s.logger.Error(err)
 				} else {
 					s.logger.Info("Sent", file)
@@ -76,6 +83,11 @@ func (s *Sender) run() {
 				}
 			}
 			s.logger.Debug("Done sending")
+		case state := <-s.client.ConnectChan():
+			s.connected = state
+			if !s.connected {
+				go s.client.Connect()
+			}
 		case <-s.sync.StopChan:
 			s.sync.Graceful()
 			return

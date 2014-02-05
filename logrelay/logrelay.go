@@ -2,8 +2,8 @@ package logrelay
 
 import (
 	"fmt"
-	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-tools/pct"
 	"log"
 	"os"
 	"time"
@@ -15,7 +15,6 @@ const (
 
 type LogRelay struct {
 	client        pct.WebsocketClient
-	connectedChan chan bool
 	connected     bool
 	logChan       chan *proto.LogEntry
 	logLevel      byte
@@ -45,16 +44,15 @@ type Status struct {
  */
 func NewLogRelay(client pct.WebsocketClient, logFile string, logLevel byte) *LogRelay {
 	r := &LogRelay{
-		client:        client,
-		logFile:       logFile,
-		logLevel:      logLevel,
-		logLevelChan:  make(chan byte),
-		logChan:       make(chan *proto.LogEntry, BUFFER_SIZE*2),
-		logFileChan:   make(chan string),
-		firstBuf:      make([]*proto.LogEntry, BUFFER_SIZE),
-		secondBuf:     make([]*proto.LogEntry, BUFFER_SIZE),
-		connectedChan: make(chan bool),
-		statusChan:    make(chan *Status, 1),
+		client:       client,
+		logFile:      logFile,
+		logLevel:     logLevel,
+		logLevelChan: make(chan byte),
+		logChan:      make(chan *proto.LogEntry, BUFFER_SIZE*3),
+		logFileChan:  make(chan string),
+		firstBuf:     make([]*proto.LogEntry, BUFFER_SIZE),
+		secondBuf:    make([]*proto.LogEntry, BUFFER_SIZE),
+		statusChan:   make(chan *Status, 1),
 	}
 	return r
 }
@@ -82,6 +80,7 @@ func (r *LogRelay) Run() {
 	for {
 		select {
 		case entry := <-r.logChan:
+
 			if entry.Level > r.logLevel {
 				// Log level too high, too verbose; ignore.
 				continue
@@ -101,7 +100,7 @@ func (r *LogRelay) Run() {
 				// Write log entry to file, too.
 				r.logger.Println(entry)
 			}
-		case connected := <-r.connectedChan:
+		case connected := <-r.client.ConnectChan():
 			r.connected = connected
 			r.internal(fmt.Sprintf("connected: %t", connected))
 			if connected {
@@ -158,13 +157,7 @@ func (r *LogRelay) connect() {
 		// log file only
 		return
 	}
-	r.client.Disconnect()
-	for {
-		if err := r.client.Connect(); err == nil {
-			break
-		}
-	}
-	r.connectedChan <- true
+	r.client.Connect()
 	go r.waitErr()
 }
 
@@ -175,7 +168,7 @@ func (r *LogRelay) waitErr() {
 	// waiting for error/disconenct.
 	var data interface{}
 	if err := r.client.Recv(data); err != nil {
-		r.connectedChan <- false
+		r.client.Disconnect()
 	}
 }
 

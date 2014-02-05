@@ -77,15 +77,21 @@ func (agent *Agent) Run() (stopReason string, update bool) {
 
 	// Try and block forever to connect because the agent can't do anything
 	// until connected.
-	agent.connect()
 
 	// Start client goroutines for sending/receving cmd/reply via channels
 	// so we can do non-blocking send/recv.  This only needs to be done once.
 	// The chans are buffered, so they work for awhile if not connected.
 	client := agent.client
-	go client.Run()
+	client.Start()
 	cmdChan := client.RecvChan()
 	replyChan := client.SendChan()
+
+	go agent.connect()
+
+	defer func() {
+		client.Disconnect()
+		client.Stop()
+	}()
 
 	/*
 	 * Start the status and cmd handlers.  Most messages must be serialized because,
@@ -178,16 +184,18 @@ AGENT_LOOP:
 				logger.Fatal("Too many statusHandler errors")
 				// todo: return or exit?
 			}
-		case err := <-client.ErrorChan():
-			// websocket closed/crashed/err
-			logger.Warn(err)
-			if agent.stopping {
-				logger.Warn("Lost connection to API while stopping")
-			} else {
-				agent.connect()
-				logger.Info("Reconnected to API")
+		case connected := <-client.ConnectChan():
+			if connected {
+				logger.Info("Connected to API")
 				cmdHandlerErrors = 0
 				statusHandlerErrors = 0
+			} else {
+				// websocket closed/crashed/err
+				logger.Warn("Lost connection to API")
+				if agent.stopping {
+					logger.Warn("Lost connection to API while stopping")
+				}
+				go agent.connect()
 			}
 		case <-agent.stopChan:
 			break AGENT_LOOP
@@ -197,24 +205,18 @@ AGENT_LOOP:
 
 	} // for AGENT_LOOP
 
-	client.Disconnect()
-
 	return agent.stopReason, agent.update
+}
+
+func (agent *Agent) Status() map[string]string {
+	return agent.status.All()
 }
 
 // @goroutine[0]
 func (agent *Agent) connect() {
 	agent.status.Update("Agent", "Connecting to API")
-	agent.client.Disconnect()
-	// No need sleep in the loop: Connect() has a built-in backoff algo.
-	for {
-		agent.logger.Info("Connecting to API")
-		if err := agent.client.Connect(); err != nil {
-			agent.logger.Warn(err)
-			continue
-		}
-		break // auth success
-	}
+	agent.logger.Info("Connecting to API")
+	agent.client.Connect()
 	agent.logger.Info("Connected to API")
 }
 

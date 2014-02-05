@@ -63,5 +63,11 @@ func (l *Logger) log(level byte, entry []interface{}) {
 	if l.cmd != nil {
 		logEntry.Cmd = fmt.Sprintf("%s", l.cmd)
 	}
-	l.logChan <- logEntry
+	select {
+	case l.logChan <- logEntry:
+	default:
+		// todo: lot.Println()?
+		// This happens when LogRelay.LogChan() is full, which means the log relay
+		// is receiving log entries faster than it can buffer and send them.
+	}
 }

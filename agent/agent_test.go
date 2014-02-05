@@ -31,15 +31,15 @@ type AgentTestSuite struct {
 	logRelay  *logrelay.LogRelay
 	logger    *pct.Logger
 	logChan   chan *proto.LogEntry
-	client    pct.WebsocketClient
 	readyChan chan bool
 	traceChan chan string
 	// --
+	client       *mock.WebsocketClient
 	sendDataChan chan interface{}
 	recvDataChan chan interface{}
 	sendChan     chan *proto.Cmd
 	recvChan     chan *proto.Reply
-	//
+	// --
 	doneChan   chan bool
 	stopReason string
 	upgrade    bool
@@ -84,7 +84,8 @@ func (s *AgentTestSuite) SetUpSuite(t *gocheck.C) {
 	s.sendDataChan = make(chan interface{}, 5)
 	s.recvDataChan = make(chan interface{}, 5)
 	s.client = mock.NewWebsocketClient(s.sendChan, s.recvChan, s.sendDataChan, s.recvDataChan)
-	go s.client.Run()
+	s.client.ErrChan = make(chan error)
+	go s.client.Start()
 
 	s.readyChan = make(chan bool, 2)
 	s.traceChan = make(chan string, 10)
@@ -114,10 +115,12 @@ func (s *AgentTestSuite) SetUpTest(t *gocheck.C) {
 }
 
 func (s *AgentTestSuite) TearDownTest(t *gocheck.C) {
-	s.readyChan <- true                   // qan.Stop() immediately
-	s.readyChan <- true                   // mm.Stop immediately
+	s.readyChan <- true // qan.Stop() immediately
+	s.readyChan <- true // mm.Stop immediately
+
 	s.sendChan <- &proto.Cmd{Cmd: "Stop"} // tell agent to stop itself
 	<-s.doneChan                          // wait for goroutine agent.Run() in test
+
 	test.DrainLogChan(s.logChan)
 	test.DrainSendChan(s.sendChan)
 	test.DrainRecvChan(s.recvChan)
@@ -158,6 +161,40 @@ func (s *AgentTestSuite) TestStatus(t *gocheck.C) {
 	}
 	if ok, diff := test.IsDeeply(gotReply, expectReply); !ok {
 		t.Error(diff)
+	}
+}
+
+func (s *AgentTestSuite) TestStatusAfterConnFail(t *gocheck.C) {
+	// Use optional ConnectChan in mock ws client for this test only.
+	connectChan := make(chan bool)
+	s.client.SetConnectChan(connectChan)
+	defer s.client.SetConnectChan(nil)
+
+	// Disconnect agent.
+	s.client.Disconnect()
+
+	// Wait for agent to reconnect.
+	<-connectChan
+	connectChan <- true
+
+	// Send cmd.
+	statusCmd := &proto.Cmd{
+		Ts:   time.Now(),
+		User: "daniel@percona.com",
+		Cmd:  "Status",
+	}
+	s.sendChan <- statusCmd
+
+	// Get reply.
+	got := test.WaitReply(s.recvChan)
+	if len(got) == 0 {
+		t.Fatal("Got reply")
+	}
+	gotReply := proto.StatusData{}
+	json.Unmarshal(got[0].Data, &gotReply)
+
+	if gotReply.Agent != "Ready" {
+		t.Errorf("Agent reply and ready after reconnect, got %#v", gotReply)
 	}
 }
 

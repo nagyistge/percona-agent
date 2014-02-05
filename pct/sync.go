@@ -1,6 +1,7 @@
 package pct
 
 type SyncChan struct {
+	StartChan chan bool
 	StopChan  chan bool
 	DoneChan  chan bool
 	CrashChan chan bool
@@ -9,12 +10,23 @@ type SyncChan struct {
 
 func NewSyncChan() *SyncChan {
 	sc := &SyncChan{
+		StartChan: make(chan bool),
 		StopChan:  make(chan bool),
 		DoneChan:  make(chan bool, 1),
 		CrashChan: make(chan bool, 1),
 		Crash:     true,
 	}
 	return sc
+}
+
+func (sync *SyncChan) Start() bool {
+	started := false
+	select {
+	case sync.StartChan <- true:
+		started = <-sync.StartChan
+	default:
+	}
+	return started
 }
 
 func (sync *SyncChan) Stop() {

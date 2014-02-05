@@ -54,6 +54,20 @@ func WaitData(recvDataChan chan interface{}) []interface{} {
 	return buf
 }
 
+func WaitBytes(dataChan chan []byte) [][]byte {
+	var buf [][]byte
+	var haveData bool = true
+	for haveData {
+		select {
+		case data := <-dataChan:
+			buf = append(buf, data)
+		case <-time.After(10 * time.Millisecond):
+			haveData = false
+		}
+	}
+	return buf
+}
+
 func WaitLog(recvDataChan chan interface{}, n int) []proto.LogEntry {
 	var buf []proto.LogEntry
 	var cnt int = 0
@@ -198,15 +212,6 @@ func WaitFiles(dir string, n int) []os.FileInfo {
 	}
 	files, _ := ioutil.ReadDir(dir)
 	return files
-}
-
-func WaitPost(postChan chan []byte) []byte {
-	select {
-	case data := <-postChan:
-		return data
-	case <-time.After(100 * time.Millisecond):
-		return nil
-	}
 }
 
 func WaitMmReport(dataChan chan interface{}) *mm.Report {
