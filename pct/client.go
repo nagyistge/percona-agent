@@ -18,6 +18,7 @@ type WebsocketClient interface {
 	ErrorChan() chan error
 
 	// Direct interface:
+	SendBytes(data []byte) error
 	Send(data interface{}) error
 	Recv(data interface{}) error
 	Conn() *websocket.Conn

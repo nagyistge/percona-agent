@@ -54,6 +54,7 @@ func (s *Sender) run() {
 		s.sync.Done()
 	}()
 
+	// todo: only connect when needed
 	go s.client.Connect()
 
 	for {
@@ -73,9 +74,8 @@ func (s *Sender) run() {
 				}
 
 				// Send the data
-				// todo: wrap in proto.Data
 				s.logger.Debug("Sending", file)
-				if err = s.client.Send(data); err != nil {
+				if err := s.client.SendBytes(data); err != nil {
 					s.logger.Error(err)
 				} else {
 					s.logger.Info("Sent", file)

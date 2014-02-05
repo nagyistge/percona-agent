@@ -42,6 +42,10 @@ func (c *NullClient) RecvChan() chan *proto.Cmd {
 	return nil
 }
 
+func (c *NullClient) SendBytes(data []byte) error {
+	return nil
+}
+
 func (c *NullClient) Send(data interface{}) error {
 	return nil
 }

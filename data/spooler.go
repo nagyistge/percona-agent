@@ -122,6 +122,7 @@ func (s *DiskvSpooler) run() {
 				s.logger.Warn(err)
 				continue
 			}
+			// todo: wrap in proto.Data
 			key := fmt.Sprintf("%d", time.Now().UnixNano())
 			if err := s.cache.Write(key, bytes); err != nil {
 				s.logger.Error(err)

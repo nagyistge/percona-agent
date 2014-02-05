@@ -54,6 +54,20 @@ func WaitData(recvDataChan chan interface{}) []interface{} {
 	return buf
 }
 
+func WaitBytes(dataChan chan []byte) [][]byte {
+	var buf [][]byte
+	var haveData bool = true
+	for haveData {
+		select {
+		case data := <-dataChan:
+			buf = append(buf, data)
+		case <-time.After(10 * time.Millisecond):
+			haveData = false
+		}
+	}
+	return buf
+}
+
 func WaitLog(recvDataChan chan interface{}, n int) []proto.LogEntry {
 	var buf []proto.LogEntry
 	var cnt int = 0

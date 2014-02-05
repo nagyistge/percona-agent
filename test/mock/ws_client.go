@@ -18,6 +18,7 @@ type WebsocketClient struct {
 	connectChan      chan bool
 	testConnectChan  chan bool
 	started          bool
+	RecvBytes        chan []byte
 }
 
 func NewWebsocketClient(sendChan chan *proto.Cmd, recvChan chan *proto.Reply, sendDataChan chan interface{}, recvDataChan chan interface{}) *WebsocketClient {
@@ -31,6 +32,7 @@ func NewWebsocketClient(sendChan chan *proto.Cmd, recvChan chan *proto.Reply, se
 		conn:             new(websocket.Conn),
 		RecvError:        make(chan error),
 		connectChan:      make(chan bool, 1),
+		RecvBytes:        make(chan []byte, 1),
 	}
 	return c
 }
@@ -87,6 +89,11 @@ func (c *WebsocketClient) RecvChan() chan *proto.Cmd {
 func (c *WebsocketClient) Send(data interface{}) error {
 	// Relay data from user to test.
 	c.testRecvDataChan <- data
+	return nil
+}
+
+func (c *WebsocketClient) SendBytes(data []byte) error {
+	c.RecvBytes <- data
 	return nil
 }
 

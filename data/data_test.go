@@ -288,15 +288,15 @@ func (s *SenderTestSuite) TestSendData(t *C) {
 		t.Fatal(err)
 	}
 
-	postData := test.WaitData(s.recvDataChan)
-	if postData != nil {
-		t.Errorf("No data sent before tick; got %+v", postData)
+	data := test.WaitBytes(s.client.RecvBytes)
+	if len(data) != 0 {
+		t.Errorf("No data sent before tick; got %+v", data)
 	}
 
 	s.tickerChan <- true
 
-	postData = test.WaitData(s.recvDataChan)
-	if same, diff := test.IsDeeply(postData, slow001); !same {
+	data = test.WaitBytes(s.client.RecvBytes)
+	if same, diff := test.IsDeeply(data[0], slow001); !same {
 		t.Error(diff)
 	}
 
