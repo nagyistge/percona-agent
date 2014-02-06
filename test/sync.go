@@ -60,7 +60,7 @@ func WaitBytes(dataChan chan []byte) [][]byte {
 		select {
 		case data := <-dataChan:
 			buf = append(buf, data)
-		case <-time.After(10 * time.Millisecond):
+		case <-time.After(100 * time.Millisecond):
 			haveData = false
 		}
 	}

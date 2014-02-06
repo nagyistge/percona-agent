@@ -167,7 +167,7 @@ func (r *LogRelay) waitErr() {
 	// so we block on recv, not expecting any data, just
 	// waiting for error/disconenct.
 	var data interface{}
-	if err := r.client.Recv(data); err != nil {
+	if err := r.client.Recv(data, 0); err != nil {
 		r.client.Disconnect()
 	}
 }

@@ -74,44 +74,13 @@ func (c *WebsocketClient) Stop() {
 
 func (c *WebsocketClient) Connect() {
 	for {
-		// Potentially wait before attempt.  Caller probably has us in a for loop,
-		// and if API is flapping, we don't want to connect too fast, too often.
+		// Wait before attempt to avoid DDoS'ing the API
+		// (there are many other agents in the world).
 		time.Sleep(c.backoff.Wait())
-
-		// Make websocket connection.  If this fails, either API is down or the ws
-		// address is wrong.
-		conn, err := websocket.DialConfig(c.config)
-		if err != nil {
-			c.logger.Info(err)
+		if err := c.ConnectOnce(); err != nil {
+			c.logger.Warn(err)
 			continue
 		}
-		c.conn = conn
-
-		// First API expects from us is our authentication credentials.
-		// If this fails, it's probably an internal API error, *not* failed auth
-		// because that happens next...
-		if err := c.Send(c.auth); err != nil {
-			conn.Close()
-			c.logger.Info(err)
-			continue
-		}
-
-		// After we send our auth creds, API responds with AuthReponse: any error = auth failure.
-		authResponse := new(proto.AuthResponse)
-		if err := c.Recv(authResponse); err != nil {
-			// websocket error, not auth fail
-			conn.Close()
-			c.logger.Info(err)
-			continue
-		}
-		if authResponse.Error != "" {
-			// auth fail (invalid API key, agent UUID, or combo of those)
-			conn.Close()
-			c.logger.Warn(authResponse)
-			continue
-		}
-
-		c.logger.Info("Connected to", c.url)
 
 		// Start/resume send() and recv() goroutines if Start() was called.
 		if c.started {
@@ -119,11 +88,43 @@ func (c *WebsocketClient) Connect() {
 			c.sendSync.Start()
 		}
 
-		// Success!
 		c.backoff.Success()
 		c.notifyConnect(true)
-		return
+		return // success
 	}
+}
+
+func (c *WebsocketClient) ConnectOnce() error {
+	// Make websocket connection.  If this fails, either API is down or the ws
+	// address is wrong.
+	conn, err := websocket.DialConfig(c.config)
+	if err != nil {
+		return err
+	}
+	c.conn = conn
+
+	// First API expects from us is our authentication credentials.
+	// If this fails, it's probably an internal API error, *not* failed auth
+	// because that happens next...
+	if err := c.Send(c.auth); err != nil {
+		conn.Close()
+		return err
+	}
+
+	// After we send our auth creds, API responds with AuthReponse: any error = auth failure.
+	authResponse := new(proto.AuthResponse)
+	if err := c.Recv(authResponse, 5); err != nil {
+		// websocket error, not auth fail
+		conn.Close()
+		return err
+	}
+	if authResponse.Error != "" {
+		// auth fail (invalid API key, agent UUID, or combo of those)
+		conn.Close()
+		return err
+	}
+
+	return nil
 }
 
 func (c *WebsocketClient) Disconnect() error {
@@ -200,7 +201,7 @@ func (c *WebsocketClient) recv() {
 
 			// Wait for Cmd from API.
 			cmd := &proto.Cmd{}
-			if err := c.Recv(cmd); err != nil {
+			if err := c.Recv(cmd, 0); err != nil {
 				select {
 				case c.errChan <- err:
 				default:
@@ -241,7 +242,11 @@ func (c *WebsocketClient) SendBytes(data []byte) error {
 	return websocket.Message.Send(c.conn, data)
 }
 
-func (c *WebsocketClient) Recv(data interface{}) error {
+func (c *WebsocketClient) Recv(data interface{}, timeout int) error {
+	if timeout > 0 {
+		t := time.Now().Add(time.Duration(timeout) * time.Second)
+		c.conn.SetReadDeadline(t)
+	}
 	return websocket.JSON.Receive(c.conn, data)
 }
 

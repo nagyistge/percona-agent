@@ -180,7 +180,7 @@ func (s *TestSuite) TestApiDisconnect(t *C) {
 	 * the sending goroutine to reconnect.
 	 */
 	var data interface{}
-	err = ws.Recv(data)
+	err = ws.Recv(data, 5)
 	t.Assert(err, NotNil) // EOF due to disconnect.
 }
 

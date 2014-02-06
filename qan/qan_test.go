@@ -118,7 +118,7 @@ func (s *ManagerTestSuite) SetUpSuite(c *gocheck.C) {
 	if s.dsn == "" {
 		c.Fatal("PCT_TEST_MYSQL_DSN is not set")
 	}
-	s.realmysql = mysql.NewConnection()
+	s.realmysql = &mysql.Connection{}
 	if err := s.realmysql.Connect(s.dsn); err != nil {
 		c.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func (s *ManagerTestSuite) SetUpSuite(c *gocheck.C) {
 
 	s.dataChan = make(chan interface{}, 2)
 	s.spool = mock.NewSpooler(s.dataChan)
-	s.workerFactory = qan.NewSlowLogWorkerFactory()
+	s.workerFactory = &qan.SlowLogWorkerFactory{}
 }
 
 func (s *ManagerTestSuite) SetUpTest(c *gocheck.C) {

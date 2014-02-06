@@ -1,8 +1,10 @@
 package data
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/peterbourgon/diskv"
 	"os"
@@ -17,7 +19,7 @@ const (
 type Spooler interface {
 	Start() error
 	Stop() error
-	Write(data interface{}) error
+	Write(service string, data interface{}) error
 	Files() <-chan string
 	Read(key string) ([]byte, error)
 	Remove(key string) error
@@ -25,22 +27,24 @@ type Spooler interface {
 
 // http://godoc.org/github.com/peterbourgon/diskv
 type DiskvSpooler struct {
-	logger  *pct.Logger
-	dataDir string
-	sz      Serializer
+	logger   *pct.Logger
+	dataDir  string
+	sz       Serializer
+	hostname string
 	// --
-	dataChan chan interface{}
+	dataChan chan *proto.Data
 	sync     *pct.SyncChan
 	cache    *diskv.Diskv
 }
 
-func NewDiskvSpooler(logger *pct.Logger, dataDir string, sz Serializer) *DiskvSpooler {
+func NewDiskvSpooler(logger *pct.Logger, dataDir string, sz Serializer, hostname string) *DiskvSpooler {
 	s := &DiskvSpooler{
-		logger:  logger,
-		dataDir: dataDir,
-		sz:      sz,
+		logger:   logger,
+		dataDir:  dataDir,
+		sz:       sz,
+		hostname: hostname,
 		// --
-		dataChan: make(chan interface{}, WRITE_BUFFER),
+		dataChan: make(chan *proto.Data, WRITE_BUFFER),
 		sync:     pct.NewSyncChan(),
 	}
 	return s
@@ -77,13 +81,31 @@ func (s *DiskvSpooler) Stop() error {
 	return nil
 }
 
-func (s *DiskvSpooler) Write(data interface{}) error {
+func (s *DiskvSpooler) Write(service string, data interface{}) error {
+	// Compress the data (probably, depends on serializer).
+	encodedData, err := s.sz.ToBytes(data)
+	if err != nil {
+		return err
+	}
+
+	// Wrap data in proto.Data with metadata to allow API to handle it properly.
+	protoData := &proto.Data{
+		Created:         time.Now().UTC(),
+		Hostname:        s.hostname,
+		Service:         service,
+		ContentType:     "application/json",
+		ContentEncoding: s.sz.Encoding(),
+		Data:            encodedData,
+	}
+
+	// Write data to disk.
 	select {
-	case s.dataChan <- data:
+	case s.dataChan <- protoData:
 	default:
 		s.logger.Warn("Spool write buffer is full")
 		return errors.New("Spool write buffer is full")
 	}
+
 	return nil
 }
 
@@ -116,14 +138,15 @@ func (s *DiskvSpooler) run() {
 
 	for {
 		select {
-		case data := <-s.dataChan:
-			bytes, err := s.sz.ToBytes(data)
+		case protoData := <-s.dataChan:
+			key := fmt.Sprintf("%s-%d.%s", protoData.Service, protoData.Created.UnixNano(), s.sz.FileType())
+
+			bytes, err := json.Marshal(protoData)
 			if err != nil {
-				s.logger.Warn(err)
+				s.logger.Error(err)
 				continue
 			}
-			// todo: wrap in proto.Data
-			key := fmt.Sprintf("%d", time.Now().UnixNano())
+
 			if err := s.cache.Write(key, bytes); err != nil {
 				s.logger.Error(err)
 			}

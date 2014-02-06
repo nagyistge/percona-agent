@@ -236,7 +236,7 @@ func (m *Manager) run() {
 					Global:      result.Global,
 					Class:       result.Classes,
 				}
-				m.spool.Write(report)
+				m.spool.Write("qan", report)
 			}()
 		case worker := <-m.workerDoneChan:
 			m.status.Update("QanLogParser", "Reaping worker")

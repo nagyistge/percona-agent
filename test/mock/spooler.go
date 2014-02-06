@@ -23,7 +23,7 @@ func (s *Spooler) Stop() error {
 	return nil
 }
 
-func (s *Spooler) Write(data interface{}) error {
+func (s *Spooler) Write(service string, data interface{}) error {
 	if s.dataChan != nil {
 		s.dataChan <- data
 	} else {

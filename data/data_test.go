@@ -50,12 +50,6 @@ func (s *DiskvSpoolerTestSuite) SetUpSuite(t *C) {
 	s.dataDir = dir
 }
 
-func (s *DiskvSpoolerTestSuite) TearDownSuite(t *C) {
-	if err := os.RemoveAll(s.dataDir); err != nil {
-		t.Error(err)
-	}
-}
-
 func (s *DiskvSpoolerTestSuite) SetUpTest(t *C) {
 	files, _ := filepath.Glob(s.dataDir + "/*")
 	for _, file := range files {
@@ -65,11 +59,19 @@ func (s *DiskvSpoolerTestSuite) SetUpTest(t *C) {
 	}
 }
 
+func (s *DiskvSpoolerTestSuite) TearDownSuite(t *C) {
+	if err := os.RemoveAll(s.dataDir); err != nil {
+		t.Error(err)
+	}
+}
+
+// --------------------------------------------------------------------------
+
 func (s *DiskvSpoolerTestSuite) TestSpoolData(t *C) {
 	sz := data.NewJsonSerializer()
 
 	// Create and start the spooler.
-	spool := data.NewDiskvSpooler(s.logger, s.dataDir, sz)
+	spool := data.NewDiskvSpooler(s.logger, s.dataDir, sz, "localhost")
 	if spool == nil {
 		t.Fatal("NewDiskvSpooler")
 	}
@@ -80,16 +82,16 @@ func (s *DiskvSpoolerTestSuite) TestSpoolData(t *C) {
 	}
 
 	// Doesn't matter what data we spool; just send some bytes...
-	ts, _ := time.Parse("2006-01-02 15:04:05", "2013-12-12 15:00:00")
+	now := time.Now()
 	logEntry := &proto.LogEntry{
-		Ts:      ts,
+		Ts:      now,
 		Level:   1,
 		Service: "mm",
 		Msg:     "hello world",
 	}
-	spool.Write(logEntry)
+	spool.Write("log", logEntry)
 
-	// Spooler should write data to disk, in format of serializer.
+	// Spooler should wrap data in proto.Data and write to disk, in format of serializer.
 	files := test.WaitFiles(s.dataDir, 1)
 	if len(files) != 1 {
 		t.Fatalf("Expected 1 file, got %d\n", len(files))
@@ -107,14 +109,35 @@ func (s *DiskvSpoolerTestSuite) TestSpoolData(t *C) {
 		t.Error("Spool writes and returns ", len(files), " file")
 	}
 
-	gotData, err := spool.Read(gotFiles[0])
+	// data is proto.Data[ metadata, Data: proto.LogEntry[...] ]
+	data, err := spool.Read(gotFiles[0])
 	if err != nil {
 		t.Error(err)
 	}
-	t.Assert(string(gotData), Equals, `{"Ts":"2013-12-12T15:00:00Z","Level":1,"Service":"mm","Msg":"hello world"}`)
+	protoData := &proto.Data{}
+	if err := json.Unmarshal(data, protoData); err != nil {
+		t.Fatal(err)
+	}
+	t.Check(protoData.Service, Equals, "log")
+	t.Check(protoData.ContentType, Equals, "application/json")
+	t.Check(protoData.ContentEncoding, Equals, "")
+	if protoData.Created.IsZero() || protoData.Created.Before(now) {
+		// The proto.Data can't be created before the data it contains.
+		t.Error("proto.Data.Created after data, got %s", protoData.Created)
+	}
 
+	// The LogoEntry we get back should be identical the one we spooled.
+	gotLogEntry := &proto.LogEntry{}
+	if err := json.Unmarshal(protoData.Data, gotLogEntry); err != nil {
+		t.Fatal(err)
+	}
+	if same, diff := test.IsDeeply(gotLogEntry, logEntry); !same {
+		t.Logf("%#v", gotLogEntry)
+		t.Error(diff)
+	}
+
+	// Removing data from spooler should remove the file.
 	spool.Remove(gotFiles[0])
-
 	files = test.WaitFiles(s.dataDir, -1)
 	if len(files) != 0 {
 		t.Fatalf("Expected no files, got %d\n", len(files))
@@ -124,12 +147,12 @@ func (s *DiskvSpoolerTestSuite) TestSpoolData(t *C) {
 }
 
 func (s *DiskvSpoolerTestSuite) TestSpoolGzipData(t *C) {
-	//go debug(s.logChan)
+	// Same as TestSpoolData, but use the gzip serializer.
 
 	sz := data.NewJsonGzipSerializer()
 
 	// See TestSpoolData() for description of these tasks.
-	spool := data.NewDiskvSpooler(s.logger, s.dataDir, sz)
+	spool := data.NewDiskvSpooler(s.logger, s.dataDir, sz, "localhost")
 	if spool == nil {
 		t.Fatal("NewDiskvSpooler")
 	}
@@ -139,14 +162,14 @@ func (s *DiskvSpoolerTestSuite) TestSpoolGzipData(t *C) {
 		t.Fatal(err)
 	}
 
-	ts, _ := time.Parse("2006-01-02 15:04:05", "2013-12-12 15:00:00")
+	now := time.Now()
 	logEntry := &proto.LogEntry{
-		Ts:      ts,
+		Ts:      now,
 		Level:   1,
 		Service: "mm",
 		Msg:     "hello world",
 	}
-	spool.Write(logEntry)
+	spool.Write("log", logEntry)
 
 	files := test.WaitFiles(s.dataDir, 1)
 	if len(files) != 1 {
@@ -167,14 +190,20 @@ func (s *DiskvSpoolerTestSuite) TestSpoolGzipData(t *C) {
 		t.Fatal("1st file has data")
 	}
 
-	// Decompress and decode and we should have the same LogEntry.
-	b := bytes.NewBuffer(gotData)
+	protoData := &proto.Data{}
+	if err := json.Unmarshal(gotData, protoData); err != nil {
+		t.Fatal(err)
+	}
+	t.Check(protoData.Service, Equals, "log")
+	t.Check(protoData.ContentType, Equals, "application/json")
+	t.Check(protoData.ContentEncoding, Equals, "gzip")
 
+	// Decompress and decode and we should have the same LogEntry.
+	b := bytes.NewBuffer(protoData.Data)
 	g, err := gzip.NewReader(b)
 	if err != nil {
 		t.Error(err)
 	}
-
 	d := json.NewDecoder(g)
 	gotLogEntry := &proto.LogEntry{}
 	err = d.Decode(gotLogEntry)
@@ -191,12 +220,12 @@ func (s *DiskvSpoolerTestSuite) TestSpoolGzipData(t *C) {
 	 */
 
 	logEntry2 := &proto.LogEntry{
-		Ts:      ts,
+		Ts:      now,
 		Level:   2,
 		Service: "mm",
 		Msg:     "number 2",
 	}
-	spool.Write(logEntry2)
+	spool.Write("log", logEntry2)
 
 	files = test.WaitFiles(s.dataDir, 2)
 	if len(files) != 2 {
@@ -217,7 +246,15 @@ func (s *DiskvSpoolerTestSuite) TestSpoolGzipData(t *C) {
 		t.Fatal("2nd file has data")
 	}
 
-	b = bytes.NewBuffer(gotData)
+	protoData = &proto.Data{}
+	if err := json.Unmarshal(gotData, protoData); err != nil {
+		t.Fatal(err)
+	}
+	t.Check(protoData.Service, Equals, "log")
+	t.Check(protoData.ContentType, Equals, "application/json")
+	t.Check(protoData.ContentEncoding, Equals, "gzip")
+
+	b = bytes.NewBuffer(protoData.Data)
 	g, err = gzip.NewReader(b)
 	if err != nil {
 		t.Error(err)
@@ -245,9 +282,9 @@ type SenderTestSuite struct {
 	logger     *pct.Logger
 	tickerChan chan bool
 	// --
-	client       *mock.WebsocketClient
-	sendDataChan chan interface{}
-	recvDataChan chan interface{}
+	dataChan chan []byte
+	respChan chan interface{}
+	client   *mock.DataClient
 }
 
 var _ = Suite(&SenderTestSuite{})
@@ -257,18 +294,12 @@ func (s *SenderTestSuite) SetUpSuite(t *C) {
 	s.logger = pct.NewLogger(s.logChan, "data_test")
 	s.tickerChan = make(chan bool, 1)
 
-	s.sendDataChan = make(chan interface{}, 5)
-	s.recvDataChan = make(chan interface{}, 5)
-	s.client = mock.NewWebsocketClient(nil, nil, s.sendDataChan, s.recvDataChan)
-	s.client.ErrChan = make(chan error)
-	go s.client.Start()
+	s.dataChan = make(chan []byte, 5)
+	s.respChan = make(chan interface{})
+	s.client = mock.NewDataClient(s.dataChan, s.respChan)
 }
 
-func (s *SenderTestSuite) TearDownSuite(t *C) {
-}
-
-func (s *SenderTestSuite) SetUpTest(t *C) {
-}
+// --------------------------------------------------------------------------
 
 func (s *SenderTestSuite) TestSendData(t *C) {
 	spool := mock.NewSpooler(nil)
@@ -288,20 +319,26 @@ func (s *SenderTestSuite) TestSendData(t *C) {
 		t.Fatal(err)
 	}
 
-	data := test.WaitBytes(s.client.RecvBytes)
+	data := test.WaitBytes(s.dataChan)
 	if len(data) != 0 {
 		t.Errorf("No data sent before tick; got %+v", data)
 	}
 
 	s.tickerChan <- true
 
-	data = test.WaitBytes(s.client.RecvBytes)
+	data = test.WaitBytes(s.dataChan)
 	if same, diff := test.IsDeeply(data[0], slow001); !same {
 		t.Error(diff)
 	}
 
-	err = sender.Stop()
-	if err != nil {
-		t.Fatal(err)
+	// todo: check that data file not removed before response received
+
+	select {
+	case s.respChan <- &proto.Response{Code: 200}:
+	case <-time.After(500 * time.Millisecond):
+		t.Error("Sender receives prot.Response after sending data")
 	}
+
+	err = sender.Stop()
+	t.Assert(err, IsNil)
 }

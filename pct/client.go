@@ -7,6 +7,7 @@ import (
 
 type WebsocketClient interface {
 	Connect()
+	ConnectOnce() error
 	Disconnect() error
 
 	// Channel interface:
@@ -20,6 +21,6 @@ type WebsocketClient interface {
 	// Direct interface:
 	SendBytes(data []byte) error
 	Send(data interface{}) error
-	Recv(data interface{}) error
+	Recv(data interface{}, timeout uint) error
 	Conn() *websocket.Conn
 }

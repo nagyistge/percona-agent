@@ -103,5 +103,5 @@ func (a *Aggregator) report(startTs time.Time, metrics Metrics) {
 		Ts:      startTs,
 		Metrics: metrics,
 	}
-	a.spool.Write(report)
+	a.spool.Write("mm", report)
 }

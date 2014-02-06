@@ -23,6 +23,10 @@ func NewNullClient() *NullClient {
 func (c *NullClient) Connect() {
 }
 
+func (c *NullClient) ConnectOnce() error {
+	return nil
+}
+
 func (c *NullClient) Disconnect() error {
 	return nil
 }
@@ -49,7 +53,7 @@ func (c *NullClient) Send(data interface{}) error {
 	return nil
 }
 
-func (c *NullClient) Recv(data interface{}) error {
+func (c *NullClient) Recv(data interface{}, timeout uint) error {
 	return nil
 }
 

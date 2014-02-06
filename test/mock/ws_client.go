@@ -49,6 +49,10 @@ func (c *WebsocketClient) Connect() {
 	c.connectChan <- true
 }
 
+func (c *WebsocketClient) ConnectOnce() error {
+	return nil
+}
+
 func (c *WebsocketClient) Disconnect() error {
 	c.connectChan <- false
 	return nil
@@ -96,7 +100,7 @@ func (c *WebsocketClient) SendBytes(data []byte) error {
 	return nil
 }
 
-func (c *WebsocketClient) Recv(data interface{}) error {
+func (c *WebsocketClient) Recv(data interface{}, timeout uint) error {
 	// Relay data from test to user.
 	select {
 	case data = <-c.testSendDataChan:
