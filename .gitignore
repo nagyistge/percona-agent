@@ -1,5 +1,5 @@
 *.swp
 *.tmp
-bin/percona-agent
-bin/bin
+bin/percona-agent/percona-agent
+bin/percona-agent-config/percona-agent-config
 coverage.out

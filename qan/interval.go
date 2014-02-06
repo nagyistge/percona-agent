@@ -30,6 +30,13 @@ type IntervalIterFactory interface {
 	Make(filename FilenameFunc, tickChan chan time.Time) IntervalIter
 }
 
+type FileIntervalIterFactory struct {
+}
+
+func (f *FileIntervalIterFactory) Make(filename FilenameFunc, tickChan chan time.Time) IntervalIter {
+	return NewFileIntervalIter(filename, tickChan)
+}
+
 // Implements IntervalIter:
 type FileIntervalIter struct {
 	filename FilenameFunc

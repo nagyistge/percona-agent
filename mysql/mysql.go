@@ -17,11 +17,6 @@ type Connection struct {
 	conn *sql.DB
 }
 
-func NewConnection() *Connection {
-	c := &Connection{}
-	return c
-}
-
 func (c *Connection) DB() *sql.DB {
 	return c.conn
 }

@@ -37,7 +37,7 @@ func NewWebsocketClient(sendChan chan *proto.Cmd, recvChan chan *proto.Reply, se
 	return c
 }
 
-func (c *WebsocketClient) Connect() error {
+func (c *WebsocketClient) Connect() {
 	if c.testConnectChan != nil {
 		// Wait for test to let user/agent connect.
 		select {
@@ -47,7 +47,6 @@ func (c *WebsocketClient) Connect() error {
 		<-c.testConnectChan
 	}
 	c.connectChan <- true
-	return nil
 }
 
 func (c *WebsocketClient) Disconnect() error {

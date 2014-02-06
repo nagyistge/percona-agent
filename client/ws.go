@@ -236,6 +236,11 @@ func (c *WebsocketClient) Send(data interface{}) error {
 	return websocket.JSON.Send(c.conn, data)
 }
 
+func (c *WebsocketClient) SendBytes(data []byte) error {
+	c.conn.SetWriteDeadline(time.Now().Add(20 * time.Second))
+	return websocket.Message.Send(c.conn, data)
+}
+
 func (c *WebsocketClient) Recv(data interface{}) error {
 	return websocket.JSON.Receive(c.conn, data)
 }

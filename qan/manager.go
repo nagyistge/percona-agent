@@ -161,7 +161,7 @@ func (m *Manager) IsRunning() bool {
 	return false // not running
 }
 
-func (m *Manager) Do(cmd *proto.Cmd) error {
+func (m *Manager) Handle(cmd *proto.Cmd) error {
 	return pct.UnknownCmdError{Cmd: cmd.Cmd}
 }
 

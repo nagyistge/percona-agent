@@ -18,6 +18,13 @@ type TickerFactory interface {
 	Make(atInterval uint) Ticker
 }
 
+type EvenTickerFactory struct {
+}
+
+func (f *EvenTickerFactory) Make(atInterval uint) Ticker {
+	return NewEvenTicker(atInterval, time.Sleep)
+}
+
 type EvenTicker struct {
 	atInterval uint
 	sleep      func(time.Duration)

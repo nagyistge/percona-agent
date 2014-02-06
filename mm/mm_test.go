@@ -242,16 +242,16 @@ func (s *AggregatorTestSuite) TestC003Lost(t *gocheck.C) {
 /////////////////////////////////////////////////////////////////////////////
 
 type ManagerTestSuite struct {
-	logChan       chan *proto.LogEntry
-	logger        *pct.Logger
-	mockMonitor   mm.Monitor
-	monitors      map[string]mm.Monitor
-	tickChan      chan time.Time
-	clock         *mock.Clock
-	dataChan      chan interface{}
-	spool         data.Spooler
-	traceChan     chan string
-	readyChan     chan bool
+	logChan     chan *proto.LogEntry
+	logger      *pct.Logger
+	mockMonitor mm.Monitor
+	monitors    map[string]mm.Monitor
+	tickChan    chan time.Time
+	clock       *mock.Clock
+	dataChan    chan interface{}
+	spool       data.Spooler
+	traceChan   chan string
+	readyChan   chan bool
 }
 
 var _ = gocheck.Suite(&ManagerTestSuite{})

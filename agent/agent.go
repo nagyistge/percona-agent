@@ -1,17 +1,14 @@
 package agent
 
 import (
-	// Core
 	"encoding/json"
 	"fmt"
+	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-tools/logrelay"
+	"github.com/percona/cloud-tools/pct"
 	"log"
 	"sync"
 	"time"
-	// External
-	"github.com/percona/cloud-protocol/proto"
-	// Internal
-	"github.com/percona/cloud-tools/logrelay"
-	"github.com/percona/cloud-tools/pct"
 )
 
 const (

@@ -63,9 +63,9 @@ func (m *Monitor) Start(config []byte, tickChan chan time.Time, collectionChan c
 }
 
 // @goroutine[0]
-func (m *Monitor) Stop() {
+func (m *Monitor) Stop() error {
 	if m.config == nil {
-		return // already stopped
+		return nil // already stopped
 	}
 
 	// Stop run().  When it returns, it updates status to "Stopped".
@@ -76,11 +76,17 @@ func (m *Monitor) Stop() {
 	m.config = nil // no config if not running
 
 	// Do not update status to "Stopped" here; run() does that on return.
+	return nil
 }
 
 // @goroutine[0]
 func (m *Monitor) Status() map[string]string {
 	return m.status.All()
+}
+
+// @goroutine[0]
+func (m *Monitor) TickChan() chan time.Time {
+	return m.tickChan
 }
 
 /////////////////////////////////////////////////////////////////////////////
