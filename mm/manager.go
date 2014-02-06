@@ -7,40 +7,43 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/data"
 	"github.com/percona/cloud-tools/pct"
+	"github.com/percona/cloud-tools/ticker"
+	"time"
 )
 
+// We use one binding per unique Interval.Report.  For example, if some monitors
+// report every 60s and others every 10s, then there are two bindings.  All monitors
+// with the same report interval share the same binding: collectionChan to send
+// metrics and aggregator summarizing and reporting those metrics when tickChan ticks.
 type Binding struct {
-	ticker         pct.Ticker
-	collectionChan chan *Collection
 	aggregator     *Aggregator
+	collectionChan chan *Collection // <- metrics from monitors
+	tickChan       chan time.Time   // -> aggregator reports
 }
 
 // todo: remember originating cmd for start service and start monitor,
 //       return with ServiceIsRunningError
 
 type Manager struct {
-	logger        *pct.Logger
-	monitors      map[string]Monitor
-	tickerFactory pct.TickerFactory
-	spool         data.Spooler
+	logger   *pct.Logger
+	monitors map[string]Monitor
+	clock    ticker.Manager
+	spool    data.Spooler
 	// --
-	config         *Config // nil if not running
-	status         *pct.Status
-	aggregators    map[uint]*Binding
-	collectTickers map[string]pct.Ticker
+	config      *Config // nil if not running
+	status      *pct.Status
+	aggregators map[uint]*Binding
 }
 
-func NewManager(logger *pct.Logger, monitors map[string]Monitor, tickerFactory pct.TickerFactory, spool data.Spooler) *Manager {
+func NewManager(logger *pct.Logger, monitors map[string]Monitor, clock ticker.Manager, spool data.Spooler) *Manager {
 	m := &Manager{
-		logger:        logger,
-		monitors:      monitors,
-		tickerFactory: tickerFactory,
-		spool:         spool,
+		logger:   logger,
+		monitors: monitors,
+		clock:    clock,
+		spool:    spool,
 		// --
-		config:         nil, // not running yet
-		status:         pct.NewStatus([]string{"Mm"}),
-		aggregators:    make(map[uint]*Binding),
-		collectTickers: make(map[string]pct.Ticker),
+		status:      pct.NewStatus([]string{"Mm"}),
+		aggregators: make(map[uint]*Binding),
 	}
 	return m
 }
@@ -55,7 +58,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 		return pct.ServiceIsRunningError{"Mm"}
 	}
 
-	c := new(Config)
+	c := &Config{}
 	if err := json.Unmarshal(config, c); err != nil {
 		return err
 	}
@@ -73,15 +76,17 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 		}
 
 		if _, ok := m.aggregators[interval.Report]; !ok {
-			ticker := m.tickerFactory.Make(interval.Report)
-			collectionChan := make(chan *Collection, 2*len(c.Intervals))
-			aggregator := NewAggregator(ticker, collectionChan, m.spool)
+			tickChan := make(chan time.Time)
+			m.clock.Add(tickChan, interval.Report)
 
-			msg := fmt.Sprintf("Synchronizing %d second report interval", interval.Report)
-			m.status.UpdateRe("Mm", msg, cmd)
+			collectionChan := make(chan *Collection, 2*len(c.Intervals))
+			aggregator := NewAggregator(tickChan, collectionChan, m.spool)
 			aggregator.Start()
 
-			m.aggregators[interval.Report] = &Binding{ticker, collectionChan, aggregator}
+			//msg := fmt.Sprintf("Synchronizing %d second report interval", interval.Report)
+			//m.status.UpdateRe("Mm", msg, cmd)
+
+			m.aggregators[interval.Report] = &Binding{aggregator, collectionChan, tickChan}
 		}
 	}
 
@@ -101,7 +106,7 @@ func (m *Manager) Stop(cmd *proto.Cmd) error {
 	// Stop and remove all aggregators.
 	for n, b := range m.aggregators {
 		b.aggregator.Stop()
-		b.ticker.Stop()
+		m.clock.Remove(b.tickChan)
 		delete(m.aggregators, n)
 	}
 
@@ -144,14 +149,25 @@ func (m *Manager) Handle(cmd *proto.Cmd) error {
 	case "Start":
 		m.status.UpdateRe("Mm", "Starting "+mm.Name+" monitor", cmd)
 		interval := m.config.Intervals[mm.Name]
-		m.collectTickers[mm.Name] = m.tickerFactory.Make(interval.Collect)
-		collectionChan := m.aggregators[interval.Report].collectionChan
-		err = monitor.Start(mm.Config, m.collectTickers[mm.Name], collectionChan)
+
+		// When to collect.
+		tickChan := make(chan time.Time)
+		m.clock.Add(tickChan, interval.Collect)
+
+		// Where to send metrics.
+		a, ok := m.aggregators[interval.Report]
+		if !ok {
+			// Shouldn't happen.
+			err = errors.New(fmt.Sprintf("No %ds aggregator for %s monitor report interval", interval.Report, mm.Name))
+			break
+		}
+
+		// Run the Metrics Monitor!
+		err = monitor.Start(mm.Config, tickChan, a.collectionChan)
 	case "Stop":
 		m.status.UpdateRe("Mm", "Stopping "+mm.Name+" monitor", cmd)
+		m.clock.Remove(monitor.TickChan())
 		err = monitor.Stop()
-		m.collectTickers[mm.Name].Stop()
-		delete(m.collectTickers, mm.Name)
 	default:
 		err = pct.UnknownCmdError{Cmd: cmd.Cmd}
 	}

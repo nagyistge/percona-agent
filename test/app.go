@@ -2,12 +2,12 @@ package test
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"io/ioutil"
+	"log"
 	"os"
 	"time"
-	"fmt"
-	"log"
 )
 
 func init() {
@@ -90,11 +90,10 @@ func FileSize(fileName string) (int64, error) {
 	return stat.Size(), nil
 }
 
-func Dump(v interface {}) {
+func Dump(v interface{}) {
 	bytes, _ := json.MarshalIndent(v, "", "  ")
 	fmt.Println(string(bytes))
 }
-
 
 func LoadMmReport(file string, v interface{}) error {
 	bytes, err := ioutil.ReadFile(file)

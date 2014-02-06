@@ -9,6 +9,7 @@ import (
 type Connector interface {
 	Connect(dsn string) error
 	Set([]Query) error
+	GetGlobalVarString(varName string) string
 }
 
 type Connection struct {

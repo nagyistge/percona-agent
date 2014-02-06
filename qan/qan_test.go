@@ -104,9 +104,11 @@ type ManagerTestSuite struct {
 	logger        *pct.Logger
 	intervalChan  chan *qan.Interval
 	iter          qan.IntervalIter
+	iterFactory   *mock.IntervalIterFactory
 	dataChan      chan interface{}
 	spool         *mock.Spooler
 	workerFactory qan.WorkerFactory
+	clock         *mock.Clock
 }
 
 var _ = gocheck.Suite(&ManagerTestSuite{})
@@ -132,6 +134,9 @@ func (s *ManagerTestSuite) SetUpSuite(c *gocheck.C) {
 
 	s.intervalChan = make(chan *qan.Interval, 1)
 	s.iter = mock.NewMockIntervalIter(s.intervalChan)
+	s.iterFactory = &mock.IntervalIterFactory{
+		Iters: []qan.IntervalIter{s.iter},
+	}
 
 	s.dataChan = make(chan interface{}, 2)
 	s.spool = mock.NewSpooler(s.dataChan)
@@ -144,6 +149,7 @@ func (s *ManagerTestSuite) SetUpTest(c *gocheck.C) {
 		c.Fatal(err)
 	}
 	s.nullmysql.Reset()
+	s.clock = mock.NewClock()
 }
 
 func (s *ManagerTestSuite) TearDownTest(c *gocheck.C) {
@@ -153,13 +159,15 @@ func (s *ManagerTestSuite) TearDownTest(c *gocheck.C) {
 	}
 }
 
+// --------------------------------------------------------------------------
+
 func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 
 	/**
 	 * Create and start manager.
 	 */
 
-	m := qan.NewManager(s.logger, s.realmysql, s.iter, s.workerFactory, s.spool)
+	m := qan.NewManager(s.logger, s.realmysql, s.clock, s.iterFactory, s.workerFactory, s.spool)
 	if m == nil {
 		c.Fatal("Create qan.Manager")
 	}
@@ -238,6 +246,14 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 		c.Error("Error is type pct.ServiceIsRunningError, got %T", err)
 	}
 
+	// It should add a tickChan for the interval iter.
+	if len(s.clock.Added) != 1 {
+		c.Error("Adds tickChan to clock, got %#v", s.clock.Added)
+	}
+	if len(s.clock.Removed) != 0 {
+		c.Error("tickChan not removed yet")
+	}
+
 	/**
 	 * Have manager run a worker, parse, and send data.
 	 */
@@ -251,11 +267,11 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	}
 	s.intervalChan <- interv
 
-	v := <-s.dataChan
-	if v == nil {
+	v := test.WaitData(s.dataChan)
+	if len(v) == 0 {
 		c.Fatal("Got report")
 	}
-	report := v.(*qan.Report)
+	report := v[0].(*qan.Report)
 
 	result := &qan.Result{
 		StopOffset: report.StopOffset,
@@ -284,7 +300,7 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	// It should start without error.
 	c.Assert(err, gocheck.IsNil)
 
-	// It should report itself as running
+	// It should not report itself as running.
 	if m.IsRunning() {
 		c.Error("Manager.IsRunning() is false after Start()")
 	}
@@ -295,6 +311,14 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 
 	longQueryTime = s.realmysql.GetGlobalVarNumber("long_query_time")
 	c.Assert(longQueryTime, gocheck.Equals, 10.0)
+
+	// It should remove the tickChan (and not have added others).
+	if len(s.clock.Added) != 1 {
+		c.Error("Added only 1 tickChan, got %#v", s.clock.Added)
+	}
+	if len(s.clock.Removed) != 1 {
+		c.Error("Removed tickChan")
+	}
 }
 
 func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
@@ -323,7 +347,7 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
 	 */
 
 	// See TestStartService() for description of these startup tasks.
-	m := qan.NewManager(s.logger, s.nullmysql, s.iter, s.workerFactory, s.spool)
+	m := qan.NewManager(s.logger, s.nullmysql, s.clock, s.iterFactory, s.workerFactory, s.spool)
 	if m == nil {
 		c.Fatal("Create qan.Manager")
 	}
@@ -433,7 +457,7 @@ func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
 		os.Remove(file)
 	}
 
-	m := qan.NewManager(s.logger, s.nullmysql, s.iter, s.workerFactory, s.spool)
+	m := qan.NewManager(s.logger, s.nullmysql, s.clock, s.iterFactory, s.workerFactory, s.spool)
 	if m == nil {
 		c.Fatal("Create qan.Manager")
 	}
@@ -573,7 +597,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
 	cp.Run()
 
 	// Create and start manager with mock workers.
-	m := qan.NewManager(s.logger, s.nullmysql, s.iter, f, s.spool)
+	m := qan.NewManager(s.logger, s.nullmysql, s.clock, s.iterFactory, f, s.spool)
 	if m == nil {
 		c.Fatal("Create qan.Manager")
 	}
@@ -696,7 +720,7 @@ func getFilename() (string, error) {
 }
 
 func (s *IntervalTestSuite) TestIterFile(c *gocheck.C) {
-	tickerChan := make(chan time.Time)
+	tickChan := make(chan time.Time)
 
 	// This is the file we iterate.  It's 3 bytes large to start,
 	// so that should be the StartOffset.
@@ -707,19 +731,19 @@ func (s *IntervalTestSuite) TestIterFile(c *gocheck.C) {
 	defer func() { os.Remove(tmpFile.Name()) }()
 
 	// Start interating the file, waiting for ticks.
-	i := qan.NewFileIntervalIter(getFilename, tickerChan)
+	i := qan.NewFileIntervalIter(getFilename, tickChan)
 	i.Start()
 
 	// Send a tick to start the interval
 	t1 := time.Now()
-	tickerChan <- t1
+	tickChan <- t1
 
 	// Write more data to the file, pretend time passes...
 	_ = ioutil.WriteFile(tmpFile.Name(), []byte("123456"), 0777)
 
 	// Send a 2nd tick to finish the interval
 	t2 := time.Now()
-	tickerChan <- t2
+	tickChan <- t2
 
 	// Get the interval
 	got := <-i.IntervalChan()
@@ -750,7 +774,7 @@ func (s *IntervalTestSuite) TestIterFile(c *gocheck.C) {
 	_ = ioutil.WriteFile(fileName, []byte("123456789A"), 0777)
 
 	t3 := time.Now()
-	tickerChan <- t3
+	tickChan <- t3
 
 	got = <-i.IntervalChan()
 	expect = &qan.Interval{
@@ -766,7 +790,7 @@ func (s *IntervalTestSuite) TestIterFile(c *gocheck.C) {
 	_ = ioutil.WriteFile(fileName, []byte("123456789ABCDEF"), 0777)
 	//                                               ^^^^^ new data
 	t4 := time.Now()
-	tickerChan <- t4
+	tickChan <- t4
 
 	got = <-i.IntervalChan()
 	expect = &qan.Interval{

@@ -36,3 +36,7 @@ func (n *NullMySQL) Reset() {
 	n.dsn = ""
 	n.set = []mysql.Query{}
 }
+
+func (n *NullMySQL) GetGlobalVarString(varName string) string {
+	return ""
+}

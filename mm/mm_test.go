@@ -24,12 +24,11 @@ func Test(t *testing.T) { gocheck.TestingT(t) }
 var sample = os.Getenv("GOPATH") + "/src/github.com/percona/cloud-tools/test/mm"
 
 /////////////////////////////////////////////////////////////////////////////
-// Worker test suite
+// Aggregator test suite
 /////////////////////////////////////////////////////////////////////////////
 
 type AggregatorTestSuite struct {
-	tickerChan     chan time.Time
-	ticker         pct.Ticker
+	tickChan       chan time.Time
 	collectionChan chan *mm.Collection
 	dataChan       chan interface{}
 	spool          *mock.Spooler
@@ -38,8 +37,7 @@ type AggregatorTestSuite struct {
 var _ = gocheck.Suite(&AggregatorTestSuite{})
 
 func (s *AggregatorTestSuite) SetUpSuite(t *gocheck.C) {
-	s.tickerChan = make(chan time.Time)
-	s.ticker = mock.NewTicker(nil, s.tickerChan)
+	s.tickChan = make(chan time.Time)
 	s.collectionChan = make(chan *mm.Collection)
 	s.dataChan = make(chan interface{}, 1)
 	s.spool = mock.NewSpooler(s.dataChan)
@@ -59,7 +57,7 @@ func sendCollection(file string, collectionChan chan *mm.Collection) error {
 }
 
 func (s *AggregatorTestSuite) TestC001(t *gocheck.C) {
-	a := mm.NewAggregator(s.ticker, s.collectionChan, s.spool)
+	a := mm.NewAggregator(s.tickChan, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
 
@@ -76,7 +74,7 @@ func (s *AggregatorTestSuite) TestC001(t *gocheck.C) {
 		t.Error("No report before tick, got: %+v", got)
 	}
 
-	s.tickerChan <- t1
+	s.tickChan <- t1
 
 	got = test.WaitMmReport(s.dataChan)
 	if got != nil {
@@ -87,7 +85,7 @@ func (s *AggregatorTestSuite) TestC001(t *gocheck.C) {
 		t.Fatal(err)
 	}
 
-	s.tickerChan <- t2
+	s.tickChan <- t2
 
 	got = test.WaitMmReport(s.dataChan)
 	if got == nil {
@@ -107,12 +105,12 @@ func (s *AggregatorTestSuite) TestC001(t *gocheck.C) {
 }
 
 func (s *AggregatorTestSuite) TestC002(t *gocheck.C) {
-	a := mm.NewAggregator(s.ticker, s.collectionChan, s.spool)
+	a := mm.NewAggregator(s.tickChan, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
 
 	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
-	s.tickerChan <- t1
+	s.tickChan <- t1
 
 	for i := 1; i <= 5; i++ {
 		file := fmt.Sprintf("%s/c002-%d.json", sample, i)
@@ -122,7 +120,7 @@ func (s *AggregatorTestSuite) TestC002(t *gocheck.C) {
 	}
 
 	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
-	s.tickerChan <- t2
+	s.tickChan <- t2
 
 	got := test.WaitMmReport(s.dataChan)
 	expect := &mm.Report{}
@@ -136,12 +134,12 @@ func (s *AggregatorTestSuite) TestC002(t *gocheck.C) {
 
 // All zero values
 func (s *AggregatorTestSuite) TestC000(t *gocheck.C) {
-	a := mm.NewAggregator(s.ticker, s.collectionChan, s.spool)
+	a := mm.NewAggregator(s.tickChan, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
 
 	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
-	s.tickerChan <- t1
+	s.tickChan <- t1
 
 	file := sample + "/c000.json"
 	if err := sendCollection(file, s.collectionChan); err != nil {
@@ -149,7 +147,7 @@ func (s *AggregatorTestSuite) TestC000(t *gocheck.C) {
 	}
 
 	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
-	s.tickerChan <- t2
+	s.tickChan <- t2
 
 	got := test.WaitMmReport(s.dataChan)
 	expect := &mm.Report{}
@@ -163,12 +161,12 @@ func (s *AggregatorTestSuite) TestC000(t *gocheck.C) {
 
 // COUNTER
 func (s *AggregatorTestSuite) TestC003(t *gocheck.C) {
-	a := mm.NewAggregator(s.ticker, s.collectionChan, s.spool)
+	a := mm.NewAggregator(s.tickChan, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
 
 	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
-	s.tickerChan <- t1
+	s.tickChan <- t1
 
 	for i := 1; i <= 5; i++ {
 		file := fmt.Sprintf("%s/c003-%d.json", sample, i)
@@ -178,7 +176,7 @@ func (s *AggregatorTestSuite) TestC003(t *gocheck.C) {
 	}
 
 	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
-	s.tickerChan <- t2
+	s.tickChan <- t2
 
 	/**
 	 * Pretend we're monitoring Bytes_sents every second:
@@ -203,12 +201,12 @@ func (s *AggregatorTestSuite) TestC003(t *gocheck.C) {
 }
 
 func (s *AggregatorTestSuite) TestC003Lost(t *gocheck.C) {
-	a := mm.NewAggregator(s.ticker, s.collectionChan, s.spool)
+	a := mm.NewAggregator(s.tickChan, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
 
 	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
-	s.tickerChan <- t1
+	s.tickChan <- t1
 
 	// The full sequence is files 1-5, but we send only 1 and 5,
 	// simulating monitor failure during 2-4.  More below...
@@ -222,7 +220,7 @@ func (s *AggregatorTestSuite) TestC003Lost(t *gocheck.C) {
 	}
 
 	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
-	s.tickerChan <- t2
+	s.tickChan <- t2
 
 	/**
 	 * Values we did get are 100 and 1600 and ts 00 to 04.  So that looks like
@@ -248,9 +246,8 @@ type ManagerTestSuite struct {
 	logger        *pct.Logger
 	mockMonitor   mm.Monitor
 	monitors      map[string]mm.Monitor
-	tickerChan    chan time.Time
-	mockTicker    *mock.Ticker
-	tickerFactory *mock.TickerFactory
+	tickChan      chan time.Time
+	clock         *mock.Clock
 	dataChan      chan interface{}
 	spool         data.Spooler
 	traceChan     chan string
@@ -265,11 +262,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *gocheck.C) {
 	s.mockMonitor = mock.NewMonitor()
 
 	s.monitors = map[string]mm.Monitor{"mysql": s.mockMonitor}
-	s.tickerChan = make(chan time.Time)
-
-	s.mockTicker = mock.NewTicker(nil, s.tickerChan)
-
-	s.tickerFactory = mock.NewTickerFactory()
+	s.tickChan = make(chan time.Time)
 
 	s.traceChan = make(chan string, 10)
 
@@ -277,10 +270,15 @@ func (s *ManagerTestSuite) SetUpSuite(t *gocheck.C) {
 	s.spool = mock.NewSpooler(s.dataChan)
 }
 
-func (s *ManagerTestSuite) TestStartStopManager(t *gocheck.C) {
-	s.tickerFactory.Set([]pct.Ticker{s.mockTicker})
+func (s *ManagerTestSuite) SetUpTest(t *gocheck.C) {
+	s.clock = mock.NewClock()
+}
 
-	m := mm.NewManager(s.logger, s.monitors, s.tickerFactory, s.spool)
+// --------------------------------------------------------------------------
+
+func (s *ManagerTestSuite) TestStartStopManager(t *gocheck.C) {
+
+	m := mm.NewManager(s.logger, s.monitors, s.clock, s.spool)
 	if m == nil {
 		t.Fatal("Make new mm.Manager")
 	}
@@ -290,9 +288,9 @@ func (s *ManagerTestSuite) TestStartStopManager(t *gocheck.C) {
 		t.Error("IsRunning() is false")
 	}
 
-	// And neither should the report ticker.
-	if s.mockTicker.Running {
-		t.Error("Report ticker is not running")
+	// It shouldn't have added a tickChan yet.
+	if len(s.clock.Added) != 0 {
+		t.Error("tickChan not added yet")
 	}
 
 	// First the API marshals an mm.Config.
@@ -324,15 +322,9 @@ func (s *ManagerTestSuite) TestStartStopManager(t *gocheck.C) {
 		t.Error("IsRunning() is true")
 	}
 
-	// It should start without error ^ of course, but it should also make a ticker
-	// for the 60s report interval.
-	if ok, diff := test.IsDeeply(s.tickerFactory.Made, []uint{60}); !ok {
-		t.Errorf("Make only 60s ticker for report interval\n%s", diff)
-	}
-
-	// And it should start the aggregator which starts the ticker by calling Sync().
-	if !s.mockTicker.Running {
-		t.Error("Report ticker is running")
+	// It should add a tickChan to the clock for the report interval.
+	if ok, diff := test.IsDeeply(s.clock.Added, []uint{60}); !ok {
+		t.Errorf("Adds tickChan for report interval, got %#v", diff)
 	}
 
 	// After starting, its status should be "Ready [cmd]" where cmd is
@@ -370,9 +362,7 @@ func (s *ManagerTestSuite) TestStartStopManager(t *gocheck.C) {
 	if m.IsRunning() {
 		t.Error("IsRunning() is false")
 	}
-	if s.mockTicker.Running {
-		t.Error("Report ticker is not running")
-	}
+
 	status = m.Status()
 	if !strings.Contains(status["Mm"], "Stopped") {
 		t.Error("Status is \"Stopped\", got ", status)
@@ -383,11 +373,9 @@ func (s *ManagerTestSuite) TestStartStopManager(t *gocheck.C) {
 }
 
 func (s *ManagerTestSuite) TestStartStopMonitor(t *gocheck.C) {
-	collectTicker := mock.NewTicker(nil, s.tickerChan)
-	s.tickerFactory.Set([]pct.Ticker{s.mockTicker, collectTicker})
 
 	// First start the manager, same as above ^ in TestStartStopManager().
-	m := mm.NewManager(s.logger, s.monitors, s.tickerFactory, s.spool)
+	m := mm.NewManager(s.logger, s.monitors, s.clock, s.spool)
 	if m == nil {
 		t.Fatal("Make new mm.Manager")
 	}
@@ -464,20 +452,9 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *gocheck.C) {
 
 	// There should be a 60s report ticker for the aggregator and a 1s collect ticker
 	// for the monitor.
-	if ok, diff := test.IsDeeply(s.tickerFactory.Made, []uint{60, 1}); !ok {
+	if ok, diff := test.IsDeeply(s.clock.Added, []uint{60, 1}); !ok {
 		t.Errorf("Make 1s ticker for collect interval\n%s", diff)
 	}
-
-	// The collect ticker should *not* be running yet; it's the monitor's job
-	// to start it (and mock.Monitor doesn't).  By contrast, the manager does
-	// start the report ticker; that's tested in StartStopManager().
-	if collectTicker.Running {
-		t.Error("Collect ticker not started by manager")
-	}
-
-	// Fake like the monitor starts its ticker so we can test later that
-	// the manager stops it.
-	collectTicker.Running = true
 
 	/**
 	 * Stop the monitor.
@@ -509,9 +486,9 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *gocheck.C) {
 		t.Error("Monitor stopped")
 	}
 
-	// After stopping the monitor, the manager should also stop the ticker.
-	if collectTicker.Running {
-		t.Error("Collect ticker stopped by manager")
+	// After stopping the monitor, the manager should remove its tickChan.
+	if len(s.clock.Removed) != 1 {
+		t.Error("Remove's monitor's tickChan from clock")
 	}
 
 	/**

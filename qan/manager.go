@@ -7,6 +7,7 @@ import (
 	"github.com/percona/cloud-tools/data"
 	"github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
+	"github.com/percona/cloud-tools/ticker"
 	mysqlLog "github.com/percona/percona-go-mysql/log"
 	"os"
 	"time"
@@ -15,11 +16,14 @@ import (
 type Manager struct {
 	logger        *pct.Logger
 	mysqlConn     mysql.Connector
-	iter          IntervalIter
+	clock         ticker.Manager
+	iterFactory   IntervalIterFactory
 	workerFactory WorkerFactory
 	spool         data.Spooler
 	// --
 	config         *Config // nil if not running
+	tickChan       chan time.Time
+	iter           IntervalIter
 	workers        map[Worker]bool
 	workerDoneChan chan Worker
 	status         *pct.Status
@@ -39,11 +43,12 @@ type Report struct {
 	Class       []*mysqlLog.QueryClass
 }
 
-func NewManager(logger *pct.Logger, mysqlConn mysql.Connector, iter IntervalIter, workerFactory WorkerFactory, spool data.Spooler) *Manager {
+func NewManager(logger *pct.Logger, mysqlConn mysql.Connector, clock ticker.Manager, iterFactory IntervalIterFactory, workerFactory WorkerFactory, spool data.Spooler) *Manager {
 	m := &Manager{
 		logger:        logger,
 		mysqlConn:     mysqlConn,
-		iter:          iter,
+		clock:         clock,
+		iterFactory:   iterFactory,
 		workerFactory: workerFactory,
 		spool:         spool,
 		// --
@@ -68,13 +73,15 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 	defer logger.InResponseTo(nil)
 	logger.Info("Starting")
 
+	// Can't start if already running.
 	if m.config != nil {
 		err := pct.ServiceIsRunningError{Service: "qan"}
 		logger.Error(err)
 		return err
 	}
 
-	c := new(Config)
+	// Parse JSON into Config struct.
+	c := &Config{}
 	if err := json.Unmarshal(config, c); err != nil {
 		logger.Error(err)
 		return err
@@ -88,14 +95,30 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 		return err
 	}
 
+	// Add a tickChan to the clock so it receives ticks at intervals.
+	m.tickChan = make(chan time.Time)
+	m.clock.Add(m.tickChan, c.Interval)
+
+	// Make an iterator for the slow log file at interval ticks.
+	filenameFunc := func() (string, error) {
+		file := m.mysqlConn.GetGlobalVarString("slow_query_log_file")
+		return file, nil
+	}
+	m.iter = m.iterFactory.Make(filenameFunc, m.tickChan)
+	m.iter.Start()
+
+	// When Worker finishes parsing an interval, it singals done on this chan.
 	m.workerDoneChan = make(chan Worker, c.MaxWorkers)
-	m.config = c
+
+	// Run Query Analytics!
 	go m.run()
 
+	// Save the config.
+	m.config = c
 	m.status.UpdateRe("Qan", "Running", cmd)
 	logger.Info("Running")
 
-	return nil
+	return nil // success
 }
 
 func (m *Manager) Stop(cmd *proto.Cmd) error {
@@ -116,8 +139,11 @@ func (m *Manager) Stop(cmd *proto.Cmd) error {
 		m.logger.Info("Stopped")
 	}
 
-	m.config = nil
+	m.clock.Remove(m.tickChan)
+	m.tickChan = nil
 	m.workerDoneChan = nil
+	m.config = nil
+
 	m.status.UpdateRe("Qan", "Stopped", cmd)
 
 	return err
@@ -155,7 +181,6 @@ func (m *Manager) run() {
 	}()
 
 	m.status.Update("QanLogParser", "Waiting for first interval")
-	m.iter.Start()
 	intervalChan := m.iter.IntervalChan()
 
 	for {

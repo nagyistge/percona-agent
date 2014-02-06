@@ -1,7 +1,6 @@
 package mm
 
 import (
-	"github.com/percona/cloud-tools/pct"
 	"time"
 )
 
@@ -15,11 +14,12 @@ import (
  * and sent to a Spooler (data/spooler.go).
  */
 
-// Using given config, collect metrics when tickerChan ticks, and send to collecitonChan.
+// Using given config, collect metrics when tickChan ticks, and send to collecitonChan.
 type Monitor interface {
-	Start(config []byte, ticker pct.Ticker, collectionChan chan *Collection) error
+	Start(config []byte, tickChan chan time.Time, collectionChan chan *Collection) error
 	Stop() error
 	Status() map[string]string
+	TickChan() chan time.Time
 }
 
 type Metric struct {

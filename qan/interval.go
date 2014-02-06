@@ -6,33 +6,45 @@ import (
 	"time"
 )
 
-// Each QAN interval is a slice of the MySQL slow log:
+// A slice of the MySQL slow log:
 type Interval struct {
-	Filename    string
-	StartTime   time.Time
-	StopTime    time.Time
-	StartOffset int64
-	EndOffset   int64
+	Filename    string    // slow_query_log_file
+	StartTime   time.Time // UTC
+	StopTime    time.Time // UTC
+	StartOffset int64     // bytes @ StartTime
+	EndOffset   int64     // bytes @ StopTime
 }
 
+// Returns slow_query_log_file, or error:
+type FilenameFunc func() (string, error)
+
+// Used by Manager.run() to start a Worker:
 type IntervalIter interface {
 	Start()
 	Stop()
 	IntervalChan() chan *Interval
 }
 
+// Used by Manager.Start() to create an IntervalIter that ticks at Config.Interval minutes:
+type IntervalIterFactory interface {
+	Make(filename FilenameFunc, tickChan chan time.Time) IntervalIter
+}
+
+// Implements IntervalIter:
 type FileIntervalIter struct {
-	fileName     func() (string, error)
-	tickerChan   chan time.Time
+	filename FilenameFunc
+	tickChan chan time.Time
+	// --
 	intervalChan chan *Interval
 	sync         *pct.SyncChan
 	running      bool
 }
 
-func NewFileIntervalIter(fileName func() (string, error), tickerChan chan time.Time) *FileIntervalIter {
+func NewFileIntervalIter(filename FilenameFunc, tickChan chan time.Time) *FileIntervalIter {
 	iter := &FileIntervalIter{
-		fileName:     fileName,
-		tickerChan:   tickerChan,
+		filename: filename,
+		tickChan: tickChan,
+		// --
 		intervalChan: make(chan *Interval, 1),
 		running:      false,
 		sync:         pct.NewSyncChan(),
@@ -69,11 +81,9 @@ func (i *FileIntervalIter) run() {
 
 	for {
 		select {
-		case <-i.sync.StopChan:
-			return
-		case now := <-i.tickerChan:
+		case now := <-i.tickChan:
 			// Get the MySQL slow log file name at each interval because it can change.
-			curFile, err := i.fileName()
+			curFile, err := i.filename()
 			if err != nil {
 				cur = new(Interval)
 				continue
@@ -124,6 +134,8 @@ func (i *FileIntervalIter) run() {
 				cur.StartTime = now
 				prevFileInfo, _ = os.Stat(curFile)
 			}
+		case <-i.sync.StopChan:
+			return
 		}
 	}
 }

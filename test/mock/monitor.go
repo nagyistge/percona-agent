@@ -2,10 +2,11 @@ package mock
 
 import (
 	"github.com/percona/cloud-tools/mm"
-	"github.com/percona/cloud-tools/pct"
+	"time"
 )
 
 type Monitor struct {
+	tickChan  chan time.Time
 	ReadyChan chan bool
 	running   bool
 }
@@ -15,7 +16,7 @@ func NewMonitor() *Monitor {
 	return m
 }
 
-func (m *Monitor) Start(config []byte, ticker pct.Ticker, collectionChan chan *mm.Collection) error {
+func (m *Monitor) Start(config []byte, tickChan chan time.Time, collectionChan chan *mm.Collection) error {
 	if m.ReadyChan != nil {
 		<-m.ReadyChan
 	}
@@ -36,4 +37,8 @@ func (m *Monitor) Status() map[string]string {
 		status["monitor"] = "Stopped"
 	}
 	return status
+}
+
+func (m *Monitor) TickChan() chan time.Time {
+	return m.tickChan
 }
