@@ -7,6 +7,12 @@ import (
 	"github.com/percona/cloud-tools/client"
 	"github.com/percona/cloud-tools/logrelay"
 	"github.com/percona/cloud-tools/pct"
+	"github.com/percona/cloud-tools/data"
+	"github.com/percona/cloud-tools/qan"
+	"github.com/percona/cloud-tools/mm"
+	mysqlMonitor "github.com/percona/cloud-tools/mm/mysql"
+	"github.com/percona/cloud-tools/mysql"
+	"github.com/percona/cloud-tools/ticker"
 	"log"
 	"os"
 	"os/user"
@@ -78,8 +84,7 @@ func main() {
 
 	// Get entry links from API.  This only requires an API key.
 	if len(config.Links) == 0 {
-		httpClient := client.NewHttpClient(config.ApiKey)
-		links, err := GetLinks(httpClient, config.ApiHostname)
+		links, err := GetLinks(config.ApiHostname)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -100,7 +105,8 @@ func main() {
 		if !exist || logLink == "" {
 			log.Fatalf("Unable to get log link")
 		}
-		logClient, err := client.NewWebsocketClient(logLink, origin, auth)
+		logger := pct.NewLogger(logRelay.LogChan(), "agent-ws-log")
+		logClient, err := client.NewWebsocketClient(logger, logLink, origin, auth)
 		if err != nil {
 			log.Fatalf("Unable to create log websocket connection (link: %s): %s", logLink, err)
 		}
@@ -109,26 +115,69 @@ func main() {
 	go logRelay.Run()
 
 	/**
-	 * Create and start the agent.
+	 * Master clock
 	 */
 
-	logger := pct.NewLogger(logRelay.LogChan(), "agent")
+	nowFunc := func() int64 { return time.Now().UTC().UnixNano() }
+	clock := ticker.NewRolex(&ticker.EvenTickerFactory{}, nowFunc)
+
+	/**
+	 * Data spooler
+	 */
+
+	spool := data.NewDiskvSpooler(
+		pct.NewLogger(logRelay.LogChan(), "spooler"),
+		config.DataDir,
+		data.NewJsonGzipSerializer(),
+	)
+	if err := spool.Start(); err != nil {
+		log.Fatalln("Cannot start spooler:", err)
+	}
+
+	/**
+	 * Create and start the agent.
+	 */
 
 	cmdLink, exist := config.Links["cmd"]
 	if !exist || cmdLink == "" {
 		log.Fatalf("Unable to get cmd link")
 	}
-	cmdClient, err := client.NewWebsocketClient(cmdLink, origin, auth)
+	cmdClient, err := client.NewWebsocketClient(
+		pct.NewLogger(logRelay.LogChan(), "agent-ws-cmd"),
+		cmdLink,
+		origin,
+		auth,
+	)
 	if err != nil {
 		log.Fatalf("Unable to create cmd websocket connection (link: %s): %s", cmdLink, err)
 	}
 
+	qanManager := qan.NewManager(
+		pct.NewLogger(logRelay.LogChan(), "qan"),
+		&mysql.Connection{},
+		clock,
+		&qan.FileIntervalIterFactory{},
+		&qan.SlowLogWorkerFactory{},
+		spool,
+	)
+
+	monitors := map[string]mm.Monitor{
+		"mysql": mysqlMonitor.NewMonitor(pct.NewLogger(logRelay.LogChan(), "mysql-monitor")),
+	}
+	mmManager := mm.NewManager(
+		pct.NewLogger(logRelay.LogChan(), "mm"),
+		monitors,
+		clock,
+		spool,
+	)
+
 	services := map[string]pct.ServiceManager{
-		"qan": nil,
-		"mm":  nil,
+		"qan": qanManager,
+		"mm":  mmManager,
 	}
 
-	agent := agent.NewAgent(config, auth, logRelay, logger, cmdClient, services)
+	agentLogger := pct.NewLogger(logRelay.LogChan(), "agent")
+	agent := agent.NewAgent(config, auth, logRelay, agentLogger, cmdClient, services)
 	agent.Run()
 }
 
@@ -151,11 +200,13 @@ func CheckConfig(config *agent.Config, configFile string) (bool, []string) {
 	return isValid, missing
 }
 
-func GetLinks(client pct.HttpClient, link string) (map[string]string, error) {
+func GetLinks(apiHostname string) (map[string]string, error) {
 	links := &proto.Links{}
+	/*
 	if err := client.Get(link, links, time.Hour*24*7); err != nil {
 		return nil, err
 	}
+	*/
 	return links.Links, nil
 }
 

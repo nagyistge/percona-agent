@@ -1,36 +1,44 @@
 package mock
 
+/**
+ * Implements ticker.Ticker interface
+ */
+
 import (
 	"time"
 )
 
 type Ticker struct {
-	syncChan   chan bool
-	tickerChan chan time.Time
-	Running    bool
+	syncChan    chan bool
+	Added       []chan time.Time
+	RunningChan chan bool
 }
 
-func NewTicker(syncChan chan bool, tickerChan chan time.Time) *Ticker {
+func NewTicker(syncChan chan bool) *Ticker {
 	t := &Ticker{
-		syncChan:   syncChan,
-		tickerChan: tickerChan,
+		syncChan:    syncChan,
+		Added:       []chan time.Time{},
+		RunningChan: make(chan bool),
 	}
 	return t
 }
 
-func (t *Ticker) Sync(now int64) {
+func (t *Ticker) Run(now int64) {
 	if t.syncChan != nil {
 		<-t.syncChan
 	}
-	t.Running = true
+	t.RunningChan <- true
 	return
-}
-
-func (t *Ticker) TickerChan() <-chan time.Time {
-	return t.tickerChan
 }
 
 func (t *Ticker) Stop() {
-	t.Running = false
+	t.RunningChan <- false
 	return
+}
+
+func (t *Ticker) Add(c chan time.Time) {
+	t.Added = append(t.Added, c)
+}
+
+func (t *Ticker) Remove(c chan time.Time) {
 }

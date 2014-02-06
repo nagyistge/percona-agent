@@ -30,19 +30,14 @@ type WorkerFactory interface {
 	Make() Worker
 }
 
-type SlowLogWorker struct {
-}
-
 type SlowLogWorkerFactory struct {
-}
-
-func NewSlowLogWorkerFactory() *SlowLogWorkerFactory {
-	f := &SlowLogWorkerFactory{}
-	return f
 }
 
 func (f *SlowLogWorkerFactory) Make() Worker {
 	return NewSlowLogWorker()
+}
+
+type SlowLogWorker struct {
 }
 
 func NewSlowLogWorker() Worker {

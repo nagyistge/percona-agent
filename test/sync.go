@@ -1,14 +1,13 @@
 package test
 
 import (
-	"os"
-	"time"
-	"io/ioutil"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/mm"
 	"github.com/percona/cloud-tools/pct"
+	"io/ioutil"
+	"os"
+	"time"
 )
-
 
 var Ts, _ = time.Parse("2006-01-02 15:04:05", "2013-12-30 18:36:00")
 
@@ -47,7 +46,7 @@ func WaitData(recvDataChan chan interface{}) []interface{} {
 		select {
 		case data := <-recvDataChan:
 			buf = append(buf, data)
-		case <-time.After(10 * time.Millisecond):
+		case <-time.After(100 * time.Millisecond):
 			haveData = false
 		}
 	}
@@ -72,7 +71,7 @@ func WaitLog(recvDataChan chan interface{}, n int) []proto.LogEntry {
 	var buf []proto.LogEntry
 	var cnt int = 0
 	timeout := time.After(300 * time.Millisecond)
-	FIRST_LOOP:
+FIRST_LOOP:
 	for {
 		select {
 		case data := <-recvDataChan:
@@ -88,7 +87,7 @@ func WaitLog(recvDataChan chan interface{}, n int) []proto.LogEntry {
 		}
 	}
 	if n > 0 && cnt >= n {
-		SECOND_LOOP:
+	SECOND_LOOP:
 		for {
 			select {
 			case data := <-recvDataChan:
@@ -108,7 +107,7 @@ func WaitLogChan(logChan chan *proto.LogEntry, n int) []proto.LogEntry {
 	var buf []proto.LogEntry
 	var cnt int = 0
 	timeout := time.After(300 * time.Millisecond)
-	FIRST_LOOP:
+FIRST_LOOP:
 	for {
 		select {
 		case logEntry := <-logChan:
@@ -123,7 +122,7 @@ func WaitLogChan(logChan chan *proto.LogEntry, n int) []proto.LogEntry {
 		}
 	}
 	if n > 0 && cnt >= n {
-		SECOND_LOOP:
+	SECOND_LOOP:
 		for {
 			select {
 			case logEntry := <-logChan:
@@ -170,7 +169,7 @@ func WaitFileSize(fileName string, originalSize int64) {
 	var lastSize int64 = -1
 	var lastChange int64 = -1
 	timeout := time.After(2 * time.Second)
-	TRY_LOOP:
+TRY_LOOP:
 	for {
 		select {
 		case <-timeout:
@@ -248,7 +247,7 @@ func WaitCollection(cChan chan *mm.Collection, n int) []*mm.Collection {
 	var buf []*mm.Collection
 	var cnt int = 0
 	timeout := time.After(300 * time.Millisecond)
-	FIRST_LOOP:
+FIRST_LOOP:
 	for {
 		select {
 		case c := <-cChan:
@@ -262,7 +261,7 @@ func WaitCollection(cChan chan *mm.Collection, n int) []*mm.Collection {
 		}
 	}
 	if n > 0 && cnt >= n {
-		SECOND_LOOP:
+	SECOND_LOOP:
 		for {
 			select {
 			case c := <-cChan:
@@ -274,4 +273,13 @@ func WaitCollection(cChan chan *mm.Collection, n int) []*mm.Collection {
 		}
 	}
 	return buf
+}
+
+func WaitState(c chan bool) bool {
+	select {
+	case state := <-c:
+		return state
+	case <-time.After(100 * time.Millisecond):
+		return false
+	}
 }

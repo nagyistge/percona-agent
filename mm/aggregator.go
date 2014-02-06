@@ -7,19 +7,21 @@ import (
 )
 
 type Aggregator struct {
-	ticker         pct.Ticker
+	tickChan       chan time.Time
 	collectionChan chan *Collection
 	spool          data.Spooler
-	sync           *pct.SyncChan
-	running        bool
+	// --
+	sync    *pct.SyncChan
+	running bool
 }
 
-func NewAggregator(ticker pct.Ticker, collectionChan chan *Collection, spool data.Spooler) *Aggregator {
+func NewAggregator(tickChan chan time.Time, collectionChan chan *Collection, spool data.Spooler) *Aggregator {
 	a := &Aggregator{
-		ticker:         ticker,
+		tickChan:       tickChan,
 		collectionChan: collectionChan,
 		spool:          spool,
-		sync:           pct.NewSyncChan(),
+		// --
+		sync: pct.NewSyncChan(),
 	}
 	return a
 }
@@ -30,7 +32,6 @@ func NewAggregator(ticker pct.Ticker, collectionChan chan *Collection, spool dat
 
 // @goroutine[0]
 func (a *Aggregator) Start() {
-	a.ticker.Sync(time.Now().UnixNano())
 	a.running = true // XXX: not guarded
 	go a.run()
 }
@@ -58,20 +59,19 @@ func (a *Aggregator) run() {
 	}()
 
 	/**
-	 * We aggregate on even intervals, from clock tick to clock tick.
-	 * The first clock tick becomes the first interval's start ts;
-	 * before that, we receive but ultimately throw away any metrics.
-	 * This is ok because we shouldn't wait long for the first clock tick,
-	 * and it decouples starting/running monitors and aggregators, i.e.
-	 * neither should have to wait on or sync with the other.
+	 * We aggregate on clock ticks.  The first tick becomes the first
+	 * interval's start ts.  Before that, we receive but ultimately throw
+	 * away any metrics.  This is ok because we shouldn't wait long for
+	 * the first tick, and it decouples starting/running monitors and
+	 * aggregators, i.e. neither should have to wait for the other.
 	 */
 	var startTs time.Time
 	cur := make(Metrics)
 
 	for {
 		select {
-		case now := <-a.ticker.TickerChan():
-			// Even interval clock tick, e.g. 00:01:00.000, 00:02:00.000, etc.
+		case now := <-a.tickChan:
+			// Even clock tick, e.g. 00:01:00.000, 00:02:00.000, etc.
 			if !startTs.IsZero() {
 				a.report(startTs, cur)
 			}

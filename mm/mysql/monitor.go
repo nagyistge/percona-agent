@@ -16,7 +16,7 @@ type Monitor struct {
 	logger *pct.Logger
 	// --
 	config         *Config
-	ticker         pct.Ticker
+	tickChan       chan time.Time
 	collectionChan chan *mm.Collection
 	// --
 	conn          *sql.DB
@@ -44,7 +44,7 @@ func NewMonitor(logger *pct.Logger) *Monitor {
 /////////////////////////////////////////////////////////////////////////////
 
 // @goroutine[0]
-func (m *Monitor) Start(config []byte, ticker pct.Ticker, collectionChan chan *mm.Collection) error {
+func (m *Monitor) Start(config []byte, tickChan chan time.Time, collectionChan chan *mm.Collection) error {
 	if m.config != nil {
 		return pct.ServiceIsRunningError{"mysql-monitor"}
 	}
@@ -54,11 +54,8 @@ func (m *Monitor) Start(config []byte, ticker pct.Ticker, collectionChan chan *m
 		return err
 	}
 	m.config = c
-	m.ticker = ticker
+	m.tickChan = tickChan
 	m.collectionChan = collectionChan
-
-	m.status.Update("mysql", "Synchronizing")
-	m.ticker.Sync(time.Now().UnixNano())
 
 	go m.run()
 
@@ -66,25 +63,30 @@ func (m *Monitor) Start(config []byte, ticker pct.Ticker, collectionChan chan *m
 }
 
 // @goroutine[0]
-func (m *Monitor) Stop() {
+func (m *Monitor) Stop() error {
 	if m.config == nil {
-		return // already stopped
+		return nil // already stopped
 	}
 
 	// Stop run().  When it returns, it updates status to "Stopped".
 	m.status.Update("mysql", "Stopping")
-	m.ticker.Stop()
 	m.sync.Stop()
 	m.sync.Wait()
 
 	m.config = nil // no config if not running
 
 	// Do not update status to "Stopped" here; run() does that on return.
+	return nil
 }
 
 // @goroutine[0]
 func (m *Monitor) Status() map[string]string {
 	return m.status.All()
+}
+
+// @goroutine[0]
+func (m *Monitor) TickChan() chan time.Time {
+	return m.tickChan
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -170,7 +172,7 @@ func (m *Monitor) run() {
 
 	for {
 		select {
-		case now := <-m.ticker.TickerChan():
+		case now := <-m.tickChan:
 			if m.connected {
 				m.status.Update("mysql", "Running")
 

@@ -6,7 +6,7 @@ import (
 )
 
 type WebsocketClient interface {
-	Connect() error
+	Connect()
 	Disconnect() error
 
 	// Channel interface:

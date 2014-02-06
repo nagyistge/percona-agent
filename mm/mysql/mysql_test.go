@@ -21,25 +21,14 @@ var dsn = os.Getenv("PCT_TEST_MYSQL_DSN")
 
 var logChan = make(chan *proto.LogEntry, 10)
 var logger = pct.NewLogger(logChan, "mm-manager-test")
-var tickerChan = make(chan time.Time)
-var mockTicker = mock.NewTicker(nil, tickerChan)
+var tickChan = make(chan time.Time)
 var collectionChan = make(chan *mm.Collection, 1)
-
-func debug() {
-	go func() {
-		for logEntry := range logChan {
-			log.Println(logEntry)
-		}
-	}()
-}
 
 /////////////////////////////////////////////////////////////////////////////
 // Test cases
 /////////////////////////////////////////////////////////////////////////////
 
 func TestStartCollectStop(t *testing.T) {
-	//debug()
-
 	if dsn == "" {
 		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
 	}
@@ -67,14 +56,9 @@ func TestStartCollectStop(t *testing.T) {
 	}
 
 	// Start the monitor.
-	err = m.Start(data, mockTicker, collectionChan)
+	err = m.Start(data, tickChan, collectionChan)
 	if err != nil {
 		t.Fatalf("Start monitor without error, got %s", err)
-	}
-
-	// The monitor should start its ticker.
-	if !mockTicker.Running {
-		t.Error("Ticker is running")
 	}
 
 	// monitor=Ready once it has successfully connected to MySQL.  This may
@@ -91,7 +75,7 @@ func TestStartCollectStop(t *testing.T) {
 
 	// Now tick.  This should make monitor collect.
 	now := time.Now()
-	tickerChan <- now
+	tickChan <- now
 	got = test.WaitCollection(collectionChan, 1)
 	if len(got) == 0 {
 		t.Fatal("Got a collection after tick")
@@ -131,14 +115,9 @@ func TestStartCollectStop(t *testing.T) {
 	if ok := test.WaitStatus(5, m, "mysql", "Stopped"); !ok {
 		t.Fatal("Monitor has stopped")
 	}
-
-	if mockTicker.Running {
-		t.Error("Ticker has stopped")
-	}
 }
 
 func TestCollectInnoDBStats(t *testing.T) {
-	//debug()
 	if dsn == "" {
 		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
 	}
@@ -182,7 +161,7 @@ func TestCollectInnoDBStats(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = m.Start(data, mockTicker, collectionChan)
+	err = m.Start(data, tickChan, collectionChan)
 	if err != nil {
 		t.Fatalf("Start monitor without error, got %s", err)
 	}
@@ -195,7 +174,7 @@ func TestCollectInnoDBStats(t *testing.T) {
 	// the InnoDB metrics and collects them, we should get dml_inserts=1 this later..
 	db.Exec("insert into test_pct.t (i) values (42)")
 
-	tickerChan <- time.Now()
+	tickChan <- time.Now()
 	got := test.WaitCollection(collectionChan, 1)
 	if len(got) == 0 {
 		t.Fatal("Got a collection after tick")
@@ -233,7 +212,6 @@ func TestCollectInnoDBStats(t *testing.T) {
 }
 
 func TestCollectUserstats(t *testing.T) {
-	//debug()
 	if dsn == "" {
 		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
 	}
@@ -274,7 +252,7 @@ func TestCollectUserstats(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = m.Start(data, mockTicker, collectionChan)
+	err = m.Start(data, tickChan, collectionChan)
 	if err != nil {
 		t.Fatalf("Start monitor without error, got %s", err)
 	}
@@ -290,7 +268,7 @@ func TestCollectUserstats(t *testing.T) {
 	}
 	defer rows.Close()
 
-	tickerChan <- time.Now()
+	tickChan <- time.Now()
 	got := test.WaitCollection(collectionChan, 1)
 	if len(got) == 0 {
 		t.Fatal("Got a collection after tick")

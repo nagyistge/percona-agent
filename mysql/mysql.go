@@ -9,16 +9,12 @@ import (
 type Connector interface {
 	Connect(dsn string) error
 	Set([]Query) error
+	GetGlobalVarString(varName string) string
 }
 
 type Connection struct {
 	dsn  string
 	conn *sql.DB
-}
-
-func NewConnection() *Connection {
-	c := &Connection{}
-	return c
 }
 
 func (c *Connection) DB() *sql.DB {
