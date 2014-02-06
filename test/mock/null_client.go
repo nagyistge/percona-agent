@@ -20,8 +20,7 @@ func NewNullClient() *NullClient {
 	return c
 }
 
-func (c *NullClient) Connect() error {
-	return nil
+func (c *NullClient) Connect() {
 }
 
 func (c *NullClient) Disconnect() error {

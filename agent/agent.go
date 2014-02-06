@@ -330,13 +330,13 @@ func (agent *Agent) handleSetLogLevel(cmd *proto.Cmd) error {
 	agent.status.UpdateRe("AgentCmdHandler", "SetLogLevel", cmd)
 	agent.logger.Info(cmd)
 
-	log := new(proto.LogLevel)
-	if err := json.Unmarshal(cmd.Data, log); err != nil {
+	logLevel := &proto.LogLevel{}
+	if err := json.Unmarshal(cmd.Data, logLevel); err != nil {
 		agent.logger.Error(err)
 		return err
 	}
 
-	agent.logRelay.LogLevelChan() <- byte(log.Level)
+	agent.logRelay.LogLevelChan() <- logLevel.Level
 
 	return nil
 }
@@ -419,11 +419,11 @@ func (agent *Agent) statusHandler() {
 func (agent *Agent) getStatus() *proto.StatusData {
 	status := agent.status.All()
 
-	for _, m := range agent.services {
-		if m == nil {
-			continue
+	for service, manager := range agent.services {
+		if manager == nil { // should not happen
+			log.Panicf("%s service manager is nil", service)
 		}
-		for p, s := range m.Status() {
+		for p, s := range manager.Status() {
 			status[p] = s
 		}
 	}
