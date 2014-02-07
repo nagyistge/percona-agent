@@ -11,19 +11,17 @@ import (
 type Sender struct {
 	logger     *pct.Logger
 	client     pct.WebsocketClient
-	url        string
 	spool      Spooler
-	tickerChan chan bool
+	tickerChan <-chan time.Time
 	// --
 	sync      *pct.SyncChan
 	connected bool
 }
 
-func NewSender(logger *pct.Logger, client pct.WebsocketClient, url string, spool Spooler, tickerChan chan bool) *Sender {
+func NewSender(logger *pct.Logger, client pct.WebsocketClient, spool Spooler, tickerChan <-chan time.Time) *Sender {
 	s := &Sender{
 		logger:     logger,
 		client:     client,
-		url:        url,
 		spool:      spool,
 		tickerChan: tickerChan,
 		sync:       pct.NewSyncChan(),

@@ -280,7 +280,7 @@ func (s *DiskvSpoolerTestSuite) TestSpoolGzipData(t *C) {
 type SenderTestSuite struct {
 	logChan    chan *proto.LogEntry
 	logger     *pct.Logger
-	tickerChan chan bool
+	tickerChan chan time.Time
 	// --
 	dataChan chan []byte
 	respChan chan interface{}
@@ -292,7 +292,7 @@ var _ = Suite(&SenderTestSuite{})
 func (s *SenderTestSuite) SetUpSuite(t *C) {
 	s.logChan = make(chan *proto.LogEntry, 10)
 	s.logger = pct.NewLogger(s.logChan, "data_test")
-	s.tickerChan = make(chan bool, 1)
+	s.tickerChan = make(chan time.Time, 1)
 
 	s.dataChan = make(chan []byte, 5)
 	s.respChan = make(chan interface{})
@@ -312,7 +312,7 @@ func (s *SenderTestSuite) TestSendData(t *C) {
 	spool.FilesOut = []string{"slow001.json"}
 	spool.DataOut = map[string][]byte{"slow001.json": slow001}
 
-	sender := data.NewSender(s.logger, s.client, "url", spool, s.tickerChan)
+	sender := data.NewSender(s.logger, s.client, spool, s.tickerChan)
 
 	err = sender.Start()
 	if err != nil {
@@ -324,7 +324,7 @@ func (s *SenderTestSuite) TestSendData(t *C) {
 		t.Errorf("No data sent before tick; got %+v", data)
 	}
 
-	s.tickerChan <- true
+	s.tickerChan <- time.Now()
 
 	data = test.WaitBytes(s.dataChan)
 	if same, diff := test.IsDeeply(data[0], slow001); !same {

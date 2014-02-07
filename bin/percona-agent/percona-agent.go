@@ -153,17 +153,31 @@ func main() {
 	clock := ticker.NewRolex(&ticker.EvenTickerFactory{}, nowFunc)
 
 	/**
-	 * Data spooler
+	 * Data spooler and sender
 	 */
 
-	spool := data.NewDiskvSpooler(
-		pct.NewLogger(logRelay.LogChan(), "spooler"),
+	dataSpooler := data.NewDiskvSpooler(
+		pct.NewLogger(logRelay.LogChan(), "data-spooler"),
 		config.DataDir,
 		data.NewJsonGzipSerializer(),
 		auth.Hostname,
 	)
-	if err := spool.Start(); err != nil {
-		log.Fatalln("Cannot start spooler:", err)
+	if err := dataSpooler.Start(); err != nil {
+		log.Fatalln("Cannot start data spooler:", err)
+	}
+
+	dataClient, err := client.NewWebsocketClient(pct.NewLogger(logRelay.LogChan(), "data-spooler-ws"), links["data"], origin, auth)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	dataSender := data.NewSender(
+		pct.NewLogger(logRelay.LogChan(), "data-sender"),
+		dataClient,
+		dataSpooler,
+		time.Tick(1*time.Minute),
+	)
+	if err := dataSender.Start(); err != nil {
+		log.Fatalln("Cannot start data sender:", err)
 	}
 
 	/**
@@ -186,7 +200,7 @@ func main() {
 		clock,
 		&qan.FileIntervalIterFactory{},
 		&qan.SlowLogWorkerFactory{},
-		spool,
+		dataSpooler,
 	)
 
 	monitors := map[string]mm.Monitor{
@@ -196,7 +210,7 @@ func main() {
 		pct.NewLogger(logRelay.LogChan(), "mm"),
 		monitors,
 		clock,
-		spool,
+		dataSpooler,
 	)
 
 	services := map[string]pct.ServiceManager{
