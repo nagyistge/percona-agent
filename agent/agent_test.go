@@ -61,7 +61,7 @@ func (s *AgentTestSuite) SetUpSuite(t *gocheck.C) {
 	// Agent
 	s.config = &agent.Config{
 		ApiHostname: agent.API_HOSTNAME,
-		LogFile:     agent.LOG_FILE,
+		LogDir:      agent.LOG_DIR,
 		LogLevel:    agent.LOG_LEVEL,
 		DataDir:     agent.DATA_DIR,
 	}
@@ -394,7 +394,7 @@ func (s *AgentTestSuite) TestLoadConfig(t *gocheck.C) {
 		ApiKey:      "api key",
 		AgentUuid:   "agent uuid",
 		PidFile:     "pid file",
-		LogFile:     "log file",
+		LogDir:      "log dir",
 		LogLevel:    "info",
 		DataDir:     "data dir",
 		Links:       map[string]string{"home": "/"},
@@ -414,11 +414,11 @@ func (s *AgentTestSuite) TestApplyConfig(t *gocheck.C) {
 	config2 := agent.LoadConfig(sample + "/config002.json")
 	config1.Apply(config2)
 	expect := &agent.Config{
-		ApiKey:    "123",                    // config1
-		AgentUuid: "abc-123-def",            // config1
-		LogLevel:  "warning",                // config2
-		LogFile:   "/tmp/percona-agent.log", // new
-		Disable:   []string{"LogFile"},      // new
+		ApiKey:    "123",               // config1
+		AgentUuid: "abc-123-def",       // config1
+		LogLevel:  "warning",           // config2
+		LogDir:    "/tmp/agent",        // new
+		Disable:   []string{"LogFile"}, // new
 	}
 	// @todo: if expect is not ptr, IsDeeply dies with "got ptr, expected struct"
 	if same, diff := test.IsDeeply(config1, expect); !same {
@@ -459,7 +459,7 @@ func (s *AgentTestSuite) TestRequiredConfig(t *gocheck.C) {
 		ApiKey:      "api key",
 		AgentUuid:   "agent uuid",
 		PidFile:     "",
-		LogFile:     "log file",
+		LogDir:      "log dir",
 		LogLevel:    "info",
 		DataDir:     "data dir",
 		Links:       map[string]string{},
@@ -481,7 +481,7 @@ func (s *AgentTestSuite) TestRequiredConfig(t *gocheck.C) {
 		ApiKey:      "api key",
 		AgentUuid:   "agent uuid",
 		PidFile:     "pid file",
-		LogFile:     "log file",
+		LogDir:      "log dir",
 		LogLevel:    "info",
 		DataDir:     "data dir",
 		Links:       map[string]string{"home": "/"},

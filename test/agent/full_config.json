@@ -3,7 +3,7 @@
 	"ApiKey":      "api key",
 	"AgentUuid":   "agent uuid",
 	"PidFile":     "pid file",
-	"LogFile":     "log file",
+	"LogDir":      "log dir",
 	"LogLevel":    "info",
 	"DataDir":     "data dir",
 	"Links":       { "home": "/" },
