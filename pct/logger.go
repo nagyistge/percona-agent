@@ -3,6 +3,7 @@ package pct
 import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
+	"time"
 )
 
 type Logger struct {
@@ -56,6 +57,7 @@ func (l *Logger) log(level byte, entry []interface{}) {
 		fullMsg += fmt.Sprintf("%v", str)
 	}
 	logEntry := &proto.LogEntry{
+		Ts:      time.Now().UTC(),
 		Level:   level,
 		Service: l.service,
 		Msg:     fullMsg,

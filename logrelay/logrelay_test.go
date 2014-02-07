@@ -140,15 +140,14 @@ func (s *TestSuite) TestLogFile(t *C) {
 	test.WaitFileSize(s.logFile, size)
 	log, err = ioutil.ReadFile(s.logFile)
 	if err != nil {
-		t.Errorf("Log file should exist: %s", err)
-		return
+		t.Fatalf("Log file should exist: %s", err)
 	}
 
 	if !strings.Contains(string(log), "It's another trap!") {
-		t.Error("Log file should contain only the log entry after being enabled")
+		t.Error("Log file contains entry after being enabled, got\n", string(log))
 	}
 	if strings.Contains(string(log), "It's a trap!") {
-		t.Error("Log file should contain only the log entry after being enabled")
+		t.Error("Log file does not contain entry before being enabled, got\n", string(log))
 	}
 
 	l.Debug("Hello")
@@ -171,7 +170,7 @@ func (s *TestSuite) TestLogFile(t *C) {
 	}
 
 	if !strings.Contains(string(log), "Foo") {
-		t.Errorf("New log file should contain only the new log entry: %s", string(log))
+		t.Error("New log file contains only the new log entry, got\n", string(log))
 	}
 	if strings.Contains(string(log), "It's another trap!") {
 		t.Error("New log file should contain only the new log entry")

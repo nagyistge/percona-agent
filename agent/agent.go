@@ -216,7 +216,6 @@ func (agent *Agent) connect() {
 	agent.status.Update("Agent", "Connecting to API")
 	agent.logger.Info("Connecting to API")
 	agent.client.Connect()
-	agent.logger.Info("Connected to API")
 }
 
 // @goroutine[0]

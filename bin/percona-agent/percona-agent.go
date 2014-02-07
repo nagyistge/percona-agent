@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/agent"
@@ -19,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"os/user"
+	"strings"
 	"time"
 )
 
@@ -31,72 +33,78 @@ func init() {
 }
 
 func main() {
+	t0 := time.Now()
+
 	/**
-	 * Bootstrap the most basic components.  If all goes well,
-	 * we can create and start the agent.
+	 * Agent config
 	 */
 
 	// Parse command line.
-	var arg string
-	if len(os.Args) == 2 {
-		arg = os.Args[1]
-		switch arg {
-		case "version":
-			fmt.Printf("pct-agentd %s\n", VERSION)
-			os.Exit(0)
-		default:
-			fmt.Printf("Invalid arg: %s\n", arg)
-			os.Exit(-1)
-		}
-	} else if len(os.Args) > 2 {
-		fmt.Println("Unknown extra args")
-		os.Exit(-1)
+	configFile := ParseCmdLine()
+
+	// Check that config file exists.
+	if configFile == "" {
+		configFile = agent.CONFIG_DIR + "/agent.conf"
+	}
+	if _, err := os.Stat(configFile); os.IsNotExist(err) {
+		log.Fatalf("Agent config file %s does not exist", configFile)
 	}
 
 	// Create default config.
 	config := &agent.Config{
 		ApiHostname: agent.API_HOSTNAME,
-		LogFile:     agent.LOG_FILE,
+		LogDir:      agent.LOG_DIR,
 		LogLevel:    agent.LOG_LEVEL,
 		DataDir:     agent.DATA_DIR,
 	}
 
 	// Overwrite default config with config file.
-	configFile := arg
-	if configFile == "" {
-		configFile = agent.CONFIG_FILE
-	}
 	if err := config.Apply(agent.LoadConfig(configFile)); err != nil {
 		log.Fatal(err)
 	}
 
 	// Make sure config has everything we need.
 	if valid, missing := CheckConfig(config, configFile); !valid {
-		log.Println("Invalid config:")
-		for _, m := range missing {
-			log.Printf("  - %s\n", m)
-		}
+		log.Printf("%s is missing %d settings: %s", configFile, len(missing), strings.Join(missing, ", "))
 		os.Exit(-1)
 	}
 
-	// Check for and create PID file.
+	// Make the dirs we need, if they don't already exist.
+	if err := MakeDirs([]string{config.LogDir, config.DataDir}); err != nil {
+		log.Fatalln(err)
+	}
+
+	log.Printf("AgentUuid: %s\n", config.AgentUuid)
+	log.Printf("DataDir: %s\n", config.DataDir)
+
+	/**
+	 * PID file
+	 */
+
 	if config.PidFile != "" {
 		if err := WritePidFile(config.PidFile); err != nil {
 			log.Fatalln(err)
 		}
 		defer removeFile(config.PidFile)
 	}
+	log.Println("PidFile: " + config.PidFile)
 
-	// Get entry links from API.  This only requires an API key.
+	/**
+	 * RESTful entry links
+	 */
+
+	var links map[string]string
 	if len(config.Links) == 0 {
-		links, err := GetLinks(config.ApiKey, "http://"+config.ApiHostname)
-		if err != nil {
-			log.Fatal(err)
+		var err error
+		if links, err = GetLinks(config.ApiKey, "http://"+config.ApiHostname); err != nil {
+			log.Fatalln(err)
 		}
-		config.Links = links
 	}
 
-	// Make a proto.AgentAuth so we can connect websockets.
+	/**
+	 * Agent auth credentials
+	 */
+
 	auth, origin := MakeAgentAuth(config)
 
 	/**
@@ -104,24 +112,22 @@ func main() {
 	 */
 
 	// Log websocket client, possibly disabled later.
-	logLink, exist := config.Links["log"]
-	if !exist || logLink == "" {
-		log.Fatalf("Unable to get log link")
-	}
-	logClient, err := client.NewWebsocketClient(nil, logLink, origin, auth)
+	logClient, err := client.NewWebsocketClient(nil, links["log"], origin, auth)
 	if err != nil {
-		log.Fatalf("Unable to create log websocket connection (link: %s): %s", logLink, err)
+		log.Fatalln(err)
 	}
 
 	// Log file, if not disabled.
-	logFile := config.LogFile
+	logFile := config.LogDir + "/agent.log"
 	if config.Disabled("LogFile") {
-		log.Println("LogFile disabled")
+		log.Println("LogFile: DISABLED")
 		logFile = ""
+	} else {
+		log.Printf("LogFile: %s\n", logFile)
 	}
 
 	// Log level (should already be validated).
-	logLevel := proto.LogLevels[config.LogLevel]
+	logLevel := proto.LogLevelNumber[config.LogLevel]
 
 	// The log relay with option client and file.
 	logRelay := logrelay.NewLogRelay(logClient, logFile, logLevel)
@@ -134,6 +140,7 @@ func main() {
 	// todo: fix this hack
 	if config.Disabled("LogApi") {
 		logRelay.Offline(true)
+		log.Println("LogApi: DISABLED")
 	}
 
 	go logRelay.Run()
@@ -163,18 +170,14 @@ func main() {
 	 * Create and start the agent.
 	 */
 
-	cmdLink, exist := config.Links["cmd"]
-	if !exist || cmdLink == "" {
-		log.Fatalf("Unable to get cmd link")
-	}
 	cmdClient, err := client.NewWebsocketClient(
 		pct.NewLogger(logRelay.LogChan(), "agent-ws-cmd"),
-		cmdLink,
+		links["cmd"],
 		origin,
 		auth,
 	)
 	if err != nil {
-		log.Fatalf("Unable to create cmd websocket connection (link: %s): %s", cmdLink, err)
+		log.Fatal(err)
 	}
 
 	qanManager := qan.NewManager(
@@ -203,7 +206,35 @@ func main() {
 
 	agentLogger := pct.NewLogger(logRelay.LogChan(), "agent")
 	agent := agent.NewAgent(config, auth, logRelay, agentLogger, cmdClient, services)
+
+	t := time.Now().Sub(t0)
+	log.Printf("Running agent (%s)\n", t)
 	agent.Run()
+}
+
+func ParseCmdLine() string {
+	arg := ""
+	usage := "Usage: percona-agent [<config file>|help|version]"
+	if len(os.Args) == 2 {
+		arg = os.Args[1]
+		switch arg {
+		case "version":
+			fmt.Printf("percona-agent %s\n", VERSION)
+			os.Exit(0)
+		case "help":
+			fmt.Println(usage)
+			os.Exit(0)
+		default:
+			fmt.Printf("Invalid arg: %s\n", arg)
+			fmt.Println(usage)
+			os.Exit(-1)
+		}
+	} else if len(os.Args) > 2 {
+		fmt.Println("Unknown extra args: ", os.Args)
+		fmt.Println(usage)
+		os.Exit(-1)
+	}
+	return arg
 }
 
 func CheckConfig(config *agent.Config, configFile string) (bool, []string) {
@@ -212,39 +243,78 @@ func CheckConfig(config *agent.Config, configFile string) (bool, []string) {
 
 	if config.ApiHostname == "" {
 		isValid = false
-		missing = append(missing, fmt.Sprintf("No ApiHostname in %s\n", configFile)) // shouldn't happen
+		missing = append(missing, "ApiHostname")
 	}
 	if config.ApiKey == "" {
 		isValid = false
-		missing = append(missing, fmt.Sprintf("No ApiKey in %s\n", configFile))
+		missing = append(missing, "ApiKey")
 	}
 	if config.AgentUuid == "" {
 		isValid = false
-		missing = append(missing, fmt.Sprintf("No AgentUuid in %s\n", configFile))
+		missing = append(missing, "AgentUuid")
 	}
 	return isValid, missing
+}
+
+func MakeDirs(dirs []string) error {
+	for _, dir := range dirs {
+		if err := os.Mkdir(dir, 0775); err != nil {
+			if !os.IsExist(err) {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func GetLinks(apiKey, url string) (map[string]string, error) {
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
 	req.Header.Add("X-Percona-API-Key", apiKey)
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
 
-	links := &proto.Links{}
-	if err := json.Unmarshal(body, links); err != nil {
-		return nil, err
-	}
+	backoff := pct.NewBackoff(5 * time.Minute)
+	for {
+		time.Sleep(backoff.Wait())
 
-	return links.Links, nil
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("GET %s error: client.Do: %s", url, err)
+			continue
+		}
+		body, err := ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			log.Printf("GET %s error: ioutil.ReadAll: %s", url, err)
+			continue
+		}
+
+		links := &proto.Links{}
+		if err := json.Unmarshal(body, links); err != nil {
+			log.Printf("GET %s error: json.Unmarshal: %s", url, err)
+			continue
+		}
+
+		if err := CheckLinks(links.Links); err != nil {
+			log.Println(err)
+			continue
+		}
+
+		return links.Links, nil
+	}
+}
+
+func CheckLinks(links map[string]string) error {
+	requiredLinks := []string{"cmd", "log", "data"}
+	for _, link := range requiredLinks {
+		logLink, exist := links[link]
+		if !exist || logLink == "" {
+			return errors.New("Missing " + link + " link")
+		}
+	}
+	return nil
 }
 
 func WritePidFile(pidFile string) error {

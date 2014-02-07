@@ -12,23 +12,27 @@ import (
 // Defaults
 const (
 	API_HOSTNAME = "cloud-api.percona.com"
-	CONFIG_FILE  = "/etc/percona/agent.conf"
-	LOG_FILE     = "/var/log/percona-agent.log"
+	CONFIG_DIR   = "/etc/percona"
+	DATA_DIR     = "/var/spool/percona"
+	LOG_DIR      = "/var/log/percona"
+	LOG_FILE     = "agent.log"
 	LOG_LEVEL    = "info"
-	DATA_DIR     = "/var/spool/percona-agent"
 )
 
 type Config struct {
+	// Required, read-only:
+	ApiKey    string
+	AgentUuid string
+	// API-controlled:
 	ApiHostname string
-	ApiKey      string
-	AgentUuid   string
-	PidFile     string
-	LogFile     string
-	LogLevel    string
 	DataDir     string
-	Links       map[string]string
-	Enable      []string
-	Disable     []string
+	LogDir      string
+	LogLevel    string
+	PidFile     string
+	// Local-only, hacker:
+	Links   map[string]string
+	Enable  []string
+	Disable []string
 }
 
 // Load config from JSON file.
@@ -74,11 +78,11 @@ func (c *Config) Apply(cur *Config) error {
 	if cur.AgentUuid != "" {
 		c.AgentUuid = cur.AgentUuid
 	}
-	if cur.LogFile != "" {
-		c.LogFile = cur.LogFile
+	if cur.LogDir != "" {
+		c.LogDir = cur.LogDir
 	}
 	if cur.LogLevel != "" {
-		_, ok := proto.LogLevels[cur.LogLevel]
+		_, ok := proto.LogLevelNumber[cur.LogLevel]
 		if !ok {
 			return errors.New("Invalid log level: " + cur.LogLevel)
 		}

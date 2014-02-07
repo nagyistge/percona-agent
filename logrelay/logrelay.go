@@ -81,25 +81,25 @@ func (r *LogRelay) Run() {
 	for {
 		select {
 		case entry := <-r.logChan:
-
+			// Skip if log level too high, too verbose.
 			if entry.Level > r.logLevel {
-				// Log level too high, too verbose; ignore.
 				continue
 			}
 
-			if r.client != nil {
+			// Write to file if there's a file (usually there isn't).
+			if r.logger != nil {
+				r.logger.Printf("%s: %s: %s\n", entry.Service, proto.LogLevelName[entry.Level], entry.Msg)
+			}
+
+			// Send to API if we have a websocket client, and not in offline mode, and...
+			if r.client != nil && !r.offline {
+				// .. the websocket client is connected.
 				if r.connected {
-					// Send log entry to API.
 					r.send(entry, true) // buffer on err
 				} else {
 					// API not available right now, buffer and try later on reconnect.
 					r.buffer(entry)
 				}
-			}
-
-			if r.logger != nil {
-				// Write log entry to file, too.
-				r.logger.Println(entry)
 			}
 		case connected := <-r.client.ConnectChan():
 			r.connected = connected
