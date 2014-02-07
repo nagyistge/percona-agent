@@ -7,8 +7,6 @@ import (
 	"github.com/percona/cloud-tools/mm/mysql"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/test"
-	"github.com/percona/cloud-tools/test/mock"
-	"log"
 	"os"
 	"testing"
 	"time"
