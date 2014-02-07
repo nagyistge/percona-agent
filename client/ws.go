@@ -2,6 +2,8 @@ package client
 
 import (
 	"code.google.com/p/go.net/websocket"
+	"errors"
+	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
 	"time"
@@ -34,6 +36,8 @@ func NewWebsocketClient(logger *pct.Logger, url string, origin string, auth *pro
 	if err != nil {
 		return nil, err
 	}
+	config.Header.Add("X-Percona-API-Key", auth.ApiKey)
+
 	c := &WebsocketClient{
 		logger: logger,
 		url:    url,
@@ -108,7 +112,7 @@ func (c *WebsocketClient) ConnectOnce() error {
 	// because that happens next...
 	if err := c.Send(c.auth); err != nil {
 		conn.Close()
-		return err
+		return errors.New(fmt.Sprint("Send auth:", err))
 	}
 
 	// After we send our auth creds, API responds with AuthReponse: any error = auth failure.
@@ -116,12 +120,12 @@ func (c *WebsocketClient) ConnectOnce() error {
 	if err := c.Recv(authResponse, 5); err != nil {
 		// websocket error, not auth fail
 		conn.Close()
-		return err
+		return errors.New(fmt.Sprint("Recv auth response:", err))
 	}
 	if authResponse.Error != "" {
 		// auth fail (invalid API key, agent UUID, or combo of those)
 		conn.Close()
-		return err
+		return errors.New(fmt.Sprint("Auth fail:", err))
 	}
 
 	return nil
@@ -242,12 +246,17 @@ func (c *WebsocketClient) SendBytes(data []byte) error {
 	return websocket.Message.Send(c.conn, data)
 }
 
-func (c *WebsocketClient) Recv(data interface{}, timeout int) error {
+func (c *WebsocketClient) Recv(data interface{}, timeout uint) error {
 	if timeout > 0 {
 		t := time.Now().Add(time.Duration(timeout) * time.Second)
 		c.conn.SetReadDeadline(t)
+	} else {
+		c.conn.SetReadDeadline(time.Time{})
 	}
-	return websocket.JSON.Receive(c.conn, data)
+	if err := websocket.JSON.Receive(c.conn, data); err != nil {
+		return errors.New(fmt.Sprint("Recv:", err))
+	}
+	return nil
 }
 
 func (c *WebsocketClient) ConnectChan() chan bool {
@@ -264,4 +273,8 @@ func (c *WebsocketClient) Conn() *websocket.Conn {
 
 func (c *WebsocketClient) notifyConnect(state bool) {
 	c.connectChan <- state
+}
+
+func (c *WebsocketClient) SetLogger(logger *pct.Logger) {
+	c.logger = logger
 }

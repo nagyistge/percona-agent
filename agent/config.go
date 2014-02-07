@@ -13,9 +13,9 @@ import (
 const (
 	API_HOSTNAME = "cloud-api.percona.com"
 	CONFIG_FILE  = "/etc/percona/agent.conf"
-	LOG_FILE     = "/var/log/percona/agent.log"
+	LOG_FILE     = "/var/log/percona-agent.log"
 	LOG_LEVEL    = "info"
-	DATA_DIR     = "/var/spool/percona/agent"
+	DATA_DIR     = "/var/spool/percona-agent"
 )
 
 type Config struct {

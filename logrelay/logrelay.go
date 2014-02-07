@@ -28,6 +28,7 @@ type LogRelay struct {
 	secondBufSize int
 	lost          int
 	statusChan    chan *Status
+	offline       bool
 }
 
 type Status struct {
@@ -153,7 +154,7 @@ func (r *LogRelay) internal(msg string) {
 
 // @goroutine
 func (r *LogRelay) connect() {
-	if r.client == nil {
+	if r.client == nil || r.offline {
 		// log file only
 		return
 	}
@@ -280,4 +281,8 @@ func (r *LogRelay) setLogFile(logFile string) {
 	r.logger = logger
 	r.logFile = file.Name()
 	r.logger.Println("logFile=" + r.logFile)
+}
+
+func (r *LogRelay) Offline(state bool) {
+	r.offline = state
 }

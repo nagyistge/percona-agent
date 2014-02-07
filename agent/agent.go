@@ -181,6 +181,8 @@ AGENT_LOOP:
 				logger.Fatal("Too many statusHandler errors")
 				// todo: return or exit?
 			}
+		case err := <-client.ErrorChan():
+			logger.Warn(err)
 		case connected := <-client.ConnectChan():
 			if connected {
 				logger.Info("Connected to API")

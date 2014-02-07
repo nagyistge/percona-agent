@@ -1,19 +1,22 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/agent"
 	"github.com/percona/cloud-tools/client"
-	"github.com/percona/cloud-tools/logrelay"
-	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/data"
-	"github.com/percona/cloud-tools/qan"
+	"github.com/percona/cloud-tools/logrelay"
 	"github.com/percona/cloud-tools/mm"
 	mysqlMonitor "github.com/percona/cloud-tools/mm/mysql"
 	"github.com/percona/cloud-tools/mysql"
+	"github.com/percona/cloud-tools/pct"
+	"github.com/percona/cloud-tools/qan"
 	"github.com/percona/cloud-tools/ticker"
+	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"os/user"
 	"time"
@@ -23,9 +26,11 @@ const (
 	VERSION = "1.0.0"
 )
 
-func main() {
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
+func init() {
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
+}
 
+func main() {
 	/**
 	 * Bootstrap the most basic components.  If all goes well,
 	 * we can create and start the agent.
@@ -84,7 +89,7 @@ func main() {
 
 	// Get entry links from API.  This only requires an API key.
 	if len(config.Links) == 0 {
-		links, err := GetLinks(config.ApiHostname)
+		links, err := GetLinks(config.ApiKey, "http://"+config.ApiHostname)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -94,24 +99,43 @@ func main() {
 	// Make a proto.AgentAuth so we can connect websockets.
 	auth, origin := MakeAgentAuth(config)
 
-	// Start the log relay (sends pct.Logger log entries to API and/or log file).
-	logLevel := proto.LogLevels[config.LogLevel]
-	var logRelay *logrelay.LogRelay
+	/**
+	 * Log relay
+	 */
+
+	// Log websocket client, possibly disabled later.
+	logLink, exist := config.Links["log"]
+	if !exist || logLink == "" {
+		log.Fatalf("Unable to get log link")
+	}
+	logClient, err := client.NewWebsocketClient(nil, logLink, origin, auth)
+	if err != nil {
+		log.Fatalf("Unable to create log websocket connection (link: %s): %s", logLink, err)
+	}
+
+	// Log file, if not disabled.
+	logFile := config.LogFile
 	if config.Disabled("LogFile") {
 		log.Println("LogFile disabled")
-		logRelay = logrelay.NewLogRelay(nil, config.LogFile, logLevel)
-	} else {
-		logLink, exist := config.Links["log"]
-		if !exist || logLink == "" {
-			log.Fatalf("Unable to get log link")
-		}
-		logger := pct.NewLogger(logRelay.LogChan(), "agent-ws-log")
-		logClient, err := client.NewWebsocketClient(logger, logLink, origin, auth)
-		if err != nil {
-			log.Fatalf("Unable to create log websocket connection (link: %s): %s", logLink, err)
-		}
-		logRelay = logrelay.NewLogRelay(logClient, config.LogFile, logLevel)
+		logFile = ""
 	}
+
+	// Log level (should already be validated).
+	logLevel := proto.LogLevels[config.LogLevel]
+
+	// The log relay with option client and file.
+	logRelay := logrelay.NewLogRelay(logClient, logFile, logLevel)
+
+	// Update logger for log ws client now that log relay exists.
+	if logClient != nil {
+		logClient.SetLogger(pct.NewLogger(logRelay.LogChan(), "agent-ws-log"))
+	}
+
+	// todo: fix this hack
+	if config.Disabled("LogApi") {
+		logRelay.Offline(true)
+	}
+
 	go logRelay.Run()
 
 	/**
@@ -129,6 +153,7 @@ func main() {
 		pct.NewLogger(logRelay.LogChan(), "spooler"),
 		config.DataDir,
 		data.NewJsonGzipSerializer(),
+		auth.Hostname,
 	)
 	if err := spool.Start(); err != nil {
 		log.Fatalln("Cannot start spooler:", err)
@@ -200,13 +225,25 @@ func CheckConfig(config *agent.Config, configFile string) (bool, []string) {
 	return isValid, missing
 }
 
-func GetLinks(apiHostname string) (map[string]string, error) {
-	links := &proto.Links{}
-	/*
-	if err := client.Get(link, links, time.Hour*24*7); err != nil {
+func GetLinks(apiKey, url string) (map[string]string, error) {
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", url, nil)
+	req.Header.Add("X-Percona-API-Key", apiKey)
+	resp, err := client.Do(req)
+	if err != nil {
 		return nil, err
 	}
-	*/
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	links := &proto.Links{}
+	if err := json.Unmarshal(body, links); err != nil {
+		return nil, err
+	}
+
 	return links.Links, nil
 }
 
@@ -231,6 +268,7 @@ func MakeAgentAuth(config *agent.Config) (*proto.AgentAuth, string) {
 	origin := "http://" + username + "@" + hostname
 
 	auth := &proto.AgentAuth{
+		ApiKey:   config.ApiKey,
 		Uuid:     config.AgentUuid,
 		Hostname: hostname,
 		Username: username,
