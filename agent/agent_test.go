@@ -54,9 +54,6 @@ func (s *AgentTestSuite) SetUpSuite(t *gocheck.C) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// dataDir := s.tmpDir + "/data"
-	// pidFile := s.tmpDir + "/pid"
-	// logFile := s.tmpDir + "/log"
 
 	// Agent
 	s.config = &agent.Config{
@@ -64,6 +61,7 @@ func (s *AgentTestSuite) SetUpSuite(t *gocheck.C) {
 		LogDir:      agent.LOG_DIR,
 		LogLevel:    agent.LOG_LEVEL,
 		DataDir:     agent.DATA_DIR,
+		ConfigDir:   s.tmpDir,
 	}
 
 	s.auth = &proto.AgentAuth{
@@ -358,15 +356,17 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *gocheck.C) {
 	t.Check(gotStatus.AgentCmdQueue, gocheck.DeepEquals, []string{cmd.String()})
 
 	// Make it seem like service has started now.
-	// time.Sleep(1 * time.Second)
 	s.readyChan <- true
 
 	// Agent sends reply: no error.
 	gotReplies = test.WaitReply(s.recvChan)
-	if t.Check(len(gotReplies), gocheck.Equals, 1) == false {
-		t.Errorf("%q", gotReplies)
-		t.FailNow()
+	if len(gotReplies) == 0 {
+		t.Fatal("Get reply")
 	}
+	if len(gotReplies) > 1 {
+		t.Errorf("One reply, got %+v", gotReplies)
+	}
+
 	reply := new(proto.Reply)
 	_ = json.Unmarshal(gotReplies[0].Data, reply)
 	t.Check(reply.Error, gocheck.Equals, "")

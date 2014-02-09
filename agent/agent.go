@@ -278,9 +278,8 @@ func (agent *Agent) handleCmd(cmd *proto.Cmd) error {
 	agent.status.UpdateRe("AgentCmdHandler", "Running", cmd)
 
 	agent.cmdqMux.Lock()
-	defer agent.cmdqMux.Unlock()
-
 	agent.cmdq = append(agent.cmdq, cmd)
+	agent.cmdqMux.Unlock()
 
 	// Run the command in another goroutine so we can wait for it
 	// (and possibly timeout) in this goroutine.
@@ -327,7 +326,9 @@ func (agent *Agent) handleCmd(cmd *proto.Cmd) error {
 
 	// Pop the cmd from the queue.
 	agent.status.UpdateRe("AgentCmdHandler", "Finishing", cmd)
+	agent.cmdqMux.Lock()
 	agent.cmdq = agent.cmdq[0 : len(agent.cmdq)-1]
+	agent.cmdqMux.Unlock()
 
 	return cmdErr
 }
