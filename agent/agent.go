@@ -70,7 +70,7 @@ func NewAgent(config *Config, auth *proto.AgentAuth, logRelay *logrelay.LogRelay
 func (agent *Agent) StartServices(cmds []*proto.Cmd) error {
 	for _, cmd := range cmds {
 		if err := agent.handleCmd(cmd); err != nil {
-			return err
+			agent.logger.Warn(err)
 		}
 	}
 	return nil
@@ -281,6 +281,8 @@ func (agent *Agent) handleCmd(cmd *proto.Cmd) error {
 	agent.status.UpdateRe("AgentCmdHandler", "Running", cmd)
 	defer agent.status.Update("AgentCmdHandler", "Idle")
 
+	agent.logger.Info("Running", cmd)
+
 	agent.cmdqMux.Lock()
 	agent.cmdq = append(agent.cmdq, cmd)
 	agent.cmdqMux.Unlock()
@@ -290,9 +292,11 @@ func (agent *Agent) handleCmd(cmd *proto.Cmd) error {
 	cmdDone := make(chan error)
 	go func() {
 		var err error
-		if cmd.Service == "" {
-			switch cmd.Cmd {
+		defer func() { cmdDone <- err }()
+
+		if cmd.Service == "agent" {
 			// Agent command
+			switch cmd.Cmd {
 			case "SetLogLevel":
 				err = agent.handleSetLogLevel(cmd)
 			case "StartService":
@@ -305,17 +309,16 @@ func (agent *Agent) handleCmd(cmd *proto.Cmd) error {
 		} else {
 			// Service command
 			manager, ok := agent.services[cmd.Service]
-			if ok {
-				if manager.IsRunning() {
-					err = manager.Handle(cmd)
-				} else {
-					err = pct.ServiceIsNotRunningError{Service: cmd.Service}
-				}
-			} else {
+			if !ok {
 				err = pct.UnknownServiceError{Service: cmd.Service}
+				return
 			}
+			if !manager.IsRunning() {
+				err = pct.ServiceIsNotRunningError{Service: cmd.Service}
+				return
+			}
+			err = manager.Handle(cmd)
 		}
-		cmdDone <- err
 	}()
 
 	// Wait for the cmd to complete.

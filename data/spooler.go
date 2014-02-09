@@ -139,7 +139,7 @@ func (s *DiskvSpooler) run() {
 	for {
 		select {
 		case protoData := <-s.dataChan:
-			key := fmt.Sprintf("%s-%d.%s", protoData.Service, protoData.Created.UnixNano(), s.sz.FileType())
+			key := fmt.Sprintf("%s_%d", protoData.Service, protoData.Created.UnixNano())
 
 			bytes, err := json.Marshal(protoData)
 			if err != nil {
@@ -150,6 +150,8 @@ func (s *DiskvSpooler) run() {
 			if err := s.cache.Write(key, bytes); err != nil {
 				s.logger.Error(err)
 			}
+
+			s.logger.Debug("Spooled ", key)
 		case <-s.sync.StopChan:
 			s.sync.Graceful()
 			return

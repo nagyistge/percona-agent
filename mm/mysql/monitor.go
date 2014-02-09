@@ -177,45 +177,47 @@ func (m *Monitor) run() {
 	for {
 		select {
 		case now := <-m.tickChan:
-			if m.connected {
-				m.status.Update("mysql", "Running")
-
-				c := &mm.Collection{
-					StartTs: now.Unix(),
-					Metrics: []mm.Metric{},
-				}
-
-				// Get collection of metrics.
-				m.GetShowStatusMetrics(m.conn, prefix, c)
-				if m.config.InnoDB != "" {
-					m.GetInnoDBMetrics(m.conn, prefix, c)
-				}
-				if m.config.UserStats {
-					m.getTableUserStats(m.conn, prefix, c, m.config.UserStatsIgnoreDb)
-					m.getIndexUserStats(m.conn, prefix, c, m.config.UserStatsIgnoreDb)
-				}
-
-				// Send the metrics (to an mm.Aggregator).
-				if len(c.Metrics) > 0 {
-					select {
-					case m.collectionChan <- c:
-					case <-time.After(500 * time.Millisecond):
-						// lost collection
-						m.logger.Debug("Lost MySQL metrics; timeout spooling after 500ms")
-					}
-				} else {
-					m.logger.Debug("No metrics")
-				}
-
-				m.status.Update("mysql", "Ready")
-			} else {
-				m.logger.Debug("Not connected")
+			if !m.connected {
+				continue
 			}
+
+			m.status.Update("mysql", "Running")
+
+			c := &mm.Collection{
+				StartTs: now.Unix(),
+				Metrics: []mm.Metric{},
+			}
+
+			// Get collection of metrics.
+			m.GetShowStatusMetrics(m.conn, prefix, c)
+			if m.config.InnoDB != "" {
+				m.GetInnoDBMetrics(m.conn, prefix, c)
+			}
+			if m.config.UserStats {
+				m.getTableUserStats(m.conn, prefix, c, m.config.UserStatsIgnoreDb)
+				m.getIndexUserStats(m.conn, prefix, c, m.config.UserStatsIgnoreDb)
+			}
+
+			// Send the metrics (to an mm.Aggregator).
+			if len(c.Metrics) > 0 {
+				select {
+				case m.collectionChan <- c:
+				case <-time.After(500 * time.Millisecond):
+					// lost collection
+					m.logger.Debug("Lost MySQL metrics; timeout spooling after 500ms")
+				}
+			} else {
+				m.logger.Debug("No metrics")  // shouldn't happen
+			}
+
+			m.status.Update("mysql", "Ready")
 		case connected := <-m.connectedChan:
 			m.connected = connected
 			if connected {
 				m.status.Update("mysql", "Ready")
+				m.logger.Debug("Connected")
 			} else {
+				m.logger.Debug("Disconnected")
 				go m.connect()
 			}
 		case <-m.sync.StopChan:

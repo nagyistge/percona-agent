@@ -29,7 +29,7 @@ type UnknownServiceError struct {
 }
 
 func (e UnknownServiceError) Error() string {
-	return "Agent does not have a service manager for" + e.Service
+	return "Unknown service: " + e.Service
 }
 
 /////////////////////////////////////////////////////////////////////////////

@@ -55,6 +55,7 @@ func main() {
 	config := &agent.Config{
 		ApiHostname: agent.API_HOSTNAME,
 		LogDir:      agent.LOG_DIR,
+		LogFile:     agent.LOG_FILE,
 		LogLevel:    agent.LOG_LEVEL,
 		DataDir:     agent.DATA_DIR,
 		ConfigDir:   filepath.Dir(configFile),
@@ -120,11 +121,16 @@ func main() {
 	}
 
 	// Log file, if not disabled.
-	logFile := config.LogDir + "/agent.log"
+	var logFile string
 	if config.Disabled("LogFile") {
 		log.Println("LogFile: DISABLED")
 		logFile = ""
 	} else {
+		if config.LogFile == "STDOUT" || config.LogFile == "STDERR" {
+			logFile = config.LogFile
+		} else {
+			logFile = config.LogDir + "/" + config.LogFile
+		}
 		log.Printf("LogFile: %s\n", logFile)
 	}
 
@@ -158,17 +164,23 @@ func main() {
 	 * Data spooler and sender
 	 */
 
+	var sz data.Serializer
+	if config.Disabled("gzip") {
+		sz = data.NewJsonSerializer()
+	} else {
+		sz = data.NewJsonGzipSerializer()
+	}
 	dataSpooler := data.NewDiskvSpooler(
 		pct.NewLogger(logRelay.LogChan(), "data-spooler"),
 		config.DataDir,
-		data.NewJsonGzipSerializer(),
+		sz,
 		auth.Hostname,
 	)
 	if err := dataSpooler.Start(); err != nil {
 		log.Fatalln("Cannot start data spooler:", err)
 	}
 
-	dataClient, err := client.NewWebsocketClient(pct.NewLogger(logRelay.LogChan(), "data-spooler-ws"), links["data"], origin, auth)
+	dataClient, err := client.NewWebsocketClient(pct.NewLogger(logRelay.LogChan(), "data-sender-ws"), links["data"], origin, auth)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -176,7 +188,7 @@ func main() {
 		pct.NewLogger(logRelay.LogChan(), "data-sender"),
 		dataClient,
 		dataSpooler,
-		time.Tick(1*time.Minute),
+		time.Tick(30*time.Second),  // todo
 	)
 	if err := dataSender.Start(); err != nil {
 		log.Fatalln("Cannot start data sender:", err)
@@ -187,7 +199,7 @@ func main() {
 	 */
 
 	cmdClient, err := client.NewWebsocketClient(
-		pct.NewLogger(logRelay.LogChan(), "agent-ws-cmd"),
+		pct.NewLogger(logRelay.LogChan(), "agent-cmd-ws"),
 		links["cmd"],
 		origin,
 		auth,
@@ -303,6 +315,8 @@ func GetLinks(apiKey, url string) (map[string]string, error) {
 	}
 	req.Header.Add("X-Percona-API-Key", apiKey)
 
+	log.Println("Getting entry links from", url)
+
 	backoff := pct.NewBackoff(5 * time.Minute)
 	for {
 		time.Sleep(backoff.Wait())
@@ -319,9 +333,15 @@ func GetLinks(apiKey, url string) (map[string]string, error) {
 			continue
 		}
 
+		if resp.StatusCode >= 400 {
+			log.Printf("Error %d from %s\n", resp.StatusCode, url)
+		} else if len(body) == 0 {
+			log.Println("OK response from ", url, "but no content")
+		}
+
 		links := &proto.Links{}
 		if err := json.Unmarshal(body, links); err != nil {
-			log.Printf("GET %s error: json.Unmarshal: %s", url, err)
+			log.Printf("GET %s error: json.Unmarshal: %s: %s", url, err, string(body))
 			continue
 		}
 
@@ -389,11 +409,11 @@ func LoadServiceConfigs(configDir string) []*proto.Cmd {
 		var cmd *proto.Cmd
 		switch filename {
 		case qan.CONFIG_FILE:
-			cmd = makeStartServiceCmd("qan", configFile)
+			cmd = makeStartServiceCmd("agent", "qan", configFile)
 		case mm.CONFIG_FILE:
-			cmd = makeStartServiceCmd("mm", configFile)
+			cmd = makeStartServiceCmd("agent", "mm", configFile)
 		case mysqlMonitor.CONFIG_FILE:
-			cmd = makeStartServiceCmd("mysql-monitor", configFile)
+			cmd = makeStartServiceCmd("mm", "mysql", configFile)
 		default:
 			log.Fatal("Unknown config file:", configFile)
 		}
@@ -404,7 +424,7 @@ func LoadServiceConfigs(configDir string) []*proto.Cmd {
 	return configs
 }
 
-func makeStartServiceCmd(service, configFile string) *proto.Cmd {
+func makeStartServiceCmd(manager, service, configFile string) *proto.Cmd {
 	config, err := ioutil.ReadFile(configFile)
 	if err != nil {
 		log.Fatal(err)
@@ -418,9 +438,10 @@ func makeStartServiceCmd(service, configFile string) *proto.Cmd {
 		log.Fatal(err)
 	}
 	cmd := &proto.Cmd{
-		Ts:   time.Now().UTC(),
-		Cmd:  "StartService",
-		Data: data,
+		Ts:      time.Now().UTC(),
+		Service: manager,
+		Cmd:     "StartService",
+		Data:    data,
 	}
 	return cmd
 }

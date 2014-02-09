@@ -48,18 +48,25 @@ func (s *Sender) Stop() error {
 func (s *Sender) run() {
 	defer func() {
 		if s.sync.IsGraceful() {
-			s.logger.Info("sendData stop")
+			s.logger.Info("Stop")
 		} else {
-			s.logger.Error("sendData crash")
+			s.logger.Error("Crash")
 		}
 		s.sync.Done()
 	}()
-
+	s.logger.Info("Start")
 	for {
+	s.logger.Info("wait")
 		select {
 		case <-s.tickerChan:
+
+	s.logger.Info("send start")
 			s.send()
+
+	s.logger.Info("send done")
 		case <-s.sync.StopChan:
+
+	s.logger.Info("stop")
 			s.sync.Graceful()
 			return
 		}
@@ -69,6 +76,7 @@ func (s *Sender) run() {
 func (s *Sender) send() {
 	// Try a few times to connect to the API.
 	connected := false
+	s.logger.Debug("Connecting to API")
 	for i := 1; i <= 3; i++ {
 		if err := s.client.ConnectOnce(); err != nil {
 			s.logger.Warn("Connect API failed:", err)
@@ -76,13 +84,20 @@ func (s *Sender) send() {
 			time.Sleep(time.Duration(t) * time.Second)
 		} else {
 			connected = true
-			defer s.client.Disconnect()
+			// client.WebsocketClient expects caller to recv on ConenctChan(),
+			// even though in this case we're not using the async channels.
+			// tood: fix this poor design assumption/coupling in ws/client.go
+			defer func() {
+				s.client.Disconnect()
+				<-s.client.ConnectChan()
+			}()
 			break
 		}
 	}
 	if !connected {
 		return
 	}
+	s.logger.Debug("Connected to API")
 
 	maxWarnErr := 3
 	n400Err := 0
@@ -90,7 +105,7 @@ func (s *Sender) send() {
 
 	// Send all files.
 	// todo: number/time/rate limit so we dont DDoS API
-	s.logger.Debug("Start sending")
+	s.logger.Info("Start sending")
 	filesChan := s.spool.Files()
 	for file := range filesChan {
 		s.logger.Debug("Sending", file)
@@ -137,5 +152,6 @@ func (s *Sender) send() {
 		s.logger.Warn(fmt.Sprintf("%d more 5xx errors", n500Err-maxWarnErr))
 	}
 
-	s.logger.Debug("Done sending")
+	// todo: log some basic numbers like number of files sent, errors, time, etc.
+	s.logger.Info("Done sending")
 }

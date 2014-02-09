@@ -9,7 +9,6 @@ import (
 type Serializer interface {
 	ToBytes(data interface{}) ([]byte, error)
 	Encoding() string
-	FileType() string
 }
 
 type JsonGzipSerializer struct {
@@ -46,10 +45,6 @@ func (s *JsonGzipSerializer) Encoding() string {
 	return "gzip"
 }
 
-func (s *JsonGzipSerializer) FileType() string {
-	return "gz"
-}
-
 // --------------------------------------------------------------------------
 
 type JsonSerializer struct {
@@ -66,8 +61,4 @@ func (j *JsonSerializer) ToBytes(data interface{}) ([]byte, error) {
 
 func (s *JsonSerializer) Encoding() string {
 	return ""
-}
-
-func (s *JsonSerializer) FileType() string {
-	return "json"
 }

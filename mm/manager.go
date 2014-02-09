@@ -64,6 +64,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 	}
 
 	m.status.UpdateRe("Mm", "Starting", cmd)
+	m.logger.Info("Starting", cmd)
 
 	// We need one aggregator for each unique report interval.  There's usually
 	// just one: 60s.  Remember: report interval != collect interval.  Monitors
@@ -76,11 +77,13 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 		}
 
 		if _, ok := m.aggregators[interval.Report]; !ok {
+			logger := pct.NewLogger(m.logger.LogChan(), fmt.Sprintf("mm-ag-%d", interval.Report))
+
 			tickChan := make(chan time.Time)
 			m.clock.Add(tickChan, interval.Report)
 
 			collectionChan := make(chan *Collection, 2*len(c.Intervals))
-			aggregator := NewAggregator(tickChan, collectionChan, m.spool)
+			aggregator := NewAggregator(logger, tickChan, collectionChan, m.spool)
 			aggregator.Start()
 
 			//msg := fmt.Sprintf("Synchronizing %d second report interval", interval.Report)
@@ -92,6 +95,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 
 	m.config = c
 	m.status.UpdateRe("Mm", "Ready", cmd)
+	m.logger.Info("Ready", cmd)
 
 	if err := pct.WriteConfig(CONFIG_FILE, c); err != nil {
 		return err
@@ -151,8 +155,10 @@ func (m *Manager) Handle(cmd *proto.Cmd) error {
 	// Start or stop the monitor.
 	var err error
 	switch cmd.Cmd {
-	case "Start":
+	case "StartService":
 		m.status.UpdateRe("Mm", "Starting "+mm.Name+" monitor", cmd)
+		m.logger.Info("Start", mm.Name, "monitor", cmd)
+
 		interval := m.config.Intervals[mm.Name]
 
 		// When to collect.
@@ -169,12 +175,19 @@ func (m *Manager) Handle(cmd *proto.Cmd) error {
 
 		// Run the Metrics Monitor!
 		err = monitor.Start(mm.Config, tickChan, a.collectionChan)
-	case "Stop":
+	case "StopService":
 		m.status.UpdateRe("Mm", "Stopping "+mm.Name+" monitor", cmd)
+		m.logger.Info("Stop", mm.Name, "monitor", cmd)
 		m.clock.Remove(monitor.TickChan())
 		err = monitor.Stop()
 	default:
 		err = pct.UnknownCmdError{Cmd: cmd.Cmd}
+	}
+
+	if err != nil {
+		m.logger.Warn(err)
+	} else {
+		m.logger.Info(cmd.Cmd, "OK")
 	}
 
 	return err

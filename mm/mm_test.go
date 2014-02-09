@@ -28,6 +28,8 @@ var sample = os.Getenv("GOPATH") + "/src/github.com/percona/cloud-tools/test/mm"
 /////////////////////////////////////////////////////////////////////////////
 
 type AggregatorTestSuite struct {
+	logChan        chan *proto.LogEntry
+	logger         *pct.Logger
 	tickChan       chan time.Time
 	collectionChan chan *mm.Collection
 	dataChan       chan interface{}
@@ -37,6 +39,8 @@ type AggregatorTestSuite struct {
 var _ = gocheck.Suite(&AggregatorTestSuite{})
 
 func (s *AggregatorTestSuite) SetUpSuite(t *gocheck.C) {
+	s.logChan = make(chan *proto.LogEntry, 10)
+	s.logger = pct.NewLogger(s.logChan, "mm-manager-test")
 	s.tickChan = make(chan time.Time)
 	s.collectionChan = make(chan *mm.Collection)
 	s.dataChan = make(chan interface{}, 1)
@@ -57,7 +61,7 @@ func sendCollection(file string, collectionChan chan *mm.Collection) error {
 }
 
 func (s *AggregatorTestSuite) TestC001(t *gocheck.C) {
-	a := mm.NewAggregator(s.tickChan, s.collectionChan, s.spool)
+	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
 
@@ -105,7 +109,7 @@ func (s *AggregatorTestSuite) TestC001(t *gocheck.C) {
 }
 
 func (s *AggregatorTestSuite) TestC002(t *gocheck.C) {
-	a := mm.NewAggregator(s.tickChan, s.collectionChan, s.spool)
+	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
 
@@ -134,7 +138,7 @@ func (s *AggregatorTestSuite) TestC002(t *gocheck.C) {
 
 // All zero values
 func (s *AggregatorTestSuite) TestC000(t *gocheck.C) {
-	a := mm.NewAggregator(s.tickChan, s.collectionChan, s.spool)
+	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
 
@@ -161,7 +165,7 @@ func (s *AggregatorTestSuite) TestC000(t *gocheck.C) {
 
 // COUNTER
 func (s *AggregatorTestSuite) TestC003(t *gocheck.C) {
-	a := mm.NewAggregator(s.tickChan, s.collectionChan, s.spool)
+	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
 
@@ -201,7 +205,7 @@ func (s *AggregatorTestSuite) TestC003(t *gocheck.C) {
 }
 
 func (s *AggregatorTestSuite) TestC003Lost(t *gocheck.C) {
-	a := mm.NewAggregator(s.tickChan, s.collectionChan, s.spool)
+	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
 
@@ -409,7 +413,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *gocheck.C) {
 	 */
 
 	// Starting a monitor is like starting the manager: it requires
-	// a "Start" cmd and the monitor's config.
+	// a "StartService" cmd and the monitor's config.
 	mysqlConfig := &mysql.Config{
 		DSN:          "user:host@tcp:(127.0.0.1:3306)",
 		InstanceName: "db1",
@@ -432,7 +436,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *gocheck.C) {
 	}
 	cmd = &proto.Cmd{
 		User:    "daniel",
-		Cmd:     "Start",
+		Cmd:     "StartService",
 		Service: "mm",
 		Data:    serviceData,
 	}
@@ -461,7 +465,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *gocheck.C) {
 	 */
 
 	// Starting a monitor is like starting the manager: it requires
-	// a "Start" cmd and the monitor's config.
+	// a "StartService" cmd and the monitor's config.
 	service = &proto.ServiceData{
 		Name: "mysql",
 	}
@@ -471,7 +475,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *gocheck.C) {
 	}
 	cmd = &proto.Cmd{
 		User:    "daniel",
-		Cmd:     "Stop",
+		Cmd:     "StopService",
 		Service: "mm",
 		Data:    serviceData,
 	}

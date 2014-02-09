@@ -27,6 +27,7 @@ type Config struct {
 	ApiHostname string
 	DataDir     string
 	LogDir      string
+	LogFile     string
 	LogLevel    string
 	PidFile     string
 	// Local-only, hacker:
@@ -82,6 +83,9 @@ func (c *Config) Apply(cur *Config) error {
 	}
 	if cur.LogDir != "" {
 		c.LogDir = cur.LogDir
+	}
+	if cur.LogFile != "" {
+		c.LogFile = cur.LogFile
 	}
 	if cur.LogLevel != "" {
 		_, ok := proto.LogLevelNumber[cur.LogLevel]

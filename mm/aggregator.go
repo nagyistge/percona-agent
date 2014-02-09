@@ -7,6 +7,7 @@ import (
 )
 
 type Aggregator struct {
+	logger         *pct.Logger
 	tickChan       chan time.Time
 	collectionChan chan *Collection
 	spool          data.Spooler
@@ -15,8 +16,9 @@ type Aggregator struct {
 	running bool
 }
 
-func NewAggregator(tickChan chan time.Time, collectionChan chan *Collection, spool data.Spooler) *Aggregator {
+func NewAggregator(logger *pct.Logger, tickChan chan time.Time, collectionChan chan *Collection, spool data.Spooler) *Aggregator {
 	a := &Aggregator{
+		logger:         logger,
 		tickChan:       tickChan,
 		collectionChan: collectionChan,
 		spool:          spool,
@@ -78,6 +80,7 @@ func (a *Aggregator) run() {
 			// Next interval starts now.
 			startTs = now
 			cur = make(Metrics)
+			a.logger.Debug("Start report interval")
 		case collection := <-a.collectionChan:
 			// todo: if colllect.Ts < lastNow, then discard: it missed its period
 			for _, metric := range collection.Metrics {
@@ -96,6 +99,7 @@ func (a *Aggregator) run() {
 
 // @goroutine[1]
 func (a *Aggregator) report(startTs time.Time, metrics Metrics) {
+	a.logger.Info("Summarize metrics from", startTs)
 	for _, s := range metrics {
 		s.Summarize()
 	}
