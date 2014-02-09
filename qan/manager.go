@@ -118,6 +118,10 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 	m.status.UpdateRe("Qan", "Running", cmd)
 	logger.Info("Running")
 
+	if err := pct.WriteConfig(CONFIG_FILE, c); err != nil {
+		return err
+	}
+
 	return nil // success
 }
 

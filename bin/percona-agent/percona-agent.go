@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"os/user"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -44,7 +45,7 @@ func main() {
 
 	// Check that config file exists.
 	if configFile == "" {
-		configFile = agent.CONFIG_DIR + "/agent.conf"
+		configFile = agent.CONFIG_FILE // default
 	}
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
 		log.Fatalf("Agent config file %s does not exist", configFile)
@@ -56,6 +57,7 @@ func main() {
 		LogDir:      agent.LOG_DIR,
 		LogLevel:    agent.LOG_LEVEL,
 		DataDir:     agent.DATA_DIR,
+		ConfigDir:   filepath.Dir(configFile),
 	}
 
 	// Overwrite default config with config file.
@@ -76,6 +78,13 @@ func main() {
 
 	log.Printf("AgentUuid: %s\n", config.AgentUuid)
 	log.Printf("DataDir: %s\n", config.DataDir)
+
+	/**
+	 * Service configs
+	 */
+
+	init := LoadServiceConfigs(config.ConfigDir)
+	os.Exit(0)
 
 	/**
 	 * PID file
@@ -223,7 +232,7 @@ func main() {
 
 	t := time.Now().Sub(t0)
 	log.Printf("Running agent (%s)\n", t)
-	agent.Run()
+	agent.Start(init)
 }
 
 func ParseCmdLine() string {
@@ -358,6 +367,57 @@ func MakeAgentAuth(config *agent.Config) (*proto.AgentAuth, string) {
 		Username: username,
 	}
 	return auth, origin
+}
+
+func LoadServiceConfigs(configDir string) []*proto.Cmd {
+	configFiles, err := filepath.Glob(configDir + "/*.conf")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	configs := []*proto.Cmd{}
+	for _, configFile := range configFiles {
+		filename := filepath.Base(configFile)
+		if filename == "agent.conf" {
+			continue
+		}
+		var cmd *proto.Cmd
+		switch filename {
+		case qan.CONFIG_FILE:
+			cmd = makeStartServiceCmd("qan", configFile)
+		case mm.CONFIG_FILE:
+			cmd = makeStartServiceCmd("mm", configFile)
+		case mysqlMonitor.CONFIG_FILE:
+			cmd = makeStartServiceCmd("mysql-monitor", configFile)
+		default:
+			log.Fatal("Unknown config file:", configFile)
+		}
+		// todo: mm needs to start before monitors
+		// tood: monitors can't start without mm
+		configs = append(configs, cmd)
+	}
+	return configs
+}
+
+func makeStartServiceCmd(service, configFile string) *proto.Cmd {
+	config, err := ioutil.ReadFile(configFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	serviceData := &proto.ServiceData{
+		Name:   service,
+		Config: config,
+	}
+	data, err := json.Marshal(serviceData)
+	if err != nil {
+		log.Fatal(err)
+	}
+	cmd := &proto.Cmd{
+		Ts:   time.Now().UTC(),
+		Cmd:  "StartService",
+		Data: data,
+	}
+	return cmd
 }
 
 func removeFile(file string) error {

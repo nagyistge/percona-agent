@@ -4,6 +4,8 @@ import (
 	"github.com/percona/cloud-tools/mysql"
 )
 
+const CONFIG_FILE = "qan.conf"
+
 type Config struct {
 	// Manager
 	DSN               string

@@ -67,6 +67,16 @@ func NewAgent(config *Config, auth *proto.AgentAuth, logRelay *logrelay.LogRelay
 // Interface
 /////////////////////////////////////////////////////////////////////////////
 
+func (agent *Agent) Start(init []*proto.Cmd) error {
+	for _, cmd := range init {
+		if err := agent.handleCmd(cmd); err != nil {
+			return err
+		}
+	}
+	agent.Run()
+	return nil
+}
+
 // @goroutine[0]
 func (agent *Agent) Run() (stopReason string, update bool) {
 	logger := agent.logger
@@ -248,83 +258,78 @@ func (agent *Agent) cmdHandler() {
 	// defer is LIFO, so send done signal last.
 	defer agent.cmdHandlerSync.Done()
 	defer agent.status.Update("AgentCmdHandler", "Stopped")
-	agent.status.Update("AgentCmdHandler", "Ready")
 
 	for {
+		agent.status.Update("AgentCmdHandler", "Ready")
 		select {
 		case <-agent.cmdHandlerSync.StopChan: // from stop()
 			agent.cmdHandlerSync.Graceful()
 			return
 		case cmd := <-agent.cmdChan:
-			agent.status.UpdateRe("AgentCmdHandler", "Running", cmd)
-
-			agent.cmdqMux.Lock()
-			agent.cmdq = append(agent.cmdq, cmd)
-			agent.cmdqMux.Unlock()
-
-			// Run the command in another goroutine so we can wait for it
-			// (and possibly timeout) in this goroutine.
-			cmdDone := make(chan error)
-			go func() {
-				var err error
-				if cmd.Service == "" {
-					switch cmd.Cmd {
-					// Agent command
-					case "SetLogLevel":
-						err = agent.handleSetLogLevel(cmd)
-					case "StartService":
-						err = agent.handleStartService(cmd)
-					case "StopService":
-						err = agent.handleStopService(cmd)
-					default:
-						err = pct.UnknownCmdError{Cmd: cmd.Cmd}
-					}
-				} else {
-					// Service command
-					manager, ok := agent.services[cmd.Service]
-					if ok {
-						if manager.IsRunning() {
-							err = manager.Handle(cmd)
-						} else {
-							err = pct.ServiceIsNotRunningError{Service: cmd.Service}
-						}
-					} else {
-						err = pct.UnknownServiceError{Service: cmd.Service}
-					}
-				}
-				cmdDone <- err
-			}()
-
-			// Wait for the cmd to complete.
-			var err error
-			cmdTimeout := time.After(time.Duration(5) * time.Second) // todo
-			select {
-			case err = <-cmdDone:
-			case <-cmdTimeout:
-				err = pct.CmdTimeoutError{Cmd: cmd.Cmd}
-				// @todo kill that ^ goroutine
-			}
-
-			// Reply to the command: just the error if any.  The user can check
-			// the log for details about running the command because the cmd
-			// should have been associated with the log entries in the cmd handler
-			// function by calling LogWriter.Re().
+			err := agent.handleCmd(cmd)
 			agent.status.UpdateRe("AgentCmdHandler", "Replying", cmd)
-			if err != nil {
-				replyChan <- cmd.Reply(err, nil)
-			} else {
-				replyChan <- cmd.Reply(nil, nil) // success
+			replyChan <- cmd.Reply(err, nil)
+		}
+	}
+}
+
+// @goroutine[0:1]
+func (agent *Agent) handleCmd(cmd *proto.Cmd) error {
+	agent.status.UpdateRe("AgentCmdHandler", "Running", cmd)
+
+	agent.cmdqMux.Lock()
+	defer agent.cmdqMux.Unlock()
+
+	agent.cmdq = append(agent.cmdq, cmd)
+
+	// Run the command in another goroutine so we can wait for it
+	// (and possibly timeout) in this goroutine.
+	cmdDone := make(chan error)
+	go func() {
+		var err error
+		if cmd.Service == "" {
+			switch cmd.Cmd {
+			// Agent command
+			case "SetLogLevel":
+				err = agent.handleSetLogLevel(cmd)
+			case "StartService":
+				err = agent.handleStartService(cmd)
+			case "StopService":
+				err = agent.handleStopService(cmd)
+			default:
+				err = pct.UnknownCmdError{Cmd: cmd.Cmd}
 			}
+		} else {
+			// Service command
+			manager, ok := agent.services[cmd.Service]
+			if ok {
+				if manager.IsRunning() {
+					err = manager.Handle(cmd)
+				} else {
+					err = pct.ServiceIsNotRunningError{Service: cmd.Service}
+				}
+			} else {
+				err = pct.UnknownServiceError{Service: cmd.Service}
+			}
+		}
+		cmdDone <- err
+	}()
 
-			// Pop the cmd from the queue.
-			agent.status.UpdateRe("AgentCmdHandler", "Finishing", cmd)
-			agent.cmdqMux.Lock()
-			agent.cmdq = agent.cmdq[0 : len(agent.cmdq)-1]
-			agent.cmdqMux.Unlock()
+	// Wait for the cmd to complete.
+	var cmdErr error
+	cmdTimeout := time.After(time.Duration(5) * time.Second) // todo
+	select {
+	case cmdErr = <-cmdDone:
+	case <-cmdTimeout:
+		cmdErr = pct.CmdTimeoutError{Cmd: cmd.Cmd}
+		// @todo kill that ^ goroutine
+	}
 
-			agent.status.Update("AgentCmdHandler", "Ready")
-		} // select
-	} // for
+	// Pop the cmd from the queue.
+	agent.status.UpdateRe("AgentCmdHandler", "Finishing", cmd)
+	agent.cmdq = agent.cmdq[0 : len(agent.cmdq)-1]
+
+	return cmdErr
 }
 
 func (agent *Agent) handleSetLogLevel(cmd *proto.Cmd) error {
@@ -366,8 +371,11 @@ func (agent *Agent) handleStartService(cmd *proto.Cmd) error {
 	}
 
 	// Start the service with the given config.
-	err := m.Start(cmd, s.Config)
-	return err
+	if err := m.Start(cmd, s.Config); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (agent *Agent) handleStopService(cmd *proto.Cmd) error {

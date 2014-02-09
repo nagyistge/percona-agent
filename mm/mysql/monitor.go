@@ -59,6 +59,10 @@ func (m *Monitor) Start(config []byte, tickChan chan time.Time, collectionChan c
 
 	go m.run()
 
+	if err := pct.WriteConfig(CONFIG_FILE, c); err != nil {
+		return err
+	}
+
 	return nil
 }
 

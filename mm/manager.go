@@ -92,6 +92,11 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 
 	m.config = c
 	m.status.UpdateRe("Mm", "Ready", cmd)
+
+	if err := pct.WriteConfig(CONFIG_FILE, c); err != nil {
+		return err
+	}
+
 	return nil
 }
 

@@ -12,7 +12,7 @@ import (
 // Defaults
 const (
 	API_HOSTNAME = "cloud-api.percona.com"
-	CONFIG_DIR   = "/etc/percona"
+	CONFIG_FILE  = "/etc/percona/agent.conf"
 	DATA_DIR     = "/var/spool/percona"
 	LOG_DIR      = "/var/log/percona"
 	LOG_FILE     = "agent.log"
@@ -33,6 +33,8 @@ type Config struct {
 	Links   map[string]string
 	Enable  []string
 	Disable []string
+	// Internal:
+	ConfigDir string
 }
 
 // Load config from JSON file.
