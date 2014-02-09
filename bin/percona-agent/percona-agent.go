@@ -80,13 +80,6 @@ func main() {
 	log.Printf("DataDir: %s\n", config.DataDir)
 
 	/**
-	 * Service configs
-	 */
-
-	init := LoadServiceConfigs(config.ConfigDir)
-	os.Exit(0)
-
-	/**
 	 * PID file
 	 */
 
@@ -230,9 +223,21 @@ func main() {
 	agentLogger := pct.NewLogger(logRelay.LogChan(), "agent")
 	agent := agent.NewAgent(config, auth, logRelay, agentLogger, cmdClient, services)
 
+	// Start previously configured, running services.
+	startServiceCmds := LoadServiceConfigs(config.ConfigDir)
+	if len(startServiceCmds) > 0 {
+		t := time.Now().Sub(t0)
+		log.Printf("Starting services (%s)\n", t)
+		agent.StartServices(startServiceCmds)
+	}
+
+	// Start agent.
 	t := time.Now().Sub(t0)
 	log.Printf("Running agent (%s)\n", t)
-	agent.Start(init)
+	stopReason, update := agent.Run()
+
+	// todo:
+	log.Printf("stopReason=%s, update=%t\n", stopReason, update)
 }
 
 func ParseCmdLine() string {

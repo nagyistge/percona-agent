@@ -67,13 +67,12 @@ func NewAgent(config *Config, auth *proto.AgentAuth, logRelay *logrelay.LogRelay
 // Interface
 /////////////////////////////////////////////////////////////////////////////
 
-func (agent *Agent) Start(init []*proto.Cmd) error {
-	for _, cmd := range init {
+func (agent *Agent) StartServices(cmds []*proto.Cmd) error {
+	for _, cmd := range cmds {
 		if err := agent.handleCmd(cmd); err != nil {
 			return err
 		}
 	}
-	agent.Run()
 	return nil
 }
 
@@ -82,8 +81,9 @@ func (agent *Agent) Run() (stopReason string, update bool) {
 	logger := agent.logger
 	logger.Debug("start")
 
-	// Try and block forever to connect because the agent can't do anything
-	// until connected.
+	// Reset for testing.
+	agent.stopping = false
+	agent.update = false
 
 	// Start client goroutines for sending/receving cmd/reply via channels
 	// so we can do non-blocking send/recv.  This only needs to be done once.
@@ -96,6 +96,7 @@ func (agent *Agent) Run() (stopReason string, update bool) {
 	go agent.connect()
 
 	defer func() {
+		logger.Info("Agent stopped")
 		client.Disconnect()
 		client.Stop()
 	}()
@@ -127,7 +128,7 @@ AGENT_LOOP:
 	for {
 		select {
 		case cmd := <-cmdChan: // from API
-			logger.Debug("recv:%s", cmd)
+			logger.Debug("recv: ", cmd)
 
 			if cmd.Cmd == "Abort" {
 				// Try to log the abort, but this cmd should be fail-safe so don't wait too long.
@@ -138,6 +139,7 @@ AGENT_LOOP:
 
 			if agent.stopping {
 				// Already received Stop or Update, so reject further cmds.
+				logger.Info("Got stop again, ignorning")
 				err := pct.CmdRejectedError{Cmd: cmd.Cmd, Reason: agent.stopReason}
 				replyChan <- cmd.Reply(err, nil)
 				continue AGENT_LOOP
@@ -245,6 +247,7 @@ func (agent *Agent) stop(cmd *proto.Cmd) {
 
 	agent.status.UpdateRe("Agent", "stopping agent", cmd)
 	agent.stopChan <- true
+	agent.status.UpdateRe("Agent", "Stopped", cmd)
 }
 
 // --------------------------------------------------------------------------
@@ -276,6 +279,7 @@ func (agent *Agent) cmdHandler() {
 // @goroutine[0:1]
 func (agent *Agent) handleCmd(cmd *proto.Cmd) error {
 	agent.status.UpdateRe("AgentCmdHandler", "Running", cmd)
+	defer agent.status.Update("AgentCmdHandler", "Idle")
 
 	agent.cmdqMux.Lock()
 	agent.cmdq = append(agent.cmdq, cmd)

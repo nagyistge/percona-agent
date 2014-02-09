@@ -40,9 +40,11 @@ type AgentTestSuite struct {
 	sendChan     chan *proto.Cmd
 	recvChan     chan *proto.Reply
 	// --
-	doneChan   chan bool
-	stopReason string
-	upgrade    bool
+	doneChan       chan bool
+	stopReason     string
+	upgrade        bool
+	alreadyStopped bool
+	services       map[string]pct.ServiceManager
 }
 
 var _ = gocheck.Suite(&AgentTestSuite{})
@@ -91,19 +93,13 @@ func (s *AgentTestSuite) SetUpSuite(t *gocheck.C) {
 	s.doneChan = make(chan bool, 1)
 }
 
-func (s *AgentTestSuite) TearDownSuite(t *gocheck.C) {
-	if err := os.RemoveAll(s.tmpDir); err != nil {
-		fmt.Println(err)
-	}
-}
-
 func (s *AgentTestSuite) SetUpTest(t *gocheck.C) {
 	// Before each test, create an agent.  Tests make change the agent,
 	// so this ensures each test starts with an agent with known values.
-	services := make(map[string]pct.ServiceManager)
-	services["qan"] = mock.NewMockServiceManager("Qan", s.readyChan, s.traceChan)
-	services["mm"] = mock.NewMockServiceManager("Mm", s.readyChan, s.traceChan)
-	s.agent = agent.NewAgent(s.config, s.auth, s.logRelay, s.logger, s.client, services)
+	s.services = make(map[string]pct.ServiceManager)
+	s.services["qan"] = mock.NewMockServiceManager("Qan", s.readyChan, s.traceChan)
+	s.services["mm"] = mock.NewMockServiceManager("Mm", s.readyChan, s.traceChan)
+	s.agent = agent.NewAgent(s.config, s.auth, s.logRelay, s.logger, s.client, s.services)
 
 	// Run the agent.
 	go func() {
@@ -116,13 +112,21 @@ func (s *AgentTestSuite) TearDownTest(t *gocheck.C) {
 	s.readyChan <- true // qan.Stop() immediately
 	s.readyChan <- true // mm.Stop immediately
 
-	s.sendChan <- &proto.Cmd{Cmd: "Stop"} // tell agent to stop itself
-	<-s.doneChan                          // wait for goroutine agent.Run() in test
+	if !s.alreadyStopped {
+		s.sendChan <- &proto.Cmd{Cmd: "Stop"} // tell agent to stop itself
+		<-s.doneChan                          // wait for goroutine agent.Run() in test
+	}
 
 	test.DrainLogChan(s.logChan)
 	test.DrainSendChan(s.sendChan)
 	test.DrainRecvChan(s.recvChan)
 	test.DrainTraceChan(s.traceChan)
+}
+
+func (s *AgentTestSuite) TearDownSuite(t *gocheck.C) {
+	if err := os.RemoveAll(s.tmpDir); err != nil {
+		fmt.Println(err)
+	}
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -491,5 +495,79 @@ func (s *AgentTestSuite) TestRequiredConfig(t *gocheck.C) {
 	if same, diff := test.IsDeeply(fullConfig, expect); !same {
 		t.Error(diff)
 		t.Logf("got: %+v", fullConfig)
+	}
+}
+
+func (s *AgentTestSuite) TestStartServices(t *gocheck.C) {
+	// Stop agent because SetUpTest() starts it.
+	s.TearDownTest(t)
+	s.alreadyStopped = true
+
+	// Have to type-case back to mock type because interface doesn't have Reset().
+	for _, m := range s.services {
+		x := m.(*mock.MockServiceManager)
+		x.Reset()
+	}
+
+	// Make StartService cmd for mock service.
+	qanConfig := &qan.Config{
+		Interval:       60,         // seconds
+		MaxSlowLogSize: 1073741824, // 1 GiB
+		MaxWorkers:     2,
+		WorkerRunTime:  120, // seconds
+	}
+	qanConfigData, _ := json.Marshal(qanConfig)
+	serviceCmd := &proto.ServiceData{
+		Name:   "qan",
+		Config: qanConfigData,
+	}
+	serviceData, _ := json.Marshal(serviceCmd)
+	cmd := &proto.Cmd{
+		Ts:   time.Now(),
+		User: "daniel",
+		Cmd:  "StartService",
+		Data: serviceData,
+	}
+
+	// Let mock service start immediately.
+	s.readyChan <- true
+
+	// Start mock service before running agent.
+	s.agent.StartServices([]*proto.Cmd{cmd})
+
+	// Cmd does *not* cause reply on reply chan because init is local (pre-API).
+	gotReplies := test.WaitReply(s.recvChan)
+	if len(gotReplies) != 0 {
+		t.Fatal("No reply, got %+v", gotReplies)
+	}
+
+	// Check that mock service's Start() was actually called.
+	got := test.WaitTrace(s.traceChan)
+	expect := []string{
+		`IsRunning Qan`,
+		`Start Qan ` + string(qanConfigData),
+	}
+	t.Check(got, gocheck.DeepEquals, expect)
+
+	// Run the agent.
+	go func() {
+		s.stopReason, s.upgrade = s.agent.Run()
+		s.doneChan <- true
+	}()
+	s.alreadyStopped = false
+
+	// Qan should report as running.
+	gotStatus := test.GetStatus(s.sendChan, s.recvChan)
+	expectStatus := &proto.StatusData{
+		Agent:           "Ready",
+		AgentCmdHandler: "Ready",
+		AgentCmdQueue:   []string{},
+		Qan:             "Ready",
+		QanLogParser:    "",
+		Mm:              "",
+		MmMonitors:      make(map[string]string),
+	}
+	if same, diff := test.IsDeeply(gotStatus, expectStatus); !same {
+		t.Error(diff)
 	}
 }
