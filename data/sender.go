@@ -54,19 +54,13 @@ func (s *Sender) run() {
 		}
 		s.sync.Done()
 	}()
+
 	s.logger.Info("Start")
 	for {
-	s.logger.Info("wait")
 		select {
 		case <-s.tickerChan:
-
-	s.logger.Info("send start")
 			s.send()
-
-	s.logger.Info("send done")
 		case <-s.sync.StopChan:
-
-	s.logger.Info("stop")
 			s.sync.Graceful()
 			return
 		}
