@@ -5,17 +5,21 @@ import (
 	"github.com/percona/cloud-tools/agent"
 	"log"
 	"os"
+	"flag"
 	//"os/user"
 	//"time"
 )
 
+var apiKey = flag.String("k", "", "Agent API Key. You can get it from https://cloud.percona.com")
+var configFile = flag.String("c", "", "Path to config file. Default is: "+agent.CONFIG_FILE)
 
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
+	flag.Parse()
+	
+	log.Println("ApiKey: "+*apiKey)
 
-	// Parse command line.
-	var arg string
-
+	
 	// Create default config.
 	config := &agent.Config{
 		ApiHostname: agent.API_HOSTNAME,
@@ -25,26 +29,25 @@ func main() {
 	}
 
 	// Overwrite default config with config file.
-	configFile := arg
-	if configFile == "" {
-		configFile = agent.CONFIG_FILE
+	if *configFile == "" {
+		*configFile = agent.CONFIG_FILE
 	}
-	if err := config.Apply(agent.LoadConfig(configFile)); err != nil {
+	if err := config.Apply(agent.LoadConfig(*configFile)); err != nil {
 		log.Fatal(err)
 	}
 
-	config.ApiKey = "2323"
+	config.ApiKey = *apiKey
 	config.AgentUuid = "56556"
 
 	// Make sure config has everything we need.
-	if valid, missing := CheckConfig(config, configFile); !valid {
+	if valid, missing := CheckConfig(config, *configFile); !valid {
 		log.Println("Invalid config:")
 		for _, m := range missing {
 			log.Printf("  - %s\n", m)
 		}
 		os.Exit(-1)
 	}
-	agent.WriteConfig(configFile, config)
+	agent.WriteConfig(*configFile, config)
 
 }
 
