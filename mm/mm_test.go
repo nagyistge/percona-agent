@@ -103,6 +103,8 @@ func (s *AggregatorTestSuite) TestC001(t *gocheck.C) {
 	if err := test.LoadMmReport(sample+"/c001r.json", expect); err != nil {
 		t.Fatal(err)
 	}
+	t.Check(got.Ts, gocheck.Equals, t1)
+	t.Check(got.Duration, gocheck.Equals, uint(300))
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
@@ -131,6 +133,8 @@ func (s *AggregatorTestSuite) TestC002(t *gocheck.C) {
 	if err := test.LoadMmReport(sample+"/c002r.json", expect); err != nil {
 		t.Fatal("c002r.json ", err)
 	}
+	t.Check(got.Ts, gocheck.Equals, t1)
+	t.Check(got.Duration, gocheck.Equals, uint(300))
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
@@ -158,6 +162,8 @@ func (s *AggregatorTestSuite) TestC000(t *gocheck.C) {
 	if err := test.LoadMmReport(sample+"/c000r.json", expect); err != nil {
 		t.Fatal("c000r.json ", err)
 	}
+	t.Check(got.Ts, gocheck.Equals, t1)
+	t.Check(got.Duration, gocheck.Equals, uint(300))
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
@@ -199,6 +205,8 @@ func (s *AggregatorTestSuite) TestC003(t *gocheck.C) {
 	if err := test.LoadMmReport(sample+"/c003r.json", expect); err != nil {
 		t.Fatal("c003r.json ", err)
 	}
+	t.Check(got.Ts, gocheck.Equals, t1)
+	t.Check(got.Duration, gocheck.Equals, uint(300))
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
@@ -236,6 +244,8 @@ func (s *AggregatorTestSuite) TestC003Lost(t *gocheck.C) {
 	if err := test.LoadMmReport(sample+"/c003rlost.json", expect); err != nil {
 		t.Fatal("c003r.json ", err)
 	}
+	t.Check(got.Ts, gocheck.Equals, t1)
+	t.Check(got.Duration, gocheck.Equals, uint(300))
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
@@ -418,8 +428,8 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *gocheck.C) {
 		DSN:          "user:host@tcp:(127.0.0.1:3306)",
 		InstanceName: "db1",
 		Status: map[string]byte{
-			"Threads_connected": mm.NUMBER,
-			"Threads_running":   mm.NUMBER,
+			"threads_connected": mm.NUMBER,
+			"threads_running":   mm.NUMBER,
 		},
 	}
 	configData, err := json.Marshal(mysqlConfig)

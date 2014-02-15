@@ -75,7 +75,7 @@ func (a *Aggregator) run() {
 		case now := <-a.tickChan:
 			// Even clock tick, e.g. 00:01:00.000, 00:02:00.000, etc.
 			if !startTs.IsZero() {
-				a.report(startTs, cur)
+				a.report(startTs, now, cur)
 			}
 			// Next interval starts now.
 			startTs = now
@@ -98,14 +98,15 @@ func (a *Aggregator) run() {
 }
 
 // @goroutine[1]
-func (a *Aggregator) report(startTs time.Time, metrics Metrics) {
+func (a *Aggregator) report(startTs, stopTs time.Time, metrics Metrics) {
 	a.logger.Info("Summarize metrics from", startTs)
 	for _, s := range metrics {
 		s.Summarize()
 	}
 	report := &Report{
-		Ts:      startTs,
-		Metrics: metrics,
+		Ts:       startTs,
+		Duration: uint(stopTs.Sub(startTs).Seconds()),
+		Metrics:  metrics,
 	}
 	a.spool.Write("mm", report)
 }
