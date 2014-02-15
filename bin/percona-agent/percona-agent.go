@@ -41,11 +41,13 @@ func main() {
 	 */
 
 	// Parse command line.
-	configFile := ParseCmdLine()
+	cmd, arg := ParseCmdLine()
 
 	// Check that config file exists.
-	if configFile == "" {
-		configFile = agent.CONFIG_FILE // default
+	configFile := agent.CONFIG_FILE // default
+	if cmd == "start" && arg != "" {
+		// percona-agent <config file>
+		configFile = arg
 	}
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
 		log.Fatalf("Agent config file %s does not exist", configFile)
@@ -81,6 +83,28 @@ func main() {
 	log.Printf("DataDir: %s\n", config.DataDir)
 
 	/**
+	 * Ping and exit, maybe.
+	 */
+
+	if cmd == "ping" {
+		if arg == "" {
+			arg = config.ApiHostname
+		}
+		log.Println("Ping " + arg + "...")
+		t0 := time.Now()
+		ok, resp := Ping(config.ApiKey, arg)
+		d := time.Now().Sub(t0)
+		log.Printf("%+v\n", resp)
+		if !ok {
+			log.Printf("Ping FAIL (%s)", d)
+			os.Exit(1)
+		} else {
+			log.Printf("Ping OK (%s)", d)
+			os.Exit(0)
+		}
+	}
+
+	/**
 	 * PID file
 	 */
 
@@ -99,7 +123,7 @@ func main() {
 	var links map[string]string
 	if len(config.Links) == 0 {
 		var err error
-		if links, err = GetLinks(config.ApiKey, "http://"+config.ApiHostname); err != nil {
+		if links, err = GetLinks(config.ApiKey, "https://"+config.ApiHostname); err != nil {
 			log.Fatalln(err)
 		}
 	}
@@ -188,7 +212,7 @@ func main() {
 		pct.NewLogger(logRelay.LogChan(), "data-sender"),
 		dataClient,
 		dataSpooler,
-		time.Tick(30*time.Second),  // todo
+		time.Tick(30*time.Second), // todo
 	)
 	if err := dataSender.Start(); err != nil {
 		log.Fatalln("Cannot start data sender:", err)
@@ -252,29 +276,42 @@ func main() {
 	log.Printf("stopReason=%s, update=%t\n", stopReason, update)
 }
 
-func ParseCmdLine() string {
-	arg := ""
-	usage := "Usage: percona-agent [<config file>|help|version]"
-	if len(os.Args) == 2 {
-		arg = os.Args[1]
-		switch arg {
-		case "version":
-			fmt.Printf("percona-agent %s\n", VERSION)
-			os.Exit(0)
-		case "help":
+func ParseCmdLine() (cmd, arg string) {
+	usage := "Usage: percona-agent command [arg]\n\n" +
+	    "Commands:\n"+
+		"  help                   Print help and exit\n" +
+		"  ping    [API hostname] Ping API, requires API key\n" +
+		"  start   [config file]  Start agent\n" +
+		"  version                Print version and exist\n\n"+
+		"Defaults:\n"+
+		"  API hostname  " + agent.CONFIG_FILE + "\n"+
+		"  config file   " + agent.API_HOSTNAME + "\n"
+	if len(os.Args) < 2 {
+		fmt.Println(usage)
+		os.Exit(1)
+	}
+	cmd = os.Args[1]
+	switch cmd {
+	case "version":
+		fmt.Printf("percona-agent %s\n", VERSION)
+		os.Exit(0)
+	case "help":
+		fmt.Println(usage)
+		os.Exit(0)
+	case "ping", "start":
+		if len(os.Args) > 3 {
+			fmt.Println(cmd + " takes only one arg")
 			fmt.Println(usage)
-			os.Exit(0)
-		default:
-			fmt.Printf("Invalid arg: %s\n", arg)
-			fmt.Println(usage)
-			os.Exit(-1)
+			os.Exit(1)
+		} else if len(os.Args) == 3 {
+			arg = os.Args[2]
 		}
-	} else if len(os.Args) > 2 {
-		fmt.Println("Unknown extra args: ", os.Args)
+	default:
+		fmt.Println("Unknown command: " + cmd)
 		fmt.Println(usage)
 		os.Exit(-1)
 	}
-	return arg
+	return cmd, arg
 }
 
 func CheckConfig(config *agent.Config, configFile string) (bool, []string) {
@@ -454,4 +491,32 @@ func removeFile(file string) error {
 		}
 	}
 	return nil
+}
+
+func Ping(apiKey, url string) (bool, *http.Response) {
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Printf("Ping %s error: http.NewRequest: %s", url, err)
+		return false, nil
+	}
+	req.Header.Add("X-Percona-API-Key", apiKey)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Ping %s error: client.Do: %s", url, err)
+		return false, resp
+	}
+	_, err = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		log.Printf("Ping %s error: ioutil.ReadAll: %s", url, err)
+		return false, resp
+	}
+
+	if resp.StatusCode == 200 {
+		return true, resp
+	}
+
+	return false, resp
 }
