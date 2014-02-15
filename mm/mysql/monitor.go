@@ -244,12 +244,13 @@ func (m *Monitor) GetShowStatusMetrics(conn *sql.DB, prefix string, c *mm.Collec
 			return err
 		}
 
+		statName = strings.ToLower(statName)
 		metricType, ok := m.config.Status[statName]
 		if !ok {
 			continue // not collecting this stat
 		}
 
-		metricName := prefix + "/" + strings.ToLower(statName)
+		metricName := prefix + "/" + statName
 		metricValue, err := strconv.ParseFloat(statValue, 64)
 		if err != nil {
 			metricValue = 0.0
