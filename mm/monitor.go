@@ -50,7 +50,7 @@ type Collection struct {
 type Metrics map[string]*Stats
 
 type Report struct {
-	Ts       time.Time // UTC
 	Duration uint      // seconds
+	Ts       time.Time // UTC
 	Metrics  Metrics
 }

@@ -67,22 +67,20 @@ func (a *Aggregator) run() {
 	 * the first tick, and it decouples starting/running monitors and
 	 * aggregators, i.e. neither should have to wait for the other.
 	 */
-	var startTs time.Time
 	cur := make(Metrics)
+	begin := time.Now().UTC()
 
 	for {
 		select {
 		case now := <-a.tickChan:
 			// Even clock tick, e.g. 00:01:00.000, 00:02:00.000, etc.
-			if !startTs.IsZero() {
-				a.report(startTs, cur)
-			}
+			a.report(begin, now, cur)
+
 			// Next interval starts now.
-			startTs = now
+			begin = now
 			cur = make(Metrics)
-			a.logger.Debug("Start report interval")
 		case collection := <-a.collectionChan:
-			// todo: if colllect.Ts < lastNow, then discard: it missed its period
+			// todo: if colllect.Ts < begin, then discard: it missed its period
 			for _, metric := range collection.Metrics {
 				stats, haveStats := cur[metric.Name]
 				if !haveStats {
@@ -98,14 +96,16 @@ func (a *Aggregator) run() {
 }
 
 // @goroutine[1]
-func (a *Aggregator) report(startTs time.Time, metrics Metrics) {
-	a.logger.Info("Summarize metrics from", startTs)
+func (a *Aggregator) report(begin, end time.Time, metrics Metrics) {
+	d := end.Sub(begin).Seconds()
+	a.logger.Info("Summarize metrics from", begin, "to", end, d)
 	for _, s := range metrics {
 		s.Summarize()
 	}
 	report := &Report{
-		Ts:      startTs,
-		Metrics: metrics,
+		Duration: uint(d),
+		Ts:       end,
+		Metrics:  metrics,
 	}
 	a.spool.Write("mm", report)
 }
