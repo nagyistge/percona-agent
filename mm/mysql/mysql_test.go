@@ -80,8 +80,8 @@ func TestStartCollectStop(t *testing.T) {
 	}
 	c := got[0]
 
-	if c.StartTs != now.Unix() {
-		t.Error("Collection.StartTs set to %s; got %s", now.Unix(), c.StartTs)
+	if c.Ts != now.Unix() {
+		t.Error("Collection.Ts set to %s; got %s", now.Unix(), c.Ts)
 	}
 
 	// Only two metrics should be reported, from the config ^: Threads_connected,

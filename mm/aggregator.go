@@ -87,7 +87,7 @@ func (a *Aggregator) run() {
 					stats = NewStats(metric.Type)
 					cur[metric.Name] = stats
 				}
-				stats.Add(&metric, collection.StartTs)
+				stats.Add(&metric, collection.Ts)
 			}
 		case <-a.sync.StopChan:
 			return
