@@ -97,13 +97,13 @@ func (a *Aggregator) run() {
 
 // @goroutine[1]
 func (a *Aggregator) report(begin, end time.Time, metrics Metrics) {
-	d := end.Sub(begin).Seconds()
-	a.logger.Info("Summarize metrics from", begin, "to", end, d)
+	d := uint(end.Unix() - begin.Unix())
+	a.logger.Info("Summarize metrics from", begin, "to", end, "in", d)
 	for _, s := range metrics {
 		s.Summarize()
 	}
 	report := &Report{
-		Duration: uint(d),
+		Duration: d,
 		Ts:       end,
 		Metrics:  metrics,
 	}

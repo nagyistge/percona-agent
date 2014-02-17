@@ -139,8 +139,9 @@ func (s *AggregatorTestSuite) TestC001(t *gocheck.C) {
 	}
 
 	// Duration should be t2 - t1.
-	if got.Duration != uint(t2.Sub(t1).Seconds()) {
-		t.Error("Duration is t2 - t1, got", got.Duration)
+	d := uint(t2.Unix() - t1.Unix())
+	if got.Duration != d {
+		t.Errorf("Duration is t2 - t1 = %d, got %s", d, got.Duration)
 	}
 }
 
