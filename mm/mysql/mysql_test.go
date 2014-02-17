@@ -44,8 +44,8 @@ func TestStartCollectStop(t *testing.T) {
 		DSN:          dsn,
 		InstanceName: instance,
 		Status: map[string]byte{
-			"Threads_connected": mm.NUMBER,
-			"Threads_running":   mm.NUMBER,
+			"threads_connected": mm.NUMBER,
+			"threads_running":   mm.NUMBER,
 		},
 	}
 	data, err := json.Marshal(config)
