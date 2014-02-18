@@ -139,6 +139,7 @@ func (s *AggregatorTestSuite) TestC002(t *gocheck.C) {
 		t.Fatal("c002r.json ", err)
 	}
 	t.Check(got.StartTs, gocheck.Equals, t1)
+	t.Check(got.Duration, gocheck.Equals, uint(300))
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
@@ -167,6 +168,7 @@ func (s *AggregatorTestSuite) TestC000(t *gocheck.C) {
 		t.Fatal("c000r.json ", err)
 	}
 	t.Check(got.StartTs, gocheck.Equals, t1)
+	t.Check(got.Duration, gocheck.Equals, uint(300))
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
@@ -209,6 +211,7 @@ func (s *AggregatorTestSuite) TestC003(t *gocheck.C) {
 		t.Fatal("c003r.json ", err)
 	}
 	t.Check(got.StartTs, gocheck.Equals, t1)
+	t.Check(got.Duration, gocheck.Equals, uint(300))
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
@@ -247,6 +250,7 @@ func (s *AggregatorTestSuite) TestC003Lost(t *gocheck.C) {
 		t.Fatal("c003r.json ", err)
 	}
 	t.Check(got.StartTs, gocheck.Equals, t1)
+	t.Check(got.Duration, gocheck.Equals, uint(300))
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
