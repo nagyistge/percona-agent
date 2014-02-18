@@ -98,15 +98,15 @@ func (a *Aggregator) run() {
 }
 
 // @goroutine[1]
-func (a *Aggregator) report(begin, end time.Time, metrics Metrics) {
-	d := uint(end.Unix() - begin.Unix())
-	a.logger.Info("Summarize metrics from", begin, "to", end, "in", d)
+func (a *Aggregator) report(startTs, endTs time.Time, metrics Metrics) {
+	d := uint(endTs.Unix() - startTs.Unix())
+	a.logger.Info("Summarize metrics from", startTs, "to", endTs, "in", d)
 	for _, s := range metrics {
 		s.Summarize()
 	}
 	report := &Report{
 		Duration: d,
-		Ts:       end,
+		StartTs:  startTs,
 		Metrics:  metrics,
 	}
 	a.spool.Write("mm", report)

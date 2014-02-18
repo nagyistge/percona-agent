@@ -95,15 +95,15 @@ func (s *AggregatorTestSuite) TestC001(t *gocheck.C) {
 	if got == nil {
 		t.Fatal("Report after 2nd tick, got: %+v", got)
 	}
-	if got.Ts != t1 {
-		t.Error("Report.Ts is first Unix ts, got %s", got.Ts)
+	if got.StartTs != t1 {
+		t.Error("Report.Ts is first Unix ts, got %s", got.StartTs)
 	}
 
 	expect := &mm.Report{}
 	if err := test.LoadMmReport(sample+"/c001r.json", expect); err != nil {
 		t.Fatal(err)
 	}
-	t.Check(got.Ts, gocheck.Equals, t2)
+	t.Check(got.StartTs, gocheck.Equals, t1)
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
@@ -138,7 +138,7 @@ func (s *AggregatorTestSuite) TestC002(t *gocheck.C) {
 	if err := test.LoadMmReport(sample+"/c002r.json", expect); err != nil {
 		t.Fatal("c002r.json ", err)
 	}
-	t.Check(got.Ts, gocheck.Equals, t2)
+	t.Check(got.StartTs, gocheck.Equals, t1)
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
@@ -166,7 +166,7 @@ func (s *AggregatorTestSuite) TestC000(t *gocheck.C) {
 	if err := test.LoadMmReport(sample+"/c000r.json", expect); err != nil {
 		t.Fatal("c000r.json ", err)
 	}
-	t.Check(got.Ts, gocheck.Equals, t2)
+	t.Check(got.StartTs, gocheck.Equals, t1)
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
@@ -208,7 +208,7 @@ func (s *AggregatorTestSuite) TestC003(t *gocheck.C) {
 	if err := test.LoadMmReport(sample+"/c003r.json", expect); err != nil {
 		t.Fatal("c003r.json ", err)
 	}
-	t.Check(got.Ts, gocheck.Equals, t2)
+	t.Check(got.StartTs, gocheck.Equals, t1)
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
@@ -246,7 +246,7 @@ func (s *AggregatorTestSuite) TestC003Lost(t *gocheck.C) {
 	if err := test.LoadMmReport(sample+"/c003rlost.json", expect); err != nil {
 		t.Fatal("c003r.json ", err)
 	}
-	t.Check(got.Ts, gocheck.Equals, t2)
+	t.Check(got.StartTs, gocheck.Equals, t1)
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
