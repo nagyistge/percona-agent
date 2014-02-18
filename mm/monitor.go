@@ -43,14 +43,14 @@ const (
 )
 
 type Collection struct {
-	StartTs int64 // UTC Unix timestamp
+	Ts      int64 // UTC Unix timestamp
 	Metrics []Metric
 }
 
 type Metrics map[string]*Stats
 
 type Report struct {
-	StartTs  time.Time // UTC
+	Ts       time.Time // start, UTC
 	Duration uint      // seconds
 	Metrics  Metrics
 }

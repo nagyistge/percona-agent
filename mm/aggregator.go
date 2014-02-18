@@ -89,7 +89,7 @@ func (a *Aggregator) run() {
 					stats = NewStats(metric.Type)
 					cur[metric.Name] = stats
 				}
-				stats.Add(&metric, collection.StartTs)
+				stats.Add(&metric, collection.Ts)
 			}
 		case <-a.sync.StopChan:
 			return
@@ -105,8 +105,8 @@ func (a *Aggregator) report(startTs, endTs time.Time, metrics Metrics) {
 		s.Summarize()
 	}
 	report := &Report{
+		Ts:       startTs,
 		Duration: d,
-		StartTs:  startTs,
 		Metrics:  metrics,
 	}
 	a.spool.Write("mm", report)

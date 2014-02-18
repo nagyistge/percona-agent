@@ -184,7 +184,7 @@ func (m *Monitor) run() {
 			m.status.Update("mysql", "Running")
 
 			c := &mm.Collection{
-				StartTs: now.Unix(),
+				Ts:      now.Unix(),
 				Metrics: []mm.Metric{},
 			}
 
@@ -207,7 +207,7 @@ func (m *Monitor) run() {
 					m.logger.Debug("Lost MySQL metrics; timeout spooling after 500ms")
 				}
 			} else {
-				m.logger.Debug("No metrics")  // shouldn't happen
+				m.logger.Debug("No metrics") // shouldn't happen
 			}
 
 			m.status.Update("mysql", "Ready")
