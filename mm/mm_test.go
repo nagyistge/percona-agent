@@ -65,73 +65,43 @@ func (s *AggregatorTestSuite) TestC001(t *gocheck.C) {
 	go a.Start()
 	defer a.Stop()
 
-	// No data, no tick, no report.
+	// Send load collection from file and send to aggregator.
+	if err := sendCollection(sample+"/c001.json", s.collectionChan); err != nil {
+		t.Fatal(err)
+	}
+
+	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
+	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
+
 	got := test.WaitMmReport(s.dataChan)
 	if got != nil {
 		t.Error("No report before tick, got: %+v", got)
 	}
 
-	// Send data.
-	if err := sendCollection(sample+"/c001.json", s.collectionChan); err != nil {
-		t.Fatal(err)
-	}
-
-	// Data but not tick yet, so no report.
-	got = test.WaitMmReport(s.dataChan)
-	if got != nil {
-		t.Error("No report before 2nd tick, got: %+v", got)
-	}
-
-	// Tick.
-	t1 := time.Now()
 	s.tickChan <- t1
 
-	// Now we have data and tick, so we should have report.
-	got = test.WaitMmReport(s.dataChan)
-	if got == nil {
-		t.Fatal("Report after 1st tick, got: %+v", got)
-	}
-	if got.Ts != t1 {
-		t.Error("Report.Ts is 1st tick, got %s", got.Ts)
-	}
-	expect := &mm.Report{}
-	if err := test.LoadMmReport(sample+"/c001r.json", expect); err != nil {
-		t.Fatal(err)
-	}
-	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
-		t.Fatal(diff)
-	}
-
-	// Duration should be > 0.  We don't know exactly because it depends on
-	// when this test starts and how long it takes before 1st tick, but test
-	// should be sub-second so >= 3 is a reasonable sanity check.
-	if got.Duration < 0 || got.Duration >= 3 {
-		t.Error("Duration is close to zero, got ", got.Duration)
-	}
-
-	// Fake a tiny amount of time between ticks.
-	time.Sleep(250 * time.Millisecond)
-
-	// Data and 1st tick done, so there should not be a report any longer.
 	got = test.WaitMmReport(s.dataChan)
 	if got != nil {
-		t.Error("No report before 2nd tick, got: %+v", got)
+		t.Error("No report after 1st tick, got: %+v", got)
 	}
 
-	// Send data and tick again.
 	if err := sendCollection(sample+"/c001.json", s.collectionChan); err != nil {
 		t.Fatal(err)
 	}
-	t2 := time.Now()
+
 	s.tickChan <- t2
 
-	// We should get 2nd report (report.Ts=t2, but same data/metrics).
 	got = test.WaitMmReport(s.dataChan)
 	if got == nil {
 		t.Fatal("Report after 2nd tick, got: %+v", got)
 	}
-	if got.Ts != t2 {
-		t.Error("Report.Ts is 2nd tick, got %s", got.Ts)
+	if got.Ts != t1 {
+		t.Error("Report.Ts is first Unix ts, got %s", got.Ts)
+	}
+
+	expect := &mm.Report{}
+	if err := test.LoadMmReport(sample+"/c001r.json", expect); err != nil {
+		t.Fatal(err)
 	}
 	t.Check(got.Ts, gocheck.Equals, t2)
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
@@ -150,6 +120,9 @@ func (s *AggregatorTestSuite) TestC002(t *gocheck.C) {
 	go a.Start()
 	defer a.Stop()
 
+	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
+	s.tickChan <- t1
+
 	for i := 1; i <= 5; i++ {
 		file := fmt.Sprintf("%s/c002-%d.json", sample, i)
 		if err := sendCollection(file, s.collectionChan); err != nil {
@@ -157,15 +130,15 @@ func (s *AggregatorTestSuite) TestC002(t *gocheck.C) {
 		}
 	}
 
-	t1 := time.Now()
-	s.tickChan <- t1
+	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
+	s.tickChan <- t2
 
 	got := test.WaitMmReport(s.dataChan)
 	expect := &mm.Report{}
 	if err := test.LoadMmReport(sample+"/c002r.json", expect); err != nil {
 		t.Fatal("c002r.json ", err)
 	}
-	t.Check(got.Ts, gocheck.Equals, t1)
+	t.Check(got.Ts, gocheck.Equals, t2)
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
@@ -177,20 +150,23 @@ func (s *AggregatorTestSuite) TestC000(t *gocheck.C) {
 	go a.Start()
 	defer a.Stop()
 
+	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
+	s.tickChan <- t1
+
 	file := sample + "/c000.json"
 	if err := sendCollection(file, s.collectionChan); err != nil {
 		t.Fatal(file, err)
 	}
 
-	t1 := time.Now()
-	s.tickChan <- t1
+	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
+	s.tickChan <- t2
 
 	got := test.WaitMmReport(s.dataChan)
 	expect := &mm.Report{}
 	if err := test.LoadMmReport(sample+"/c000r.json", expect); err != nil {
 		t.Fatal("c000r.json ", err)
 	}
-	t.Check(got.Ts, gocheck.Equals, t1)
+	t.Check(got.Ts, gocheck.Equals, t2)
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
@@ -202,10 +178,8 @@ func (s *AggregatorTestSuite) TestC003(t *gocheck.C) {
 	go a.Start()
 	defer a.Stop()
 
-	// Tick and throw away first report to make begin ts = t1 for second report.
 	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
 	s.tickChan <- t1
-	test.WaitMmReport(s.dataChan)
 
 	for i := 1; i <= 5; i++ {
 		file := fmt.Sprintf("%s/c003-%d.json", sample, i)
@@ -245,10 +219,8 @@ func (s *AggregatorTestSuite) TestC003Lost(t *gocheck.C) {
 	go a.Start()
 	defer a.Stop()
 
-	// Tick and throw away first report to make begin ts = t1 for second report.
 	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
 	s.tickChan <- t1
-	test.WaitMmReport(s.dataChan)
 
 	// The full sequence is files 1-5, but we send only 1 and 5,
 	// simulating monitor failure during 2-4.  More below...
