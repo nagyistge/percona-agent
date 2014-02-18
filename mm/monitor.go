@@ -43,7 +43,7 @@ const (
 )
 
 type Collection struct {
-	Ts      int64
+	StartTs int64
 	Metrics []Metric
 }
 
