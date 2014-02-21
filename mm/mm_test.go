@@ -30,7 +30,6 @@ import (
 	"io/ioutil"
 	"launchpad.net/gocheck"
 	"os"
-	"strings"
 	"testing"
 	"time"
 )
@@ -281,7 +280,7 @@ type ManagerTestSuite struct {
 	logChan     chan *proto.LogEntry
 	logger      *pct.Logger
 	mockMonitor mm.Monitor
-	monitors    map[string]mm.Monitor
+	factory     *mock.MonitorFactory
 	tickChan    chan time.Time
 	clock       *mock.Clock
 	dataChan    chan interface{}
@@ -295,9 +294,10 @@ var _ = gocheck.Suite(&ManagerTestSuite{})
 func (s *ManagerTestSuite) SetUpSuite(t *gocheck.C) {
 	s.logChan = make(chan *proto.LogEntry, 10)
 	s.logger = pct.NewLogger(s.logChan, "mm-manager-test")
-	s.mockMonitor = mock.NewMonitor()
 
-	s.monitors = map[string]mm.Monitor{"mysql": s.mockMonitor}
+	s.mockMonitor = mock.NewMonitor()
+	s.factory = mock.NewMonitorFactory([]mm.Monitor{s.mockMonitor})
+
 	s.tickChan = make(chan time.Time)
 
 	s.traceChan = make(chan string, 10)
@@ -313,15 +313,16 @@ func (s *ManagerTestSuite) SetUpTest(t *gocheck.C) {
 // --------------------------------------------------------------------------
 
 func (s *ManagerTestSuite) TestStartStopManager(t *gocheck.C) {
+	/**
+	 * mm is a proxy manager for monitors, so it's always running.
+	 * It should implement the service manager interface anyway,
+	 * but it doesn't actually start or stop.  Its main work is done
+	 * in Handle, starting and stopping monitors (tested later).
+	 */
 
-	m := mm.NewManager(s.logger, s.monitors, s.clock, s.spool)
+	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool)
 	if m == nil {
 		t.Fatal("Make new mm.Manager")
-	}
-
-	// It shouldn't be running because we haven't started it.
-	if m.IsRunning() {
-		t.Error("IsRunning() is false")
 	}
 
 	// It shouldn't have added a tickChan yet.
@@ -331,9 +332,11 @@ func (s *ManagerTestSuite) TestStartStopManager(t *gocheck.C) {
 
 	// First the API marshals an mm.Config.
 	config := &mm.Config{
-		Intervals: map[string]mm.Interval{
-			"mysql": mm.Interval{Collect: 1, Report: 60},
-		},
+		Name:    "mysql",
+		Type:    "mysql",
+		Collect: 1,
+		Report:  60,
+		Config:  []byte{},
 	}
 	data, err := json.Marshal(config)
 	if err != nil {
@@ -353,96 +356,39 @@ func (s *ManagerTestSuite) TestStartStopManager(t *gocheck.C) {
 		t.Fatalf("Start manager without error, got %s", err)
 	}
 
-	// Now it should be running.
-	if !m.IsRunning() {
-		t.Error("IsRunning() is true")
+	// It should not add a tickChan to the clock (this is done in Handle()).
+	if ok, diff := test.IsDeeply(s.clock.Added, []uint{}); !ok {
+		t.Errorf("Does not add tickChan, got %#v", diff)
 	}
 
-	// It should add a tickChan to the clock for the report interval.
-	if ok, diff := test.IsDeeply(s.clock.Added, []uint{60}); !ok {
-		t.Errorf("Adds tickChan for report interval, got %#v", diff)
-	}
-
-	// After starting, its status should be "Ready [cmd]" where cmd is
-	// the originating ^ cmd.
+	// Its status should be "Ready".
 	status := m.Status()
-	if !strings.Contains(status["Mm"], "Ready") {
-		t.Error("Status is \"Ready\", got ", status["Mm"])
-	}
-	if !strings.Contains(status["Mm"], `"User":"daniel"`) {
-		t.Error("Status has originating cmd, got ", status["Mm"])
-	}
+	t.Check(status["Mm"], gocheck.Equals, "Ready")
 
-	// Starting an already started service should result in a ServiceIsRunningError.
+	// Normally, starting an already started service results in a ServiceIsRunningError,
+	// but mm is a proxy manager so starting it is a null op.
 	err = m.Start(cmd, data)
-	if err == nil {
-		t.Error("Start manager when already start cauess error")
-	}
-	switch err.(type) { // todo: ugly hack to access and test error type
-	case pct.ServiceIsRunningError:
-		// ok
-	default:
-		t.Error("Error is type pct.ServiceIsRunningError, got %T", err)
+	if err != nil {
+		t.Error("Starting mm manager multiple times doesn't cause error")
 	}
 
-	/**
-	 * Stop the manager, which should "undo" all of that ^.
-	 */
-
+	// Stopping the mm manager is also a null op...
 	err = m.Stop(cmd)
-
-	// Repeat many of the same tests ^ but for being stopped:
 	if err != nil {
 		t.Fatalf("Stop manager without error, got %s", err)
 	}
-	if m.IsRunning() {
-		t.Error("IsRunning() is false")
-	}
 
+	// ...which is why its status is always "Ready".
 	status = m.Status()
-	if !strings.Contains(status["Mm"], "Stopped") {
-		t.Error("Status is \"Stopped\", got ", status)
-	}
-	if !strings.Contains(status["Mm"], `"User":"daniel"`) {
-		t.Error("Status has originating cmd, got ", status)
-	}
+	t.Check(status["Mm"], gocheck.Equals, "Ready")
 }
 
 func (s *ManagerTestSuite) TestStartStopMonitor(t *gocheck.C) {
 
-	// First start the manager, same as above ^ in TestStartStopManager().
-	m := mm.NewManager(s.logger, s.monitors, s.clock, s.spool)
+	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool)
 	if m == nil {
 		t.Fatal("Make new mm.Manager")
 	}
-
-	config := &mm.Config{
-		Intervals: map[string]mm.Interval{
-			"mysql": mm.Interval{Collect: 1, Report: 60},
-		},
-	}
-	data, err := json.Marshal(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	cmd := &proto.Cmd{
-		User: "daniel",
-		Cmd:  "StartService",
-		Data: data,
-	}
-
-	err = m.Start(cmd, data)
-	if err != nil {
-		t.Fatalf("Start manager without error, got %s", err)
-	}
-	if !m.IsRunning() {
-		t.Fatal("IsRunning() is true")
-	}
-
-	/**
-	 * Manager is running, now we can start a monitor.
-	 */
 
 	// Starting a monitor is like starting the manager: it requires
 	// a "StartService" cmd and the monitor's config.
@@ -454,23 +400,28 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *gocheck.C) {
 			"threads_running":   mm.NUMBER,
 		},
 	}
-	configData, err := json.Marshal(mysqlConfig)
+	mysqlConfigData , err := json.Marshal(mysqlConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := &proto.ServiceData{
-		Name:   "mysql",
-		Config: configData,
+
+	mmConfig := &mm.Config{
+		Name:    "db1",
+		Type:    "mysql",
+		Collect: 1,
+		Report:  60,
+		Config:  mysqlConfigData,
 	}
-	serviceData, err := json.Marshal(service)
+	mmConfigData, err := json.Marshal(mmConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd = &proto.Cmd{
+
+	cmd := &proto.Cmd{
 		User:    "daniel",
-		Cmd:     "StartService",
 		Service: "mm",
-		Data:    serviceData,
+		Cmd:     "StartService",
+		Data:    mmConfigData,
 	}
 
 	// The agent calls mm.Handle() with the cmd (for logging and status) and the config data.
@@ -488,7 +439,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *gocheck.C) {
 
 	// There should be a 60s report ticker for the aggregator and a 1s collect ticker
 	// for the monitor.
-	if ok, diff := test.IsDeeply(s.clock.Added, []uint{60, 1}); !ok {
+	if ok, diff := test.IsDeeply(s.clock.Added, []uint{1, 60}); !ok {
 		t.Errorf("Make 1s ticker for collect interval\n%s", diff)
 	}
 
@@ -496,19 +447,17 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *gocheck.C) {
 	 * Stop the monitor.
 	 */
 
-	// Starting a monitor is like starting the manager: it requires
-	// a "StartService" cmd and the monitor's config.
-	service = &proto.ServiceData{
-		Name: "mysql",
+	service := &proto.ServiceData{
+		Name: "db1",
 	}
-	serviceData, err = json.Marshal(service)
+	serviceData, err := json.Marshal(service)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cmd = &proto.Cmd{
 		User:    "daniel",
-		Cmd:     "StopService",
 		Service: "mm",
+		Cmd:     "StopService",
 		Data:    serviceData,
 	}
 
@@ -532,7 +481,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *gocheck.C) {
 	 */
 
 	service = &proto.ServiceData{
-		Name: "mysql",
+		Name: "db1",
 	}
 	serviceData, err = json.Marshal(service)
 	if err != nil {

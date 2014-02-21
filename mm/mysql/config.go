@@ -17,8 +17,6 @@
 
 package mysql
 
-const CONFIG_FILE = "mysql-monitor.conf"
-
 type Config struct {
 	DSN               string          // [username[:password]@][protocol[(address)]]/dbname[?param1=value1&...&paramN=valueN]
 	InstanceName      string          // optional name of MySQL instance

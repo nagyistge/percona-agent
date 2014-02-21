@@ -17,13 +17,16 @@
 
 package mm
 
-const CONFIG_FILE = "mm.conf"
-
-type Interval struct {
-	Collect uint // how often monitor collects metrics (seconds)
-	Report  uint // how often aggregator reports metrics (seconds)
-}
+/**
+ * mm is a proxy service for monitors so this config is per-monitor.
+ * Monitors are uniquely identified by name, so one agent can monitor
+ * multiple systems.
+ */
 
 type Config struct {
-	Intervals map[string]Interval // e.g. mysql=>{Collect:1, Report:60}
+	Name    string
+	Type    string // cloud-tools/mm/<type>/monitor.go
+	Config  []byte // cloud-tools/mm/<type>/config.go
+	Collect uint   // how often monitor collects metrics (seconds)
+	Report  uint   // how often aggregator reports metrics (seconds)
 }

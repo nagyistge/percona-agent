@@ -39,6 +39,10 @@ type Monitor interface {
 	TickChan() chan time.Time
 }
 
+type MonitorFactory interface {
+	Make(mtype, name string) (Monitor, error)
+}
+
 type Metric struct {
 	Name   string  // mysql/status/Threads_running
 	Type   byte    // see below

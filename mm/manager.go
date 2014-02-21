@@ -17,6 +17,12 @@
 
 package mm
 
+/**
+ * mm is a proxy manager for monitors.  It implements the service manager
+ * interface (pct/service.go), but it's always running.  Its main job is
+ * done in Handle(): keeping track of the monitors it starts and stops.
+ */
+
 import (
 	"encoding/json"
 	"errors"
@@ -42,23 +48,24 @@ type Binding struct {
 //       return with ServiceIsRunningError
 
 type Manager struct {
-	logger   *pct.Logger
-	monitors map[string]Monitor
-	clock    ticker.Manager
-	spool    data.Spooler
+	logger  *pct.Logger
+	factory MonitorFactory
+	clock   ticker.Manager
+	spool   data.Spooler
 	// --
-	config      *Config // nil if not running
+	monitors    map[string]Monitor
 	status      *pct.Status
 	aggregators map[uint]*Binding
 }
 
-func NewManager(logger *pct.Logger, monitors map[string]Monitor, clock ticker.Manager, spool data.Spooler) *Manager {
+func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager, spool data.Spooler) *Manager {
 	m := &Manager{
-		logger:   logger,
-		monitors: monitors,
-		clock:    clock,
-		spool:    spool,
+		logger:  logger,
+		factory: factory,
+		clock:   clock,
+		spool:   spool,
 		// --
+		monitors:    make(map[string]Monitor),
 		status:      pct.NewStatus([]string{"Mm"}),
 		aggregators: make(map[uint]*Binding),
 	}
@@ -71,132 +78,89 @@ func NewManager(logger *pct.Logger, monitors map[string]Monitor, clock ticker.Ma
 
 // @goroutine[0]
 func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
-	if m.IsRunning() {
-		return pct.ServiceIsRunningError{"Mm"}
-	}
-
-	c := &Config{}
-	if err := json.Unmarshal(config, c); err != nil {
-		return err
-	}
-
-	m.status.UpdateRe("Mm", "Starting", cmd)
-	m.logger.Info("Starting", cmd)
-
-	// We need one aggregator for each unique report interval.  There's usually
-	// just one: 60s.  Remember: report interval != collect interval.  Monitors
-	// can collect at different intervals (typically 1s and 10s), yet all report
-	// at the same 60s interval, or different report intervals.
-	for monitorName, interval := range c.Intervals {
-		_, haveMonitor := m.monitors[monitorName]
-		if !haveMonitor {
-			return errors.New("Unknown monitor: " + monitorName)
-		}
-
-		if _, ok := m.aggregators[interval.Report]; !ok {
-			logger := pct.NewLogger(m.logger.LogChan(), fmt.Sprintf("mm-ag-%d", interval.Report))
-
-			tickChan := make(chan time.Time)
-			m.clock.Add(tickChan, interval.Report)
-
-			collectionChan := make(chan *Collection, 2*len(c.Intervals))
-			aggregator := NewAggregator(logger, tickChan, collectionChan, m.spool)
-			aggregator.Start()
-
-			//msg := fmt.Sprintf("Synchronizing %d second report interval", interval.Report)
-			//m.status.UpdateRe("Mm", msg, cmd)
-
-			m.aggregators[interval.Report] = &Binding{aggregator, collectionChan, tickChan}
-		}
-	}
-
-	m.config = c
-	m.status.UpdateRe("Mm", "Ready", cmd)
-	m.logger.Info("Ready", cmd)
-
-	if err := pct.WriteConfig(CONFIG_FILE, c); err != nil {
-		return err
-	}
-
+	m.status.Update("Mm", "Ready")
+	m.logger.Info("Ready")
 	return nil
 }
 
 // @goroutine[0]
 func (m *Manager) Stop(cmd *proto.Cmd) error {
-	// Stop all monitors.
-	for name, monitor := range m.monitors {
-		m.status.UpdateRe("Mm", "Stopping "+name, cmd)
-		monitor.Stop()
-	}
-
-	// Stop and remove all aggregators.
-	for n, b := range m.aggregators {
-		b.aggregator.Stop()
-		m.clock.Remove(b.tickChan)
-		delete(m.aggregators, n)
-	}
-
-	m.config = nil
-	m.status.UpdateRe("Mm", "Stopped", cmd)
-
+	m.status.Update("Mm", "Ready")
+	m.logger.Info("Ready")
 	return nil
-}
-
-// @goroutine[0]
-func (m *Manager) IsRunning() bool {
-	if m.config != nil {
-		return true
-	}
-	return false
 }
 
 // @goroutine[0]
 func (m *Manager) Handle(cmd *proto.Cmd) error {
 	defer m.status.Update("Mm", "Ready")
 
-	// Agent should check IsRunning() and only call if true,
-	// else return SerivceIsNotRunningError on our behalf.
-
-	// Data contains name of sub-service (monitor) and its config.
-	mm := new(proto.ServiceData)
+	mm := &Config{}
 	if err := json.Unmarshal(cmd.Data, mm); err != nil {
 		return err
 	}
 
-	// Agent doesn't know which monitors we have; only we know.
-	monitor, haveMonitor := m.monitors[mm.Name]
-	if !haveMonitor {
-		return errors.New("Unknown monitor: " + mm.Name)
-	}
-
-	// Start or stop the monitor.
+	// Start or stop the
 	var err error
 	switch cmd.Cmd {
 	case "StartService":
 		m.status.UpdateRe("Mm", "Starting "+mm.Name+" monitor", cmd)
 		m.logger.Info("Start", mm.Name, "monitor", cmd)
 
-		interval := m.config.Intervals[mm.Name]
-
-		// When to collect.
-		tickChan := make(chan time.Time)
-		m.clock.Add(tickChan, interval.Collect)
-
-		// Where to send metrics.
-		a, ok := m.aggregators[interval.Report]
-		if !ok {
-			// Shouldn't happen.
-			err = errors.New(fmt.Sprintf("No %ds aggregator for %s monitor report interval", interval.Report, mm.Name))
-			break
+		// Monitors names must be unique.
+		_, haveMonitor := m.monitors[mm.Name]
+		if haveMonitor {
+			return errors.New("Duplicate monitor: " + mm.Name)
 		}
 
-		// Run the Metrics Monitor!
-		err = monitor.Start(mm.Config, tickChan, a.collectionChan)
+		// Create the monitor based on its type.
+		var monitor Monitor
+		if monitor, err = m.factory.Make(mm.Type, mm.Name); err != nil {
+			return err
+		}
+
+		// Make ticker for collect interval.
+		tickChan := make(chan time.Time)
+		m.clock.Add(tickChan, mm.Collect)
+
+		// We need one aggregator for each unique report interval.  There's usually
+		// just one: 60s.  Remember: report interval != collect interval.  Monitors
+		// can collect at different intervals (typically 1s and 10s), yet all report
+		// at the same 60s interval, or different report intervals.
+		a, ok := m.aggregators[mm.Report]
+		if !ok {
+			// Make new aggregator for this report interval.
+			logger := pct.NewLogger(m.logger.LogChan(), fmt.Sprintf("mm-ag-%d", mm.Report))
+			tickChan := make(chan time.Time)
+			m.clock.Add(tickChan, mm.Report)
+			collectionChan := make(chan *Collection, 2*len(m.monitors)+1)
+			aggregator := NewAggregator(logger, tickChan, collectionChan, m.spool)
+			aggregator.Start()
+
+			// Save aggregator for other monitors with same report interval.
+			a = &Binding{aggregator, collectionChan, tickChan}
+			m.aggregators[mm.Report] = a
+			m.logger.Info("Created", mm.Report, "second aggregator")
+		}
+
+		// Start the monitor.
+		if err = monitor.Start(mm.Config, tickChan, a.collectionChan); err != nil {
+			return err
+		}
+		m.monitors[mm.Name] = monitor
+
+		// Save the monitor config to disk so agent starts on restart.
+		if err := pct.WriteConfig(mm.Name+"-monitor.conf", mm); err != nil {
+			return err
+		}
 	case "StopService":
 		m.status.UpdateRe("Mm", "Stopping "+mm.Name+" monitor", cmd)
 		m.logger.Info("Stop", mm.Name, "monitor", cmd)
-		m.clock.Remove(monitor.TickChan())
-		err = monitor.Stop()
+		if monitor, ok := m.monitors[mm.Name]; ok {
+			m.clock.Remove(monitor.TickChan())
+			err = monitor.Stop()
+		} else {
+			return errors.New("Unknown monitor: " + mm.Name)
+		}
 	default:
 		err = pct.UnknownCmdError{Cmd: cmd.Cmd}
 	}
