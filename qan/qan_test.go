@@ -1,18 +1,18 @@
 /*
-    Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
+   Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
 
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>
+   You should have received a copy of the GNU Affero General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
 package qan_test
@@ -236,13 +236,9 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 
 	// And status should be "Running" and "Ready".
 	test.WaitStatus(1, m, "QanLogParser", "Ready (0 of 2 running)")
-	status := m.Status()
-	if status["Qan"] != "Running ["+cmd.String()+"]" {
-		c.Error("Qan status is \"Ready\", got " + status["Qan"])
-	}
-	if status["QanLogParser"] != "Ready (0 of 2 running)" {
-		c.Error("QanLogParser status is \"Ready (0 of 2 running)\", got " + status["QanLogParser"])
-	}
+	status := m.InternalStatus()
+	c.Check(status["Qan"], gocheck.Equals, fmt.Sprintf("Running %s", cmd))
+	c.Check(status["QanLogParser"], gocheck.Equals, "Ready (0 of 2 running)")
 
 	// It should have enabled the slow log.
 	slowLog := s.realmysql.GetGlobalVarNumber("slow_query_log")

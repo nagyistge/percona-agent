@@ -11,9 +11,11 @@ import (
 type Manager struct {
 	client pct.WebsocketClient
 	// --
-	config *Config
-	relay  *Relay
-	status *pct.Status
+	config    *Config
+	configDir string
+	logger    *pct.Logger
+	relay     *Relay
+	status    *pct.Status
 }
 
 func NewManager(client pct.WebsocketClient) *Manager {
@@ -43,13 +45,15 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 		return errors.New("Invalid log level: " + c.Level)
 	}
 
-    if err := pct.MakeDir(c.File); err != nil {
+	if err := pct.MakeDir(c.File); err != nil {
 		return err
 	}
 
 	m.relay = NewRelay(m.client, c.File, level, c.Offline)
 	go m.relay.Run()
 	m.config = c
+
+	m.logger = pct.NewLogger(m.relay.LogChan(), "log")
 
 	m.status.Update("log", "Ready")
 	return nil
@@ -99,7 +103,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		return cmd.Reply(m.config)
 	case "Status":
 		// proto.Cmd[Service:log, Cmd:Status]
-		status := m.internalStatus()
+		status := m.InternalStatus()
 		return cmd.Reply(status)
 	default:
 		return cmd.Reply(pct.UnknownCmdError{Cmd: cmd.Cmd})
@@ -112,7 +116,7 @@ func (m *Manager) Status() string {
 }
 
 // @goroutine[0]
-func (m *Manager) internalStatus() map[string]string {
+func (m *Manager) InternalStatus() map[string]string {
 	s := make(map[string]string)
 	s["log"] = m.Status()
 	return s
@@ -121,4 +125,44 @@ func (m *Manager) internalStatus() map[string]string {
 // @goroutine[0]
 func (m *Manager) Relay() *Relay {
 	return m.relay
+}
+
+func (m *Manager) LoadConfig(configDir string) (interface{}, error) {
+	m.configDir = configDir
+	v, err := pct.ReadConfig(configDir + "/" + CONFIG_FILE)
+	if err != nil {
+		return nil, err
+	}
+	config := v.(Config)
+	if config.Level == "" {
+		config.Level = DEFAULT_LOG_LEVEL
+	} else {
+		if _, ok := proto.LogLevelNumber[config.Level]; !ok {
+			return nil, errors.New("Invalid log level: " + config.Level)
+		}
+	}
+	return config, nil
+}
+
+func (m *Manager) WriteConfig(config interface{}, name string) error {
+	// Write a monitor config.
+	if m.configDir == "" {
+		return nil
+	}
+	file := m.configDir + "/" + CONFIG_FILE
+	if m.logger != nil {
+		m.logger.Info("Writing", file)
+	}
+	return pct.WriteConfig(file, config)
+}
+
+func (m *Manager) RemoveConfig(name string) error {
+	if m.configDir == "" {
+		return nil
+	}
+	file := m.configDir + "/" + CONFIG_FILE
+	if m.logger != nil {
+		m.logger.Info("Removing", file)
+	}
+	return pct.RemoveFile(file)
 }

@@ -7,11 +7,38 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
+	"runtime"
 	"time"
 )
 
+var RootDir string
+
 func init() {
 	log.SetFlags(log.Ltime | log.Lmicroseconds | log.Lshortfile)
+
+	_, filename, _, _ := runtime.Caller(1)
+	dir := filepath.Dir(filename)
+
+	for i := 0; i < 3; i++ {
+		dir = dir + "/../"
+		if FileExists(dir+"COPYING") && FileExists(dir+".git") {
+			RootDir = filepath.Clean(dir + "test")
+			break
+		}
+	}
+	if RootDir == "" {
+		log.Panic("Cannot find repo root dir")
+	}
+	//fmt.Println("Test root dir: " + RootDir)
+}
+
+func FileExists(file string) bool {
+	_, err := os.Stat(file)
+	if err == nil {
+		return true
+	}
+	return os.IsNotExist(err)
 }
 
 func GetStatus(sendChan chan *proto.Cmd, recvChan chan *proto.Reply) *proto.StatusData {

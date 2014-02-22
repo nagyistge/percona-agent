@@ -230,7 +230,7 @@ func WaitStatus(timeout int, r pct.StatusReporter, proc string, state string) bo
 		case <-waitTimeout:
 			return false
 		case <-time.After(100 * time.Millisecond):
-			status := r.Status()
+			status := r.InternalStatus()
 			if s, ok := status[proc]; !ok {
 				panic("StatusReporter does not have " + proc)
 			} else {

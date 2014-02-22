@@ -1,18 +1,18 @@
 /*
-    Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
+   Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
 
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>
+   You should have received a copy of the GNU Affero General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
 package mm_test
@@ -28,16 +28,16 @@ import (
 	"github.com/percona/cloud-tools/test"
 	"github.com/percona/cloud-tools/test/mock"
 	"io/ioutil"
-	"launchpad.net/gocheck"
+	. "launchpad.net/gocheck"
 	"os"
 	"testing"
 	"time"
 )
 
 // Hook up gocheck into the "go test" runner.
-func Test(t *testing.T) { gocheck.TestingT(t) }
+func Test(t *testing.T) { TestingT(t) }
 
-var sample = os.Getenv("GOPATH") + "/src/github.com/percona/cloud-tools/test/mm"
+var sample = test.RootDir + "/mm"
 
 /////////////////////////////////////////////////////////////////////////////
 // Aggregator test suite
@@ -52,9 +52,9 @@ type AggregatorTestSuite struct {
 	spool          *mock.Spooler
 }
 
-var _ = gocheck.Suite(&AggregatorTestSuite{})
+var _ = Suite(&AggregatorTestSuite{})
 
-func (s *AggregatorTestSuite) SetUpSuite(t *gocheck.C) {
+func (s *AggregatorTestSuite) SetUpSuite(t *C) {
 	s.logChan = make(chan *proto.LogEntry, 10)
 	s.logger = pct.NewLogger(s.logChan, "mm-manager-test")
 	s.tickChan = make(chan time.Time)
@@ -76,7 +76,7 @@ func sendCollection(file string, collectionChan chan *mm.Collection) error {
 	return nil
 }
 
-func (s *AggregatorTestSuite) TestC001(t *gocheck.C) {
+func (s *AggregatorTestSuite) TestC001(t *C) {
 	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
@@ -119,7 +119,7 @@ func (s *AggregatorTestSuite) TestC001(t *gocheck.C) {
 	if err := test.LoadMmReport(sample+"/c001r.json", expect); err != nil {
 		t.Fatal(err)
 	}
-	t.Check(got.Ts, gocheck.Equals, t1)
+	t.Check(got.Ts, Equals, t1)
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
@@ -131,7 +131,7 @@ func (s *AggregatorTestSuite) TestC001(t *gocheck.C) {
 	}
 }
 
-func (s *AggregatorTestSuite) TestC002(t *gocheck.C) {
+func (s *AggregatorTestSuite) TestC002(t *C) {
 	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
@@ -154,15 +154,15 @@ func (s *AggregatorTestSuite) TestC002(t *gocheck.C) {
 	if err := test.LoadMmReport(sample+"/c002r.json", expect); err != nil {
 		t.Fatal("c002r.json ", err)
 	}
-	t.Check(got.Ts, gocheck.Equals, t1)
-	t.Check(got.Duration, gocheck.Equals, uint(300))
+	t.Check(got.Ts, Equals, t1)
+	t.Check(got.Duration, Equals, uint(300))
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
 }
 
 // All zero values
-func (s *AggregatorTestSuite) TestC000(t *gocheck.C) {
+func (s *AggregatorTestSuite) TestC000(t *C) {
 	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
@@ -183,15 +183,15 @@ func (s *AggregatorTestSuite) TestC000(t *gocheck.C) {
 	if err := test.LoadMmReport(sample+"/c000r.json", expect); err != nil {
 		t.Fatal("c000r.json ", err)
 	}
-	t.Check(got.Ts, gocheck.Equals, t1)
-	t.Check(got.Duration, gocheck.Equals, uint(300))
+	t.Check(got.Ts, Equals, t1)
+	t.Check(got.Duration, Equals, uint(300))
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
 }
 
 // COUNTER
-func (s *AggregatorTestSuite) TestC003(t *gocheck.C) {
+func (s *AggregatorTestSuite) TestC003(t *C) {
 	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
@@ -226,14 +226,14 @@ func (s *AggregatorTestSuite) TestC003(t *gocheck.C) {
 	if err := test.LoadMmReport(sample+"/c003r.json", expect); err != nil {
 		t.Fatal("c003r.json ", err)
 	}
-	t.Check(got.Ts, gocheck.Equals, t1)
-	t.Check(got.Duration, gocheck.Equals, uint(300))
+	t.Check(got.Ts, Equals, t1)
+	t.Check(got.Duration, Equals, uint(300))
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
 }
 
-func (s *AggregatorTestSuite) TestC003Lost(t *gocheck.C) {
+func (s *AggregatorTestSuite) TestC003Lost(t *C) {
 	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
@@ -265,8 +265,8 @@ func (s *AggregatorTestSuite) TestC003Lost(t *gocheck.C) {
 	if err := test.LoadMmReport(sample+"/c003rlost.json", expect); err != nil {
 		t.Fatal("c003r.json ", err)
 	}
-	t.Check(got.Ts, gocheck.Equals, t1)
-	t.Check(got.Duration, gocheck.Equals, uint(300))
+	t.Check(got.Ts, Equals, t1)
+	t.Check(got.Duration, Equals, uint(300))
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
@@ -287,11 +287,12 @@ type ManagerTestSuite struct {
 	spool       data.Spooler
 	traceChan   chan string
 	readyChan   chan bool
+	configDir   string
 }
 
-var _ = gocheck.Suite(&ManagerTestSuite{})
+var _ = Suite(&ManagerTestSuite{})
 
-func (s *ManagerTestSuite) SetUpSuite(t *gocheck.C) {
+func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.logChan = make(chan *proto.LogEntry, 10)
 	s.logger = pct.NewLogger(s.logChan, "mm-manager-test")
 
@@ -304,15 +305,26 @@ func (s *ManagerTestSuite) SetUpSuite(t *gocheck.C) {
 
 	s.dataChan = make(chan interface{}, 1)
 	s.spool = mock.NewSpooler(s.dataChan)
+
+	tmpdir, err := ioutil.TempDir("/tmp", "mm-manager-test")
+	t.Log(err)
+	t.Assert(err, IsNil)
+	s.configDir = tmpdir
 }
 
-func (s *ManagerTestSuite) SetUpTest(t *gocheck.C) {
+func (s *ManagerTestSuite) SetUpTest(t *C) {
 	s.clock = mock.NewClock()
+}
+
+func (s *ManagerTestSuite) TearDownSuite(t *C) {
+	if err := os.RemoveAll(s.configDir); err != nil {
+		t.Error(err)
+	}
 }
 
 // --------------------------------------------------------------------------
 
-func (s *ManagerTestSuite) TestStartStopManager(t *gocheck.C) {
+func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 	/**
 	 * mm is a proxy manager for monitors, so it's always running.
 	 * It should implement the service manager interface anyway,
@@ -363,7 +375,7 @@ func (s *ManagerTestSuite) TestStartStopManager(t *gocheck.C) {
 
 	// Its status should be "Ready".
 	status := m.Status()
-	t.Check(status["Mm"], gocheck.Equals, "Ready")
+	t.Check(status, Equals, "Ready")
 
 	// Normally, starting an already started service results in a ServiceIsRunningError,
 	// but mm is a proxy manager so starting it is a null op.
@@ -380,18 +392,26 @@ func (s *ManagerTestSuite) TestStartStopManager(t *gocheck.C) {
 
 	// ...which is why its status is always "Ready".
 	status = m.Status()
-	t.Check(status["Mm"], gocheck.Equals, "Ready")
+	t.Check(status, Equals, "Ready")
 }
 
-func (s *ManagerTestSuite) TestStartStopMonitor(t *gocheck.C) {
+func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 
 	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool)
 	if m == nil {
 		t.Fatal("Make new mm.Manager")
 	}
 
+	// mm is a proxy manager so it doesn't have its own config file,
+	// but agent still calls LoadConfig() because this also tells
+	// the manager where to save configs, monitor configs in this case.
+	v, err := m.LoadConfig(s.configDir)
+	t.Check(v, IsNil)
+	t.Check(err, IsNil)
+
 	// Starting a monitor is like starting the manager: it requires
-	// a "StartService" cmd and the monitor's config.
+	// a "StartService" cmd and the monitor's config.  This is the
+	// config in configDir/db1-mysql-monitor.conf.
 	mysqlConfig := &mysql.Config{
 		DSN:          "user:host@tcp:(127.0.0.1:3306)",
 		InstanceName: "db1",
@@ -400,7 +420,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *gocheck.C) {
 			"threads_running":   mm.NUMBER,
 		},
 	}
-	mysqlConfigData , err := json.Marshal(mysqlConfig)
+	mysqlConfigData, err := json.Marshal(mysqlConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -425,10 +445,9 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *gocheck.C) {
 	}
 
 	// The agent calls mm.Handle() with the cmd (for logging and status) and the config data.
-	err = m.Handle(cmd)
-	if err != nil {
-		t.Fatalf("Start monitor without error, got %s", err)
-	}
+	reply := m.Handle(cmd)
+	t.Assert(reply, NotNil)
+	t.Check(reply.Error, Equals, "")
 
 	// The monitor should be running.  The mock monitor returns "Running" if
 	// Start() has been called; else it returns "Stopped".
@@ -443,28 +462,34 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *gocheck.C) {
 		t.Errorf("Make 1s ticker for collect interval\n%s", diff)
 	}
 
+	// After starting a monitor, mm should write its config to the dir
+	// it learned when mm.LoadConfig() was called.  Next time agent starts,
+	// it will have mm start the monitor with this config.
+	data, err := ioutil.ReadFile(s.configDir + "/db1-mysql-monitor.conf")
+	t.Check(err, IsNil)
+	gotConfig := &mm.Config{}
+	err = json.Unmarshal(data, gotConfig)
+	t.Check(err, IsNil)
+	if same, diff := test.IsDeeply(gotConfig, mmConfig); !same {
+		t.Logf("%+v", gotConfig)
+		t.Error(diff)
+	}
+
 	/**
 	 * Stop the monitor.
 	 */
 
-	service := &proto.ServiceData{
-		Name: "db1",
-	}
-	serviceData, err := json.Marshal(service)
-	if err != nil {
-		t.Fatal(err)
-	}
 	cmd = &proto.Cmd{
 		User:    "daniel",
 		Service: "mm",
 		Cmd:     "StopService",
-		Data:    serviceData,
+		Data:    mmConfigData,
 	}
 
-	err = m.Handle(cmd)
-	if err != nil {
-		t.Fatalf("Stop monitor without error, got %s", err)
-	}
+	// Handles StopService without error.
+	reply = m.Handle(cmd)
+	t.Assert(reply, NotNil)
+	t.Check(reply.Error, Equals, "")
 
 	status = s.mockMonitor.Status()
 	if status["monitor"] != "Stopped" {
@@ -476,33 +501,29 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *gocheck.C) {
 		t.Error("Remove's monitor's tickChan from clock")
 	}
 
+	// After stopping a monitor, mm should remove its config file so agent
+	// doesn't start it on restart.
+	file := s.configDir + "/db1-mysql-monitor.conf"
+	if pct.FileExists(file) {
+		t.Error("Stopping monitor removes its config; ", file, " exists")
+	}
+
 	/**
 	 * While we're all setup and working, let's sneak in an unknown cmd test.
 	 */
 
-	service = &proto.ServiceData{
-		Name: "db1",
-	}
-	serviceData, err = json.Marshal(service)
-	if err != nil {
-		t.Fatal(err)
-	}
 	cmd = &proto.Cmd{
 		User:    "daniel",
-		Cmd:     "Pontificate",
 		Service: "mm",
-		Data:    serviceData,
+		Cmd:     "Pontificate",
+		Data:    mmConfigData,
 	}
 
-	err = m.Handle(cmd)
-	if err == nil {
+	// Unknown cmd causes error.
+	reply = m.Handle(cmd)
+	t.Assert(reply, NotNil)
+	if reply.Error == "" {
 		t.Fatalf("Unknown Cmd to Handle() causes error")
-	}
-	switch err.(type) { // todo: ugly hack to access and test error type
-	case pct.UnknownCmdError:
-		// ok
-	default:
-		t.Error("Error is type pct.UnknownCmdError, got %T", err)
 	}
 
 	/**

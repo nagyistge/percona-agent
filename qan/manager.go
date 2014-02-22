@@ -1,18 +1,18 @@
 /*
-    Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
+   Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
 
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>
+   You should have received a copy of the GNU Affero General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
 package qan
@@ -39,6 +39,7 @@ type Manager struct {
 	spool         data.Spooler
 	// --
 	config         *Config // nil if not running
+	configDir      string
 	tickChan       chan time.Time
 	iter           IntervalIter
 	workers        map[Worker]bool
@@ -135,7 +136,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 	m.status.UpdateRe("Qan", "Running", cmd)
 	logger.Info("Running")
 
-	if err := pct.WriteConfig(CONFIG_FILE, c); err != nil {
+	if err := m.WriteConfig(c, ""); err != nil {
 		return err
 	}
 
@@ -172,6 +173,10 @@ func (m *Manager) Stop(cmd *proto.Cmd) error {
 
 func (m *Manager) Status() string {
 	return m.status.Get("Qan", true)
+}
+
+func (m *Manager) InternalStatus() map[string]string {
+	return m.status.All()
 }
 
 func (m *Manager) IsRunning() bool {
@@ -311,4 +316,33 @@ func (m *Manager) rotateSlowLog(interval *Interval) error {
 	}
 
 	return nil
+}
+
+func (m *Manager) LoadConfig(configDir string) (interface{}, error) {
+	m.configDir = configDir
+	v, err := pct.ReadConfig(configDir + "/" + CONFIG_FILE)
+	if err != nil {
+		return nil, err
+	}
+	// There are no defaults; the config file should have everything we need.
+	config := v.(Config)
+	return config, nil
+}
+
+func (m *Manager) WriteConfig(config interface{}, name string) error {
+	if m.configDir == "" {
+		return nil
+	}
+	file := m.configDir + "/" + CONFIG_FILE
+	m.logger.Info("Writing", file)
+	return pct.WriteConfig(file, config)
+}
+
+func (m *Manager) RemoveConfig(name string) error {
+	if m.configDir == "" {
+		return nil
+	}
+	file := m.configDir + "/" + CONFIG_FILE
+	m.logger.Info("Removing", file)
+	return pct.RemoveFile(file)
 }

@@ -15,7 +15,7 @@ func (f *Factory) Make(mtype, name string) (Monitor, error) {
 	var monitor Monitor
 	switch mtype {
 	case "mysql":
-		monitor := mysql.NewMonitor(NewLogger(f.logChan, name+"-monitor"))
+		monitor := mysql.NewMonitor(NewLogger(f.logChan, name))
 	default:
 		return nil, errors.New("Unknown monitor type: " + mtype)
 	}

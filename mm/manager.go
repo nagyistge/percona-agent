@@ -1,18 +1,18 @@
 /*
-    Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
+   Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
 
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>
+   You should have received a copy of the GNU Affero General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
 package mm
@@ -31,6 +31,7 @@ import (
 	"github.com/percona/cloud-tools/data"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/ticker"
+	"strings"
 	"time"
 )
 
@@ -56,6 +57,7 @@ type Manager struct {
 	monitors    map[string]Monitor
 	status      *pct.Status
 	aggregators map[uint]*Binding
+	configDir   string
 }
 
 func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager, spool data.Spooler) *Manager {
@@ -92,30 +94,40 @@ func (m *Manager) Stop(cmd *proto.Cmd) error {
 
 // @goroutine[0]
 func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
-	defer m.status.Update("Mm", "Ready")
+	m.status.UpdateRe("Mm", "Handling command", cmd)
+	var err error
+
+	defer func() {
+		if err != nil {
+			m.logger.Error(err)
+		}
+		m.status.Update("Mm", "Ready")
+	}()
 
 	mm := &Config{}
-	if err := json.Unmarshal(cmd.Data, mm); err != nil {
-		return err
+	if err = json.Unmarshal(cmd.Data, mm); err != nil {
+		return cmd.Reply(nil, err)
 	}
 
-	// Start or stop the
-	var err error
+	// e.g. default-mysql-monitor, default-system-monitoir,
+	// db1-msyql-monitor, db2-mysql-monitor
+	name := strings.ToLower(mm.Name + "-" + mm.Type + "-monitor")
+
 	switch cmd.Cmd {
 	case "StartService":
-		m.status.UpdateRe("Mm", "Starting "+mm.Name+" monitor", cmd)
-		m.logger.Info("Start", mm.Name, "monitor", cmd)
+		m.status.UpdateRe("Mm", "Starting "+name, cmd)
+		m.logger.Info("Start", name, cmd)
 
 		// Monitors names must be unique.
-		_, haveMonitor := m.monitors[mm.Name]
+		_, haveMonitor := m.monitors[name]
 		if haveMonitor {
-			return errors.New("Duplicate monitor: " + mm.Name)
+			return cmd.Reply(nil, errors.New("Duplicate monitor: "+name))
 		}
 
 		// Create the monitor based on its type.
 		var monitor Monitor
-		if monitor, err = m.factory.Make(mm.Type, mm.Name); err != nil {
-			return err
+		if monitor, err = m.factory.Make(mm.Type, name); err != nil {
+			return cmd.Reply(nil, err)
 		}
 
 		// Make ticker for collect interval.
@@ -144,37 +156,66 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 		// Start the monitor.
 		if err = monitor.Start(mm.Config, tickChan, a.collectionChan); err != nil {
-			return err
+			return cmd.Reply(nil, err)
 		}
-		m.monitors[mm.Name] = monitor
+		m.monitors[name] = monitor
 
 		// Save the monitor config to disk so agent starts on restart.
-		if err := pct.WriteConfig(mm.Name+"-monitor.conf", mm); err != nil {
-			return err
+		if err = m.WriteConfig(mm, name); err != nil {
+			return cmd.Reply(nil, err)
 		}
 	case "StopService":
-		m.status.UpdateRe("Mm", "Stopping "+mm.Name+" monitor", cmd)
-		m.logger.Info("Stop", mm.Name, "monitor", cmd)
-		if monitor, ok := m.monitors[mm.Name]; ok {
+		m.status.UpdateRe("Mm", "Stopping "+name, cmd)
+		m.logger.Info("Stop", name, cmd)
+		if monitor, ok := m.monitors[name]; ok {
 			m.clock.Remove(monitor.TickChan())
-			err = monitor.Stop()
+			if err = monitor.Stop(); err != nil {
+				return cmd.Reply(nil, err)
+			}
+			if err := m.RemoveConfig(name); err != nil {
+				return cmd.Reply(nil, err)
+			}
 		} else {
-			return errors.New("Unknown monitor: " + mm.Name)
+			return cmd.Reply(nil, errors.New("Unknown monitor: "+name))
 		}
 	default:
-		err = pct.UnknownCmdError{Cmd: cmd.Cmd}
+		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
 
-	if err != nil {
-		m.logger.Warn(err)
-	} else {
-		m.logger.Info(cmd.Cmd, "OK")
-	}
+	return cmd.Reply(nil) // success
+}
 
-	return err
+func (m *Manager) LoadConfig(configDir string) (interface{}, error) {
+	// mm is a proxy manager so it doesn't have its own config.  To get a monitor config:
+	// [Service:mm Cmd:GetConfig: Data:mm.Config[Name:..., Type:...]]
+	m.configDir = configDir
+	return nil, nil
+}
+
+func (m *Manager) WriteConfig(config interface{}, name string) error {
+	// Write a monitor config.
+	if m.configDir == "" {
+		return nil
+	}
+	file := m.configDir + "/" + name + ".conf"
+	m.logger.Info("Writing", file)
+	return pct.WriteConfig(file, config)
+}
+
+func (m *Manager) RemoveConfig(name string) error {
+	if m.configDir == "" {
+		return nil
+	}
+	file := m.configDir + "/" + name + ".conf"
+	m.logger.Info("Removing", file)
+	return pct.RemoveFile(file)
 }
 
 // @goroutine[1]
 func (m *Manager) Status() string {
 	return m.status.Get("Mm", true)
+}
+
+func (m *Manager) InternalStatus() map[string]string {
+	return m.status.All()
 }
