@@ -359,3 +359,74 @@ func (s *SenderTestSuite) TestSendData(t *C) {
 	err = sender.Stop()
 	t.Assert(err, IsNil)
 }
+
+/////////////////////////////////////////////////////////////////////////////
+// Manager test suite
+/////////////////////////////////////////////////////////////////////////////
+
+type ManagerTestSuite struct {
+	logChan  chan *proto.LogEntry
+	logger   *pct.Logger
+	dataDir  string
+	dataChan chan []byte
+	respChan chan interface{}
+	client   *mock.DataClient
+}
+
+var _ = Suite(&ManagerTestSuite{})
+
+func (s *ManagerTestSuite) SetUpSuite(t *C) {
+	s.logChan = make(chan *proto.LogEntry, 10)
+	s.logger = pct.NewLogger(s.logChan, "data_test")
+
+	dir, _ := ioutil.TempDir("/tmp", "pct-data-spooler-test")
+	s.dataDir = dir
+
+	s.dataChan = make(chan []byte, 5)
+	s.respChan = make(chan interface{})
+	s.client = mock.NewDataClient(s.dataChan, s.respChan)
+}
+
+func (s *ManagerTestSuite) TearDownSuite(t *C) {
+	if err := os.RemoveAll(s.dataDir); err != nil {
+		t.Error(err)
+	}
+}
+
+// --------------------------------------------------------------------------
+
+func (s *ManagerTestSuite) TestDataService(t *C) {
+	m := data.NewManager(s.logger, "localhost", s.client)
+	t.Assert(m, NotNil)
+
+	config := &data.Config{
+		Dir:          s.dataDir,
+		Encoding:     "",
+		SendInterval: 1,
+	}
+	configData, err := json.Marshal(config)
+	t.Assert(err, IsNil)
+
+	err = m.Start(&proto.Cmd{}, configData)
+	t.Assert(err, IsNil)
+
+	sender := m.Sender()
+	t.Check(sender, NotNil)
+
+	/**
+	 * GetConfig
+	 */
+
+	cmd := &proto.Cmd{
+		User:    "daniel",
+		Service: "log",
+		Cmd:     "GetConfig",
+	}
+
+	gotReply := m.Handle(cmd)
+	expectReply := cmd.Reply(config)
+	if same, diff := test.IsDeeply(gotReply, expectReply); !same {
+		t.Logf("%+v", gotReply)
+		t.Error(diff)
+	}
+}

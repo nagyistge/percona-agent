@@ -46,6 +46,7 @@ func (c *DataClient) ConnectOnce() error {
 }
 
 func (c *DataClient) Disconnect() error {
+	c.connectChan <- true
 	return nil
 }
 
