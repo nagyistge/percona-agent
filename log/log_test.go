@@ -15,12 +15,13 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package logrelay_test
+package log_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/cloud-tools/logrelay"
+	"github.com/percona/cloud-tools/log"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/test"
 	"github.com/percona/cloud-tools/test/mock"
@@ -36,43 +37,47 @@ import (
 // Hook gocheck into the "go test" runner.
 func Test(t *testing.T) { TestingT(t) }
 
-type TestSuite struct {
+/////////////////////////////////////////////////////////////////////////////
+// Relay test suite
+/////////////////////////////////////////////////////////////////////////////
+
+type RelayTestSuite struct {
 	logFile     string
 	sendChan    chan interface{}
 	recvChan    chan interface{}
 	connectChan chan bool
 	client      *mock.WebsocketClient
-	relay       *logrelay.LogRelay
+	relay       *log.Relay
 	logger      *pct.Logger
 }
 
-var _ = Suite(&TestSuite{})
+var _ = Suite(&RelayTestSuite{})
 
-func (s *TestSuite) SetUpSuite(t *C) {
-	s.logFile = fmt.Sprintf("/tmp/logrelay_test.go.%d", os.Getpid())
+func (s *RelayTestSuite) SetUpSuite(t *C) {
+	s.logFile = fmt.Sprintf("/tmp/log_test.go.%d", os.Getpid())
 
 	s.sendChan = make(chan interface{}, 5)
 	s.recvChan = make(chan interface{}, 5)
 	s.connectChan = make(chan bool)
 	s.client = mock.NewWebsocketClient(nil, nil, s.sendChan, s.recvChan)
 
-	s.relay = logrelay.NewLogRelay(s.client, "", proto.LOG_INFO)
+	s.relay = log.NewRelay(s.client, "", proto.LOG_INFO)
 	s.logger = pct.NewLogger(s.relay.LogChan(), "test")
 	go s.relay.Run() // calls client.Connect()
 }
 
-func (s *TestSuite) TearDownSuite(t *C) {
+func (s *RelayTestSuite) TearDownSuite(t *C) {
 	os.Remove(s.logFile)
 }
 
-func (s *TestSuite) SetUpTest(t *C) {
+func (s *RelayTestSuite) SetUpTest(t *C) {
 	s.relay.LogLevelChan() <- proto.LOG_INFO
 
 	// Drain the log so one test doesn't affect another.
 	_ = test.WaitLog(s.recvChan, 0)
 }
 
-func (s *TestSuite) TearDownTest(t *C) {
+func (s *RelayTestSuite) TearDownTest(t *C) {
 	// Drain the log so one test doesn't affect another.
 	_ = test.WaitLog(s.recvChan, 0)
 
@@ -83,7 +88,7 @@ func (s *TestSuite) TearDownTest(t *C) {
 // Test cases
 // //////////////////////////////////////////////////////////////////////////
 
-func (s *TestSuite) TestLogLevel(t *C) {
+func (s *RelayTestSuite) TestLogLevel(t *C) {
 	r := s.relay
 	l := s.logger
 
@@ -118,7 +123,7 @@ func (s *TestSuite) TestLogLevel(t *C) {
 	t.Check(got, DeepEquals, expect)
 }
 
-func (s *TestSuite) TestLogFile(t *C) {
+func (s *RelayTestSuite) TestLogFile(t *C) {
 	/**
 	 * This test is going to be a real pain in the ass because it writes/reads
 	 * disk and the disk can be surprisingly slow on a test box.  On top of that,
@@ -204,7 +209,7 @@ func (s *TestSuite) TestLogFile(t *C) {
 	}
 }
 
-func (s *TestSuite) TestOfflineBuffering(t *C) {
+func (s *RelayTestSuite) TestOfflineBuffering(t *C) {
 	l := s.logger
 
 	// We're going to cause the relay's client Recv() to get an error
@@ -225,12 +230,12 @@ func (s *TestSuite) TestOfflineBuffering(t *C) {
 	// Relay is offline and trying to connect again in another goroutine.
 	// These entries should therefore not be sent.  There's a minor race
 	// condition: when relay goes offline, it sends an internal log entry.
-	// Sometimes we get that here (Service="logrelay") and sometimes not
+	// Sometimes we get that here (Service="log") and sometimes not
 	// (len(got)==0).  Either condition is correct for this test.
 	l.Error("err1")
 	l.Error("err2")
 	got := test.WaitLog(s.recvChan, 0)
-	if len(got) > 0 && got[0].Service != "logrelay" {
+	if len(got) > 0 && got[0].Service != "log" {
 		t.Errorf("Log entries are not sent while offline: %+v", got)
 	}
 
@@ -240,17 +245,17 @@ func (s *TestSuite) TestOfflineBuffering(t *C) {
 	// Wait for the relay resend what it had ^ buffered.
 	got = test.WaitLog(s.recvChan, 3)
 	expect := []proto.LogEntry{
-		{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "logrelay", Msg: "connected: false"},
+		{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: "connected: false"},
 		{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: "err1"},
 		{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: "err2"},
-		{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "logrelay", Msg: "connected: true"},
+		{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: "connected: true"},
 	}
 	if same, diff := test.IsDeeply(got, expect); !same {
 		t.Error(diff)
 	}
 }
 
-func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
+func (s *RelayTestSuite) TestOfflineBufferOverflow(t *C) {
 	// Same magic as in TestOfflineBuffering to force relay offline.
 	l := s.logger
 	s.client.SetConnectChan(s.connectChan)
@@ -265,7 +270,7 @@ func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
 
 	// Overflow the first buffer but not the second.  We should get all
 	// log entries back.
-	for i := 0; i < logrelay.BUFFER_SIZE+1; i++ {
+	for i := 0; i < log.BUFFER_SIZE+1; i++ {
 		l.Error(i)
 	}
 
@@ -274,13 +279,13 @@ func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
 
 	// Wait for the relay resend what it had ^ buffered.
 	// +2 for "connected: false" and "connected: true".
-	got := test.WaitLog(s.recvChan, logrelay.BUFFER_SIZE+1+2)
-	expect := make([]proto.LogEntry, logrelay.BUFFER_SIZE+1+2)
-	expect[0] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "logrelay", Msg: "connected: false"}
-	for i, n := 0, 1; i < logrelay.BUFFER_SIZE+1; i, n = i+1, n+1 {
+	got := test.WaitLog(s.recvChan, log.BUFFER_SIZE+1+2)
+	expect := make([]proto.LogEntry, log.BUFFER_SIZE+1+2)
+	expect[0] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: "connected: false"}
+	for i, n := 0, 1; i < log.BUFFER_SIZE+1; i, n = i+1, n+1 {
 		expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: fmt.Sprintf("%d", i)}
 	}
-	expect[logrelay.BUFFER_SIZE+1+1] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "logrelay", Msg: "connected: true"}
+	expect[log.BUFFER_SIZE+1+1] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: "connected: true"}
 	if same, diff := test.IsDeeply(got, expect); !same {
 		t.Error(diff)
 	}
@@ -297,7 +302,7 @@ func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
 	// Relay is offline.
 
 	overflow := 3
-	for i := 0; i < (logrelay.BUFFER_SIZE*2)+overflow; i++ {
+	for i := 0; i < (log.BUFFER_SIZE*2)+overflow; i++ {
 		l.Error(i)
 	}
 
@@ -306,9 +311,9 @@ func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
 	time.Sleep(100 * time.Millisecond)
 
 	// +3 for "connected: false", "Lost N entries", and "connected: true".
-	got = test.WaitLog(s.recvChan, logrelay.BUFFER_SIZE+overflow+3)
-	expect = make([]proto.LogEntry, logrelay.BUFFER_SIZE+overflow+3)
-	expect[0] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "logrelay", Msg: "connected: false"}
+	got = test.WaitLog(s.recvChan, log.BUFFER_SIZE+overflow+3)
+	expect = make([]proto.LogEntry, log.BUFFER_SIZE+overflow+3)
+	expect[0] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: "connected: false"}
 	n := 1
 	// If buf size is 10, then we should "Lost connection", get 0-8, a "Lost 10" message for 9-18, then 19-22.
 	/**
@@ -330,19 +335,179 @@ func (s *TestSuite) TestOfflineBufferOverflow(t *C) {
 	 * 3		entry 21
 	 * 4		entry 22
 	 */
-	for i := 0; i < logrelay.BUFFER_SIZE-1; i++ {
+	for i := 0; i < log.BUFFER_SIZE-1; i++ {
 		expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: fmt.Sprintf("%d", i)}
 		n++
 	}
-	expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "logrelay", Msg: fmt.Sprintf("Lost %d log entries", logrelay.BUFFER_SIZE)}
+	expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: fmt.Sprintf("Lost %d log entries", log.BUFFER_SIZE)}
 	n++
-	for i, j := logrelay.BUFFER_SIZE, logrelay.BUFFER_SIZE*2-1; i < logrelay.BUFFER_SIZE+overflow+1; i, j = i+1, j+1 {
+	for i, j := log.BUFFER_SIZE, log.BUFFER_SIZE*2-1; i < log.BUFFER_SIZE+overflow+1; i, j = i+1, j+1 {
 		expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: fmt.Sprintf("%d", j)}
 		n++
 	}
-	expect[logrelay.BUFFER_SIZE+overflow+2] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "logrelay", Msg: "connected: true"}
+	expect[log.BUFFER_SIZE+overflow+2] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: "connected: true"}
 	if same, diff := test.IsDeeply(got, expect); !same {
 		// @todo: this test is unstable
+		t.Logf("%+v", got)
+		t.Error(diff)
+	}
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Manager test suite
+/////////////////////////////////////////////////////////////////////////////
+
+type ManagerTestSuite struct {
+	sendChan    chan interface{}
+	recvChan    chan interface{}
+	connectChan chan bool
+	client      *mock.WebsocketClient
+	logFile     string
+}
+
+var _ = Suite(&ManagerTestSuite{})
+
+func (s *ManagerTestSuite) SetUpSuite(t *C) {
+	s.sendChan = make(chan interface{}, 5)
+	s.recvChan = make(chan interface{}, 5)
+	s.connectChan = make(chan bool)
+	s.client = mock.NewWebsocketClient(nil, nil, s.sendChan, s.recvChan)
+
+	s.logFile = fmt.Sprintf("/tmp/log_test.go.%d", os.Getpid())
+}
+
+func (s *ManagerTestSuite) TearDownSuite(t *C) {
+	os.Remove(s.logFile)
+}
+
+// --------------------------------------------------------------------------
+
+func (s *ManagerTestSuite) TestLogService(t *C) {
+	config := &log.Config{
+		File:  s.logFile,
+		Level: "info",
+	}
+	configData, err := json.Marshal(config)
+	t.Assert(err, IsNil)
+
+	m := log.NewManager(s.client)
+	err = m.Start(&proto.Cmd{}, configData)
+	t.Assert(err, IsNil)
+
+	relay := m.Relay()
+	t.Assert(relay, NotNil)
+
+	logger := pct.NewLogger(relay.LogChan(), "log-svc-test")
+	logger.Info("i'm a log entry")
+
+	// Log entry should be sent to API.
+	got := test.WaitLog(s.recvChan, 3)
+	if len(got) == 0 {
+		t.Fatal("No log entries")
+	}
+	var gotLog proto.LogEntry
+	for _, l := range got {
+		if l.Service == "log-svc-test" {
+			gotLog = l
+			break
+		}
+	}
+	t.Assert(gotLog, NotNil)
+	expectLog := proto.LogEntry{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log-svc-test", Msg: "i'm a log entry"}
+	if same, diff := test.IsDeeply(gotLog, expectLog); !same {
+		t.Logf("%+v", got)
+		t.Error(diff)
+	}
+
+	// Since there's a log file, entry should be written to it too.
+	size, _ := test.FileSize(s.logFile)
+	test.WaitFileSize(s.logFile, size)
+	var content []byte
+	content, err = ioutil.ReadFile(s.logFile)
+	t.Assert(err, IsNil)
+
+	if !strings.Contains(string(content), "i'm a log entry") {
+		t.Error("Writes log entry to log file, got\n", string(content))
+	}
+
+	// Can't stop log service, but Stop() should work and not return error.
+	err = m.Stop(&proto.Cmd{})
+	t.Assert(err, IsNil)
+
+	/**
+	 * Change log level and file
+	 */
+
+	newLogFile := s.logFile + "-2"
+	defer os.Remove(newLogFile)
+
+	config = &log.Config{
+		File:  newLogFile,
+		Level: "warning",
+	}
+	configData, err = json.Marshal(config)
+	t.Assert(err, IsNil)
+
+	cmd := &proto.Cmd{
+		User:    "daniel",
+		Service: "log",
+		Cmd:     "SetConfig",
+		Data:    configData,
+	}
+
+	gotReply := m.Handle(cmd)
+	expectReply := cmd.Reply(config)
+	if same, diff := test.IsDeeply(gotReply, expectReply); !same {
+		t.Logf("%+v", gotReply)
+		t.Error(diff)
+	}
+
+	// Log entry should NOT be sent to API if log level was really changed.
+	logger.Info("i'm lost")
+	got = test.WaitLog(s.recvChan, 3)
+	if len(got) != 0 {
+		t.Logf("%+v", got)
+		t.Error("Log level changed dynamically")
+	}
+
+	logger.Warn("blah")
+	got = test.WaitLog(s.recvChan, 3)
+	gotLog = proto.LogEntry{}
+	for _, l := range got {
+		if l.Service == "log-svc-test" {
+			gotLog = l
+			break
+		}
+	}
+	expectLog = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log-svc-test", Msg: "blah"}
+	if same, diff := test.IsDeeply(gotLog, expectLog); !same {
+		t.Logf("%+v", got)
+		t.Error(diff)
+	}
+
+	// Entry should be written to new log file if it was really changed.
+	size, _ = test.FileSize(newLogFile)
+	test.WaitFileSize(newLogFile, size)
+	content, err = ioutil.ReadFile(newLogFile)
+	t.Assert(err, IsNil)
+	if !strings.Contains(string(content), "blah") {
+		t.Error("Log file changed dynamically, got\n", string(content))
+	}
+
+	/**
+	 * GetConfig
+	 */
+
+	cmd = &proto.Cmd{
+		User:    "daniel",
+		Service: "log",
+		Cmd:     "GetConfig",
+	}
+
+	gotReply = m.Handle(cmd)
+	expectReply = cmd.Reply(config)
+	if same, diff := test.IsDeeply(gotReply, expectReply); !same {
+		t.Logf("%+v", gotReply)
 		t.Error(diff)
 	}
 }

@@ -15,13 +15,13 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package logrelay
+package log
 
 import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
-	"log"
+	golog "log"
 	"os"
 	"time"
 )
@@ -30,13 +30,13 @@ const (
 	BUFFER_SIZE int = 10
 )
 
-type LogRelay struct {
+type Relay struct {
 	client        pct.WebsocketClient
 	connected     bool
 	logChan       chan *proto.LogEntry
 	logLevel      byte
 	logLevelChan  chan byte
-	logger        *log.Logger
+	logger        *golog.Logger
 	logFile       string
 	logFileChan   chan string
 	firstBuf      []*proto.LogEntry
@@ -60,8 +60,8 @@ type Status struct {
  * client is optional.  If not given, only file logging is enabled if a log file
  * is sent to the LogFileChan().
  */
-func NewLogRelay(client pct.WebsocketClient, logFile string, logLevel byte) *LogRelay {
-	r := &LogRelay{
+func NewRelay(client pct.WebsocketClient, logFile string, logLevel byte) *Relay {
+	r := &Relay{
 		client:       client,
 		logFile:      logFile,
 		logLevel:     logLevel,
@@ -75,20 +75,20 @@ func NewLogRelay(client pct.WebsocketClient, logFile string, logLevel byte) *Log
 	return r
 }
 
-func (r *LogRelay) LogChan() chan *proto.LogEntry {
+func (r *Relay) LogChan() chan *proto.LogEntry {
 	return r.logChan
 }
 
-func (r *LogRelay) LogLevelChan() chan byte {
+func (r *Relay) LogLevelChan() chan byte {
 	return r.logLevelChan
 }
 
-func (r *LogRelay) LogFileChan() chan string {
+func (r *Relay) LogFileChan() chan string {
 	return r.logFileChan
 }
 
 // @goroutine
-func (r *LogRelay) Run() {
+func (r *Relay) Run() {
 	r.setLogFile(r.logFile)
 
 	// Connect if we were created with a client.  If this is slow, log entries
@@ -154,15 +154,15 @@ func (r *LogRelay) Run() {
 	} // for
 }
 
-func (r *LogRelay) StatusChan() chan *Status {
+func (r *Relay) StatusChan() chan *Status {
 	return r.statusChan
 }
 
 // Even the relayer needs to log stuff.
-func (r *LogRelay) internal(msg string) {
+func (r *Relay) internal(msg string) {
 	logEntry := &proto.LogEntry{
 		Ts:      time.Now().UTC(),
-		Service: "logrelay",
+		Service: "log",
 		Level:   proto.LOG_WARNING,
 		Msg:     msg,
 	}
@@ -170,7 +170,7 @@ func (r *LogRelay) internal(msg string) {
 }
 
 // @goroutine
-func (r *LogRelay) connect() {
+func (r *Relay) connect() {
 	if r.client == nil || r.offline {
 		// log file only
 		return
@@ -180,7 +180,7 @@ func (r *LogRelay) connect() {
 }
 
 // @goroutine
-func (r *LogRelay) waitErr() {
+func (r *Relay) waitErr() {
 	// When a websocket closes, the err is returned on recv,
 	// so we block on recv, not expecting any data, just
 	// waiting for error/disconenct.
@@ -190,7 +190,7 @@ func (r *LogRelay) waitErr() {
 	}
 }
 
-func (r *LogRelay) buffer(e *proto.LogEntry) {
+func (r *Relay) buffer(e *proto.LogEntry) {
 	// First time we need to buffer delayed/lost log entries is closest to
 	// the events that are causing problems, so we keep some, and when this
 	// buffer is full...
@@ -219,7 +219,7 @@ func (r *LogRelay) buffer(e *proto.LogEntry) {
 	r.secondBufSize = 1
 }
 
-func (r *LogRelay) send(entry *proto.LogEntry, bufferOnErr bool) error {
+func (r *Relay) send(entry *proto.LogEntry, bufferOnErr bool) error {
 	var err error
 	r.client.Conn().SetWriteDeadline(time.Now().Add(2 * time.Second))
 	if err = r.client.Send(entry); err != nil {
@@ -230,7 +230,7 @@ func (r *LogRelay) send(entry *proto.LogEntry, bufferOnErr bool) error {
 	return err
 }
 
-func (r *LogRelay) resend() {
+func (r *Relay) resend() {
 	for i := 0; i < BUFFER_SIZE; i++ {
 		if r.firstBuf[i] != nil {
 			if err := r.send(r.firstBuf[i], false); err == nil {
@@ -245,7 +245,7 @@ func (r *LogRelay) resend() {
 		logEntry := &proto.LogEntry{
 			Ts:      time.Now().UTC(),
 			Level:   proto.LOG_WARNING,
-			Service: "logrelay",
+			Service: "log",
 			Msg:     fmt.Sprintf("Lost %d log entries", r.lost),
 		}
 		// If the lost message warning fails to send, do not rebuffer it to avoid
@@ -266,7 +266,7 @@ func (r *LogRelay) resend() {
 	}
 }
 
-func (r *LogRelay) setLogLevel(level byte) {
+func (r *Relay) setLogLevel(level byte) {
 	if level < proto.LOG_EMERGENCY || level > proto.LOG_DEBUG {
 		r.internal(fmt.Sprintf("Invalid log level: %d\n", level))
 	} else {
@@ -274,7 +274,7 @@ func (r *LogRelay) setLogLevel(level byte) {
 	}
 }
 
-func (r *LogRelay) setLogFile(logFile string) {
+func (r *Relay) setLogFile(logFile string) {
 	if logFile == "" {
 		r.logger = nil
 		r.logFile = ""
@@ -294,12 +294,12 @@ func (r *LogRelay) setLogFile(logFile string) {
 			return
 		}
 	}
-	logger := log.New(file, "", log.Ldate|log.Ltime|log.Lmicroseconds)
+	logger := golog.New(file, "", golog.Ldate|golog.Ltime|golog.Lmicroseconds)
 	r.logger = logger
 	r.logFile = file.Name()
 	r.logger.Println("logFile=" + r.logFile)
 }
 
-func (r *LogRelay) Offline(state bool) {
+func (r *Relay) Offline(state bool) {
 	r.offline = state
 }
