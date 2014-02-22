@@ -43,7 +43,11 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 		return errors.New("Invalid log level: " + c.Level)
 	}
 
-	m.relay = NewRelay(m.client, c.File, level)
+    if err := pct.MakeDir(c.File); err != nil {
+		return err
+	}
+
+	m.relay = NewRelay(m.client, c.File, level, c.Offline)
 	go m.relay.Run()
 	m.config = c
 

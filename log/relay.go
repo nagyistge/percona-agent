@@ -60,13 +60,15 @@ type Status struct {
  * client is optional.  If not given, only file logging is enabled if a log file
  * is sent to the LogFileChan().
  */
-func NewRelay(client pct.WebsocketClient, logFile string, logLevel byte) *Relay {
+func NewRelay(client pct.WebsocketClient, logFile string, logLevel byte, offline bool) *Relay {
 	r := &Relay{
-		client:       client,
-		logFile:      logFile,
-		logLevel:     logLevel,
-		logLevelChan: make(chan byte),
+		client:   client,
+		logFile:  logFile,
+		logLevel: logLevel,
+		offline:  offline,
+		// --
 		logChan:      make(chan *proto.LogEntry, BUFFER_SIZE*3),
+		logLevelChan: make(chan byte),
 		logFileChan:  make(chan string),
 		firstBuf:     make([]*proto.LogEntry, BUFFER_SIZE),
 		secondBuf:    make([]*proto.LogEntry, BUFFER_SIZE),
@@ -109,7 +111,7 @@ func (r *Relay) Run() {
 			}
 
 			// Send to API if we have a websocket client, and not in offline mode, and...
-			if r.client != nil && !r.offline {
+			if !r.offline && r.client != nil {
 				// .. the websocket client is connected.
 				if r.connected {
 					r.send(entry, true) // buffer on err
@@ -298,8 +300,4 @@ func (r *Relay) setLogFile(logFile string) {
 	r.logger = logger
 	r.logFile = file.Name()
 	r.logger.Println("logFile=" + r.logFile)
-}
-
-func (r *Relay) Offline(state bool) {
-	r.offline = state
 }

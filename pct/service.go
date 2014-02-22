@@ -25,8 +25,7 @@ type ServiceManager interface {
 	// @goroutine[0]
 	Start(cmd *proto.Cmd, config []byte) error
 	Stop(cmd *proto.Cmd) error
-	IsRunning() bool
-	Handle(cmd *proto.Cmd) error
+	Handle(cmd *proto.Cmd) *proto.Reply
 	// @goroutine[1]
-	Status() map[string]string
+	Status() string
 }

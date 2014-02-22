@@ -7,11 +7,11 @@ import (
 	"github.com/percona/cloud-tools/pct"
 )
 
-type RealFactory struct {
+type Factory struct {
 	logChan chan *proto.LogEntry
 }
 
-func (f *RealFactory) Make(mtype, name string) (Monitor, error) {
+func (f *Factory) Make(mtype, name string) (Monitor, error) {
 	var monitor Monitor
 	switch mtype {
 	case "mysql":

@@ -19,56 +19,45 @@ package agent
 
 import (
 	"encoding/json"
-	"errors"
-	"github.com/percona/cloud-protocol/proto"
 	"io/ioutil"
 	"log"
 	"os"
 )
 
-// Defaults
 const (
-	API_HOSTNAME = "cloud-api.percona.com"
-	CONFIG_FILE  = "/etc/percona/agent.conf"
-	DATA_DIR     = "/var/spool/percona"
-	LOG_DIR      = "/var/log/percona"
-	LOG_FILE     = "agent.log"
-	LOG_LEVEL    = "info"
+	DEFAULT_CONFIG_FILE  = "/etc/percona/agent.conf"
+	DEFAULT_API_HOSTNAME = "cloud-api.percona.com"
+	DEFAULT_PID_FILE     = ""
 )
 
 type Config struct {
-	// Required, read-only:
-	ApiKey    string
-	AgentUuid string
-	// API-controlled:
+	AgentUuid   string
 	ApiHostname string
-	DataDir     string
-	LogDir      string
-	LogFile     string
-	LogLevel    string
+	ApiKey      string
 	PidFile     string
-	// Local-only, hacker:
-	Links   map[string]string
-	Enable  []string
-	Disable []string
-	// Internal:
-	ConfigDir string
+	// Internal
+	Links     map[string]string
+	Enable    []string
+	Disable   []string
 }
 
 // Load config from JSON file.
-func LoadConfig(file string) *Config {
-	config := &Config{}
-	data, err := ioutil.ReadFile(file)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			log.Fatalln(err)
-		}
-	} else {
-		if err = json.Unmarshal(data, config); err != nil {
-			log.Fatalln(err)
-		}
+func LoadConfig(dir string) (*Config, error) {
+	data, err := ioutil.ReadFile(dir + "/agent.conf")
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
 	}
-	return config
+
+	config := &Config{}
+	if err = json.Unmarshal(data, config); err != nil {
+		return nil, err
+	}
+
+	if config.ApiHostname == "" {
+		config.ApiHostname = DEFAULT_API_HOSTNAME
+	}
+
+	return config, nil
 }
 
 // Write config into  JSON file.
@@ -85,56 +74,4 @@ func WriteConfig(file string, cur *Config) error {
 	}
 
 	return nil
-}
-
-// Apply current config, i.e. overwrite this config with current config.
-func (c *Config) Apply(cur *Config) error {
-	if cur.ApiHostname != "" {
-		c.ApiHostname = cur.ApiHostname
-	}
-	if cur.ApiKey != "" {
-		c.ApiKey = cur.ApiKey
-	}
-	if cur.AgentUuid != "" {
-		c.AgentUuid = cur.AgentUuid
-	}
-	if cur.LogDir != "" {
-		c.LogDir = cur.LogDir
-	}
-	if cur.LogFile != "" {
-		c.LogFile = cur.LogFile
-	}
-	if cur.LogLevel != "" {
-		_, ok := proto.LogLevelNumber[cur.LogLevel]
-		if !ok {
-			return errors.New("Invalid log level: " + cur.LogLevel)
-		}
-		c.LogLevel = cur.LogLevel
-	}
-	if cur.DataDir != "" {
-		c.DataDir = cur.DataDir
-	}
-	c.PidFile = cur.PidFile
-	c.Links = cur.Links
-	c.Enable = cur.Enable
-	c.Disable = cur.Disable
-	return nil
-}
-
-func (c *Config) Enabled(option string) bool {
-	for _, o := range c.Enable {
-		if o == option {
-			return true
-		}
-	}
-	return false
-}
-
-func (c *Config) Disabled(option string) bool {
-	for _, o := range c.Disable {
-		if o == option {
-			return true
-		}
-	}
-	return false
 }

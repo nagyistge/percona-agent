@@ -25,15 +25,14 @@ import (
 	"github.com/percona/cloud-tools/agent"
 	"github.com/percona/cloud-tools/client"
 	"github.com/percona/cloud-tools/data"
-	"github.com/percona/cloud-tools/logrelay"
+	"github.com/percona/cloud-tools/log"
 	"github.com/percona/cloud-tools/mm"
-	mysqlMonitor "github.com/percona/cloud-tools/mm/mysql"
 	"github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/qan"
 	"github.com/percona/cloud-tools/ticker"
 	"io/ioutil"
-	"log"
+	golog "log"
 	"net/http"
 	"os"
 	"os/user"
@@ -47,57 +46,38 @@ const (
 )
 
 func init() {
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
+	golog.SetFlags(golog.Ldate | golog.Ltime | golog.Lmicroseconds | golog.Lshortfile)
 }
 
 func main() {
 	t0 := time.Now()
 
 	/**
-	 * Agent config
+	 * Agent config (require API key and agent UUID)
 	 */
 
-	// Parse command line.
 	cmd, arg := ParseCmdLine()
 
 	// Check that config file exists.
-	configFile := agent.CONFIG_FILE // default
+	configFile := agent.DEFAULT_CONFIG_FILE // default
 	if cmd == "start" && arg != "" {
 		// percona-agent <config file>
 		configFile = arg
 	}
-	if _, err := os.Stat(configFile); os.IsNotExist(err) {
-		log.Fatalf("Agent config file %s does not exist", configFile)
+	if !pct.FileExists(configFile) {
+		golog.Fatalf("Agent config file %s does not exist", configFile)
 	}
 
-	// Create default config.
-	config := &agent.Config{
-		ApiHostname: agent.API_HOSTNAME,
-		LogDir:      agent.LOG_DIR,
-		LogFile:     agent.LOG_FILE,
-		LogLevel:    agent.LOG_LEVEL,
-		DataDir:     agent.DATA_DIR,
-		ConfigDir:   filepath.Dir(configFile),
-	}
+	configDir :=  filepath.Dir(configFile)
+	agentConfig, _ := agent.LoadConfig(configDir)
 
-	// Overwrite default config with config file.
-	if err := config.Apply(agent.LoadConfig(configFile)); err != nil {
-		log.Fatal(err)
-	}
-
-	// Make sure config has everything we need.
-	if valid, missing := CheckConfig(config, configFile); !valid {
-		log.Printf("%s is missing %d settings: %s", configFile, len(missing), strings.Join(missing, ", "))
+	// Make sure agent config has everything we need.
+	if valid, missing := CheckConfig(agentConfig, configFile); !valid {
+		golog.Printf("%s is missing %d settings: %s", configFile, len(missing), strings.Join(missing, ", "))
 		os.Exit(-1)
 	}
 
-	// Make the dirs we need, if they don't already exist.
-	if err := MakeDirs([]string{config.LogDir, config.DataDir}); err != nil {
-		log.Fatalln(err)
-	}
-
-	log.Printf("AgentUuid: %s\n", config.AgentUuid)
-	log.Printf("DataDir: %s\n", config.DataDir)
+	golog.Printf("AgentUuid: %s\n", agentConfig.AgentUuid)
 
 	/**
 	 * Ping and exit, maybe.
@@ -105,18 +85,18 @@ func main() {
 
 	if cmd == "ping" {
 		if arg == "" {
-			arg = config.ApiHostname
+			arg = agentConfig.ApiHostname
 		}
-		log.Println("Ping " + arg + "...")
+		golog.Println("Ping " + arg + "...")
 		t0 := time.Now()
-		ok, resp := Ping(config.ApiKey, arg)
+		ok, resp := Ping(agentConfig.ApiKey, arg)
 		d := time.Now().Sub(t0)
-		log.Printf("%+v\n", resp)
+		golog.Printf("%+v\n", resp)
 		if !ok {
-			log.Printf("Ping FAIL (%s)", d)
+			golog.Printf("Ping FAIL (%s)", d)
 			os.Exit(1)
 		} else {
-			log.Printf("Ping OK (%s)", d)
+			golog.Printf("Ping OK (%s)", d)
 			os.Exit(0)
 		}
 	}
@@ -125,31 +105,31 @@ func main() {
 	 * PID file
 	 */
 
-	if config.PidFile != "" {
-		if err := WritePidFile(config.PidFile); err != nil {
-			log.Fatalln(err)
+	if agentConfig.PidFile != "" {
+		if err := WritePidFile(agentConfig.PidFile); err != nil {
+			golog.Fatalln(err)
 		}
-		defer removeFile(config.PidFile)
+		defer pct.RemoveFile(agentConfig.PidFile)
 	}
-	log.Println("PidFile: " + config.PidFile)
+	golog.Println("PidFile: " + agentConfig.PidFile)
 
 	/**
 	 * RESTful entry links
 	 */
 
 	var links map[string]string
-	if len(config.Links) == 0 {
+	if len(agentConfig.Links) == 0 {
 		var err error
-		if links, err = GetLinks(config.ApiKey, "https://"+config.ApiHostname); err != nil {
-			log.Fatalln(err)
+		if links, err = GetLinks(agentConfig.ApiKey, "https://"+agentConfig.ApiHostname); err != nil {
+			golog.Fatalln(err)
 		}
 	}
 
 	/**
-	 * Agent auth credentials
+	 * Agent auth credentials (for websocket connections)
 	 */
 
-	auth, origin := MakeAgentAuth(config)
+	auth, origin := MakeAgentAuth(agentConfig)
 
 	/**
 	 * Log relay
@@ -158,139 +138,106 @@ func main() {
 	// Log websocket client, possibly disabled later.
 	logClient, err := client.NewWebsocketClient(nil, links["log"], origin, auth)
 	if err != nil {
-		log.Fatalln(err)
+		golog.Fatalln(err)
 	}
-
-	// Log file, if not disabled.
-	var logFile string
-	if config.Disabled("LogFile") {
-		log.Println("LogFile: DISABLED")
-		logFile = ""
-	} else {
-		if config.LogFile == "STDOUT" || config.LogFile == "STDERR" {
-			logFile = config.LogFile
-		} else {
-			logFile = config.LogDir + "/" + config.LogFile
-		}
-		log.Printf("LogFile: %s\n", logFile)
+	logManager := log.NewManager(logClient)
+	logConfig, err  := logManager.LoadConfig(configDir)
+	if err := logManager.Start(&proto.Cmd{}, logConfig); err != nil {
+		golog.Panicf("Error starting log service: ", err)
 	}
-
-	// Log level (should already be validated).
-	logLevel := proto.LogLevelNumber[config.LogLevel]
-
-	// The log relay with option client and file.
-	logRelay := logrelay.NewLogRelay(logClient, logFile, logLevel)
-
-	// Update logger for log ws client now that log relay exists.
-	if logClient != nil {
-		logClient.SetLogger(pct.NewLogger(logRelay.LogChan(), "agent-ws-log"))
-	}
-
-	// todo: fix this hack
-	if config.Disabled("LogApi") {
-		logRelay.Offline(true)
-		log.Println("LogApi: DISABLED")
-	}
-
-	go logRelay.Run()
+	logChan := logManager.Relay().LogChan()
 
 	/**
-	 * Master clock
+	 * Data spooler and sender
+	 */
+
+	dataClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "data-sender-ws"), links["data"], origin, auth)
+	dataManager := data.NewManager(
+		pct.NewLogger(logChan, "data"),
+		auth.Hostname,
+		dataClient,
+	)
+	dataConfig, err := dataManager.LoadConfig(configDir)
+	if err := dataManager.Start(&proto.Cmd{}, dataConfig); err != nil {
+		golog.Panicf("Error starting data service: ", err)
+	}
+
+	/**
+	 * Collecct/report ticker (master clock)
 	 */
 
 	nowFunc := func() int64 { return time.Now().UTC().UnixNano() }
 	clock := ticker.NewRolex(&ticker.EvenTickerFactory{}, nowFunc)
 
 	/**
-	 * Data spooler and sender
+	 * Metric monitors
 	 */
 
-	var sz data.Serializer
-	if config.Disabled("gzip") {
-		sz = data.NewJsonSerializer()
-	} else {
-		sz = data.NewJsonGzipSerializer()
-	}
-	dataSpooler := data.NewDiskvSpooler(
-		pct.NewLogger(logRelay.LogChan(), "data-spooler"),
-		config.DataDir,
-		sz,
-		auth.Hostname,
+	mmManager := mm.NewManager(
+		pct.NewLogger(logChan, "mm"),
+		&monitor.MonitorFactory{logManager.Relay().LogChan()},
+		clock,
+		dataManager.Spooler(),
 	)
-	if err := dataSpooler.Start(); err != nil {
-		log.Fatalln("Cannot start data spooler:", err)
+	mmConfig, err  := mmConfig.LoadConfig(configDir)
+	if err := mmManager.Start(&proto.Cmd{}, nil); err != nil {
+		golog.Panicf("Error starting mm service: ", err)
 	}
-
-	dataClient, err := client.NewWebsocketClient(pct.NewLogger(logRelay.LogChan(), "data-sender-ws"), links["data"], origin, auth)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	dataSender := data.NewSender(
-		pct.NewLogger(logRelay.LogChan(), "data-sender"),
-		dataClient,
-		dataSpooler,
-		time.Tick(30*time.Second), // todo
-	)
-	if err := dataSender.Start(); err != nil {
-		log.Fatalln("Cannot start data sender:", err)
-	}
+	startMonitors(mmManager)
 
 	/**
-	 * Create and start the agent.
+	 * Query Analytics
+	 */
+
+	qanManager := qan.NewManager(
+		pct.NewLogger(logChan, "qan"),
+		&mysql.Connection{},
+		clock,
+		&qan.FileIntervalIterFactory{},
+		&qan.SlowLogWorkerFactory{},
+		dataManager.Spooler(),
+	)
+	qanConfig, err  := qan.LoadConfig(configDir)
+	if err := dataManager.Start(&proto.Cmd{}, dataConfig); err != nil {
+		golog.Panicf("Error starting data service: ", err)
+	}
+
+
+	/**
+	 * Agent
 	 */
 
 	cmdClient, err := client.NewWebsocketClient(
-		pct.NewLogger(logRelay.LogChan(), "agent-cmd-ws"),
+		pct.NewLogger(logChan, "agent-cmd-ws"),
 		links["cmd"],
 		origin,
 		auth,
 	)
 	if err != nil {
-		log.Fatal(err)
+		golog.Fatal(err)
 	}
-
-	qanManager := qan.NewManager(
-		pct.NewLogger(logRelay.LogChan(), "qan"),
-		&mysql.Connection{},
-		clock,
-		&qan.FileIntervalIterFactory{},
-		&qan.SlowLogWorkerFactory{},
-		dataSpooler,
-	)
-
-	monitors := map[string]mm.Monitor{
-		"mysql": mysqlMonitor.NewMonitor(pct.NewLogger(logRelay.LogChan(), "mysql-monitor")),
-	}
-	mmManager := mm.NewManager(
-		pct.NewLogger(logRelay.LogChan(), "mm"),
-		monitors,
-		clock,
-		dataSpooler,
-	)
 
 	services := map[string]pct.ServiceManager{
-		"qan": qanManager,
-		"mm":  mmManager,
+		"log":  logManager,
+		"data": dataManager,
+		"qan":  qanManager,
+		"mm":   mmManager,
 	}
 
-	agentLogger := pct.NewLogger(logRelay.LogChan(), "agent")
-	agent := agent.NewAgent(config, auth, logRelay, agentLogger, cmdClient, services)
+	agent := agent.NewAgent(
+		agentConfig,
+		auth,
+		pct.NewLogger(logChan, "agent"),
+		cmdClient,
+		services,
+	)
 
-	// Start previously configured, running services.
-	startServiceCmds := LoadServiceConfigs(config.ConfigDir)
-	if len(startServiceCmds) > 0 {
-		t := time.Now().Sub(t0)
-		log.Printf("Starting services (%s)\n", t)
-		agent.StartServices(startServiceCmds)
-	}
-
-	// Start agent.
 	t := time.Now().Sub(t0)
-	log.Printf("Running agent (%s)\n", t)
+	golog.Printf("Running agent (%s)\n", t)
+
 	stopReason, update := agent.Run()
 
-	// todo:
-	log.Printf("stopReason=%s, update=%t\n", stopReason, update)
+	golog.Printf("stopReason=%s, update=%t\n", stopReason, update)
 }
 
 func ParseCmdLine() (cmd, arg string) {
@@ -301,8 +248,8 @@ func ParseCmdLine() (cmd, arg string) {
 		"  start   [config file]  Start agent\n" +
 		"  version                Print version and exist\n\n"+
 		"Defaults:\n"+
-		"  API hostname  " + agent.CONFIG_FILE + "\n"+
-		"  config file   " + agent.API_HOSTNAME + "\n"
+		"  API hostname  " + agent.DEFAULT_CONFIG_FILE + "\n"+
+		"  config file   " + agent.DEFAULT_API_HOSTNAME + "\n"
 	if len(os.Args) < 2 {
 		fmt.Println(usage)
 		os.Exit(1)
@@ -350,26 +297,16 @@ func CheckConfig(config *agent.Config, configFile string) (bool, []string) {
 	return isValid, missing
 }
 
-func MakeDirs(dirs []string) error {
-	for _, dir := range dirs {
-		if err := os.Mkdir(dir, 0775); err != nil {
-			if !os.IsExist(err) {
-				return err
-			}
-		}
-	}
-	return nil
-}
 
 func GetLinks(apiKey, url string) (map[string]string, error) {
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Fatal(err)
+		golog.Fatal(err)
 	}
 	req.Header.Add("X-Percona-API-Key", apiKey)
 
-	log.Println("Getting entry links from", url)
+	golog.Println("Getting entry links from", url)
 
 	backoff := pct.NewBackoff(5 * time.Minute)
 	for {
@@ -377,30 +314,30 @@ func GetLinks(apiKey, url string) (map[string]string, error) {
 
 		resp, err := client.Do(req)
 		if err != nil {
-			log.Printf("GET %s error: client.Do: %s", url, err)
+			golog.Printf("GET %s error: client.Do: %s", url, err)
 			continue
 		}
 		body, err := ioutil.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
-			log.Printf("GET %s error: ioutil.ReadAll: %s", url, err)
+			golog.Printf("GET %s error: ioutil.ReadAll: %s", url, err)
 			continue
 		}
 
 		if resp.StatusCode >= 400 {
-			log.Printf("Error %d from %s\n", resp.StatusCode, url)
+			golog.Printf("Error %d from %s\n", resp.StatusCode, url)
 		} else if len(body) == 0 {
-			log.Println("OK response from ", url, "but no content")
+			golog.Println("OK response from ", url, "but no content")
 		}
 
 		links := &proto.Links{}
 		if err := json.Unmarshal(body, links); err != nil {
-			log.Printf("GET %s error: json.Unmarshal: %s: %s", url, err, string(body))
+			golog.Printf("GET %s error: json.Unmarshal: %s: %s", url, err, string(body))
 			continue
 		}
 
 		if err := CheckLinks(links.Links); err != nil {
-			log.Println(err)
+			golog.Println(err)
 			continue
 		}
 
@@ -448,86 +385,51 @@ func MakeAgentAuth(config *agent.Config) (*proto.AgentAuth, string) {
 	return auth, origin
 }
 
-func LoadServiceConfigs(configDir string) []*proto.Cmd {
-	configFiles, err := filepath.Glob(configDir + "/*.conf")
+func StartMonitors(configDir string, m pct.Manager) error {
+	configFiles, err := filepath.Glob(configDir + "/*-monitor.conf")
 	if err != nil {
-		log.Fatal(err)
+		golog.Fatal(err)
 	}
 
-	configs := []*proto.Cmd{}
 	for _, configFile := range configFiles {
 		filename := filepath.Base(configFile)
-		if filename == "agent.conf" {
+		config, err := ioutil.ReadFile(configFile)
+		if err != nil {
+			golog.Log(err)
 			continue
 		}
-		var cmd *proto.Cmd
-		switch filename {
-		case qan.CONFIG_FILE:
-			cmd = makeStartServiceCmd("agent", "qan", configFile)
-		case mm.CONFIG_FILE:
-			cmd = makeStartServiceCmd("agent", "mm", configFile)
-		case mysqlMonitor.CONFIG_FILE:
-			cmd = makeStartServiceCmd("mm", "mysql", configFile)
-		default:
-			log.Fatal("Unknown config file:", configFile)
+		cmd := &proto.Cmd{
+			Ts:      time.Now().UTC(),
+			User:    "percona-agent",
+			Service: "mm",
+			Cmd:     "StartService",
+			Data:    config,
 		}
-		// todo: mm needs to start before monitors
-		// tood: monitors can't start without mm
-		configs = append(configs, cmd)
-	}
-	return configs
-}
-
-func makeStartServiceCmd(manager, service, configFile string) *proto.Cmd {
-	config, err := ioutil.ReadFile(configFile)
-	if err != nil {
-		log.Fatal(err)
-	}
-	serviceData := &proto.ServiceData{
-		Name:   service,
-		Config: config,
-	}
-	data, err := json.Marshal(serviceData)
-	if err != nil {
-		log.Fatal(err)
-	}
-	cmd := &proto.Cmd{
-		Ts:      time.Now().UTC(),
-		Service: manager,
-		Cmd:     "StartService",
-		Data:    data,
-	}
-	return cmd
-}
-
-func removeFile(file string) error {
-	if file != "" {
-		err := os.Remove(file)
-		if !os.IsNotExist(err) {
-			return err
+		reply := mm.Handle(cmd)
+		if reply.Error != "" {
+			golog.Log(reply.Error)
 		}
 	}
-	return nil
 }
 
 func Ping(apiKey, url string) (bool, *http.Response) {
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Printf("Ping %s error: http.NewRequest: %s", url, err)
+		golog.Printf("Ping %s error: http.NewRequest: %s", url, err)
 		return false, nil
 	}
 	req.Header.Add("X-Percona-API-Key", apiKey)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("Ping %s error: client.Do: %s", url, err)
+		golog.Printf("Ping %s error: client.Do: %s", url, err)
 		return false, resp
 	}
 	_, err = ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
-		log.Printf("Ping %s error: ioutil.ReadAll: %s", url, err)
+		golog.Printf("Ping %s error: ioutil.ReadAll: %s", url, err)
 		return false, resp
 	}
 

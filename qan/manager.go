@@ -170,8 +170,8 @@ func (m *Manager) Stop(cmd *proto.Cmd) error {
 	return err
 }
 
-func (m *Manager) Status() map[string]string {
-	return m.status.All()
+func (m *Manager) Status() string {
+	return m.status.Get("Qan", true)
 }
 
 func (m *Manager) IsRunning() bool {
@@ -182,8 +182,8 @@ func (m *Manager) IsRunning() bool {
 	return false // not running
 }
 
-func (m *Manager) Handle(cmd *proto.Cmd) error {
-	return pct.UnknownCmdError{Cmd: cmd.Cmd}
+func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
+	return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 }
 
 /////////////////////////////////////////////////////////////////////////////

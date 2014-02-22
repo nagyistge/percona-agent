@@ -91,7 +91,7 @@ func (m *Manager) Stop(cmd *proto.Cmd) error {
 }
 
 // @goroutine[0]
-func (m *Manager) Handle(cmd *proto.Cmd) error {
+func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	defer m.status.Update("Mm", "Ready")
 
 	mm := &Config{}
@@ -175,6 +175,6 @@ func (m *Manager) Handle(cmd *proto.Cmd) error {
 }
 
 // @goroutine[1]
-func (m *Manager) Status() map[string]string {
-	return m.status.All()
+func (m *Manager) Status() string {
+	return m.status.Get("Mm", true)
 }

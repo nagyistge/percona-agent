@@ -48,6 +48,10 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 		return err
 	}
 
+	if err := pct.MakeDir(c.Dir); err != nil {
+		return err
+	}
+
 	var sz Serializer
 	switch c.Encoding {
 	case "":
