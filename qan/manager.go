@@ -313,14 +313,18 @@ func (m *Manager) rotateSlowLog(interval *Interval) error {
 	return nil
 }
 
-func (m *Manager) LoadConfig(configDir string) (interface{}, error) {
+func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
 	m.configDir = configDir
 	config := Config{}
 	if err := pct.ReadConfig(configDir + "/" + CONFIG_FILE, config); err != nil {
 		return nil, err
 	}
 	// There are no defaults; the config file should have everything we need.
-	return config, nil
+	data, err := json.Marshal(config)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
 func (m *Manager) WriteConfig(config interface{}, name string) error {

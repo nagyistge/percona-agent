@@ -32,12 +32,12 @@ const (
 
 type Relay struct {
 	client   pct.WebsocketClient
+	logChan  chan *proto.LogEntry
 	logFile  string
 	logLevel byte
 	offline  bool
 	// --
 	connected     bool
-	logChan       chan *proto.LogEntry
 	logLevelChan  chan byte
 	logFileChan   chan string
 	logger        *golog.Logger
@@ -50,14 +50,14 @@ type Relay struct {
 	apiErr        error
 }
 
-func NewRelay(client pct.WebsocketClient, logFile string, logLevel byte, offline bool) *Relay {
+func NewRelay(client pct.WebsocketClient, logChan chan *proto.LogEntry, logFile string, logLevel byte, offline bool) *Relay {
 	r := &Relay{
 		client:   client,
+		logChan:  logChan,
 		logFile:  logFile,
 		logLevel: logLevel,
 		offline:  offline,
 		// --
-		logChan:      make(chan *proto.LogEntry, BUFFER_SIZE*3),
 		logLevelChan: make(chan byte),
 		logFileChan:  make(chan string),
 		firstBuf:     make([]*proto.LogEntry, BUFFER_SIZE),

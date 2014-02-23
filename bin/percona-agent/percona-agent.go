@@ -27,6 +27,7 @@ import (
 	"github.com/percona/cloud-tools/data"
 	"github.com/percona/cloud-tools/log"
 	"github.com/percona/cloud-tools/mm"
+	"github.com/percona/cloud-tools/mm/monitor"
 	"github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/qan"
@@ -70,7 +71,7 @@ func main() {
 
 	agentConfig, err := agent.LoadConfig(configFile)
 	if err != nil {
-		golog.Panicf("Error loading " + configFile + ": ", err)
+		golog.Panicf("Error loading "+configFile+": ", err)
 	}
 
 	// Make sure agent config has everything we need.
@@ -140,23 +141,27 @@ func main() {
 	 * Log relay
 	 */
 
+	logChan := make(chan *proto.LogEntry, log.BUFFER_SIZE*3)
+
 	// Log websocket client, possibly disabled later.
-	logClient, err := client.NewWebsocketClient(nil, links["log"], origin, auth)
+	logClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "log-ws"), links["log"], origin, auth)
 	if err != nil {
 		golog.Fatalln(err)
 	}
-	logManager := log.NewManager(logClient)
+	logManager := log.NewManager(logClient, logChan)
 	logConfig, err := logManager.LoadConfig(configDir)
 	if err := logManager.Start(&proto.Cmd{}, logConfig); err != nil {
 		golog.Panicf("Error starting log service: ", err)
 	}
-	logChan := logManager.Relay().LogChan()
 
 	/**
 	 * Data spooler and sender
 	 */
 
-	dataClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "data-sender-ws"), links["data"], origin, auth)
+	dataClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "data-ws"), links["data"], origin, auth)
+	if err != nil {
+		golog.Fatalln(err)
+	}
 	dataManager := data.NewManager(
 		pct.NewLogger(logChan, "data"),
 		auth.Hostname,
@@ -180,15 +185,15 @@ func main() {
 
 	mmManager := mm.NewManager(
 		pct.NewLogger(logChan, "mm"),
-		&monitor.MonitorFactory{logManager.Relay().LogChan()},
+		monitor.NewFactory(logChan),
 		clock,
 		dataManager.Spooler(),
 	)
-	mmConfig, err := mmConfig.LoadConfig(configDir)
-	if err := mmManager.Start(&proto.Cmd{}, nil); err != nil {
+	mmConfig, err := mmManager.LoadConfig(configDir)
+	if err := mmManager.Start(&proto.Cmd{}, mmConfig); err != nil {
 		golog.Panicf("Error starting mm service: ", err)
 	}
-	startMonitors(mmManager)
+	StartMonitors(configDir, mmManager)
 
 	/**
 	 * Query Analytics
@@ -202,8 +207,8 @@ func main() {
 		&qan.SlowLogWorkerFactory{},
 		dataManager.Spooler(),
 	)
-	qanConfig, err := qan.LoadConfig(configDir)
-	if err := dataManager.Start(&proto.Cmd{}, dataConfig); err != nil {
+	qanConfig, err := qanManager.LoadConfig(configDir)
+	if err := dataManager.Start(&proto.Cmd{}, qanConfig); err != nil {
 		golog.Panicf("Error starting data service: ", err)
 	}
 
@@ -211,12 +216,7 @@ func main() {
 	 * Agent
 	 */
 
-	cmdClient, err := client.NewWebsocketClient(
-		pct.NewLogger(logChan, "agent-cmd-ws"),
-		links["cmd"],
-		origin,
-		auth,
-	)
+	cmdClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "agent-ws"), links["cmd"], origin, auth)
 	if err != nil {
 		golog.Fatal(err)
 	}
@@ -387,17 +387,16 @@ func MakeAgentAuth(config *agent.Config) (*proto.AgentAuth, string) {
 	return auth, origin
 }
 
-func StartMonitors(configDir string, m pct.Manager) error {
+func StartMonitors(configDir string, manager pct.ServiceManager) error {
 	configFiles, err := filepath.Glob(configDir + "/*-monitor.conf")
 	if err != nil {
 		golog.Fatal(err)
 	}
 
 	for _, configFile := range configFiles {
-		filename := filepath.Base(configFile)
 		config, err := ioutil.ReadFile(configFile)
 		if err != nil {
-			golog.Log(err)
+			golog.Println(err)
 			continue
 		}
 		cmd := &proto.Cmd{
@@ -407,11 +406,12 @@ func StartMonitors(configDir string, m pct.Manager) error {
 			Cmd:     "StartService",
 			Data:    config,
 		}
-		reply := mm.Handle(cmd)
+		reply := manager.Handle(cmd)
 		if reply.Error != "" {
-			golog.Log(reply.Error)
+			golog.Println(reply.Error)
 		}
 	}
+	return nil
 }
 
 func Ping(apiKey, url string) (bool, *http.Response) {

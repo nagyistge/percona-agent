@@ -18,8 +18,6 @@
 package pct
 
 import (
-	"encoding/json"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 )
@@ -78,25 +76,4 @@ func FileExists(file string) bool {
 		return false
 	}
 	return true
-}
-
-func ReadConfig(file string, v interface{}) error {
-	data, err := ioutil.ReadFile(file)
-	if err != nil && !os.IsNotExist(err) {
-		// There's an error and it's not "file not found".
-		return err
-	}
-	if len(data) > 0 {
-		err = json.Unmarshal(data, &v)
-	}
-	return err
-}
-
-func WriteConfig(file string, config interface{}) error {
-	data, err := json.MarshalIndent(config, "", "    ")
-	if err != nil {
-		return err
-	}
-	err = ioutil.WriteFile(file, data, 0644)
-	return err
 }

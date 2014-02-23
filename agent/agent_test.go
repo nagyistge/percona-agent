@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/agent"
-	"github.com/percona/cloud-tools/log"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/qan"
 	"github.com/percona/cloud-tools/test"
@@ -43,9 +42,8 @@ var sample = test.RootDir + "/agent"
 type AgentTestSuite struct {
 	tmpDir string
 	// Log
-	logRelay *log.Relay
-	logger   *pct.Logger
-	logChan  chan *proto.LogEntry
+	logger  *pct.Logger
+	logChan chan *proto.LogEntry
 	// Agent
 	agent        *agent.Agent
 	config       *agent.Config
@@ -76,10 +74,7 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 
 	// Log
 	// todo: use log.Manager instead
-	nullClient := mock.NewNullClient()
-	s.logRelay = log.NewRelay(nullClient, "", proto.LOG_DEBUG, false)
-	go s.logRelay.Run()
-	s.logChan = s.logRelay.LogChan()
+	s.logChan = make(chan *proto.LogEntry, 10)
 	s.logger = pct.NewLogger(s.logChan, "agent-test")
 
 	// Agent

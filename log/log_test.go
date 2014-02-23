@@ -41,6 +41,7 @@ func Test(t *testing.T) { TestingT(t) }
 /////////////////////////////////////////////////////////////////////////////
 
 type RelayTestSuite struct {
+	logChan     chan *proto.LogEntry
 	logFile     string
 	sendChan    chan interface{}
 	recvChan    chan interface{}
@@ -60,7 +61,8 @@ func (s *RelayTestSuite) SetUpSuite(t *C) {
 	s.connectChan = make(chan bool)
 	s.client = mock.NewWebsocketClient(nil, nil, s.sendChan, s.recvChan)
 
-	s.relay = log.NewRelay(s.client, "", proto.LOG_INFO, false)
+	s.logChan = make(chan *proto.LogEntry, log.BUFFER_SIZE*3)
+	s.relay = log.NewRelay(s.client, s.logChan, "", proto.LOG_INFO, false)
 	s.logger = pct.NewLogger(s.relay.LogChan(), "test")
 	go s.relay.Run() // calls client.Connect()
 }
@@ -400,6 +402,7 @@ type ManagerTestSuite struct {
 	recvChan    chan interface{}
 	connectChan chan bool
 	client      *mock.WebsocketClient
+	logChan     chan *proto.LogEntry
 	logFile     string
 }
 
@@ -410,7 +413,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.recvChan = make(chan interface{}, 5)
 	s.connectChan = make(chan bool)
 	s.client = mock.NewWebsocketClient(nil, nil, s.sendChan, s.recvChan)
-
+	s.logChan = make(chan *proto.LogEntry, log.BUFFER_SIZE*3)
 	s.logFile = fmt.Sprintf("/tmp/log_test.go.%d", os.Getpid())
 }
 
@@ -428,7 +431,7 @@ func (s *ManagerTestSuite) TestLogService(t *C) {
 	configData, err := json.Marshal(config)
 	t.Assert(err, IsNil)
 
-	m := log.NewManager(s.client)
+	m := log.NewManager(s.client, s.logChan)
 	err = m.Start(&proto.Cmd{}, configData)
 	t.Assert(err, IsNil)
 

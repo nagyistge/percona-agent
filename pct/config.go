@@ -18,17 +18,28 @@
 package pct
 
 import (
-	"github.com/percona/cloud-protocol/proto"
+	"encoding/json"
+	"io/ioutil"
+	"os"
 )
 
-type ServiceManager interface {
-	// @goroutine[0]
-	Start(cmd *proto.Cmd, config []byte) error
-	Stop(cmd *proto.Cmd) error
-	Handle(cmd *proto.Cmd) *proto.Reply
-	LoadConfig(configDir string) ([]byte, error)
-	WriteConfig(config interface{}, name string) error
-	RemoveConfig(name string) error
-	// @goroutine[1]
-	Status() map[string]string
+func ReadConfig(file string, v interface{}) error {
+	data, err := ioutil.ReadFile(file)
+	if err != nil && !os.IsNotExist(err) {
+		// There's an error and it's not "file not found".
+		return err
+	}
+	if len(data) > 0 {
+		err = json.Unmarshal(data, &v)
+	}
+	return err
+}
+
+func WriteConfig(file string, config interface{}) error {
+	data, err := json.MarshalIndent(config, "", "    ")
+	if err != nil {
+		return err
+	}
+	err = ioutil.WriteFile(file, data, 0644)
+	return err
 }

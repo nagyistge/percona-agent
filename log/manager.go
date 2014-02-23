@@ -1,3 +1,20 @@
+/*
+   Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
+
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
+
+   You should have received a copy of the GNU Affero General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>
+*/
+
 package log
 
 import (
@@ -9,7 +26,8 @@ import (
 )
 
 type Manager struct {
-	client pct.WebsocketClient
+	client  pct.WebsocketClient
+	logChan chan *proto.LogEntry
 	// --
 	config    *Config
 	configDir string
@@ -18,9 +36,10 @@ type Manager struct {
 	status    *pct.Status
 }
 
-func NewManager(client pct.WebsocketClient) *Manager {
+func NewManager(client pct.WebsocketClient, logChan chan *proto.LogEntry) *Manager {
 	m := &Manager{
-		client: client,
+		client:  client,
+		logChan: logChan,
 		// --
 		status: pct.NewStatus([]string{"log"}),
 	}
@@ -51,7 +70,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 		return err
 	}
 
-	m.relay = NewRelay(m.client, c.File, level, c.Offline)
+	m.relay = NewRelay(m.client, m.logChan, c.File, level, c.Offline)
 	go m.relay.Run()
 	m.config = c
 
@@ -123,10 +142,10 @@ func (m *Manager) Relay() *Relay {
 	return m.relay
 }
 
-func (m *Manager) LoadConfig(configDir string) (interface{}, error) {
+func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
 	m.configDir = configDir
 	config := Config{}
-	if err := pct.ReadConfig(configDir + "/" + CONFIG_FILE, config); err != nil {
+	if err := pct.ReadConfig(configDir+"/"+CONFIG_FILE, config); err != nil {
 		return nil, err
 	}
 	if config.Level == "" {
@@ -136,7 +155,11 @@ func (m *Manager) LoadConfig(configDir string) (interface{}, error) {
 			return nil, errors.New("Invalid log level: " + config.Level)
 		}
 	}
-	return config, nil
+	data, err := json.Marshal(config)
+	if err != nil {
+		return nil, err
+	}
+	return data,nil
 }
 
 func (m *Manager) WriteConfig(config interface{}, name string) error {
