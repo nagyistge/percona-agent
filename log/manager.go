@@ -125,11 +125,10 @@ func (m *Manager) Relay() *Relay {
 
 func (m *Manager) LoadConfig(configDir string) (interface{}, error) {
 	m.configDir = configDir
-	v, err := pct.ReadConfig(configDir + "/" + CONFIG_FILE)
-	if err != nil {
+	config := Config{}
+	if err := pct.ReadConfig(configDir + "/" + CONFIG_FILE, config); err != nil {
 		return nil, err
 	}
-	config := v.(Config)
 	if config.Level == "" {
 		config.Level = DEFAULT_LOG_LEVEL
 	} else {

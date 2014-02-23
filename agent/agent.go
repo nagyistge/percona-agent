@@ -23,7 +23,6 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
 	golog "log"
-	"strings"
 	"sync"
 	"time"
 )
@@ -68,7 +67,7 @@ func NewAgent(config *Config, logger *pct.Logger, client pct.WebsocketClient, se
 		// --
 		cmdq:       make([]*proto.Cmd, CMD_QUEUE_SIZE),
 		cmdqMux:    new(sync.RWMutex),
-		status:     pct.NewStatus([]string{"Agent", "AgentCmdHandler"}),
+		status:     pct.NewStatus([]string{"agent", "agent-cmd-handler", "agent-cmd-queue", "agent-api"}),
 		cmdChan:    make(chan *proto.Cmd, CMD_QUEUE_SIZE),
 		statusChan: make(chan *proto.Cmd, STATUS_QUEUE_SIZE),
 		stopChan:   make(chan bool, 1),
@@ -126,10 +125,11 @@ func (agent *Agent) Run() (stopReason string, update bool) {
 	cmdHandlerErrors := 0
 	statusHandlerErrors := 0
 
-	agent.status.Update("Agent", "Ready")
+	agent.status.Update("agent", "Ready")
 	logger.Info("Ready")
 AGENT_LOOP:
 	for {
+		logger.Debug("wait")
 		select {
 		case cmd := <-cmdChan: // from API
 			if cmd.Cmd == "Abort" {
@@ -163,7 +163,7 @@ AGENT_LOOP:
 				agent.stopReason = reason
 				go agent.stop(cmd)
 			case "Status":
-				agent.status.UpdateRe("Agent", "Queueing", cmd)
+				agent.status.UpdateRe("agent", "Queueing", cmd)
 				select {
 				case agent.statusChan <- cmd: // to statusHandler
 				default:
@@ -171,7 +171,7 @@ AGENT_LOOP:
 					replyChan <- cmd.Reply(nil, err)
 				}
 			default:
-				agent.status.UpdateRe("Agent", "Queueing", cmd)
+				agent.status.UpdateRe("agent", "Queueing", cmd)
 				select {
 				case agent.cmdChan <- cmd: // to cmdHandler
 				default:
@@ -216,7 +216,7 @@ AGENT_LOOP:
 			break AGENT_LOOP
 		} // select
 
-		agent.status.Update("Agent", "Ready")
+		agent.status.Update("agent", "Ready")
 
 	} // for AGENT_LOOP
 
@@ -225,29 +225,38 @@ AGENT_LOOP:
 
 // @goroutine[0]
 func (agent *Agent) connect() {
-	agent.status.Update("Agent", "Connecting to API")
+	agent.status.Update("agent", "Connecting to API")
 	agent.logger.Info("Connecting to API")
 	agent.client.Connect()
 }
 
 // @goroutine[0]
 func (agent *Agent) stop(cmd *proto.Cmd) {
-	agent.status.UpdateRe("Agent", "Stopping cmdHandler", cmd)
+	agent.logger.InResponseTo(cmd)
+	defer agent.logger.InResponseTo(nil)
+
+	agent.logger.Info("Stopping cmdHandler")
+	agent.status.UpdateRe("agent", "Stopping cmdHandler", cmd)
 	agent.cmdHandlerSync.Stop()
 	agent.cmdHandlerSync.Wait()
 
 	for service, manager := range agent.services {
-		agent.status.UpdateRe("Agent", "Stopping "+service, cmd)
+		agent.logger.Info("Stopping " + service)
+		agent.status.UpdateRe("agent", "Stopping "+service, cmd)
 		manager.Stop(cmd)
 	}
 
-	agent.status.UpdateRe("Agent", "Stopping statusHandler", cmd)
+	agent.logger.Info("Stopping statusHandler")
+	agent.status.UpdateRe("agent", "Stopping statusHandler", cmd)
 	agent.statusHandlerSync.Stop()
 	agent.statusHandlerSync.Wait()
 
-	agent.status.UpdateRe("Agent", "Stopping agent", cmd)
+	agent.logger.Info("Stopping agent")
+	agent.status.UpdateRe("agent", "Stopping agent", cmd)
 	agent.stopChan <- true
-	agent.status.UpdateRe("Agent", "Stopped", cmd)
+
+	agent.logger.Info("Agent stopped")
+	agent.status.UpdateRe("agent", "Stopped", cmd)
 }
 
 func (m *Agent) WriteConfig(config interface{}, name string) error {
@@ -277,42 +286,46 @@ func (agent *Agent) cmdHandler() {
 	replyChan := agent.client.SendChan()
 
 	// defer is LIFO, so send done signal last.
-	defer agent.cmdHandlerSync.Done()
-	defer agent.status.Update("AgentCmdHandler", "Stopped")
+	defer func() {
+		agent.status.Update("agent-cmd-handler", "Stopped")
+		agent.cmdHandlerSync.Done()
+	}()
 
 	for {
-		agent.status.Update("AgentCmdHandler", "Ready")
+		agent.status.Update("agent-cmd-handler", "Idle")
 		select {
-		case <-agent.cmdHandlerSync.StopChan: // from stop()
-			agent.cmdHandlerSync.Graceful()
-			return
 		case cmd := <-agent.cmdChan:
 			reply := agent.handleCmd(cmd)
 			if reply.Error != "" {
 				agent.logger.Warn(reply.Error)
 			}
-			agent.status.UpdateRe("AgentCmdHandler", "Replying", cmd)
+			agent.status.UpdateRe("agent-cmd-handler", "Replying", cmd)
 			replyChan <- reply
+		case <-agent.cmdHandlerSync.StopChan: // from stop()
+			agent.cmdHandlerSync.Graceful()
+			return
 		}
 	}
 }
 
 // @goroutine[0:1]
 func (agent *Agent) handleCmd(cmd *proto.Cmd) *proto.Reply {
-	agent.status.UpdateRe("AgentCmdHandler", "Running", cmd)
+	agent.status.UpdateRe("agent-cmd-handler", "Running", cmd)
 	agent.logger.Info("Running", cmd)
 
 	agent.cmdqMux.Lock()
 	agent.cmdq = append(agent.cmdq, cmd)
+	agent.status.Update("agent-cmd-queue", fmt.Sprintf("%d", len(agent.cmdq)))
 	agent.cmdqMux.Unlock()
 
 	defer func() {
 		// Pop the cmd from the queue.
-		agent.status.UpdateRe("AgentCmdHandler", "Finishing", cmd)
+		agent.status.UpdateRe("agent-cmd-handler", "Finishing", cmd)
 		agent.cmdqMux.Lock()
 		agent.cmdq = agent.cmdq[0 : len(agent.cmdq)-1]
+		agent.status.Update("agent-cmd-queue", fmt.Sprintf("%d", len(agent.cmdq)))
 		agent.cmdqMux.Unlock()
-		agent.status.Update("AgentCmdHandler", "Idle")
+		agent.logger.Info("Done running", cmd)
 	}()
 
 	// Run the command in another goroutine so we can wait for it
@@ -361,7 +374,7 @@ func (agent *Agent) handleCmd(cmd *proto.Cmd) *proto.Reply {
 }
 
 func (agent *Agent) handleStartService(cmd *proto.Cmd) error {
-	agent.status.UpdateRe("AgentCmdHandler", "StartService", cmd)
+	agent.status.UpdateRe("agent-cmd-handler", "StartService", cmd)
 	agent.logger.Info(cmd)
 
 	// Unmarshal the data to get the service name and config.
@@ -385,7 +398,7 @@ func (agent *Agent) handleStartService(cmd *proto.Cmd) error {
 }
 
 func (agent *Agent) handleStopService(cmd *proto.Cmd) error {
-	agent.status.UpdateRe("AgentCmdHandler", "StopService", cmd)
+	agent.status.UpdateRe("agent-cmd-handler", "StopService", cmd)
 	agent.logger.Info(cmd)
 
 	// Unmarshal the data to get the service name.
@@ -416,58 +429,45 @@ func (agent *Agent) statusHandler() {
 
 	defer agent.statusHandlerSync.Done()
 
-	// Status handler doesn't update agent.status because that's circular,
+	// Status handler doesn't have its own because that's circular,
 	// e.g. "How am I? I'm good!".
 
 	for {
 		select {
-		case <-agent.statusHandlerSync.StopChan:
-			agent.statusHandlerSync.Graceful()
-			return
 		case cmd := <-agent.statusChan:
 			switch cmd.Service {
 			case "":
-				// Summary status of all services.
-				replyChan <- cmd.Reply(agent.Status())
+				replyChan <- cmd.Reply(agent.AllStatus())
 			case "agent":
-				// Internal status of agent.
-				replyChan <- cmd.Reply(agent.InternalStatus())
+				replyChan <- cmd.Reply(agent.Status())
 			default:
-				// Internal status of another service.
 				if manager, ok := agent.services[cmd.Service]; ok {
 					replyChan <- manager.Handle(cmd)
 				} else {
 					replyChan <- cmd.Reply(nil, pct.UnknownServiceError{Service: cmd.Service})
 				}
 			}
+		case <-agent.statusHandlerSync.StopChan:
+			agent.statusHandlerSync.Graceful()
+			return
 		}
 	}
 }
 
 func (agent *Agent) Status() map[string]string {
-	return agent.status.Get("Agent", true)
+	return agent.status.All()
+}
 
+func (agent *Agent) AllStatus() map[string]string {
+	status := agent.status.All()
 	for service, manager := range agent.services {
 		if manager == nil { // should not happen
 			status[service] = fmt.Sprintf("ERROR: %s service manager is nil", service)
 			continue
 		}
-		status[service] = manager.Status()
-	}
-}
-
-func (agent *Agent) InternalStatus() proto.StatusData {
-	status := agent.status.All()
-
-	agent.cmdqMux.RLock()
-	defer agent.cmdqMux.RUnlock()
-	cmds := []string{}
-	for n, cmd := range agent.cmdq {
-		if cmd != nil {
-			cmds = append(cmds, fmt.Sprintf("[%n] %s", n, cmd.String()))
+		for k, v := range manager.Status() {
+			status[k] = v
 		}
 	}
-	status["AgentCmdQueue"] = strings.Join(cmds, "\n")
-
 	return status
 }

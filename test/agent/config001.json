@@ -1,5 +1,4 @@
 {
 	"ApiKey": "123",
-	"AgentUuid": "abc-123-def",
-	"LogLevel": "error"
+	"AgentUuid": "abc-123-def"
 }

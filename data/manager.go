@@ -132,11 +132,10 @@ func (m *Manager) Sender() *Sender {
 
 func (m *Manager) LoadConfig(configDir string) (interface{}, error) {
 	m.configDir = configDir
-	v, err := pct.ReadConfig(configDir + "/" + CONFIG_FILE)
-	if err != nil {
+	config := Config{}
+	if err := pct.ReadConfig(configDir + "/" + CONFIG_FILE, config); err != nil {
 		return nil, err
 	}
-	config := v.(Config)
 	if config.Dir == "" {
 		config.Dir = DEFAULT_DATA_DIR
 	}

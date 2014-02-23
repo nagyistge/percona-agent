@@ -80,15 +80,16 @@ func FileExists(file string) bool {
 	return true
 }
 
-func ReadConfig(file string) (interface{}, error) {
+func ReadConfig(file string, v interface{}) error {
 	data, err := ioutil.ReadFile(file)
 	if err != nil && !os.IsNotExist(err) {
 		// There's an error and it's not "file not found".
-		return nil, err
+		return err
 	}
-	var v interface{}
-	err = json.Unmarshal(data, v)
-	return v, err
+	if len(data) > 0 {
+		err = json.Unmarshal(data, &v)
+	}
+	return err
 }
 
 func WriteConfig(file string, config interface{}) error {

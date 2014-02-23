@@ -45,12 +45,7 @@ func (m *MockServiceManager) Stop(msg *proto.Cmd) error {
 	return m.StopErr
 }
 
-func (m *MockServiceManager) Status() string {
-	m.traceChan <- "Status " + m.name
-	return m.status
-}
-
-func (m *MockServiceManager) InternalStatus() map[string]string {
+func (m *MockServiceManager) Status() map[string]string {
 	m.traceChan <- "Status " + m.name
 	return map[string]string{m.name: m.status}
 }
@@ -60,7 +55,7 @@ func (m *MockServiceManager) IsRunning() bool {
 	return m.IsRunningVal
 }
 
-func (m *MockServiceManager) Handle(cmd *proto.Cmd) error {
+func (m *MockServiceManager) Handle(cmd *proto.Cmd) *proto.Reply {
 	return nil
 }
 

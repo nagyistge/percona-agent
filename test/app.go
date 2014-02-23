@@ -41,7 +41,7 @@ func FileExists(file string) bool {
 	return os.IsNotExist(err)
 }
 
-func GetStatus(sendChan chan *proto.Cmd, recvChan chan *proto.Reply) *proto.StatusData {
+func GetStatus(sendChan chan *proto.Cmd, recvChan chan *proto.Reply) map[string]string {
 	statusCmd := &proto.Cmd{
 		Ts:   time.Now(),
 		User: "user",
@@ -49,14 +49,13 @@ func GetStatus(sendChan chan *proto.Cmd, recvChan chan *proto.Reply) *proto.Stat
 	}
 	sendChan <- statusCmd
 
-	status := new(proto.StatusData)
 	select {
 	case reply := <-recvChan:
-		_ = json.Unmarshal(reply.Data, status)
-	case <-time.After(10 * time.Millisecond):
+		return reply.Status
+	case <-time.After(100 * time.Millisecond):
 	}
 
-	return status
+	return map[string]string{}
 }
 
 func WriteData(data interface{}, filename string) {

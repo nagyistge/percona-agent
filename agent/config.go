@@ -39,14 +39,13 @@ type Config struct {
 }
 
 func LoadConfig(file string) (*Config, error) {
-	v, err := pct.ReadConfig(file)
-	if err != nil {
+	config := &Config{}
+	if err := pct.ReadConfig(file, config); err != nil {
 		return nil, err
 	}
-	config := v.(Config)
 	config.Dir = filepath.Dir(file)
 	if config.ApiHostname == "" {
 		config.ApiHostname = DEFAULT_API_HOSTNAME
 	}
-	return &config, nil
+	return config, nil
 }

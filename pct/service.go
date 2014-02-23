@@ -30,5 +30,5 @@ type ServiceManager interface {
 	WriteConfig(config interface{}, name string) error
 	RemoveConfig(name string) error
 	// @goroutine[1]
-	Status() string
+	Status() map[string]string
 }

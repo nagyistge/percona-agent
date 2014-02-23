@@ -315,12 +315,11 @@ func (m *Manager) rotateSlowLog(interval *Interval) error {
 
 func (m *Manager) LoadConfig(configDir string) (interface{}, error) {
 	m.configDir = configDir
-	v, err := pct.ReadConfig(configDir + "/" + CONFIG_FILE)
-	if err != nil {
+	config := Config{}
+	if err := pct.ReadConfig(configDir + "/" + CONFIG_FILE, config); err != nil {
 		return nil, err
 	}
 	// There are no defaults; the config file should have everything we need.
-	config := v.(Config)
 	return config, nil
 }
 

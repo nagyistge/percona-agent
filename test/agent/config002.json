@@ -1,7 +1,0 @@
-{
-	"LogLevel": "warning",
-	"LogDir": "/tmp/agent",
-	"Disable": [
-		"LogFile"
-	]
-}

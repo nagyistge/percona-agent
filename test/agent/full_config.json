@@ -2,11 +2,5 @@
 	"ApiHostname": "agent hostname",
 	"ApiKey":      "api key",
 	"AgentUuid":   "agent uuid",
-	"PidFile":     "pid file",
-	"LogDir":      "log dir",
-	"LogLevel":    "info",
-	"DataDir":     "data dir",
-	"Links":       { "home": "/" },
-	"Enable":      [ "enabled" ],
-	"Disable":     [ "disabled" ]
+	"PidFile":     "pid file"
 }
