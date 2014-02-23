@@ -35,7 +35,6 @@ type WebsocketClient struct {
 	logger      *pct.Logger
 	origin      string
 	url         string
-	auth        *proto.AgentAuth
 	config      *websocket.Config
 	conn        *websocket.Conn
 	recvChan    chan *proto.Cmd
@@ -48,18 +47,17 @@ type WebsocketClient struct {
 	recvSync    *pct.SyncChan
 }
 
-func NewWebsocketClient(logger *pct.Logger, url string, origin string, auth *proto.AgentAuth) (*WebsocketClient, error) {
+func NewWebsocketClient(logger *pct.Logger, url string, origin string, apiKey string) (*WebsocketClient, error) {
 	config, err := websocket.NewConfig(url, origin)
 	if err != nil {
 		return nil, err
 	}
-	config.Header.Add("X-Percona-API-Key", auth.ApiKey)
+	config.Header.Add("X-Percona-API-Key", apiKey)
 
 	c := &WebsocketClient{
 		logger: logger,
 		url:    url,
 		origin: origin,
-		auth:   auth,
 		// --
 		config:      config,
 		conn:        nil,
@@ -127,23 +125,25 @@ func (c *WebsocketClient) ConnectOnce() error {
 	// First API expects from us is our authentication credentials.
 	// If this fails, it's probably an internal API error, *not* failed auth
 	// because that happens next...
-	if err := c.Send(c.auth); err != nil {
-		conn.Close()
-		return errors.New(fmt.Sprint("Send auth:", err))
-	}
+	/*
+		if err := c.Send(c.auth); err != nil {
+			conn.Close()
+			return errors.New(fmt.Sprint("Send auth:", err))
+		}
 
-	// After we send our auth creds, API responds with AuthReponse: any error = auth failure.
-	authResponse := new(proto.AuthResponse)
-	if err := c.Recv(authResponse, 5); err != nil {
-		// websocket error, not auth fail
-		conn.Close()
-		return errors.New(fmt.Sprint("Recv auth response:", err))
-	}
-	if authResponse.Error != "" {
-		// auth fail (invalid API key, agent UUID, or combo of those)
-		conn.Close()
-		return errors.New(fmt.Sprint("Auth fail:", err))
-	}
+		// After we send our auth creds, API responds with AuthReponse: any error = auth failure.
+		authResponse := new(proto.AuthResponse)
+		if err := c.Recv(authResponse, 5); err != nil {
+			// websocket error, not auth fail
+			conn.Close()
+			return errors.New(fmt.Sprint("Recv auth response:", err))
+		}
+		if authResponse.Error != "" {
+			// auth fail (invalid API key, agent UUID, or combo of those)
+			conn.Close()
+			return errors.New(fmt.Sprint("Auth fail:", err))
+		}
+	*/
 
 	return nil
 }

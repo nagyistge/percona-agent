@@ -144,7 +144,7 @@ func (m *Manager) Relay() *Relay {
 
 func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
 	m.configDir = configDir
-	config := Config{}
+	config := &Config{}
 	if err := pct.ReadConfig(configDir+"/"+CONFIG_FILE, config); err != nil {
 		return nil, err
 	}

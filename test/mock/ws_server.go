@@ -2,7 +2,6 @@ package mock
 
 import (
 	"code.google.com/p/go.net/websocket"
-	"github.com/percona/cloud-protocol/proto"
 	"log"
 	"net/http"
 )
@@ -41,10 +40,12 @@ func wsHandler(ws *websocket.Conn) {
 
 	// Client sends AgentAuth, expects AuthReponse
 	// todo: make controllable by test
+	/*
 	var data interface{}
 	websocket.JSON.Receive(ws, &data)
 	authResponse := &proto.AuthResponse{}
 	websocket.JSON.Send(ws, authResponse)
+	*/
 
 	defer func() {
 		ClientRmChan <- c

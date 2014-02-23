@@ -36,7 +36,6 @@ import (
 	golog "log"
 	"net/http"
 	"os"
-	"os/user"
 	"path/filepath"
 	"strings"
 	"time"
@@ -126,16 +125,17 @@ func main() {
 	var links map[string]string
 	if len(agentConfig.Links) == 0 {
 		var err error
-		if links, err = GetLinks(agentConfig.ApiKey, "https://"+agentConfig.ApiHostname); err != nil {
+		schema := "https://"
+		if strings.HasPrefix(agentConfig.ApiHostname, "localhost") || strings.HasPrefix(agentConfig.ApiHostname, "127.0.0.1") {
+			schema = "http://"
+		}
+		if links, err = GetAgentLinks(agentConfig.ApiKey, agentConfig.AgentUuid, schema+agentConfig.ApiHostname); err != nil {
 			golog.Fatalln(err)
 		}
 	}
 
-	/**
-	 * Agent auth credentials (for websocket connections)
-	 */
-
-	auth, origin := MakeAgentAuth(agentConfig)
+	hostname, _ := os.Hostname()
+	origin := "http://" + hostname
 
 	/**
 	 * Log relay
@@ -144,32 +144,32 @@ func main() {
 	logChan := make(chan *proto.LogEntry, log.BUFFER_SIZE*3)
 
 	// Log websocket client, possibly disabled later.
-	logClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "log-ws"), links["log"], origin, auth)
+	logClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "log-ws"), links["log"], origin, agentConfig.ApiKey)
 	if err != nil {
 		golog.Fatalln(err)
 	}
 	logManager := log.NewManager(logClient, logChan)
 	logConfig, err := logManager.LoadConfig(configDir)
 	if err := logManager.Start(&proto.Cmd{}, logConfig); err != nil {
-		golog.Panicf("Error starting log service: ", err)
+		golog.Panicf("Error starting log service: %s", err)
 	}
 
 	/**
 	 * Data spooler and sender
 	 */
 
-	dataClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "data-ws"), links["data"], origin, auth)
+	dataClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "data-ws"), links["data"], origin, agentConfig.ApiKey)
 	if err != nil {
 		golog.Fatalln(err)
 	}
 	dataManager := data.NewManager(
 		pct.NewLogger(logChan, "data"),
-		auth.Hostname,
+		hostname,
 		dataClient,
 	)
 	dataConfig, err := dataManager.LoadConfig(configDir)
 	if err := dataManager.Start(&proto.Cmd{}, dataConfig); err != nil {
-		golog.Panicf("Error starting data service: ", err)
+		golog.Panicf("Error starting data service: %s", err)
 	}
 
 	/**
@@ -190,8 +190,10 @@ func main() {
 		dataManager.Spooler(),
 	)
 	mmConfig, err := mmManager.LoadConfig(configDir)
-	if err := mmManager.Start(&proto.Cmd{}, mmConfig); err != nil {
-		golog.Panicf("Error starting mm service: ", err)
+	if mmConfig != nil {
+		if err := mmManager.Start(&proto.Cmd{}, mmConfig); err != nil {
+			golog.Panicf("Error starting mm service: ", err)
+		}
 	}
 	StartMonitors(configDir, mmManager)
 
@@ -208,15 +210,17 @@ func main() {
 		dataManager.Spooler(),
 	)
 	qanConfig, err := qanManager.LoadConfig(configDir)
-	if err := dataManager.Start(&proto.Cmd{}, qanConfig); err != nil {
-		golog.Panicf("Error starting data service: ", err)
+	if qanConfig != nil {
+		if err := qanManager.Start(&proto.Cmd{}, qanConfig); err != nil {
+			golog.Panicf("Error starting qan service: %s", err)
+		}
 	}
 
 	/**
 	 * Agent
 	 */
 
-	cmdClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "agent-ws"), links["cmd"], origin, auth)
+	cmdClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "agent-ws"), links["cmd"], origin, agentConfig.ApiKey)
 	if err != nil {
 		golog.Fatal(err)
 	}
@@ -300,51 +304,68 @@ func CheckConfig(config *agent.Config, configFile string) (bool, []string) {
 	return isValid, missing
 }
 
-func GetLinks(apiKey, url string) (map[string]string, error) {
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		golog.Fatal(err)
-	}
-	req.Header.Add("X-Percona-API-Key", apiKey)
-
+func GetAgentLinks(apiKey, uuid, url string) (map[string]string, error) {
 	golog.Println("Getting entry links from", url)
-
 	backoff := pct.NewBackoff(5 * time.Minute)
+	agentLink := ""
 	for {
 		time.Sleep(backoff.Wait())
 
-		resp, err := client.Do(req)
+		if agentLink == "" {
+			if entryLinks, err := GetLinks(apiKey, url); err != nil {
+				golog.Println(err)
+				continue
+			} else {
+				agentLink = entryLinks["agents"]
+			}
+		}
+
+		agentLinks, err := GetLinks(apiKey, agentLink+"/"+uuid)
 		if err != nil {
-			golog.Printf("GET %s error: client.Do: %s", url, err)
-			continue
-		}
-		body, err := ioutil.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			golog.Printf("GET %s error: ioutil.ReadAll: %s", url, err)
-			continue
-		}
-
-		if resp.StatusCode >= 400 {
-			golog.Printf("Error %d from %s\n", resp.StatusCode, url)
-		} else if len(body) == 0 {
-			golog.Println("OK response from ", url, "but no content")
-		}
-
-		links := &proto.Links{}
-		if err := json.Unmarshal(body, links); err != nil {
-			golog.Printf("GET %s error: json.Unmarshal: %s: %s", url, err, string(body))
-			continue
-		}
-
-		if err := CheckLinks(links.Links); err != nil {
 			golog.Println(err)
 			continue
 		}
 
-		return links.Links, nil
+		if err := CheckLinks(agentLinks); err != nil {
+			golog.Println(err)
+			continue
+		}
+
+		return agentLinks, nil // success
 	}
+}
+
+func GetLinks(apiKey, url string) (map[string]string, error) {
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Add("X-Percona-API-Key", apiKey)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("GET %s error: client.Do: %s", url, err)
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return nil, fmt.Errorf("GET %s error: ioutil.ReadAll: %s", url, err)
+	}
+
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("Error %d from %s\n", resp.StatusCode, url)
+	} else if len(body) == 0 {
+		return nil, fmt.Errorf("OK response from ", url, "but no content")
+	}
+
+	links := &proto.Links{}
+	if err := json.Unmarshal(body, links); err != nil {
+		return nil, fmt.Errorf("GET %s error: json.Unmarshal: %s: %s", url, err, string(body))
+	}
+
+	return links.Links, nil
 }
 
 func CheckLinks(links map[string]string) error {
@@ -370,21 +391,6 @@ func WritePidFile(pidFile string) error {
 	}
 	err = file.Close()
 	return err
-}
-
-func MakeAgentAuth(config *agent.Config) (*proto.AgentAuth, string) {
-	hostname, _ := os.Hostname()
-	u, _ := user.Current()
-	username := u.Username
-	origin := "http://" + username + "@" + hostname
-
-	auth := &proto.AgentAuth{
-		ApiKey:   config.ApiKey,
-		Uuid:     config.AgentUuid,
-		Hostname: hostname,
-		Username: username,
-	}
-	return auth, origin
 }
 
 func StartMonitors(configDir string, manager pct.ServiceManager) error {
