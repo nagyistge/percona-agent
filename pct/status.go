@@ -24,8 +24,7 @@ import (
 )
 
 type StatusReporter interface {
-	Status() string
-	InternalStatus() map[string]string
+	Status() map[string]string
 }
 
 type Status struct {
@@ -96,4 +95,14 @@ func (s *Status) Unlock() {
 	for _, mux := range s.mux {
 		mux.RUnlock()
 	}
+}
+
+func (s *Status) Merge(others ...map[string]string) map[string]string {
+	status := s.All()
+	for _, otherStatus := range others {
+		for k, v := range otherStatus {
+			status[k] = v
+		}
+	}
+	return status
 }

@@ -235,10 +235,10 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	}
 
 	// And status should be "Running" and "Ready".
-	test.WaitStatus(1, m, "QanLogParser", "Ready (0 of 2 running)")
-	status := m.InternalStatus()
-	c.Check(status["Qan"], gocheck.Equals, fmt.Sprintf("Running %s", cmd))
-	c.Check(status["QanLogParser"], gocheck.Equals, "Ready (0 of 2 running)")
+	test.WaitStatus(1, m, "qan-log-parser", "Ready (0 of 2 running)")
+	status := m.Status()
+	c.Check(status["qan"], gocheck.Equals, fmt.Sprintf("Running %s", cmd))
+	c.Check(status["qan-log-parser"], gocheck.Equals, "Ready (0 of 2 running)")
 
 	// It should have enabled the slow log.
 	slowLog := s.realmysql.GetGlobalVarNumber("slow_query_log")
@@ -392,7 +392,7 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
 	if err != nil {
 		c.Fatal(err)
 	}
-	test.WaitStatus(1, m, "QanLogParser", "Ready")
+	test.WaitStatus(1, m, "qan-log-parser", "Ready")
 
 	// Make copy of slow log because test will mv/rename it.
 	cp := exec.Command("cp", testlog.Sample+slowlog, "/tmp/"+slowlog)
@@ -436,7 +436,7 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
 		c.Error("Second interval has 2 unique queries, got ", report.Global.UniqueQueries)
 	}
 
-	test.WaitStatus(1, m, "QanLogParser", "Ready (0 of 2 running)")
+	test.WaitStatus(1, m, "qan-log-parser", "Ready (0 of 2 running)")
 
 	// Original slow log should no longer exist; it was rotated away.
 	if _, err := os.Stat("/tmp/" + slowlog); !os.IsNotExist(err) {
@@ -502,7 +502,7 @@ func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
 	if err != nil {
 		c.Fatal(err)
 	}
-	test.WaitStatus(1, m, "QanLogParser", "Ready")
+	test.WaitStatus(1, m, "qan-log-parser", "Ready")
 
 	s.nullmysql.Reset()
 
@@ -547,7 +547,7 @@ func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
 		c.Error("Second interval has 2 unique queries, got ", report.Global.UniqueQueries)
 	}
 
-	test.WaitStatus(1, m, "QanLogParser", "Ready (0 of 2 running)")
+	test.WaitStatus(1, m, "qan-log-parser", "Ready (0 of 2 running)")
 
 	// Original slow log should no longer exist; it was rotated away.
 	if _, err := os.Stat("/tmp/" + slowlog); !os.IsNotExist(err) {
@@ -630,7 +630,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
 	if err != nil {
 		c.Fatal(err)
 	}
-	test.WaitStatus(1, m, "QanLogParser", "Ready")
+	test.WaitStatus(1, m, "qan-log-parser", "Ready")
 
 	// Start first mock worker (w1) with interval 0 - 736.  The worker's Run()
 	// func won't return until we send true to its stop chan, so manager will
@@ -658,7 +658,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
 	s.intervalChan <- i2
 	<-w2.Running()
 
-	test.WaitStatus(1, m, "QanLogParser", "Ready (2 of 2 running)")
+	test.WaitStatus(1, m, "qan-log-parser", "Ready (2 of 2 running)")
 
 	/**
 	 * Quick side test: qan.Config.MaxWorkers is enforced.
@@ -666,7 +666,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
 	test.DrainLogChan(s.logChan)
 	s.intervalChan <- i2
 	logs := test.WaitLogChan(s.logChan, 3)
-	test.WaitStatus(1, m, "QanLogParser", "Ready (2 of 2 running)")
+	test.WaitStatus(1, m, "qan-log-parser", "Ready (2 of 2 running)")
 	gotWarning := false
 	for _, log := range logs {
 		if log.Level == proto.LOG_WARNING && strings.Contains(log.Msg, "All workers busy") {
@@ -699,7 +699,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
 	// w1 is still running, manager should not remove the old log yet because
 	// w1 could still be parsing it.
 	w2StopChan <- true
-	test.WaitStatus(1, m, "QanLogParser", "Ready (1 of 2 running)")
+	test.WaitStatus(1, m, "qan-log-parser", "Ready (1 of 2 running)")
 	if _, err := os.Stat(files[0]); os.IsNotExist(err) {
 		c.Errorf("w1 still running so old slow log not removed")
 	}
@@ -707,7 +707,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
 	// Stop w1 and now, even though slow log was rotated for w2, manager
 	// should remove old slow log.
 	w1StopChan <- true
-	test.WaitStatus(1, m, "QanLogParser", "Ready (0 of 2 running)")
+	test.WaitStatus(1, m, "qan-log-parser", "Ready (0 of 2 running)")
 	if _, err := os.Stat(files[0]); !os.IsNotExist(err) {
 		c.Errorf("w1 done running so old slow log removed")
 	}

@@ -36,6 +36,7 @@ const (
 type Spooler interface {
 	Start() error
 	Stop() error
+	Status() map[string]string
 	Write(service string, data interface{}) error
 	Files() <-chan string
 	Read(key string) ([]byte, error)
@@ -52,6 +53,7 @@ type DiskvSpooler struct {
 	dataChan chan *proto.Data
 	sync     *pct.SyncChan
 	cache    *diskv.Diskv
+	status   *pct.Status
 }
 
 func NewDiskvSpooler(logger *pct.Logger, dataDir string, sz Serializer, hostname string) *DiskvSpooler {
@@ -63,6 +65,7 @@ func NewDiskvSpooler(logger *pct.Logger, dataDir string, sz Serializer, hostname
 		// --
 		dataChan: make(chan *proto.Data, WRITE_BUFFER),
 		sync:     pct.NewSyncChan(),
+		status:   pct.NewStatus([]string{"data-spooler"}),
 	}
 	return s
 }
@@ -96,6 +99,10 @@ func (s *DiskvSpooler) Stop() error {
 	s.sync.Stop()
 	s.sync.Wait()
 	return nil
+}
+
+func (s *DiskvSpooler) Status() map[string]string {
+	return s.status.All()
 }
 
 func (s *DiskvSpooler) Write(service string, data interface{}) error {
@@ -147,15 +154,19 @@ func (s *DiskvSpooler) run() {
 	defer func() {
 		if s.sync.IsGraceful() {
 			s.logger.Info("spoolData stop")
+			s.status.Update("data-spooler", "Stopped")
 		} else {
 			s.logger.Error("spoolData crash")
+			s.status.Update("data-spooler", "Crashed")
 		}
 		s.sync.Done()
 	}()
 
 	for {
+		s.status.Update("data-spooler", "Idle")
 		select {
 		case protoData := <-s.dataChan:
+			s.status.Update("data-spooler", "Spooling data")
 			key := fmt.Sprintf("%s_%d", protoData.Service, protoData.Created.UnixNano())
 
 			bytes, err := json.Marshal(protoData)

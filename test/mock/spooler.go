@@ -23,6 +23,10 @@ func (s *Spooler) Stop() error {
 	return nil
 }
 
+func (s *Spooler) Status() map[string]string {
+	return map[string]string{"spooler": "ok"}
+}
+
 func (s *Spooler) Write(service string, data interface{}) error {
 	if s.dataChan != nil {
 		s.dataChan <- data

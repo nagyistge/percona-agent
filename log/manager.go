@@ -45,6 +45,8 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 		return errors.New("Invalid log level: " + c.Level)
 	}
 
+	m.status.Update("log", "Starting")
+
 	if err := pct.MakeDir(c.File); err != nil {
 		return err
 	}
@@ -67,6 +69,7 @@ func (m *Manager) Stop(cmd *proto.Cmd) error {
 
 // @goroutine[0]
 func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
+	m.status.UpdateRe("log", "Handling", cmd)
 	defer m.status.Update("log", "Ready")
 
 	switch cmd.Cmd {
@@ -103,23 +106,16 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		return cmd.Reply(m.config)
 	case "Status":
 		// proto.Cmd[Service:log, Cmd:Status]
-		status := m.InternalStatus()
+		status := m.Status()
 		return cmd.Reply(status)
 	default:
 		return cmd.Reply(pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
 }
 
-// @goroutine[0:1]
-func (m *Manager) Status() string {
-	return m.status.Get("log", true)
-}
-
 // @goroutine[0]
-func (m *Manager) InternalStatus() map[string]string {
-	s := make(map[string]string)
-	s["log"] = m.Status()
-	return s
+func (m *Manager) Status() map[string]string {
+	return m.status.Merge(m.relay.Status())
 }
 
 // @goroutine[0]

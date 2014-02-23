@@ -375,7 +375,7 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 
 	// Its status should be "Ready".
 	status := m.Status()
-	t.Check(status, Equals, "Ready")
+	t.Check(status["mm"], Equals, "Ready")
 
 	// Normally, starting an already started service results in a ServiceIsRunningError,
 	// but mm is a proxy manager so starting it is a null op.
@@ -392,7 +392,7 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 
 	// ...which is why its status is always "Ready".
 	status = m.Status()
-	t.Check(status, Equals, "Ready")
+	t.Check(status["mm"], Equals, "Ready")
 }
 
 func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {

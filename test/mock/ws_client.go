@@ -46,7 +46,7 @@ func (c *WebsocketClient) Connect() {
 		}
 		<-c.testConnectChan
 	}
-	c.connectChan <- true
+	c.connectChan <- true // to SUT
 }
 
 func (c *WebsocketClient) ConnectOnce() error {

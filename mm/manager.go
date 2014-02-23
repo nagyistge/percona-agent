@@ -68,7 +68,7 @@ func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager
 		spool:   spool,
 		// --
 		monitors:    make(map[string]Monitor),
-		status:      pct.NewStatus([]string{"Mm"}),
+		status:      pct.NewStatus([]string{"mm"}),
 		aggregators: make(map[uint]*Binding),
 	}
 	return m
@@ -80,28 +80,28 @@ func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager
 
 // @goroutine[0]
 func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
-	m.status.Update("Mm", "Ready")
+	m.status.Update("mm", "Ready")
 	m.logger.Info("Ready")
 	return nil
 }
 
 // @goroutine[0]
 func (m *Manager) Stop(cmd *proto.Cmd) error {
-	m.status.Update("Mm", "Ready")
+	m.status.Update("mm", "Ready")
 	m.logger.Info("Ready")
 	return nil
 }
 
 // @goroutine[0]
 func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
-	m.status.UpdateRe("Mm", "Handling command", cmd)
+	m.status.UpdateRe("mm", "Handling", cmd)
 	var err error
 
 	defer func() {
 		if err != nil {
 			m.logger.Error(err)
 		}
-		m.status.Update("Mm", "Ready")
+		m.status.Update("mm", "Ready")
 	}()
 
 	mm := &Config{}
@@ -115,7 +115,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 	switch cmd.Cmd {
 	case "StartService":
-		m.status.UpdateRe("Mm", "Starting "+name, cmd)
+		m.status.UpdateRe("mm", "Starting "+name, cmd)
 		m.logger.Info("Start", name, cmd)
 
 		// Monitors names must be unique.
@@ -165,7 +165,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 			return cmd.Reply(nil, err)
 		}
 	case "StopService":
-		m.status.UpdateRe("Mm", "Stopping "+name, cmd)
+		m.status.UpdateRe("mm", "Stopping "+name, cmd)
 		m.logger.Info("Stop", name, cmd)
 		if monitor, ok := m.monitors[name]; ok {
 			m.clock.Remove(monitor.TickChan())
@@ -212,10 +212,6 @@ func (m *Manager) RemoveConfig(name string) error {
 }
 
 // @goroutine[1]
-func (m *Manager) Status() string {
-	return m.status.Get("Mm", true)
-}
-
-func (m *Manager) InternalStatus() map[string]string {
+func (m *Manager) Status() map[string]string {
 	return m.status.All()
 }

@@ -71,7 +71,7 @@ func NewManager(logger *pct.Logger, mysqlConn mysql.Connector, clock ticker.Mana
 		spool:         spool,
 		// --
 		workers:     make(map[Worker]bool),
-		status:      pct.NewStatus([]string{"Qan", "QanLogParser"}),
+		status:      pct.NewStatus([]string{"qan", "qan-log-parser"}),
 		sync:        pct.NewSyncChan(),
 		oldSlowLogs: make(map[string]int),
 	}
@@ -84,7 +84,7 @@ func NewManager(logger *pct.Logger, mysqlConn mysql.Connector, clock ticker.Mana
 
 // @goroutine[0]
 func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
-	m.status.UpdateRe("Qan", "Starting", cmd)
+	m.status.UpdateRe("qan", "Starting", cmd)
 
 	logger := m.logger
 	logger.InResponseTo(cmd)
@@ -133,7 +133,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 
 	// Save the config.
 	m.config = c
-	m.status.UpdateRe("Qan", "Running", cmd)
+	m.status.UpdateRe("qan", "Running", cmd)
 	logger.Info("Running")
 
 	if err := m.WriteConfig(c, ""); err != nil {
@@ -144,13 +144,12 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 }
 
 func (m *Manager) Stop(cmd *proto.Cmd) error {
-	m.status.UpdateRe("Qan", "Stopping", cmd)
+	m.status.UpdateRe("qan", "Stopping", cmd)
 
 	m.logger.InResponseTo(cmd)
 	defer m.logger.InResponseTo(nil)
 	m.logger.Info("Stopping")
 
-	m.status.UpdateRe("Qan", "Stopping", cmd)
 	m.sync.Stop()
 	m.sync.Wait()
 
@@ -166,16 +165,12 @@ func (m *Manager) Stop(cmd *proto.Cmd) error {
 	m.workerDoneChan = nil
 	m.config = nil
 
-	m.status.UpdateRe("Qan", "Stopped", cmd)
+	m.status.UpdateRe("qan", "Stopped", cmd)
 
 	return err
 }
 
-func (m *Manager) Status() string {
-	return m.status.Get("Qan", true)
-}
-
-func (m *Manager) InternalStatus() map[string]string {
+func (m *Manager) Status() map[string]string {
 	return m.status.All()
 }
 
@@ -199,19 +194,19 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 func (m *Manager) run() {
 	defer func() {
 		if m.sync.IsGraceful() {
-			m.status.Update("QanLogParser", "Stopped")
+			m.status.Update("qan-log-parser", "Stopped")
 		} else {
-			m.status.Update("QanLogParser", "Crashed")
+			m.status.Update("qan-log-parser", "Crashed")
 		}
 		m.sync.Done()
 	}()
 
-	m.status.Update("QanLogParser", "Waiting for first interval")
+	m.status.Update("qan-log-parser", "Waiting for first interval")
 	intervalChan := m.iter.IntervalChan()
 
 	for {
 		runningWorkers := len(m.workers)
-		m.status.Update("QanLogParser", fmt.Sprintf("Ready (%d of %d running)", runningWorkers, m.config.MaxWorkers))
+		m.status.Update("qan-log-parser", fmt.Sprintf("Ready (%d of %d running)", runningWorkers, m.config.MaxWorkers))
 
 		select {
 		case interval := <-intervalChan:
@@ -227,7 +222,7 @@ func (m *Manager) run() {
 				}
 			}
 
-			m.status.Update("QanLogParser", "Running worker")
+			m.status.Update("qan-log-parser", "Running worker")
 			job := &Job{
 				SlowLogFile:    interval.Filename,
 				StartOffset:    interval.StartOffset,
@@ -265,12 +260,12 @@ func (m *Manager) run() {
 				m.spool.Write("qan", report)
 			}()
 		case worker := <-m.workerDoneChan:
-			m.status.Update("QanLogParser", "Reaping worker")
+			m.status.Update("qan-log-parser", "Reaping worker")
 			delete(m.workers, worker)
 
 			for file, cnt := range m.oldSlowLogs {
 				if cnt == 1 {
-					m.status.Update("QanLogParser", "Removing old slow log: "+file)
+					m.status.Update("qan-log-parser", "Removing old slow log "+file)
 					if err := os.Remove(file); err != nil {
 						m.logger.Warn(err)
 					} else {

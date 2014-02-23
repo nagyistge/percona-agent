@@ -109,7 +109,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		return cmd.Reply(m.config)
 	case "Status":
 		// proto.Cmd[Service:data, Cmd:Status]
-		status := m.InternalStatus()
+		status := m.Status()
 		return cmd.Reply(status)
 	default:
 		// todo: dynamic config
@@ -118,15 +118,8 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 }
 
 // @goroutine[0:1]
-func (m *Manager) Status() string {
-	return m.status.Get("data", true)
-}
-
-// @goroutine[0]
-func (m *Manager) InternalStatus() map[string]string {
-	s := make(map[string]string)
-	s["data"] = m.Status()
-	return s
+func (m *Manager) Status() map[string]string {
+	return m.status.Merge(m.spooler.Status(), m.sender.Status())
 }
 
 func (m *Manager) Spooler() Spooler {

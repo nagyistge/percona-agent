@@ -32,6 +32,7 @@ type Sender struct {
 	tickerChan <-chan time.Time
 	// --
 	sync      *pct.SyncChan
+	status    *pct.Status
 	connected bool
 }
 
@@ -42,6 +43,7 @@ func NewSender(logger *pct.Logger, client pct.WebsocketClient, spool Spooler, ti
 		spool:      spool,
 		tickerChan: tickerChan,
 		sync:       pct.NewSyncChan(),
+		status:     pct.NewStatus([]string{"data-sender", "data-api"}),
 	}
 	return s
 }
@@ -57,6 +59,10 @@ func (s *Sender) Stop() error {
 	return nil
 }
 
+func (s *Sender) Status() map[string]string {
+	return s.status.All()
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // Implementation
 /////////////////////////////////////////////////////////////////////////////
@@ -66,8 +72,10 @@ func (s *Sender) run() {
 	defer func() {
 		if s.sync.IsGraceful() {
 			s.logger.Info("Stop")
+			s.status.Update("data-sender", "Stopped")
 		} else {
 			s.logger.Error("Crash")
+			s.status.Update("data-sender", "Crashed")
 		}
 		s.sync.Done()
 	}()
@@ -87,10 +95,11 @@ func (s *Sender) run() {
 func (s *Sender) send() {
 	// Try a few times to connect to the API.
 	connected := false
+	var apiErr error
 	s.logger.Debug("Connecting to API")
 	for i := 1; i <= 3; i++ {
-		if err := s.client.ConnectOnce(); err != nil {
-			s.logger.Warn("Connect API failed:", err)
+		if apiErr = s.client.ConnectOnce(); apiErr != nil {
+			s.logger.Warn("Connect API failed:", apiErr)
 			t := int(5*rand.Float64() + 1) // [1, 5] seconds
 			time.Sleep(time.Duration(t) * time.Second)
 		} else {
@@ -106,9 +115,12 @@ func (s *Sender) send() {
 		}
 	}
 	if !connected {
+		s.status.Update("data-api", fmt.Sprintf("Disconnected (%d)", apiErr))
 		return
 	}
 	s.logger.Debug("Connected to API")
+	s.status.Update("data-api", "Connected")
+	defer s.status.Update("data-api", "Idle")
 
 	maxWarnErr := 3
 	n400Err := 0
@@ -121,17 +133,20 @@ func (s *Sender) send() {
 	for file := range filesChan {
 		s.logger.Debug("Sending", file)
 
+		s.status.Update("data-sender", "Reading "+file)
 		data, err := s.spool.Read(file)
 		if err != nil {
 			s.logger.Error(err)
 			continue
 		}
 
+		s.status.Update("data-sender", "Sending "+file)
 		if err := s.client.SendBytes(data); err != nil {
 			s.logger.Warn(err)
 			continue
 		}
 
+		s.status.Update("data-sender", "Waiting for API to ack "+file)
 		resp := &proto.Response{}
 		if err := s.client.Recv(resp, 5); err != nil {
 			s.logger.Warn(err)

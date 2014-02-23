@@ -1,18 +1,18 @@
 /*
-    Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
+   Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
 
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>
+   You should have received a copy of the GNU Affero General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
 package agent_test
@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/agent"
-	"github.com/percona/cloud-tools/logrelay"
+	"github.com/percona/cloud-tools/log"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/qan"
 	"github.com/percona/cloud-tools/test"
@@ -41,27 +41,26 @@ var sample = os.Getenv("GOPATH") + "/src/github.com/percona/cloud-tools/test/age
 
 type AgentTestSuite struct {
 	tmpDir string
-	// agent and what it needs
-	config    *agent.Config
-	auth      *proto.AgentAuth
-	agent     *agent.Agent
-	logRelay  *logrelay.LogRelay
-	logger    *pct.Logger
-	logChan   chan *proto.LogEntry
-	readyChan chan bool
-	traceChan chan string
-	// --
+	// Log
+	logRelay *log.Relay
+	logger   *pct.Logger
+	logChan  chan *proto.LogEntry
+	// Agent
+	agent        *agent.Agent
+	config       *agent.Config
+	services     map[string]pct.ServiceManager
 	client       *mock.WebsocketClient
 	sendDataChan chan interface{}
 	recvDataChan chan interface{}
 	sendChan     chan *proto.Cmd
 	recvChan     chan *proto.Reply
 	// --
+	readyChan      chan bool
+	traceChan      chan string
 	doneChan       chan bool
 	stopReason     string
 	upgrade        bool
 	alreadyStopped bool
-	services       map[string]pct.ServiceManager
 }
 
 var _ = gocheck.Suite(&AgentTestSuite{})
@@ -69,32 +68,24 @@ var _ = gocheck.Suite(&AgentTestSuite{})
 func (s *AgentTestSuite) SetUpSuite(t *gocheck.C) {
 	// Tmp dir
 	var err error
-	s.tmpDir, err = ioutil.TempDir("/tmp", "pt-agentd")
+	s.tmpDir, err = ioutil.TempDir("/tmp", "agent-test")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Agent
-	s.config = &agent.Config{
-		ApiHostname: agent.API_HOSTNAME,
-		LogDir:      agent.LOG_DIR,
-		LogLevel:    agent.LOG_LEVEL,
-		DataDir:     agent.DATA_DIR,
-		ConfigDir:   s.tmpDir,
-	}
-
-	s.auth = &proto.AgentAuth{
-		ApiKey:   "123",
-		Uuid:     "abc-123",
-		Hostname: "server1",
-		Username: "root",
-	}
-
+	// Log
+	// todo: use log.Manager instead
 	nullClient := mock.NewNullClient()
-	s.logRelay = logrelay.NewLogRelay(nullClient, "", proto.LOG_INFO)
+	s.logRelay = log.NewRelay(nullClient, "", proto.LOG_INFO, false)
 	go s.logRelay.Run()
 	s.logChan = s.logRelay.LogChan()
 	s.logger = pct.NewLogger(s.logChan, "agent-test")
+
+	// Agent
+	s.config = &agent.Config{
+		ApiHostname: agent.DEFAULT_API_HOSTNAME,
+		Dir:         s.tmpDir,
+	}
 
 	s.sendChan = make(chan *proto.Cmd, 5)
 	s.recvChan = make(chan *proto.Reply, 5)
@@ -106,7 +97,6 @@ func (s *AgentTestSuite) SetUpSuite(t *gocheck.C) {
 
 	s.readyChan = make(chan bool, 2)
 	s.traceChan = make(chan string, 10)
-
 	s.doneChan = make(chan bool, 1)
 }
 
@@ -116,7 +106,7 @@ func (s *AgentTestSuite) SetUpTest(t *gocheck.C) {
 	s.services = make(map[string]pct.ServiceManager)
 	s.services["qan"] = mock.NewMockServiceManager("Qan", s.readyChan, s.traceChan)
 	s.services["mm"] = mock.NewMockServiceManager("Mm", s.readyChan, s.traceChan)
-	s.agent = agent.NewAgent(s.config, s.auth, s.logRelay, s.logger, s.client, s.services)
+	s.agent = agent.NewAgent(s.config, s.logRelay, s.logger, s.client, s.services)
 
 	// Run the agent.
 	go func() {
@@ -155,7 +145,7 @@ func (s *AgentTestSuite) TestStatus(t *gocheck.C) {
 	// This is what the API would send:
 	statusCmd := &proto.Cmd{
 		Ts:   time.Now(),
-		User: "daniel@percona.com",
+		User: "daniel",
 		Cmd:  "Status",
 	}
 	s.sendChan <- statusCmd
@@ -172,11 +162,9 @@ func (s *AgentTestSuite) TestStatus(t *gocheck.C) {
 	// The agent should have sent back the original cmd's routing info
 	// (user and id) with Data=StatusData.
 	expectReply := proto.StatusData{
-		Agent:           "Ready",
-		AgentCmdHandler: "Ready",
-		AgentCmdQueue:   []string{},
-		Qan:             "",
-		Mm:              "",
+		Agent: "Ready",
+		Qan:   "",
+		Mm:    "",
 	}
 	if ok, diff := test.IsDeeply(gotReply, expectReply); !ok {
 		t.Error(diff)
@@ -199,7 +187,7 @@ func (s *AgentTestSuite) TestStatusAfterConnFail(t *gocheck.C) {
 	// Send cmd.
 	statusCmd := &proto.Cmd{
 		Ts:   time.Now(),
-		User: "daniel@percona.com",
+		User: "daniel",
 		Cmd:  "Status",
 	}
 	s.sendChan <- statusCmd
@@ -211,8 +199,7 @@ func (s *AgentTestSuite) TestStatusAfterConnFail(t *gocheck.C) {
 	}
 	gotReply := proto.StatusData{}
 	json.Unmarshal(got[0].Data, &gotReply)
-
-	if gotReply.Agent != "Ready" {
+	if gotReply["Agent"] != "Ready" {
 		t.Errorf("Agent reply and ready after reconnect, got %#v", gotReply)
 	}
 }
@@ -266,13 +253,9 @@ func (s *AgentTestSuite) TestStartStopService(t *gocheck.C) {
 	// which should show everything is "Ready".
 	status := test.GetStatus(s.sendChan, s.recvChan)
 	expectStatus := &proto.StatusData{
-		Agent:           "Ready",
-		AgentCmdHandler: "Ready",
-		AgentCmdQueue:   []string{},
-		Qan:             "Ready", // fake
-		QanLogParser:    "",
-		Mm:              "", // fake
-		MmMonitors:      make(map[string]string),
+		"Agent": "Ready",
+		"Qan":   "Ready",
+		"Mm":    "",
 	}
 	if same, diff := test.IsDeeply(status, expectStatus); !same {
 		t.Error(diff)
@@ -321,13 +304,9 @@ func (s *AgentTestSuite) TestStartStopService(t *gocheck.C) {
 
 	status = test.GetStatus(s.sendChan, s.recvChan)
 	expectStatus = &proto.StatusData{
-		Agent:           "Ready",
-		AgentCmdHandler: "Ready",
-		AgentCmdQueue:   []string{},
-		Qan:             "Stopped", // fake
-		QanLogParser:    "",
-		Mm:              "",
-		MmMonitors:      make(map[string]string),
+		"Agent": "Ready",
+		"Qan":   "Stopped",
+		"Mm":    "",
 	}
 	if same, diff := test.IsDeeply(status, expectStatus); !same {
 		t.Error(diff)
@@ -373,7 +352,8 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *gocheck.C) {
 	// Agent should be able to reply on status chan, indicating that it's
 	// still starting the service.
 	gotStatus := test.GetStatus(s.sendChan, s.recvChan)
-	t.Check(gotStatus.Agent, gocheck.Equals, "Ready")
+	t.Check(gotStatus["Agent"], gocheck.Equals, "Ready")
+	gotStatus := test.GetInternalStatus(s.sendChan, s.recvChan)
 	t.Check(gotStatus.AgentCmdQueue, gocheck.DeepEquals, []string{cmd.String()})
 
 	// Make it seem like service has started now.

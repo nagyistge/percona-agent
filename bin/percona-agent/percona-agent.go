@@ -1,18 +1,18 @@
 /*
-    Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
+   Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
 
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>
+   You should have received a copy of the GNU Affero General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
 package main
@@ -58,7 +58,7 @@ func main() {
 
 	cmd, arg := ParseCmdLine()
 
-	// Check that config file exists.
+	// Check that agent config file exists.
 	configFile := agent.DEFAULT_CONFIG_FILE // default
 	if cmd == "start" && arg != "" {
 		// percona-agent <config file>
@@ -68,14 +68,19 @@ func main() {
 		golog.Fatalf("Agent config file %s does not exist", configFile)
 	}
 
-	configDir :=  filepath.Dir(configFile)
-	agentConfig, _ := agent.LoadConfig(configDir)
+	agentConfig, err := agent.LoadConfig(configFile)
+	if err != nil {
+		golog.Panicf("Error loading " + configFile + ": ", err)
+	}
 
 	// Make sure agent config has everything we need.
 	if valid, missing := CheckConfig(agentConfig, configFile); !valid {
 		golog.Printf("%s is missing %d settings: %s", configFile, len(missing), strings.Join(missing, ", "))
 		os.Exit(-1)
 	}
+
+	// All service config files should be in same dir as agent config file.
+	configDir := filepath.Dir(configFile)
 
 	golog.Printf("AgentUuid: %s\n", agentConfig.AgentUuid)
 
@@ -141,7 +146,7 @@ func main() {
 		golog.Fatalln(err)
 	}
 	logManager := log.NewManager(logClient)
-	logConfig, err  := logManager.LoadConfig(configDir)
+	logConfig, err := logManager.LoadConfig(configDir)
 	if err := logManager.Start(&proto.Cmd{}, logConfig); err != nil {
 		golog.Panicf("Error starting log service: ", err)
 	}
@@ -179,7 +184,7 @@ func main() {
 		clock,
 		dataManager.Spooler(),
 	)
-	mmConfig, err  := mmConfig.LoadConfig(configDir)
+	mmConfig, err := mmConfig.LoadConfig(configDir)
 	if err := mmManager.Start(&proto.Cmd{}, nil); err != nil {
 		golog.Panicf("Error starting mm service: ", err)
 	}
@@ -197,11 +202,10 @@ func main() {
 		&qan.SlowLogWorkerFactory{},
 		dataManager.Spooler(),
 	)
-	qanConfig, err  := qan.LoadConfig(configDir)
+	qanConfig, err := qan.LoadConfig(configDir)
 	if err := dataManager.Start(&proto.Cmd{}, dataConfig); err != nil {
 		golog.Panicf("Error starting data service: ", err)
 	}
-
 
 	/**
 	 * Agent
@@ -226,7 +230,6 @@ func main() {
 
 	agent := agent.NewAgent(
 		agentConfig,
-		auth,
 		pct.NewLogger(logChan, "agent"),
 		cmdClient,
 		services,
@@ -242,13 +245,13 @@ func main() {
 
 func ParseCmdLine() (cmd, arg string) {
 	usage := "Usage: percona-agent command [arg]\n\n" +
-	    "Commands:\n"+
+		"Commands:\n" +
 		"  help                   Print help and exit\n" +
 		"  ping    [API hostname] Ping API, requires API key\n" +
 		"  start   [config file]  Start agent\n" +
-		"  version                Print version and exist\n\n"+
-		"Defaults:\n"+
-		"  API hostname  " + agent.DEFAULT_CONFIG_FILE + "\n"+
+		"  version                Print version and exist\n\n" +
+		"Defaults:\n" +
+		"  API hostname  " + agent.DEFAULT_CONFIG_FILE + "\n" +
 		"  config file   " + agent.DEFAULT_API_HOSTNAME + "\n"
 	if len(os.Args) < 2 {
 		fmt.Println(usage)
@@ -296,7 +299,6 @@ func CheckConfig(config *agent.Config, configFile string) (bool, []string) {
 	}
 	return isValid, missing
 }
-
 
 func GetLinks(apiKey, url string) (map[string]string, error) {
 	client := &http.Client{}

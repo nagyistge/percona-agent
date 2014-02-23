@@ -1,18 +1,18 @@
 /*
-    Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
+   Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
 
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>
+   You should have received a copy of the GNU Affero General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
 package agent
@@ -23,8 +23,8 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
 	golog "log"
-	"sync"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -35,11 +35,11 @@ const (
 )
 
 type Agent struct {
-	config   *Config
-	auth     *proto.AgentAuth
-	logger   *pct.Logger
-	client   pct.WebsocketClient
-	services map[string]pct.ServiceManager
+	config    *Config
+	configDir string
+	logger    *pct.Logger
+	client    pct.WebsocketClient
+	services  map[string]pct.ServiceManager
 	// --
 	cmdSync *pct.SyncChan
 	cmdChan chan *proto.Cmd
@@ -59,10 +59,9 @@ type Agent struct {
 	stopChan          chan bool
 }
 
-func NewAgent(config *Config, auth *proto.AgentAuth, logger *pct.Logger, client pct.WebsocketClient, services map[string]pct.ServiceManager) *Agent {
+func NewAgent(config *Config, logger *pct.Logger, client pct.WebsocketClient, services map[string]pct.ServiceManager) *Agent {
 	agent := &Agent{
 		config:   config,
-		auth:     auth,
 		logger:   logger,
 		client:   client,
 		services: services,
@@ -224,10 +223,6 @@ AGENT_LOOP:
 	return agent.stopReason, agent.update
 }
 
-func (agent *Agent) Status() string {
-	return agent.status.Get("Agent", true)
-}
-
 // @goroutine[0]
 func (agent *Agent) connect() {
 	agent.status.Update("Agent", "Connecting to API")
@@ -253,6 +248,24 @@ func (agent *Agent) stop(cmd *proto.Cmd) {
 	agent.status.UpdateRe("Agent", "Stopping agent", cmd)
 	agent.stopChan <- true
 	agent.status.UpdateRe("Agent", "Stopped", cmd)
+}
+
+func (m *Agent) WriteConfig(config interface{}, name string) error {
+	if m.configDir == "" {
+		return nil
+	}
+	file := m.configDir + "/" + CONFIG_FILE
+	m.logger.Info("Writing", file)
+	return pct.WriteConfig(file, config)
+}
+
+func (m *Agent) RemoveConfig(name string) error {
+	if m.configDir == "" {
+		return nil
+	}
+	file := m.configDir + "/" + CONFIG_FILE
+	m.logger.Info("Removing", file)
+	return pct.RemoveFile(file)
 }
 
 // --------------------------------------------------------------------------
@@ -412,10 +425,15 @@ func (agent *Agent) statusHandler() {
 			agent.statusHandlerSync.Graceful()
 			return
 		case cmd := <-agent.statusChan:
-			if cmd.Service == "agent" {
-				status := agent.internalStatus()
-				replyChan <- cmd.Reply(status)
-			} else {
+			switch cmd.Service {
+			case "":
+				// Summary status of all services.
+				replyChan <- cmd.Reply(agent.Status())
+			case "agent":
+				// Internal status of agent.
+				replyChan <- cmd.Reply(agent.InternalStatus())
+			default:
+				// Internal status of another service.
 				if manager, ok := agent.services[cmd.Service]; ok {
 					replyChan <- manager.Handle(cmd)
 				} else {
@@ -426,8 +444,8 @@ func (agent *Agent) statusHandler() {
 	}
 }
 
-func (agent *Agent) internalStatus() proto.StatusData {
-	status := agent.status.All()
+func (agent *Agent) Status() map[string]string {
+	return agent.status.Get("Agent", true)
 
 	for service, manager := range agent.services {
 		if manager == nil { // should not happen
@@ -436,6 +454,10 @@ func (agent *Agent) internalStatus() proto.StatusData {
 		}
 		status[service] = manager.Status()
 	}
+}
+
+func (agent *Agent) InternalStatus() proto.StatusData {
+	status := agent.status.All()
 
 	agent.cmdqMux.RLock()
 	defer agent.cmdqMux.RUnlock()
