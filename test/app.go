@@ -51,7 +51,12 @@ func GetStatus(sendChan chan *proto.Cmd, recvChan chan *proto.Reply) map[string]
 
 	select {
 	case reply := <-recvChan:
-		return reply.Status
+		status := make(map[string]string)
+		if err := json.Unmarshal(reply.Data, &status); err != nil {
+			// This shouldn't happen.
+			log.Fatal(err)
+		}
+		return status
 	case <-time.After(100 * time.Millisecond):
 	}
 

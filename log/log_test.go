@@ -563,7 +563,11 @@ func (s *ManagerTestSuite) TestLogService(t *C) {
 	}
 
 	gotReply = m.Handle(cmd)
-	t.Check(gotReply.Status["log-api"], Equals, "Connected")
-	t.Check(gotReply.Status["log-file"], Equals, newLogFile)
-	t.Check(gotReply.Status["log-level"], Equals, "warning")
+	status := make(map[string]string)
+	if err := json.Unmarshal(gotReply.Data, &status); err != nil {
+		t.Error(err)
+	}
+	t.Check(status["log-api"], Equals, "Connected")
+	t.Check(status["log-file"], Equals, newLogFile)
+	t.Check(status["log-level"], Equals, "warning")
 }
