@@ -316,7 +316,12 @@ func GetAgentLinks(apiKey, uuid, url string) (map[string]string, error) {
 				golog.Println(err)
 				continue
 			} else {
-				agentLink = entryLinks["agents"]
+				var ok bool
+				agentLink, ok = entryLinks["agents"]
+				if !ok {
+					golog.Println("No agents link")
+					continue
+				}
 			}
 		}
 
