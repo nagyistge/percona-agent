@@ -59,20 +59,45 @@ func MakeReport(interval *Interval, result *Result, config *Config) *Report {
 		Global:      result.Global,
 		Class:       result.Classes,
 	}
-	n := len(result.Classes)
-	if n <= int(config.ReportLimit) {
+
+	if config.ReportLimit == 0 {
 		return report
 	}
 
-	top := result.Classes[0:config.ReportLimit]
-	report.Class = top
-
-	lrq := mysqlLog.NewQueryClass("0", "")
-	for _, _ = range result.Classes[config.ReportLimit:n] {
-		// todo
+	n := len(result.Classes)
+	if config.ReportLimit > 0 && n <= int(config.ReportLimit) {
+		return report // no LRQ
 	}
-	lrq.Finalize()
-	report.Class = append(report.Class,lrq)
+
+	// Top queries
+	report.Class = result.Classes[0:config.ReportLimit]
+
+	// Low-ranking Queries
+	lrq := mysqlLog.NewQueryClass("0", "")
+	for _, query := range result.Classes[config.ReportLimit:n] {
+		addQuery(lrq, query)
+	}
+	report.Class = append(report.Class, lrq)
 
 	return report
+}
+
+func addQuery(dst, src *mysqlLog.QueryClass) {
+	dst.TotalQueries++
+	for srcMetric, srcStats := range src.Metrics.TimeMetrics {
+		dstStats, ok := dst.Metrics.TimeMetrics[srcMetric]
+		if !ok {
+			m := *srcStats
+			dst.Metrics.TimeMetrics[srcMetric] = &m
+		} else {
+			dstStats.Cnt += srcStats.Cnt
+			dstStats.Sum += srcStats.Sum
+			if srcStats.Min < dstStats.Min {
+				dstStats.Min = srcStats.Min
+			}
+			if srcStats.Max > dstStats.Max {
+				dstStats.Max = srcStats.Max
+			}
+		}
+	}
 }

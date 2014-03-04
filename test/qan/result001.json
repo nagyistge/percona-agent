@@ -21,7 +21,7 @@
       "TotalQueries": 1,
       "Metrics": {
         "TimeMetrics": {
-          "Query_time": {"Cnt": 1,"Sum": 1,"Min": 1,"Max": 1,"Avg": 1},
+          "Query_time": {"Cnt": 1,"Sum": 1,"Min": 1,"Max": 1.12,"Avg": 1},
           "Lock_time": {"Cnt": 1,"Sum": 0,"Min": 0,"Max": 0,"Avg": 0}
         },
         "NumberMetrics": {
