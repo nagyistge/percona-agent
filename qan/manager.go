@@ -232,7 +232,7 @@ func (m *Manager) run() {
 					m.logger.Error("Nil result", fmt.Sprintf("+%v", job))
 					return
 				}
-				result.RunTime = t1.Sub(t0)
+				result.RunTime = t1.Sub(t0).Seconds()
 				m.spool.Write("qan", MakeReport(interval, result, m.config))
 			}()
 		case worker := <-m.workerDoneChan:

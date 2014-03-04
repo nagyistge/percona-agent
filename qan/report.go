@@ -40,7 +40,8 @@ type ByQueryTime []*mysqlLog.QueryClass
 func (a ByQueryTime) Len() int      { return len(a) }
 func (a ByQueryTime) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a ByQueryTime) Less(i, j int) bool {
-	return a[i].Metrics.TimeMetrics["Query_time"].Sum < a[j].Metrics.TimeMetrics["Query_time"].Sum
+	// descending order
+	return a[i].Metrics.TimeMetrics["Query_time"].Sum > a[j].Metrics.TimeMetrics["Query_time"].Sum
 }
 
 func MakeReport(interval *Interval, result *Result, config *Config) *Report {
@@ -54,7 +55,7 @@ func MakeReport(interval *Interval, result *Result, config *Config) *Report {
 		StartOffset: interval.StartOffset,
 		EndOffset:   interval.EndOffset,
 		StopOffset:  result.StopOffset,
-		RunTime:     result.RunTime.Seconds(),
+		RunTime:     result.RunTime,
 		Global:      result.Global,
 		Class:       result.Classes,
 	}

@@ -34,7 +34,7 @@ type Job struct {
 
 type Result struct {
 	StopOffset int64
-	RunTime    time.Duration
+	RunTime    float64
 	Global     *mysqlLog.GlobalClass
 	Classes    []*mysqlLog.QueryClass
 }
