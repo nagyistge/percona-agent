@@ -37,4 +37,6 @@ type Config struct {
 	// Worker
 	ExampleQueries bool // only fingerprints if false
 	WorkerRunTime  uint // seconds
+	// Report
+	ReportLimit uint
 }

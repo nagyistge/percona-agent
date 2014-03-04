@@ -25,7 +25,6 @@ import (
 	"github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/ticker"
-	mysqlLog "github.com/percona/percona-go-mysql/log"
 	"os"
 	"time"
 )
@@ -47,18 +46,6 @@ type Manager struct {
 	status         *pct.Status
 	sync           *pct.SyncChan
 	oldSlowLogs    map[string]int
-}
-
-type Report struct {
-	StartTs     time.Time // UTC
-	EndTs       time.Time // UTC
-	SlowLogFile string    // not slow_query_log_file if rotated
-	StartOffset int64     // parsing starts
-	EndOffset   int64     // parsing stops, but...
-	StopOffset  int64     // ...parsing didn't complete if stop < end
-	RunTime     float64   // seconds
-	Global      *mysqlLog.GlobalClass
-	Class       []*mysqlLog.QueryClass
 }
 
 func NewManager(logger *pct.Logger, mysqlConn mysql.Connector, clock ticker.Manager, iterFactory IntervalIterFactory, workerFactory WorkerFactory, spool data.Spooler) *Manager {
@@ -246,18 +233,7 @@ func (m *Manager) run() {
 					return
 				}
 				result.RunTime = t1.Sub(t0)
-				report := &Report{
-					StartTs:     interval.StartTime,
-					EndTs:       interval.StopTime,
-					SlowLogFile: interval.Filename,
-					StartOffset: interval.StartOffset,
-					EndOffset:   interval.EndOffset,
-					StopOffset:  result.StopOffset,
-					RunTime:     result.RunTime.Seconds(),
-					Global:      result.Global,
-					Class:       result.Classes,
-				}
-				m.spool.Write("qan", report)
+				m.spool.Write("qan", MakeReport(interval, result, m.config))
 			}()
 		case worker := <-m.workerDoneChan:
 			m.status.Update("qan-log-parser", "Reaping worker")
@@ -316,7 +292,7 @@ func (m *Manager) rotateSlowLog(interval *Interval) error {
 func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
 	m.configDir = configDir
 	config := &Config{}
-	if err := pct.ReadConfig(configDir + "/" + CONFIG_FILE, config); err != nil {
+	if err := pct.ReadConfig(configDir+"/"+CONFIG_FILE, config); err != nil {
 		return nil, err
 	}
 	// There are no defaults; the config file should have everything we need.
