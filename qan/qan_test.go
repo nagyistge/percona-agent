@@ -859,4 +859,18 @@ func (s *ReportTestSuite) TestResult001(c *gocheck.C) {
 	// 5th: 0.101001
 	c.Check(report.Class[4].Id, gocheck.Equals, "5000000000000005")
 	c.Check(report.Class[4].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(0.101001))
+
+	// Limit=2 results in top 2 queries and the rest in 1 LRQ "query".
+	config.ReportLimit = 2
+	report = qan.MakeReport(interval, result, config)
+	c.Check(len(report.Class), gocheck.Equals, 3)
+
+	c.Check(report.Class[0].Id, gocheck.Equals, "3000000000000003")
+	c.Check(report.Class[0].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(2.9))
+
+	c.Check(report.Class[1].Id, gocheck.Equals, "2000000000000002")
+	c.Check(report.Class[1].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(2))
+
+	c.Check(report.Class[2].Id, gocheck.Equals, "0")
+	//c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(1 + 1 + 0.101001))
 }

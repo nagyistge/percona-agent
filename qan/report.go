@@ -59,6 +59,20 @@ func MakeReport(interval *Interval, result *Result, config *Config) *Report {
 		Global:      result.Global,
 		Class:       result.Classes,
 	}
+	n := len(result.Classes)
+	if n <= int(config.ReportLimit) {
+		return report
+	}
+
+	top := result.Classes[0:config.ReportLimit]
+	report.Class = top
+
+	lrq := mysqlLog.NewQueryClass("0", "")
+	for _, _ = range result.Classes[config.ReportLimit:n] {
+		// todo
+	}
+	lrq.Finalize()
+	report.Class = append(report.Class,lrq)
 
 	return report
 }
