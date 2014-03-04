@@ -876,4 +876,5 @@ func (s *ReportTestSuite) TestResult001(c *gocheck.C) {
 	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(1+1+0.101001))
 	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Min, gocheck.Equals, float32(0.000100))
 	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Max, gocheck.Equals, float32(1.12))
+	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Avg, gocheck.Equals, float32(0.505))
 }

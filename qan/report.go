@@ -92,6 +92,7 @@ func addQuery(dst, src *mysqlLog.QueryClass) {
 		} else {
 			dstStats.Cnt += srcStats.Cnt
 			dstStats.Sum += srcStats.Sum
+			dstStats.Avg = (dstStats.Avg + srcStats.Avg) / 2
 			if srcStats.Min < dstStats.Min {
 				dstStats.Min = srcStats.Min
 			}
