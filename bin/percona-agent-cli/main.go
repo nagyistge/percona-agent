@@ -74,6 +74,8 @@ func (cli *Cli) doCmd(args []string) {
 		cli.agent(args)
 	case "status":
 		cli.status(args)
+	case "config":
+		cli.config(args)
 	default:
 		fmt.Println("Unknown command: " + args[0])
 		return
@@ -176,6 +178,36 @@ func (cli *Cli) status(args []string) {
 	}
 	status := cli.Get(cli.agentLinks["self"] + "/status")
 	fmt.Println(string(status))
+}
+
+func (cli *Cli) config(args []string) {
+	if !cli.connected {
+		fmt.Println("Not connected to API.  Use 'connect' command.")
+		return
+	}
+	if cli.agentUuid == "" {
+		fmt.Println("Agent UUID not set.  Use 'agent' command.")
+		return
+	}
+
+	if len(args) != 3 {
+		fmt.Printf("ERROR: Invalid number of args: got %d, expected 3\n", len(args))
+		fmt.Println("Usage: config update file")
+		fmt.Println("Exmaple: config update /tmp/new-log.conf")
+		return
+	}
+
+	if args[1] != "update" {
+		fmt.Printf("Invalid arg: got %s, expected 'config'n", args[1])
+		return
+	}
+
+	// todo
+	_, err := ioutil.ReadFile(args[2])
+	if err != nil {
+		golog.Println(err)
+		return
+	}
 }
 
 func (cli *Cli) Get(url string) []byte {
