@@ -2,10 +2,10 @@ package test
 
 import (
 	"fmt"
-	"strings"
+	"launchpad.net/gocheck"
 	"os/exec"
 	"reflect"
-	"launchpad.net/gocheck"
+	"strings"
 )
 
 /////////////////////////////////////////////////////////////////////////////
@@ -23,7 +23,7 @@ var DeepEquals gocheck.Checker = &eventsChecker{
 // Location of first inequality, if any
 var loc []string
 
-func push (name string) {
+func push(name string) {
 	loc = append(loc, name)
 }
 
@@ -65,7 +65,7 @@ func deepEquals(got reflect.Value, expect reflect.Value, level uint) (bool, stri
 	}
 
 	if expect.Kind() == reflect.Ptr {
-		expect= expect.Elem()
+		expect = expect.Elem()
 	}
 	if got.Kind() == reflect.Ptr {
 		got = got.Elem()
@@ -78,12 +78,12 @@ func deepEquals(got reflect.Value, expect reflect.Value, level uint) (bool, stri
 		// For each field (key) in the expected struct...
 		for i := 0; i < expect.NumField(); i++ {
 			if got.Type().Field(i).PkgPath != "" {
-				continue  // skip unexported field
+				continue // skip unexported field
 			}
 			gotVal := got.Field(i)
 			expectVal := expect.Field(i)
 			push(got.Type().Field(i).Name)
-			if equal, err := deepEquals(gotVal, expectVal, level + 1); !equal {
+			if equal, err := deepEquals(gotVal, expectVal, level+1); !equal {
 				return false, err
 			}
 			pop()
@@ -98,7 +98,7 @@ func deepEquals(got reflect.Value, expect reflect.Value, level uint) (bool, stri
 				err := fmt.Sprintf("     got: %s values\nexpected: no %s values\n", gotKeys[0], gotKeys[0])
 				return false, err
 			}
-			return true, ""  // no keys or values in either map
+			return true, "" // no keys or values in either map
 		}
 
 		// For key in the map, compare the got and expected values...
@@ -106,7 +106,7 @@ func deepEquals(got reflect.Value, expect reflect.Value, level uint) (bool, stri
 			gotVal := got.MapIndex(key)
 			expectVal := expect.MapIndex(key)
 			push(fmt.Sprintf("map[%s]", key))
-			if equals, err := deepEquals(gotVal, expectVal, level + 1); !equals {
+			if equals, err := deepEquals(gotVal, expectVal, level+1); !equals {
 				return false, err
 			}
 			pop()
@@ -123,7 +123,7 @@ func deepEquals(got reflect.Value, expect reflect.Value, level uint) (bool, stri
 		}
 		for i := 0; i < got.Len(); i++ {
 			push(fmt.Sprintf("slice[%d]", i))
-			if equals, err := deepEquals(got.Index(i), expect.Index(i), level + 1); !equals {
+			if equals, err := deepEquals(got.Index(i), expect.Index(i), level+1); !equals {
 				return false, err
 			}
 			pop()
@@ -134,7 +134,7 @@ func deepEquals(got reflect.Value, expect reflect.Value, level uint) (bool, stri
 		}
 	}
 
-//	pop()
+	//	pop()
 
 	// No differences; all the events are identical (or there's a bug in this func).
 	return true, ""
@@ -153,7 +153,7 @@ func checkPrimitives(got reflect.Value, expect reflect.Value) (bool, string) {
 		if got.IsValid() {
 			if got.Float() != expect.Float() {
 				err := fmt.Sprintf("     got: %f\nexpected: %f\n",
-					 got.Float(), expect.Float())
+					got.Float(), expect.Float())
 				return false, err
 			}
 		} else {

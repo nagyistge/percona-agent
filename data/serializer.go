@@ -1,3 +1,20 @@
+/*
+   Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
+
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
+
+   You should have received a copy of the GNU Affero General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>
+*/
+
 package data
 
 import (
@@ -8,6 +25,7 @@ import (
 
 type Serializer interface {
 	ToBytes(data interface{}) ([]byte, error)
+	Encoding() string
 }
 
 type JsonGzipSerializer struct {
@@ -40,6 +58,10 @@ func (s *JsonGzipSerializer) ToBytes(data interface{}) ([]byte, error) {
 	return s.b.Bytes(), nil
 }
 
+func (s *JsonGzipSerializer) Encoding() string {
+	return "gzip"
+}
+
 // --------------------------------------------------------------------------
 
 type JsonSerializer struct {
@@ -52,4 +74,8 @@ func NewJsonSerializer() *JsonSerializer {
 
 func (j *JsonSerializer) ToBytes(data interface{}) ([]byte, error) {
 	return json.Marshal(data)
+}
+
+func (s *JsonSerializer) Encoding() string {
+	return ""
 }

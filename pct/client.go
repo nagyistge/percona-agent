@@ -1,30 +1,43 @@
+/*
+   Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
+
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
+
+   You should have received a copy of the GNU Affero General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>
+*/
+
 package pct
 
 import (
 	"code.google.com/p/go.net/websocket"
 	"github.com/percona/cloud-protocol/proto"
-	"time"
 )
 
 type WebsocketClient interface {
-	Connect() error
+	Connect()
+	ConnectOnce() error
 	Disconnect() error
 
-	// Non-blocking cmd/reply channels:
-	Run()
-	RecvChan() chan *proto.Cmd
+	// Channel interface:
+	Start()
+	Stop()
 	SendChan() chan *proto.Reply
-
-	// Blocking calls for logger:
-	Send(data interface{}) error
-	Recv(data interface{}) error
-
-	// Notify user to stop or reconnect:
+	RecvChan() chan *proto.Cmd
+	ConnectChan() chan bool
 	ErrorChan() chan error
-	Conn() *websocket.Conn
-}
 
-type HttpClient interface {
-	Get(url string, v interface{}, timeout time.Duration) error
-	Post(url string, data []byte) error
+	// Direct interface:
+	SendBytes(data []byte) error
+	Send(data interface{}) error
+	Recv(data interface{}, timeout uint) error
+	Conn() *websocket.Conn
 }

@@ -1,3 +1,20 @@
+/*
+   Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
+
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
+
+   You should have received a copy of the GNU Affero General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>
+*/
+
 package qan
 
 import (
@@ -7,6 +24,7 @@ import (
 	"github.com/percona/cloud-tools/data"
 	"github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
+	"github.com/percona/cloud-tools/ticker"
 	"os"
 	"time"
 )
@@ -14,11 +32,15 @@ import (
 type Manager struct {
 	logger        *pct.Logger
 	mysqlConn     mysql.Connector
-	iter          IntervalIter
+	clock         ticker.Manager
+	iterFactory   IntervalIterFactory
 	workerFactory WorkerFactory
 	spool         data.Spooler
 	// --
 	config         *Config // nil if not running
+	configDir      string
+	tickChan       chan time.Time
+	iter           IntervalIter
 	workers        map[Worker]bool
 	workerDoneChan chan Worker
 	status         *pct.Status
@@ -26,16 +48,17 @@ type Manager struct {
 	oldSlowLogs    map[string]int
 }
 
-func NewManager(logger *pct.Logger, mysqlConn mysql.Connector, iter IntervalIter, workerFactory WorkerFactory, spool data.Spooler) *Manager {
+func NewManager(logger *pct.Logger, mysqlConn mysql.Connector, clock ticker.Manager, iterFactory IntervalIterFactory, workerFactory WorkerFactory, spool data.Spooler) *Manager {
 	m := &Manager{
 		logger:        logger,
 		mysqlConn:     mysqlConn,
-		iter:          iter,
+		clock:         clock,
+		iterFactory:   iterFactory,
 		workerFactory: workerFactory,
 		spool:         spool,
 		// --
 		workers:     make(map[Worker]bool),
-		status:      pct.NewStatus([]string{"Qan", "QanLogParser"}),
+		status:      pct.NewStatus([]string{"qan", "qan-log-parser"}),
 		sync:        pct.NewSyncChan(),
 		oldSlowLogs: make(map[string]int),
 	}
@@ -48,20 +71,22 @@ func NewManager(logger *pct.Logger, mysqlConn mysql.Connector, iter IntervalIter
 
 // @goroutine[0]
 func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
-	m.status.UpdateRe("Qan", "Starting", cmd)
+	m.status.UpdateRe("qan", "Starting", cmd)
 
 	logger := m.logger
 	logger.InResponseTo(cmd)
 	defer logger.InResponseTo(nil)
 	logger.Info("Starting")
 
+	// Can't start if already running.
 	if m.config != nil {
 		err := pct.ServiceIsRunningError{Service: "qan"}
 		logger.Error(err)
 		return err
 	}
 
-	c := new(Config)
+	// Parse JSON into Config struct.
+	c := &Config{}
 	if err := json.Unmarshal(config, c); err != nil {
 		logger.Error(err)
 		return err
@@ -75,24 +100,43 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 		return err
 	}
 
+	// Add a tickChan to the clock so it receives ticks at intervals.
+	m.tickChan = make(chan time.Time)
+	m.clock.Add(m.tickChan, c.Interval)
+
+	// Make an iterator for the slow log file at interval ticks.
+	filenameFunc := func() (string, error) {
+		file := m.mysqlConn.GetGlobalVarString("slow_query_log_file")
+		return file, nil
+	}
+	m.iter = m.iterFactory.Make(filenameFunc, m.tickChan)
+	m.iter.Start()
+
+	// When Worker finishes parsing an interval, it singals done on this chan.
 	m.workerDoneChan = make(chan Worker, c.MaxWorkers)
-	m.config = c
+
+	// Run Query Analytics!
 	go m.run()
 
-	m.status.UpdateRe("Qan", "Running", cmd)
+	// Save the config.
+	m.config = c
+	m.status.UpdateRe("qan", "Running", cmd)
 	logger.Info("Running")
 
-	return nil
+	if err := m.WriteConfig(c, ""); err != nil {
+		return err
+	}
+
+	return nil // success
 }
 
 func (m *Manager) Stop(cmd *proto.Cmd) error {
-	m.status.UpdateRe("Qan", "Stopping", cmd)
+	m.status.UpdateRe("qan", "Stopping", cmd)
 
 	m.logger.InResponseTo(cmd)
 	defer m.logger.InResponseTo(nil)
 	m.logger.Info("Stopping")
 
-	m.status.UpdateRe("Qan", "Stopping", cmd)
 	m.sync.Stop()
 	m.sync.Wait()
 
@@ -103,9 +147,12 @@ func (m *Manager) Stop(cmd *proto.Cmd) error {
 		m.logger.Info("Stopped")
 	}
 
-	m.config = nil
+	m.clock.Remove(m.tickChan)
+	m.tickChan = nil
 	m.workerDoneChan = nil
-	m.status.UpdateRe("Qan", "Stopped", cmd)
+	m.config = nil
+
+	m.status.UpdateRe("qan", "Stopped", cmd)
 
 	return err
 }
@@ -122,8 +169,8 @@ func (m *Manager) IsRunning() bool {
 	return false // not running
 }
 
-func (m *Manager) Do(cmd *proto.Cmd) error {
-	return pct.UnknownCmdError{Cmd: cmd.Cmd}
+func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
+	return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -134,20 +181,19 @@ func (m *Manager) Do(cmd *proto.Cmd) error {
 func (m *Manager) run() {
 	defer func() {
 		if m.sync.IsGraceful() {
-			m.status.Update("QanLogParser", "Stopped")
+			m.status.Update("qan-log-parser", "Stopped")
 		} else {
-			m.status.Update("QanLogParser", "Crashed")
+			m.status.Update("qan-log-parser", "Crashed")
 		}
 		m.sync.Done()
 	}()
 
-	m.status.Update("QanLogParser", "Waiting for first interval")
-	m.iter.Start()
+	m.status.Update("qan-log-parser", "Waiting for first interval")
 	intervalChan := m.iter.IntervalChan()
 
 	for {
 		runningWorkers := len(m.workers)
-		m.status.Update("QanLogParser", fmt.Sprintf("Ready (%d of %d running)", runningWorkers, m.config.MaxWorkers))
+		m.status.Update("qan-log-parser", fmt.Sprintf("Ready (%d of %d running)", runningWorkers, m.config.MaxWorkers))
 
 		select {
 		case interval := <-intervalChan:
@@ -163,7 +209,7 @@ func (m *Manager) run() {
 				}
 			}
 
-			m.status.Update("QanLogParser", "Running worker")
+			m.status.Update("qan-log-parser", "Running worker")
 			job := &Job{
 				SlowLogFile:    interval.Filename,
 				StartOffset:    interval.StartOffset,
@@ -186,21 +232,16 @@ func (m *Manager) run() {
 					m.logger.Error("Nil result", fmt.Sprintf("+%v", job))
 					return
 				}
-				result.RunTime = t1.Sub(t0)
-				data, err := prepareResult(interval, job, result)
-				if err != nil {
-					m.logger.Error(err)
-					return
-				}
-				m.spool.Write(data)
+				result.RunTime = t1.Sub(t0).Seconds()
+				m.spool.Write("qan", MakeReport(interval, result, m.config))
 			}()
 		case worker := <-m.workerDoneChan:
-			m.status.Update("QanLogParser", "Reaping worker")
+			m.status.Update("qan-log-parser", "Reaping worker")
 			delete(m.workers, worker)
 
 			for file, cnt := range m.oldSlowLogs {
 				if cnt == 1 {
-					m.status.Update("QanLogParser", "Removing old slow log: "+file)
+					m.status.Update("qan-log-parser", "Removing old slow log "+file)
 					if err := os.Remove(file); err != nil {
 						m.logger.Warn(err)
 					} else {
@@ -248,27 +289,34 @@ func (m *Manager) rotateSlowLog(interval *Interval) error {
 	return nil
 }
 
-func prepareResult(interval *Interval, job *Job, result *Result) (*proto.QanReport, error) {
-	global, err := json.Marshal(result.Global)
+func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
+	m.configDir = configDir
+	config := &Config{}
+	if err := pct.ReadConfig(configDir+"/"+CONFIG_FILE, config); err != nil {
+		return nil, err
+	}
+	// There are no defaults; the config file should have everything we need.
+	data, err := json.Marshal(config)
 	if err != nil {
 		return nil, err
 	}
-	class, err := json.Marshal(result.Classes)
-	if err != nil {
-		return nil, err
-	}
+	return data, nil
+}
 
-	qanReport := &proto.QanReport{
-		StartTs:     interval.StartTime,
-		EndTs:       interval.StopTime,
-		SlowLogFile: interval.Filename,
-		StartOffset: interval.StartOffset,
-		EndOffset:   interval.EndOffset,
-		StopOffset:  result.StopOffset,
-		RunTime:     result.RunTime.Seconds(),
-		Global:      global,
-		Class:       class,
+func (m *Manager) WriteConfig(config interface{}, name string) error {
+	if m.configDir == "" {
+		return nil
 	}
+	file := m.configDir + "/" + CONFIG_FILE
+	m.logger.Info("Writing", file)
+	return pct.WriteConfig(file, config)
+}
 
-	return qanReport, nil
+func (m *Manager) RemoveConfig(name string) error {
+	if m.configDir == "" {
+		return nil
+	}
+	file := m.configDir + "/" + CONFIG_FILE
+	m.logger.Info("Removing", file)
+	return pct.RemoveFile(file)
 }

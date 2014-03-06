@@ -3,7 +3,24 @@ package mock
 import (
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/qan"
+	"time"
 )
+
+type IntervalIterFactory struct {
+	Iters  []qan.IntervalIter
+	iterNo int
+}
+
+func (tf *IntervalIterFactory) Make(filename qan.FilenameFunc, tickChan chan time.Time) qan.IntervalIter {
+	if tf.iterNo >= len(tf.Iters) {
+		return tf.Iters[tf.iterNo-1]
+	}
+	nextIter := tf.Iters[tf.iterNo]
+	tf.iterNo++
+	return nextIter
+}
+
+// --------------------------------------------------------------------------
 
 type MockIntervalIter struct {
 	testIntervalChan chan *qan.Interval

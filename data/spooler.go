@@ -1,8 +1,27 @@
+/*
+   Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
+
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
+
+   You should have received a copy of the GNU Affero General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>
+*/
+
 package data
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/peterbourgon/diskv"
 	"os"
@@ -17,7 +36,8 @@ const (
 type Spooler interface {
 	Start() error
 	Stop() error
-	Write(data interface{}) error
+	Status() map[string]string
+	Write(service string, data interface{}) error
 	Files() <-chan string
 	Read(key string) ([]byte, error)
 	Remove(key string) error
@@ -25,23 +45,27 @@ type Spooler interface {
 
 // http://godoc.org/github.com/peterbourgon/diskv
 type DiskvSpooler struct {
-	logger  *pct.Logger
-	dataDir string
-	sz      Serializer
+	logger   *pct.Logger
+	dataDir  string
+	sz       Serializer
+	hostname string
 	// --
-	dataChan chan interface{}
+	dataChan chan *proto.Data
 	sync     *pct.SyncChan
 	cache    *diskv.Diskv
+	status   *pct.Status
 }
 
-func NewDiskvSpooler(logger *pct.Logger, dataDir string, sz Serializer) *DiskvSpooler {
+func NewDiskvSpooler(logger *pct.Logger, dataDir string, sz Serializer, hostname string) *DiskvSpooler {
 	s := &DiskvSpooler{
-		logger:  logger,
-		dataDir: dataDir,
-		sz:      sz,
+		logger:   logger,
+		dataDir:  dataDir,
+		sz:       sz,
+		hostname: hostname,
 		// --
-		dataChan: make(chan interface{}, WRITE_BUFFER),
+		dataChan: make(chan *proto.Data, WRITE_BUFFER),
 		sync:     pct.NewSyncChan(),
+		status:   pct.NewStatus([]string{"data-spooler"}),
 	}
 	return s
 }
@@ -77,13 +101,35 @@ func (s *DiskvSpooler) Stop() error {
 	return nil
 }
 
-func (s *DiskvSpooler) Write(data interface{}) error {
+func (s *DiskvSpooler) Status() map[string]string {
+	return s.status.All()
+}
+
+func (s *DiskvSpooler) Write(service string, data interface{}) error {
+	// Compress the data (probably, depends on serializer).
+	encodedData, err := s.sz.ToBytes(data)
+	if err != nil {
+		return err
+	}
+
+	// Wrap data in proto.Data with metadata to allow API to handle it properly.
+	protoData := &proto.Data{
+		Created:         time.Now().UTC(),
+		Hostname:        s.hostname,
+		Service:         service,
+		ContentType:     "application/json",
+		ContentEncoding: s.sz.Encoding(),
+		Data:            encodedData,
+	}
+
+	// Write data to disk.
 	select {
-	case s.dataChan <- data:
+	case s.dataChan <- protoData:
 	default:
 		s.logger.Warn("Spool write buffer is full")
 		return errors.New("Spool write buffer is full")
 	}
+
 	return nil
 }
 
@@ -108,24 +154,32 @@ func (s *DiskvSpooler) run() {
 	defer func() {
 		if s.sync.IsGraceful() {
 			s.logger.Info("spoolData stop")
+			s.status.Update("data-spooler", "Stopped")
 		} else {
 			s.logger.Error("spoolData crash")
+			s.status.Update("data-spooler", "Crashed")
 		}
 		s.sync.Done()
 	}()
 
 	for {
+		s.status.Update("data-spooler", "Idle")
 		select {
-		case data := <-s.dataChan:
-			bytes, err := s.sz.ToBytes(data)
+		case protoData := <-s.dataChan:
+			s.status.Update("data-spooler", "Spooling data")
+			key := fmt.Sprintf("%s_%d", protoData.Service, protoData.Created.UnixNano())
+
+			bytes, err := json.Marshal(protoData)
 			if err != nil {
-				s.logger.Warn(err)
+				s.logger.Error(err)
 				continue
 			}
-			key := fmt.Sprintf("%d", time.Now().UnixNano())
+
 			if err := s.cache.Write(key, bytes); err != nil {
 				s.logger.Error(err)
 			}
+
+			s.logger.Debug("Spooled ", key)
 		case <-s.sync.StopChan:
 			s.sync.Graceful()
 			return

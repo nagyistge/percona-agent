@@ -1,4 +1,4 @@
 percona/cloud-tools
 ===================
 
-This is the Percona Cloud Tools (https://cloud.percona.com) agent, pct-agentd.
+This is percona-agent for Percona Cloud Tools (https://cloud.percona.com).

@@ -55,10 +55,22 @@ func (m *MockServiceManager) IsRunning() bool {
 	return m.IsRunningVal
 }
 
-func (m *MockServiceManager) Handle(cmd *proto.Cmd) error {
+func (m *MockServiceManager) Handle(cmd *proto.Cmd) *proto.Reply {
 	return nil
 }
 
 func (m *MockServiceManager) Reset() {
 	m.status = ""
+}
+
+func (m *MockServiceManager) LoadConfig(configDir string) (interface{}, error) {
+	return nil, nil
+}
+
+func (m *MockServiceManager) WriteConfig(config interface{}, name string) error {
+	return nil
+}
+
+func (m *MockServiceManager) RemoveConfig(name string) error {
+	return nil
 }

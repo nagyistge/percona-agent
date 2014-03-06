@@ -6,17 +6,24 @@ import (
 )
 
 type NullClient struct {
-	conn *websocket.Conn
+	conn        *websocket.Conn
+	connectChan chan bool
+	errChan     chan error
 }
 
 func NewNullClient() *NullClient {
 	c := &NullClient{
-		conn: new(websocket.Conn),
+		conn:        new(websocket.Conn),
+		connectChan: make(chan bool),
+		errChan:     make(chan error),
 	}
 	return c
 }
 
-func (c *NullClient) Connect() error {
+func (c *NullClient) Connect() {
+}
+
+func (c *NullClient) ConnectOnce() error {
 	return nil
 }
 
@@ -24,7 +31,10 @@ func (c *NullClient) Disconnect() error {
 	return nil
 }
 
-func (c *NullClient) Run() {
+func (c *NullClient) Start() {
+}
+
+func (c *NullClient) Stop() {
 }
 
 func (c *NullClient) SendChan() chan *proto.Reply {
@@ -35,20 +45,24 @@ func (c *NullClient) RecvChan() chan *proto.Cmd {
 	return nil
 }
 
+func (c *NullClient) SendBytes(data []byte) error {
+	return nil
+}
+
 func (c *NullClient) Send(data interface{}) error {
 	return nil
 }
 
-func (c *NullClient) Recv(data interface{}) error {
-	return nil
-}
-
-func (c *NullClient) Do(cmd *proto.Cmd) error {
+func (c *NullClient) Recv(data interface{}, timeout uint) error {
 	return nil
 }
 
 func (c *NullClient) ErrorChan() chan error {
-	return nil
+	return c.errChan
+}
+
+func (c *NullClient) ConnectChan() chan bool {
+	return c.connectChan
 }
 
 func (c *NullClient) Conn() *websocket.Conn {

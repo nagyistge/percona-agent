@@ -1,3 +1,20 @@
+/*
+   Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
+
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
+
+   You should have received a copy of the GNU Affero General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>
+*/
+
 package qan_test
 
 import (
@@ -9,7 +26,6 @@ import (
 	"github.com/percona/cloud-tools/qan"
 	"github.com/percona/cloud-tools/test"
 	"github.com/percona/cloud-tools/test/mock"
-	mysqlLog "github.com/percona/percona-go-mysql/log"
 	"github.com/percona/percona-go-mysql/test"
 	"io/ioutil"
 	"launchpad.net/gocheck"
@@ -105,9 +121,11 @@ type ManagerTestSuite struct {
 	logger        *pct.Logger
 	intervalChan  chan *qan.Interval
 	iter          qan.IntervalIter
+	iterFactory   *mock.IntervalIterFactory
 	dataChan      chan interface{}
 	spool         *mock.Spooler
 	workerFactory qan.WorkerFactory
+	clock         *mock.Clock
 }
 
 var _ = gocheck.Suite(&ManagerTestSuite{})
@@ -117,7 +135,7 @@ func (s *ManagerTestSuite) SetUpSuite(c *gocheck.C) {
 	if s.dsn == "" {
 		c.Fatal("PCT_TEST_MYSQL_DSN is not set")
 	}
-	s.realmysql = mysql.NewConnection()
+	s.realmysql = &mysql.Connection{}
 	if err := s.realmysql.Connect(s.dsn); err != nil {
 		c.Fatal(err)
 	}
@@ -133,10 +151,13 @@ func (s *ManagerTestSuite) SetUpSuite(c *gocheck.C) {
 
 	s.intervalChan = make(chan *qan.Interval, 1)
 	s.iter = mock.NewMockIntervalIter(s.intervalChan)
-	s.dataChan = make(chan interface{}, 2)
+	s.iterFactory = &mock.IntervalIterFactory{
+		Iters: []qan.IntervalIter{s.iter},
+	}
 
+	s.dataChan = make(chan interface{}, 2)
 	s.spool = mock.NewSpooler(s.dataChan)
-	s.workerFactory = qan.NewSlowLogWorkerFactory()
+	s.workerFactory = &qan.SlowLogWorkerFactory{}
 }
 
 func (s *ManagerTestSuite) SetUpTest(c *gocheck.C) {
@@ -145,6 +166,7 @@ func (s *ManagerTestSuite) SetUpTest(c *gocheck.C) {
 		c.Fatal(err)
 	}
 	s.nullmysql.Reset()
+	s.clock = mock.NewClock()
 }
 
 func (s *ManagerTestSuite) TearDownTest(c *gocheck.C) {
@@ -154,13 +176,15 @@ func (s *ManagerTestSuite) TearDownTest(c *gocheck.C) {
 	}
 }
 
+// --------------------------------------------------------------------------
+
 func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 
 	/**
 	 * Create and start manager.
 	 */
 
-	m := qan.NewManager(s.logger, s.realmysql, s.iter, s.workerFactory, s.spool)
+	m := qan.NewManager(s.logger, s.realmysql, s.clock, s.iterFactory, s.workerFactory, s.spool)
 	if m == nil {
 		c.Fatal("Create qan.Manager")
 	}
@@ -211,14 +235,10 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	}
 
 	// And status should be "Running" and "Ready".
-	test.WaitStatus(1, m, "QanLogParser", "Ready (0 of 2 running)")
+	test.WaitStatus(1, m, "qan-log-parser", "Ready (0 of 2 running)")
 	status := m.Status()
-	if status["Qan"] != "Running ["+cmd.String()+"]" {
-		c.Error("Qan status is \"Ready\", got " + status["Qan"])
-	}
-	if status["QanLogParser"] != "Ready (0 of 2 running)" {
-		c.Error("QanLogParser status is \"Ready (0 of 2 running)\", got " + status["QanLogParser"])
-	}
+	c.Check(status["qan"], gocheck.Equals, fmt.Sprintf("Running %s", cmd))
+	c.Check(status["qan-log-parser"], gocheck.Equals, "Ready (0 of 2 running)")
 
 	// It should have enabled the slow log.
 	slowLog := s.realmysql.GetGlobalVarNumber("slow_query_log")
@@ -239,6 +259,14 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 		c.Error("Error is type pct.ServiceIsRunningError, got %T", err)
 	}
 
+	// It should add a tickChan for the interval iter.
+	if len(s.clock.Added) != 1 {
+		c.Error("Adds tickChan to clock, got %#v", s.clock.Added)
+	}
+	if len(s.clock.Removed) != 0 {
+		c.Error("tickChan not removed yet")
+	}
+
 	/**
 	 * Have manager run a worker, parse, and send data.
 	 */
@@ -252,23 +280,16 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	}
 	s.intervalChan <- interv
 
-	resultData := <-s.dataChan
-	if resultData == nil {
-		c.Fatal("Got result from worker ran by manager")
+	v := test.WaitData(s.dataChan)
+	if len(v) == 0 {
+		c.Fatal("Got report")
 	}
+	report := v[0].(*qan.Report)
 
-	report := *resultData.(*proto.QanReport)
-	global := &mysqlLog.GlobalClass{}
-	json.Unmarshal(report.Global, global)
-	classes := []*mysqlLog.QueryClass{}
-	err = json.Unmarshal(report.Class, &classes)
-	if err != nil {
-		c.Error(err)
-	}
 	result := &qan.Result{
 		StopOffset: report.StopOffset,
-		Global:     global,
-		Classes:    classes,
+		Global:     report.Global,
+		Classes:    report.Class,
 	}
 	test.WriteData(result, tmpFile)
 	c.Check(tmpFile, testlog.FileEquals, sample+"slow001.json")
@@ -292,7 +313,7 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	// It should start without error.
 	c.Assert(err, gocheck.IsNil)
 
-	// It should report itself as running
+	// It should not report itself as running.
 	if m.IsRunning() {
 		c.Error("Manager.IsRunning() is false after Start()")
 	}
@@ -303,6 +324,14 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 
 	longQueryTime = s.realmysql.GetGlobalVarNumber("long_query_time")
 	c.Assert(longQueryTime, gocheck.Equals, 10.0)
+
+	// It should remove the tickChan (and not have added others).
+	if len(s.clock.Added) != 1 {
+		c.Error("Added only 1 tickChan, got %#v", s.clock.Added)
+	}
+	if len(s.clock.Removed) != 1 {
+		c.Error("Removed tickChan")
+	}
 }
 
 func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
@@ -331,7 +360,7 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
 	 */
 
 	// See TestStartService() for description of these startup tasks.
-	m := qan.NewManager(s.logger, s.nullmysql, s.iter, s.workerFactory, s.spool)
+	m := qan.NewManager(s.logger, s.nullmysql, s.clock, s.iterFactory, s.workerFactory, s.spool)
 	if m == nil {
 		c.Fatal("Create qan.Manager")
 	}
@@ -363,7 +392,7 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
 	if err != nil {
 		c.Fatal(err)
 	}
-	test.WaitStatus(1, m, "QanLogParser", "Ready")
+	test.WaitStatus(1, m, "qan-log-parser", "Ready")
 
 	// Make copy of slow log because test will mv/rename it.
 	cp := exec.Command("cp", testlog.Sample+slowlog, "/tmp/"+slowlog)
@@ -380,14 +409,12 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
 	}
 	s.intervalChan <- i1
 	resultData := <-s.dataChan
-	result := *resultData.(*proto.QanReport)
-	global := &mysqlLog.GlobalClass{}
-	json.Unmarshal(result.Global, global)
-	if global.TotalQueries != 2 {
-		c.Error("First interval has 2 queries, got ", global.TotalQueries)
+	report := *resultData.(*qan.Report)
+	if report.Global.TotalQueries != 2 {
+		c.Error("First interval has 2 queries, got ", report.Global.TotalQueries)
 	}
-	if global.UniqueQueries != 1 {
-		c.Error("First interval has 1 unique query, got ", global.UniqueQueries)
+	if report.Global.UniqueQueries != 1 {
+		c.Error("First interval has 1 unique query, got ", report.Global.UniqueQueries)
 	}
 
 	// Second interval: 736 - 1833, but will actually go to end: 2200, if not
@@ -401,17 +428,15 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
 	}
 	s.intervalChan <- i2
 	resultData = <-s.dataChan
-	result = *resultData.(*proto.QanReport)
-	global = &mysqlLog.GlobalClass{}
-	json.Unmarshal(result.Global, global)
-	if global.TotalQueries != 4 {
-		c.Error("Second interval has 2 queries, got ", global.TotalQueries)
+	report = *resultData.(*qan.Report)
+	if report.Global.TotalQueries != 4 {
+		c.Error("Second interval has 2 queries, got ", report.Global.TotalQueries)
 	}
-	if global.UniqueQueries != 2 {
-		c.Error("Second interval has 2 unique queries, got ", global.UniqueQueries)
+	if report.Global.UniqueQueries != 2 {
+		c.Error("Second interval has 2 unique queries, got ", report.Global.UniqueQueries)
 	}
 
-	test.WaitStatus(1, m, "QanLogParser", "Ready (0 of 2 running)")
+	test.WaitStatus(1, m, "qan-log-parser", "Ready (0 of 2 running)")
 
 	// Original slow log should no longer exist; it was rotated away.
 	if _, err := os.Stat("/tmp/" + slowlog); !os.IsNotExist(err) {
@@ -445,7 +470,7 @@ func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
 		os.Remove(file)
 	}
 
-	m := qan.NewManager(s.logger, s.nullmysql, s.iter, s.workerFactory, s.spool)
+	m := qan.NewManager(s.logger, s.nullmysql, s.clock, s.iterFactory, s.workerFactory, s.spool)
 	if m == nil {
 		c.Fatal("Create qan.Manager")
 	}
@@ -477,7 +502,7 @@ func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
 	if err != nil {
 		c.Fatal(err)
 	}
-	test.WaitStatus(1, m, "QanLogParser", "Ready")
+	test.WaitStatus(1, m, "qan-log-parser", "Ready")
 
 	s.nullmysql.Reset()
 
@@ -495,14 +520,12 @@ func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
 	}
 	s.intervalChan <- i1
 	resultData := <-s.dataChan
-	result := *resultData.(*proto.QanReport)
-	global := &mysqlLog.GlobalClass{}
-	json.Unmarshal(result.Global, global)
-	if global.TotalQueries != 2 {
-		c.Error("First interval has 2 queries, got ", global.TotalQueries)
+	report := *resultData.(*qan.Report)
+	if report.Global.TotalQueries != 2 {
+		c.Error("First interval has 2 queries, got ", report.Global.TotalQueries)
 	}
-	if global.UniqueQueries != 1 {
-		c.Error("First interval has 1 unique query, got ", global.UniqueQueries)
+	if report.Global.UniqueQueries != 1 {
+		c.Error("First interval has 1 unique query, got ", report.Global.UniqueQueries)
 	}
 
 	// Second interval: 736 - 1833, but will actually go to end: 2200, if not
@@ -516,17 +539,15 @@ func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
 	}
 	s.intervalChan <- i2
 	resultData = <-s.dataChan
-	result = *resultData.(*proto.QanReport)
-	global = &mysqlLog.GlobalClass{}
-	json.Unmarshal(result.Global, global)
-	if global.TotalQueries != 4 {
-		c.Error("Second interval has 2 queries, got ", global.TotalQueries)
+	report = *resultData.(*qan.Report)
+	if report.Global.TotalQueries != 4 {
+		c.Error("Second interval has 2 queries, got ", report.Global.TotalQueries)
 	}
-	if global.UniqueQueries != 2 {
-		c.Error("Second interval has 2 unique queries, got ", global.UniqueQueries)
+	if report.Global.UniqueQueries != 2 {
+		c.Error("Second interval has 2 unique queries, got ", report.Global.UniqueQueries)
 	}
 
-	test.WaitStatus(1, m, "QanLogParser", "Ready (0 of 2 running)")
+	test.WaitStatus(1, m, "qan-log-parser", "Ready (0 of 2 running)")
 
 	// Original slow log should no longer exist; it was rotated away.
 	if _, err := os.Stat("/tmp/" + slowlog); !os.IsNotExist(err) {
@@ -589,7 +610,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
 	cp.Run()
 
 	// Create and start manager with mock workers.
-	m := qan.NewManager(s.logger, s.nullmysql, s.iter, f, s.spool)
+	m := qan.NewManager(s.logger, s.nullmysql, s.clock, s.iterFactory, f, s.spool)
 	if m == nil {
 		c.Fatal("Create qan.Manager")
 	}
@@ -609,7 +630,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
 	if err != nil {
 		c.Fatal(err)
 	}
-	test.WaitStatus(1, m, "QanLogParser", "Ready")
+	test.WaitStatus(1, m, "qan-log-parser", "Ready")
 
 	// Start first mock worker (w1) with interval 0 - 736.  The worker's Run()
 	// func won't return until we send true to its stop chan, so manager will
@@ -637,7 +658,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
 	s.intervalChan <- i2
 	<-w2.Running()
 
-	test.WaitStatus(1, m, "QanLogParser", "Ready (2 of 2 running)")
+	test.WaitStatus(1, m, "qan-log-parser", "Ready (2 of 2 running)")
 
 	/**
 	 * Quick side test: qan.Config.MaxWorkers is enforced.
@@ -645,7 +666,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
 	test.DrainLogChan(s.logChan)
 	s.intervalChan <- i2
 	logs := test.WaitLogChan(s.logChan, 3)
-	test.WaitStatus(1, m, "QanLogParser", "Ready (2 of 2 running)")
+	test.WaitStatus(1, m, "qan-log-parser", "Ready (2 of 2 running)")
 	gotWarning := false
 	for _, log := range logs {
 		if log.Level == proto.LOG_WARNING && strings.Contains(log.Msg, "All workers busy") {
@@ -678,7 +699,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
 	// w1 is still running, manager should not remove the old log yet because
 	// w1 could still be parsing it.
 	w2StopChan <- true
-	test.WaitStatus(1, m, "QanLogParser", "Ready (1 of 2 running)")
+	test.WaitStatus(1, m, "qan-log-parser", "Ready (1 of 2 running)")
 	if _, err := os.Stat(files[0]); os.IsNotExist(err) {
 		c.Errorf("w1 still running so old slow log not removed")
 	}
@@ -686,7 +707,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
 	// Stop w1 and now, even though slow log was rotated for w2, manager
 	// should remove old slow log.
 	w1StopChan <- true
-	test.WaitStatus(1, m, "QanLogParser", "Ready (0 of 2 running)")
+	test.WaitStatus(1, m, "qan-log-parser", "Ready (0 of 2 running)")
 	if _, err := os.Stat(files[0]); !os.IsNotExist(err) {
 		c.Errorf("w1 done running so old slow log removed")
 	}
@@ -712,7 +733,7 @@ func getFilename() (string, error) {
 }
 
 func (s *IntervalTestSuite) TestIterFile(c *gocheck.C) {
-	tickerChan := make(chan time.Time)
+	tickChan := make(chan time.Time)
 
 	// This is the file we iterate.  It's 3 bytes large to start,
 	// so that should be the StartOffset.
@@ -723,19 +744,19 @@ func (s *IntervalTestSuite) TestIterFile(c *gocheck.C) {
 	defer func() { os.Remove(tmpFile.Name()) }()
 
 	// Start interating the file, waiting for ticks.
-	i := qan.NewFileIntervalIter(getFilename, tickerChan)
+	i := qan.NewFileIntervalIter(getFilename, tickChan)
 	i.Start()
 
 	// Send a tick to start the interval
 	t1 := time.Now()
-	tickerChan <- t1
+	tickChan <- t1
 
 	// Write more data to the file, pretend time passes...
 	_ = ioutil.WriteFile(tmpFile.Name(), []byte("123456"), 0777)
 
 	// Send a 2nd tick to finish the interval
 	t2 := time.Now()
-	tickerChan <- t2
+	tickChan <- t2
 
 	// Get the interval
 	got := <-i.IntervalChan()
@@ -766,7 +787,7 @@ func (s *IntervalTestSuite) TestIterFile(c *gocheck.C) {
 	_ = ioutil.WriteFile(fileName, []byte("123456789A"), 0777)
 
 	t3 := time.Now()
-	tickerChan <- t3
+	tickChan <- t3
 
 	got = <-i.IntervalChan()
 	expect = &qan.Interval{
@@ -782,7 +803,7 @@ func (s *IntervalTestSuite) TestIterFile(c *gocheck.C) {
 	_ = ioutil.WriteFile(fileName, []byte("123456789ABCDEF"), 0777)
 	//                                               ^^^^^ new data
 	t4 := time.Now()
-	tickerChan <- t4
+	tickChan <- t4
 
 	got = <-i.IntervalChan()
 	expect = &qan.Interval{
@@ -795,4 +816,65 @@ func (s *IntervalTestSuite) TestIterFile(c *gocheck.C) {
 	c.Check(got, test.DeepEquals, expect)
 
 	i.Stop()
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// MakeReport (Result -> Report)
+/////////////////////////////////////////////////////////////////////////////
+
+type ReportTestSuite struct{}
+
+var _ = gocheck.Suite(&ReportTestSuite{})
+
+func (s *ReportTestSuite) TestResult001(c *gocheck.C) {
+	data, err := ioutil.ReadFile(sample + "/result001.json")
+	c.Assert(err, gocheck.IsNil)
+
+	result := &qan.Result{}
+	err = json.Unmarshal(data, result)
+	c.Assert(err, gocheck.IsNil)
+
+	start := time.Now().Add(-1 * time.Second)
+	stop := time.Now()
+
+	interval := &qan.Interval{
+		Filename:    "slow.log",
+		StartTime:   start,
+		StopTime:    stop,
+		StartOffset: 0,
+		EndOffset:   1000,
+	}
+	config := &qan.Config{
+		ReportLimit: 10,
+	}
+	report := qan.MakeReport(interval, result, config)
+
+	// 1st: 2.9
+	c.Check(report.Class[0].Id, gocheck.Equals, "3000000000000003")
+	c.Check(report.Class[0].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(2.9))
+	// 2nd: 2
+	c.Check(report.Class[1].Id, gocheck.Equals, "2000000000000002")
+	c.Check(report.Class[1].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(2))
+	// ...
+	// 5th: 0.101001
+	c.Check(report.Class[4].Id, gocheck.Equals, "5000000000000005")
+	c.Check(report.Class[4].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(0.101001))
+
+	// Limit=2 results in top 2 queries and the rest in 1 LRQ "query".
+	config.ReportLimit = 2
+	report = qan.MakeReport(interval, result, config)
+	c.Check(len(report.Class), gocheck.Equals, 3)
+
+	c.Check(report.Class[0].Id, gocheck.Equals, "3000000000000003")
+	c.Check(report.Class[0].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(2.9))
+
+	c.Check(report.Class[1].Id, gocheck.Equals, "2000000000000002")
+	c.Check(report.Class[1].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(2))
+
+	c.Check(int(report.Class[2].TotalQueries), gocheck.Equals, 3)
+	c.Check(report.Class[2].Id, gocheck.Equals, "0")
+	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(1+1+0.101001))
+	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Min, gocheck.Equals, float32(0.000100))
+	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Max, gocheck.Equals, float32(1.12))
+	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Avg, gocheck.Equals, float32(0.505))
 }

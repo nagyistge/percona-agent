@@ -1,3 +1,20 @@
+/*
+   Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
+
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
+
+   You should have received a copy of the GNU Affero General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>
+*/
+
 package mm_test
 
 import (
@@ -11,35 +28,36 @@ import (
 	"github.com/percona/cloud-tools/test"
 	"github.com/percona/cloud-tools/test/mock"
 	"io/ioutil"
-	"launchpad.net/gocheck"
+	. "launchpad.net/gocheck"
 	"os"
-	"strings"
 	"testing"
 	"time"
 )
 
 // Hook up gocheck into the "go test" runner.
-func Test(t *testing.T) { gocheck.TestingT(t) }
+func Test(t *testing.T) { TestingT(t) }
 
-var sample = os.Getenv("GOPATH") + "/src/github.com/percona/cloud-tools/test/mm"
+var sample = test.RootDir + "/mm"
 
 /////////////////////////////////////////////////////////////////////////////
-// Worker test suite
+// Aggregator test suite
 /////////////////////////////////////////////////////////////////////////////
 
 type AggregatorTestSuite struct {
-	tickerChan     chan time.Time
-	ticker         pct.Ticker
+	logChan        chan *proto.LogEntry
+	logger         *pct.Logger
+	tickChan       chan time.Time
 	collectionChan chan *mm.Collection
 	dataChan       chan interface{}
 	spool          *mock.Spooler
 }
 
-var _ = gocheck.Suite(&AggregatorTestSuite{})
+var _ = Suite(&AggregatorTestSuite{})
 
-func (s *AggregatorTestSuite) SetUpSuite(t *gocheck.C) {
-	s.tickerChan = make(chan time.Time)
-	s.ticker = mock.NewTicker(nil, s.tickerChan)
+func (s *AggregatorTestSuite) SetUpSuite(t *C) {
+	s.logChan = make(chan *proto.LogEntry, 10)
+	s.logger = pct.NewLogger(s.logChan, "mm-manager-test")
+	s.tickChan = make(chan time.Time)
 	s.collectionChan = make(chan *mm.Collection)
 	s.dataChan = make(chan interface{}, 1)
 	s.spool = mock.NewSpooler(s.dataChan)
@@ -58,19 +76,8 @@ func sendCollection(file string, collectionChan chan *mm.Collection) error {
 	return nil
 }
 
-func loadReport(file string, report *mm.Report) error {
-	bytes, err := ioutil.ReadFile(file)
-	if err != nil {
-		return err
-	}
-	if err = json.Unmarshal(bytes, report); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (s *AggregatorTestSuite) TestC001(t *gocheck.C) {
-	a := mm.NewAggregator(s.ticker, s.collectionChan, s.spool)
+func (s *AggregatorTestSuite) TestC001(t *C) {
+	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
 
@@ -87,7 +94,7 @@ func (s *AggregatorTestSuite) TestC001(t *gocheck.C) {
 		t.Error("No report before tick, got: %+v", got)
 	}
 
-	s.tickerChan <- t1
+	s.tickChan <- t1
 
 	got = test.WaitMmReport(s.dataChan)
 	if got != nil {
@@ -98,7 +105,7 @@ func (s *AggregatorTestSuite) TestC001(t *gocheck.C) {
 		t.Fatal(err)
 	}
 
-	s.tickerChan <- t2
+	s.tickChan <- t2
 
 	got = test.WaitMmReport(s.dataChan)
 	if got == nil {
@@ -109,21 +116,28 @@ func (s *AggregatorTestSuite) TestC001(t *gocheck.C) {
 	}
 
 	expect := &mm.Report{}
-	if err := loadReport(sample+"/c001r.json", expect); err != nil {
+	if err := test.LoadMmReport(sample+"/c001r.json", expect); err != nil {
 		t.Fatal(err)
 	}
+	t.Check(got.Ts, Equals, t1)
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
+
+	// Duration should be t2 - t1.
+	d := uint(t2.Unix() - t1.Unix())
+	if got.Duration != d {
+		t.Errorf("Duration is t2 - t1 = %d, got %s", d, got.Duration)
+	}
 }
 
-func (s *AggregatorTestSuite) TestC002(t *gocheck.C) {
-	a := mm.NewAggregator(s.ticker, s.collectionChan, s.spool)
+func (s *AggregatorTestSuite) TestC002(t *C) {
+	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
 
 	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
-	s.tickerChan <- t1
+	s.tickChan <- t1
 
 	for i := 1; i <= 5; i++ {
 		file := fmt.Sprintf("%s/c002-%d.json", sample, i)
@@ -133,26 +147,28 @@ func (s *AggregatorTestSuite) TestC002(t *gocheck.C) {
 	}
 
 	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
-	s.tickerChan <- t2
+	s.tickChan <- t2
 
 	got := test.WaitMmReport(s.dataChan)
 	expect := &mm.Report{}
-	if err := loadReport(sample+"/c002r.json", expect); err != nil {
+	if err := test.LoadMmReport(sample+"/c002r.json", expect); err != nil {
 		t.Fatal("c002r.json ", err)
 	}
+	t.Check(got.Ts, Equals, t1)
+	t.Check(got.Duration, Equals, uint(300))
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
 }
 
 // All zero values
-func (s *AggregatorTestSuite) TestC000(t *gocheck.C) {
-	a := mm.NewAggregator(s.ticker, s.collectionChan, s.spool)
+func (s *AggregatorTestSuite) TestC000(t *C) {
+	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
 
 	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
-	s.tickerChan <- t1
+	s.tickChan <- t1
 
 	file := sample + "/c000.json"
 	if err := sendCollection(file, s.collectionChan); err != nil {
@@ -160,26 +176,28 @@ func (s *AggregatorTestSuite) TestC000(t *gocheck.C) {
 	}
 
 	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
-	s.tickerChan <- t2
+	s.tickChan <- t2
 
 	got := test.WaitMmReport(s.dataChan)
 	expect := &mm.Report{}
-	if err := loadReport(sample+"/c000r.json", expect); err != nil {
+	if err := test.LoadMmReport(sample+"/c000r.json", expect); err != nil {
 		t.Fatal("c000r.json ", err)
 	}
+	t.Check(got.Ts, Equals, t1)
+	t.Check(got.Duration, Equals, uint(300))
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
 }
 
 // COUNTER
-func (s *AggregatorTestSuite) TestC003(t *gocheck.C) {
-	a := mm.NewAggregator(s.ticker, s.collectionChan, s.spool)
+func (s *AggregatorTestSuite) TestC003(t *C) {
+	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
 
 	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
-	s.tickerChan <- t1
+	s.tickChan <- t1
 
 	for i := 1; i <= 5; i++ {
 		file := fmt.Sprintf("%s/c003-%d.json", sample, i)
@@ -189,7 +207,7 @@ func (s *AggregatorTestSuite) TestC003(t *gocheck.C) {
 	}
 
 	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
-	s.tickerChan <- t2
+	s.tickChan <- t2
 
 	/**
 	 * Pretend we're monitoring Bytes_sents every second:
@@ -205,21 +223,23 @@ func (s *AggregatorTestSuite) TestC003(t *gocheck.C) {
 	 */
 	got := test.WaitMmReport(s.dataChan)
 	expect := &mm.Report{}
-	if err := loadReport(sample+"/c003r.json", expect); err != nil {
+	if err := test.LoadMmReport(sample+"/c003r.json", expect); err != nil {
 		t.Fatal("c003r.json ", err)
 	}
+	t.Check(got.Ts, Equals, t1)
+	t.Check(got.Duration, Equals, uint(300))
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
 }
 
-func (s *AggregatorTestSuite) TestC003Lost(t *gocheck.C) {
-	a := mm.NewAggregator(s.ticker, s.collectionChan, s.spool)
+func (s *AggregatorTestSuite) TestC003Lost(t *C) {
+	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
 
 	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
-	s.tickerChan <- t1
+	s.tickChan <- t1
 
 	// The full sequence is files 1-5, but we send only 1 and 5,
 	// simulating monitor failure during 2-4.  More below...
@@ -233,7 +253,7 @@ func (s *AggregatorTestSuite) TestC003Lost(t *gocheck.C) {
 	}
 
 	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
-	s.tickerChan <- t2
+	s.tickChan <- t2
 
 	/**
 	 * Values we did get are 100 and 1600 and ts 00 to 04.  So that looks like
@@ -242,9 +262,11 @@ func (s *AggregatorTestSuite) TestC003Lost(t *gocheck.C) {
 	 */
 	got := test.WaitMmReport(s.dataChan)
 	expect := &mm.Report{}
-	if err := loadReport(sample+"/c003rlost.json", expect); err != nil {
+	if err := test.LoadMmReport(sample+"/c003rlost.json", expect); err != nil {
 		t.Fatal("c003r.json ", err)
 	}
+	t.Check(got.Ts, Equals, t1)
+	t.Check(got.Duration, Equals, uint(300))
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
@@ -255,62 +277,78 @@ func (s *AggregatorTestSuite) TestC003Lost(t *gocheck.C) {
 /////////////////////////////////////////////////////////////////////////////
 
 type ManagerTestSuite struct {
-	logChan       chan *proto.LogEntry
-	logger        *pct.Logger
-	mockMonitor   mm.Monitor
-	monitors      map[string]mm.Monitor
-	tickerChan    chan time.Time
-	mockTicker    *mock.Ticker
-	tickerFactory *mock.TickerFactory
-	dataChan      chan interface{}
-	spool         data.Spooler
-	traceChan     chan string
-	readyChan     chan bool
+	logChan     chan *proto.LogEntry
+	logger      *pct.Logger
+	mockMonitor mm.Monitor
+	factory     *mock.MonitorFactory
+	tickChan    chan time.Time
+	clock       *mock.Clock
+	dataChan    chan interface{}
+	spool       data.Spooler
+	traceChan   chan string
+	readyChan   chan bool
+	configDir   string
 }
 
-var _ = gocheck.Suite(&ManagerTestSuite{})
+var _ = Suite(&ManagerTestSuite{})
 
-func (s *ManagerTestSuite) SetUpSuite(t *gocheck.C) {
+func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.logChan = make(chan *proto.LogEntry, 10)
 	s.logger = pct.NewLogger(s.logChan, "mm-manager-test")
+
 	s.mockMonitor = mock.NewMonitor()
+	s.factory = mock.NewMonitorFactory([]mm.Monitor{s.mockMonitor})
 
-	s.monitors = map[string]mm.Monitor{"mysql": s.mockMonitor}
-	s.tickerChan = make(chan time.Time)
-
-	s.mockTicker = mock.NewTicker(nil, s.tickerChan)
-
-	s.tickerFactory = mock.NewTickerFactory()
+	s.tickChan = make(chan time.Time)
 
 	s.traceChan = make(chan string, 10)
 
 	s.dataChan = make(chan interface{}, 1)
 	s.spool = mock.NewSpooler(s.dataChan)
+
+	tmpdir, err := ioutil.TempDir("/tmp", "mm-manager-test")
+	t.Log(err)
+	t.Assert(err, IsNil)
+	s.configDir = tmpdir
 }
 
-func (s *ManagerTestSuite) TestStartStopManager(t *gocheck.C) {
-	s.tickerFactory.Set([]pct.Ticker{s.mockTicker})
+func (s *ManagerTestSuite) SetUpTest(t *C) {
+	s.clock = mock.NewClock()
+}
 
-	m := mm.NewManager(s.logger, s.monitors, s.tickerFactory, s.spool)
+func (s *ManagerTestSuite) TearDownSuite(t *C) {
+	if err := os.RemoveAll(s.configDir); err != nil {
+		t.Error(err)
+	}
+}
+
+// --------------------------------------------------------------------------
+
+func (s *ManagerTestSuite) TestStartStopManager(t *C) {
+	/**
+	 * mm is a proxy manager for monitors, so it's always running.
+	 * It should implement the service manager interface anyway,
+	 * but it doesn't actually start or stop.  Its main work is done
+	 * in Handle, starting and stopping monitors (tested later).
+	 */
+
+	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool)
 	if m == nil {
 		t.Fatal("Make new mm.Manager")
 	}
 
-	// It shouldn't be running because we haven't started it.
-	if m.IsRunning() {
-		t.Error("IsRunning() is false")
-	}
-
-	// And neither should the report ticker.
-	if s.mockTicker.Running {
-		t.Error("Report ticker is not running")
+	// It shouldn't have added a tickChan yet.
+	if len(s.clock.Added) != 0 {
+		t.Error("tickChan not added yet")
 	}
 
 	// First the API marshals an mm.Config.
 	config := &mm.Config{
-		Intervals: map[string]mm.Interval{
-			"mysql": mm.Interval{Collect: 1, Report: 60},
-		},
+		Name:    "mysql",
+		Type:    "mysql",
+		Collect: 1,
+		Report:  60,
+		Config:  []byte{},
 	}
 	data, err := json.Marshal(config)
 	if err != nil {
@@ -330,141 +368,86 @@ func (s *ManagerTestSuite) TestStartStopManager(t *gocheck.C) {
 		t.Fatalf("Start manager without error, got %s", err)
 	}
 
-	// Now it should be running.
-	if !m.IsRunning() {
-		t.Error("IsRunning() is true")
+	// It should not add a tickChan to the clock (this is done in Handle()).
+	if ok, diff := test.IsDeeply(s.clock.Added, []uint{}); !ok {
+		t.Errorf("Does not add tickChan, got %#v", diff)
 	}
 
-	// It should start without error ^ of course, but it should also make a ticker
-	// for the 60s report interval.
-	if ok, diff := test.IsDeeply(s.tickerFactory.Made, []uint{60}); !ok {
-		t.Errorf("Make only 60s ticker for report interval\n%s", diff)
-	}
-
-	// And it should start the aggregator which starts the ticker by calling Sync().
-	if !s.mockTicker.Running {
-		t.Error("Report ticker is running")
-	}
-
-	// After starting, its status should be "Ready [cmd]" where cmd is
-	// the originating ^ cmd.
+	// Its status should be "Ready".
 	status := m.Status()
-	if !strings.Contains(status["Mm"], "Ready") {
-		t.Error("Status is \"Ready\", got ", status["Mm"])
-	}
-	if !strings.Contains(status["Mm"], `"User":"daniel"`) {
-		t.Error("Status has originating cmd, got ", status["Mm"])
-	}
+	t.Check(status["mm"], Equals, "Ready")
 
-	// Starting an already started service should result in a ServiceIsRunningError.
+	// Normally, starting an already started service results in a ServiceIsRunningError,
+	// but mm is a proxy manager so starting it is a null op.
 	err = m.Start(cmd, data)
-	if err == nil {
-		t.Error("Start manager when already start cauess error")
-	}
-	switch err.(type) { // todo: ugly hack to access and test error type
-	case pct.ServiceIsRunningError:
-		// ok
-	default:
-		t.Error("Error is type pct.ServiceIsRunningError, got %T", err)
+	if err != nil {
+		t.Error("Starting mm manager multiple times doesn't cause error")
 	}
 
-	/**
-	 * Stop the manager, which should "undo" all of that ^.
-	 */
-
+	// Stopping the mm manager is also a null op...
 	err = m.Stop(cmd)
-
-	// Repeat many of the same tests ^ but for being stopped:
 	if err != nil {
 		t.Fatalf("Stop manager without error, got %s", err)
 	}
-	if m.IsRunning() {
-		t.Error("IsRunning() is false")
-	}
-	if s.mockTicker.Running {
-		t.Error("Report ticker is not running")
-	}
+
+	// ...which is why its status is always "Ready".
 	status = m.Status()
-	if !strings.Contains(status["Mm"], "Stopped") {
-		t.Error("Status is \"Stopped\", got ", status)
-	}
-	if !strings.Contains(status["Mm"], `"User":"daniel"`) {
-		t.Error("Status has originating cmd, got ", status)
-	}
+	t.Check(status["mm"], Equals, "Ready")
 }
 
-func (s *ManagerTestSuite) TestStartStopMonitor(t *gocheck.C) {
-	collectTicker := mock.NewTicker(nil, s.tickerChan)
-	s.tickerFactory.Set([]pct.Ticker{s.mockTicker, collectTicker})
+func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 
-	// First start the manager, same as above ^ in TestStartStopManager().
-	m := mm.NewManager(s.logger, s.monitors, s.tickerFactory, s.spool)
+	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool)
 	if m == nil {
 		t.Fatal("Make new mm.Manager")
 	}
 
-	config := &mm.Config{
-		Intervals: map[string]mm.Interval{
-			"mysql": mm.Interval{Collect: 1, Report: 60},
+	// mm is a proxy manager so it doesn't have its own config file,
+	// but agent still calls LoadConfig() because this also tells
+	// the manager where to save configs, monitor configs in this case.
+	v, err := m.LoadConfig(s.configDir)
+	t.Check(v, IsNil)
+	t.Check(err, IsNil)
+
+	// Starting a monitor is like starting the manager: it requires
+	// a "StartService" cmd and the monitor's config.  This is the
+	// config in configDir/db1-mysql-monitor.conf.
+	mysqlConfig := &mysql.Config{
+		DSN:          "user:host@tcp:(127.0.0.1:3306)",
+		InstanceName: "db1",
+		Status: map[string]byte{
+			"threads_connected": mm.NUMBER,
+			"threads_running":   mm.NUMBER,
 		},
 	}
-	data, err := json.Marshal(config)
+	mysqlConfigData, err := json.Marshal(mysqlConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mmConfig := &mm.Config{
+		Name:    "db1",
+		Type:    "mysql",
+		Collect: 1,
+		Report:  60,
+		Config:  mysqlConfigData,
+	}
+	mmConfigData, err := json.Marshal(mmConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	cmd := &proto.Cmd{
-		User: "daniel",
-		Cmd:  "StartService",
-		Data: data,
-	}
-
-	err = m.Start(cmd, data)
-	if err != nil {
-		t.Fatalf("Start manager without error, got %s", err)
-	}
-	if !m.IsRunning() {
-		t.Fatal("IsRunning() is true")
-	}
-
-	/**
-	 * Manager is running, now we can start a monitor.
-	 */
-
-	// Starting a monitor is like starting the manager: it requires
-	// a "Start" cmd and the monitor's config.
-	mysqlConfig := &mysql.Config{
-		DSN:          "user:host@tcp:(127.0.0.1:3306)",
-		InstanceName: "db1",
-		Status: map[string]byte{
-			"Threads_connected": mm.NUMBER,
-			"Threads_running":   mm.NUMBER,
-		},
-	}
-	configData, err := json.Marshal(mysqlConfig)
-	if err != nil {
-		t.Fatal(err)
-	}
-	service := &proto.ServiceData{
-		Name:   "mysql",
-		Config: configData,
-	}
-	serviceData, err := json.Marshal(service)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cmd = &proto.Cmd{
 		User:    "daniel",
-		Cmd:     "Start",
 		Service: "mm",
-		Data:    serviceData,
+		Cmd:     "StartService",
+		Data:    mmConfigData,
 	}
 
 	// The agent calls mm.Handle() with the cmd (for logging and status) and the config data.
-	err = m.Handle(cmd)
-	if err != nil {
-		t.Fatalf("Start monitor without error, got %s", err)
-	}
+	reply := m.Handle(cmd)
+	t.Assert(reply, NotNil)
+	t.Check(reply.Error, Equals, "")
 
 	// The monitor should be running.  The mock monitor returns "Running" if
 	// Start() has been called; else it returns "Stopped".
@@ -475,83 +458,72 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *gocheck.C) {
 
 	// There should be a 60s report ticker for the aggregator and a 1s collect ticker
 	// for the monitor.
-	if ok, diff := test.IsDeeply(s.tickerFactory.Made, []uint{60, 1}); !ok {
+	if ok, diff := test.IsDeeply(s.clock.Added, []uint{1, 60}); !ok {
 		t.Errorf("Make 1s ticker for collect interval\n%s", diff)
 	}
 
-	// The collect ticker should *not* be running yet; it's the monitor's job
-	// to start it (and mock.Monitor doesn't).  By contrast, the manager does
-	// start the report ticker; that's tested in StartStopManager().
-	if collectTicker.Running {
-		t.Error("Collect ticker not started by manager")
+	// After starting a monitor, mm should write its config to the dir
+	// it learned when mm.LoadConfig() was called.  Next time agent starts,
+	// it will have mm start the monitor with this config.
+	data, err := ioutil.ReadFile(s.configDir + "/db1-mysql-monitor.conf")
+	t.Check(err, IsNil)
+	gotConfig := &mm.Config{}
+	err = json.Unmarshal(data, gotConfig)
+	t.Check(err, IsNil)
+	if same, diff := test.IsDeeply(gotConfig, mmConfig); !same {
+		t.Logf("%+v", gotConfig)
+		t.Error(diff)
 	}
-
-	// Fake like the monitor starts its ticker so we can test later that
-	// the manager stops it.
-	collectTicker.Running = true
 
 	/**
 	 * Stop the monitor.
 	 */
 
-	// Starting a monitor is like starting the manager: it requires
-	// a "Start" cmd and the monitor's config.
-	service = &proto.ServiceData{
-		Name: "mysql",
-	}
-	serviceData, err = json.Marshal(service)
-	if err != nil {
-		t.Fatal(err)
-	}
 	cmd = &proto.Cmd{
 		User:    "daniel",
-		Cmd:     "Stop",
 		Service: "mm",
-		Data:    serviceData,
+		Cmd:     "StopService",
+		Data:    mmConfigData,
 	}
 
-	err = m.Handle(cmd)
-	if err != nil {
-		t.Fatalf("Stop monitor without error, got %s", err)
-	}
+	// Handles StopService without error.
+	reply = m.Handle(cmd)
+	t.Assert(reply, NotNil)
+	t.Check(reply.Error, Equals, "")
 
 	status = s.mockMonitor.Status()
 	if status["monitor"] != "Stopped" {
 		t.Error("Monitor stopped")
 	}
 
-	// After stopping the monitor, the manager should also stop the ticker.
-	if collectTicker.Running {
-		t.Error("Collect ticker stopped by manager")
+	// After stopping the monitor, the manager should remove its tickChan.
+	if len(s.clock.Removed) != 1 {
+		t.Error("Remove's monitor's tickChan from clock")
+	}
+
+	// After stopping a monitor, mm should remove its config file so agent
+	// doesn't start it on restart.
+	file := s.configDir + "/db1-mysql-monitor.conf"
+	if pct.FileExists(file) {
+		t.Error("Stopping monitor removes its config; ", file, " exists")
 	}
 
 	/**
 	 * While we're all setup and working, let's sneak in an unknown cmd test.
 	 */
 
-	service = &proto.ServiceData{
-		Name: "mysql",
-	}
-	serviceData, err = json.Marshal(service)
-	if err != nil {
-		t.Fatal(err)
-	}
 	cmd = &proto.Cmd{
 		User:    "daniel",
-		Cmd:     "Pontificate",
 		Service: "mm",
-		Data:    serviceData,
+		Cmd:     "Pontificate",
+		Data:    mmConfigData,
 	}
 
-	err = m.Handle(cmd)
-	if err == nil {
+	// Unknown cmd causes error.
+	reply = m.Handle(cmd)
+	t.Assert(reply, NotNil)
+	if reply.Error == "" {
 		t.Fatalf("Unknown Cmd to Handle() causes error")
-	}
-	switch err.(type) { // todo: ugly hack to access and test error type
-	case pct.UnknownCmdError:
-		// ok
-	default:
-		t.Error("Error is type pct.UnknownCmdError, got %T", err)
 	}
 
 	/**

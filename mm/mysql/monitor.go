@@ -1,3 +1,20 @@
+/*
+    Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Affero General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Affero General Public License for more details.
+
+    You should have received a copy of the GNU Affero General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>
+*/
+
 package mysql
 
 import (
@@ -16,7 +33,7 @@ type Monitor struct {
 	logger *pct.Logger
 	// --
 	config         *Config
-	ticker         pct.Ticker
+	tickChan       chan time.Time
 	collectionChan chan *mm.Collection
 	// --
 	conn          *sql.DB
@@ -44,7 +61,7 @@ func NewMonitor(logger *pct.Logger) *Monitor {
 /////////////////////////////////////////////////////////////////////////////
 
 // @goroutine[0]
-func (m *Monitor) Start(config []byte, ticker pct.Ticker, collectionChan chan *mm.Collection) error {
+func (m *Monitor) Start(config []byte, tickChan chan time.Time, collectionChan chan *mm.Collection) error {
 	if m.config != nil {
 		return pct.ServiceIsRunningError{"mysql-monitor"}
 	}
@@ -54,11 +71,8 @@ func (m *Monitor) Start(config []byte, ticker pct.Ticker, collectionChan chan *m
 		return err
 	}
 	m.config = c
-	m.ticker = ticker
+	m.tickChan = tickChan
 	m.collectionChan = collectionChan
-
-	m.status.Update("mysql", "Synchronizing")
-	m.ticker.Sync(time.Now().UnixNano())
 
 	go m.run()
 
@@ -66,25 +80,30 @@ func (m *Monitor) Start(config []byte, ticker pct.Ticker, collectionChan chan *m
 }
 
 // @goroutine[0]
-func (m *Monitor) Stop() {
+func (m *Monitor) Stop() error {
 	if m.config == nil {
-		return // already stopped
+		return nil // already stopped
 	}
 
 	// Stop run().  When it returns, it updates status to "Stopped".
 	m.status.Update("mysql", "Stopping")
-	m.ticker.Stop()
 	m.sync.Stop()
 	m.sync.Wait()
 
 	m.config = nil // no config if not running
 
 	// Do not update status to "Stopped" here; run() does that on return.
+	return nil
 }
 
 // @goroutine[0]
 func (m *Monitor) Status() map[string]string {
 	return m.status.All()
+}
+
+// @goroutine[0]
+func (m *Monitor) TickChan() chan time.Time {
+	return m.tickChan
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -170,46 +189,48 @@ func (m *Monitor) run() {
 
 	for {
 		select {
-		case now := <-m.ticker.TickerChan():
-			if m.connected {
-				m.status.Update("mysql", "Running")
-
-				c := &mm.Collection{
-					StartTs: now.Unix(),
-					Metrics: []mm.Metric{},
-				}
-
-				// Get collection of metrics.
-				m.GetShowStatusMetrics(m.conn, prefix, c)
-				if m.config.InnoDB != "" {
-					m.GetInnoDBMetrics(m.conn, prefix, c)
-				}
-				if m.config.UserStats {
-					m.getTableUserStats(m.conn, prefix, c, m.config.UserStatsIgnoreDb)
-					m.getIndexUserStats(m.conn, prefix, c, m.config.UserStatsIgnoreDb)
-				}
-
-				// Send the metrics (to an mm.Aggregator).
-				if len(c.Metrics) > 0 {
-					select {
-					case m.collectionChan <- c:
-					case <-time.After(500 * time.Millisecond):
-						// lost collection
-						m.logger.Debug("Lost MySQL metrics; timeout spooling after 500ms")
-					}
-				} else {
-					m.logger.Debug("No metrics")
-				}
-
-				m.status.Update("mysql", "Ready")
-			} else {
-				m.logger.Debug("Not connected")
+		case now := <-m.tickChan:
+			if !m.connected {
+				continue
 			}
+
+			m.status.Update("mysql", "Running")
+
+			c := &mm.Collection{
+				Ts:      now.Unix(),
+				Metrics: []mm.Metric{},
+			}
+
+			// Get collection of metrics.
+			m.GetShowStatusMetrics(m.conn, prefix, c)
+			if m.config.InnoDB != "" {
+				m.GetInnoDBMetrics(m.conn, prefix, c)
+			}
+			if m.config.UserStats {
+				m.getTableUserStats(m.conn, prefix, c, m.config.UserStatsIgnoreDb)
+				m.getIndexUserStats(m.conn, prefix, c, m.config.UserStatsIgnoreDb)
+			}
+
+			// Send the metrics (to an mm.Aggregator).
+			if len(c.Metrics) > 0 {
+				select {
+				case m.collectionChan <- c:
+				case <-time.After(500 * time.Millisecond):
+					// lost collection
+					m.logger.Debug("Lost MySQL metrics; timeout spooling after 500ms")
+				}
+			} else {
+				m.logger.Debug("No metrics") // shouldn't happen
+			}
+
+			m.status.Update("mysql", "Ready")
 		case connected := <-m.connectedChan:
 			m.connected = connected
 			if connected {
 				m.status.Update("mysql", "Ready")
+				m.logger.Debug("Connected")
 			} else {
+				m.logger.Debug("Disconnected")
 				go m.connect()
 			}
 		case <-m.sync.StopChan:
@@ -236,12 +257,13 @@ func (m *Monitor) GetShowStatusMetrics(conn *sql.DB, prefix string, c *mm.Collec
 			return err
 		}
 
+		statName = strings.ToLower(statName)
 		metricType, ok := m.config.Status[statName]
 		if !ok {
 			continue // not collecting this stat
 		}
 
-		metricName := prefix + "/" + strings.ToLower(statName)
+		metricName := prefix + "/" + statName
 		metricValue, err := strconv.ParseFloat(statValue, 64)
 		if err != nil {
 			metricValue = 0.0
