@@ -3,4 +3,5 @@
 bin/percona-agent/percona-agent
 bin/percona-agent-config/percona-agent-config
 bin/percona-agent-data/percona-agent-data
+bin/percona-agent-cli/percona-agent-cli
 coverage.out
