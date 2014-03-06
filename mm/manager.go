@@ -106,7 +106,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 	mm := &Config{}
 	if err = json.Unmarshal(cmd.Data, mm); err != nil {
-		return cmd.Reply(nil, err)
+		return cmd.Reply(nil, errors.New("JSON: " + err.Error()))
 	}
 
 	// e.g. default-mysql-monitor, default-system-monitoir,
@@ -127,7 +127,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		// Create the monitor based on its type.
 		var monitor Monitor
 		if monitor, err = m.factory.Make(mm.Type, name); err != nil {
-			return cmd.Reply(nil, err)
+			return cmd.Reply(nil, errors.New("Factory: " + err.Error()))
 		}
 
 		// Make ticker for collect interval.
@@ -156,13 +156,13 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 		// Start the monitor.
 		if err = monitor.Start(mm.Config, tickChan, a.collectionChan); err != nil {
-			return cmd.Reply(nil, err)
+			return cmd.Reply(nil, errors.New("Start " + name + ": " + err.Error()))
 		}
 		m.monitors[name] = monitor
 
 		// Save the monitor config to disk so agent starts on restart.
 		if err = m.WriteConfig(mm, name); err != nil {
-			return cmd.Reply(nil, err)
+			return cmd.Reply(nil, errors.New("Write " + name + " config:" + err.Error()))
 		}
 	case "StopService":
 		m.status.UpdateRe("mm", "Stopping "+name, cmd)
@@ -170,10 +170,10 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		if monitor, ok := m.monitors[name]; ok {
 			m.clock.Remove(monitor.TickChan())
 			if err = monitor.Stop(); err != nil {
-				return cmd.Reply(nil, err)
+				return cmd.Reply(nil, errors.New("Stop " + name + ": " + err.Error()))
 			}
 			if err := m.RemoveConfig(name); err != nil {
-				return cmd.Reply(nil, err)
+				return cmd.Reply(nil, errors.New("Remove " + name + ": " + err.Error()))
 			}
 		} else {
 			return cmd.Reply(nil, errors.New("Unknown monitor: "+name))

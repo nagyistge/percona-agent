@@ -27,6 +27,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"errors"
 )
 
 type Monitor struct {
@@ -68,7 +69,7 @@ func (m *Monitor) Start(config []byte, tickChan chan time.Time, collectionChan c
 
 	c := &Config{}
 	if err := json.Unmarshal(config, c); err != nil {
-		return err
+		return errors.New("JSON: " + err.Error())
 	}
 	m.config = c
 	m.tickChan = tickChan
