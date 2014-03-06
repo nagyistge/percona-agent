@@ -132,6 +132,7 @@ func main() {
 		if links, err = GetAgentLinks(agentConfig.ApiKey, agentConfig.AgentUuid, schema+agentConfig.ApiHostname); err != nil {
 			golog.Fatalln(err)
 		}
+		golog.Printf("Agent links: %+v\n", links)
 	}
 
 	hostname, _ := os.Hostname()
@@ -412,7 +413,6 @@ func StartMonitors(configDir string, manager pct.ServiceManager) error {
 		}
 		config := &mm.Config{}
 		json.Unmarshal(data, config)
-		fmt.Printf(">>%+v\n", config)
 		cmd := &proto.Cmd{
 			Ts:      time.Now().UTC(),
 			User:    "percona-agent",

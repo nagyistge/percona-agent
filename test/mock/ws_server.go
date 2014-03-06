@@ -41,10 +41,10 @@ func wsHandler(ws *websocket.Conn) {
 	// Client sends AgentAuth, expects AuthReponse
 	// todo: make controllable by test
 	/*
-	var data interface{}
-	websocket.JSON.Receive(ws, &data)
-	authResponse := &proto.AuthResponse{}
-	websocket.JSON.Send(ws, authResponse)
+		var data interface{}
+		websocket.JSON.Receive(ws, &data)
+		authResponse := &proto.AuthResponse{}
+		websocket.JSON.Send(ws, authResponse)
 	*/
 
 	defer func() {

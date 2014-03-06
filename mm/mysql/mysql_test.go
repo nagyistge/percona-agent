@@ -1,18 +1,18 @@
 /*
-    Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
+   Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
 
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>
+   You should have received a copy of the GNU Affero General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
 package mysql_test
@@ -60,9 +60,9 @@ func TestStartCollectStop(t *testing.T) {
 	config := &mysql.Config{
 		DSN:          dsn,
 		InstanceName: instance,
-		Status: map[string]byte{
-			"threads_connected": mm.NUMBER,
-			"threads_running":   mm.NUMBER,
+		Status: map[string]string{
+			"threads_connected": "gauge",
+			"threads_running":   "gauge",
 		},
 	}
 	data, err := json.Marshal(config)
@@ -168,7 +168,7 @@ func TestCollectInnoDBStats(t *testing.T) {
 
 	config := &mysql.Config{
 		DSN:    dsn,
-		Status: map[string]byte{},
+		Status: map[string]string{},
 		InnoDB: "dml_%", // same as above ^
 	}
 	data, err := json.Marshal(config)
@@ -213,10 +213,10 @@ func TestCollectInnoDBStats(t *testing.T) {
 		t.Fatal("Collect 4 InnoDB metrics; got %+v", c.Metrics)
 	}
 	expect := []mm.Metric{
-		{Name: "mysql/innodb/dml/dml_reads", Type: 2, Number: 0},
-		{Name: "mysql/innodb/dml/dml_inserts", Type: 2, Number: 1}, // <-- our INSERT
-		{Name: "mysql/innodb/dml/dml_deletes", Type: 2, Number: 0},
-		{Name: "mysql/innodb/dml/dml_updates", Type: 2, Number: 0},
+		{Name: "mysql/innodb/dml/dml_reads", Type: "counter", Number: 0},
+		{Name: "mysql/innodb/dml/dml_inserts", Type: "counter", Number: 1}, // <-- our INSERT
+		{Name: "mysql/innodb/dml/dml_deletes", Type: "counter", Number: 0},
+		{Name: "mysql/innodb/dml/dml_updates", Type: "counter", Number: 0},
 	}
 	if ok, diff := test.IsDeeply(c.Metrics, expect); !ok {
 		t.Error(diff)

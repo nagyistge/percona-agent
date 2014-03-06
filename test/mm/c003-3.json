@@ -1,6 +1,6 @@
 {
   "Ts":1257894002,
   "Metrics":[
-    {"Name":"bytes_sent","Type":2,"Number":400}
+    {"Name":"bytes_sent","Type":"counter","Number":400}
   ]
 }
