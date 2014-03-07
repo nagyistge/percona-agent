@@ -29,6 +29,7 @@ import (
 	"bytes"
 	"errors"
 	"regexp"
+	"flag"
 	//"os/user"
 	//"time"
 )
@@ -37,25 +38,26 @@ const (
         VERSION = "1.0.0"                                                                                                           
 )
 
+var apiKey = flag.String("api-key", "", "ApiKey to Percona Cloud Tools")
+var apiURL = flag.String("api-url", agent.DEFAULT_API_HOSTNAME, "Api URL to Percona Cloud Tools")
 
 func main() {
 	golog.SetFlags(golog.Ldate | golog.Ltime | golog.Lmicroseconds | golog.Lshortfile)
 
-	// Parse command line.
-	//	cmd, arg := ParseCmdLine()
+	flag.Parse()
+	if *apiKey == "" {
+		golog.Fatal("api-key can't be empty")
+	}
 
-	arg := ""
 
 	// Create default config.
 	config := &agent.Config{
-		ApiHostname: agent.DEFAULT_API_HOSTNAME,
+		ApiHostname: *apiURL,
 	}
 
 	// Overwrite default config with config file.
-	configFile := arg
-	if configFile == "" {
-		configFile = agent.DEFAULT_CONFIG_FILE
-	}
+	configFile := agent.DEFAULT_CONFIG_FILE
+	
 	if err := pct.ReadConfig(configFile, config); err != nil {
 		golog.Fatal(err)
 	}
@@ -67,7 +69,7 @@ func main() {
 	
 	golog.Printf("Received uuid: %s",uuid)
 
-	config.ApiKey = "2323"
+	config.ApiKey = *apiKey
 	config.AgentUuid = uuid
 
 	// Make sure config has everything we need.
