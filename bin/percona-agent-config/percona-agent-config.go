@@ -19,49 +19,66 @@ package main
 
 import (
 	"fmt"
+	"encoding/json"
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/agent"
-	"log"
+	"github.com/percona/cloud-tools/pct"
+	golog "log"
 	"os"
+	"net/http"
+	"bytes"
+	"errors"
+	"regexp"
 	//"os/user"
 	//"time"
 )
 
+const (                                                                                                                             
+        VERSION = "1.0.0"                                                                                                           
+)
+
 
 func main() {
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
+	golog.SetFlags(golog.Ldate | golog.Ltime | golog.Lmicroseconds | golog.Lshortfile)
 
 	// Parse command line.
-	var arg string
+	//	cmd, arg := ParseCmdLine()
+
+	arg := ""
 
 	// Create default config.
 	config := &agent.Config{
-		ApiHostname: agent.API_HOSTNAME,
-		LogFile:     agent.LOG_FILE,
-		LogLevel:    agent.LOG_LEVEL,
-		DataDir:     agent.DATA_DIR,
+		ApiHostname: agent.DEFAULT_API_HOSTNAME,
 	}
 
 	// Overwrite default config with config file.
 	configFile := arg
 	if configFile == "" {
-		configFile = agent.CONFIG_FILE
+		configFile = agent.DEFAULT_CONFIG_FILE
 	}
-	if err := config.Apply(agent.LoadConfig(configFile)); err != nil {
-		log.Fatal(err)
+	if err := pct.ReadConfig(configFile, config); err != nil {
+		golog.Fatal(err)
 	}
 
+	uuid, err := CreateAgent()
+	if err != nil {
+		golog.Fatal(err)
+	}
+	
+	golog.Printf("Received uuid: %s",uuid)
+
 	config.ApiKey = "2323"
-	config.AgentUuid = "56556"
+	config.AgentUuid = uuid
 
 	// Make sure config has everything we need.
 	if valid, missing := CheckConfig(config, configFile); !valid {
-		log.Println("Invalid config:")
+		golog.Println("Invalid config:")
 		for _, m := range missing {
-			log.Printf("  - %s\n", m)
+			golog.Printf("  - %s\n", m)
 		}
 		os.Exit(-1)
 	}
-	agent.WriteConfig(configFile, config)
+	pct.WriteConfig(configFile, config)
 
 }
 
@@ -83,3 +100,54 @@ func CheckConfig(config *agent.Config, configFile string) (bool, []string) {
 	}
 	return isValid, missing
 }
+
+func CreateAgent() (string, error) {
+	agentUuid := ""
+        data := proto.AgentData{
+                Hostname: "test.vadim-dev.com",
+                Configs: map[string]string{
+                        "agent": "{ type: \"agent_inserted\"}",
+                        "mm": "{ type: \"mm_inserted\"}",
+                },
+                Versions: map[string]string{
+                        "PerconaAgent": VERSION,
+                },
+        }
+
+        postData, err := json.Marshal(data)
+	if err != nil {
+		golog.Fatal(err)
+	}
+
+	//postData, err := json.Marshal(data)
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", "https://cloud-api-v2.percona.com/agents", bytes.NewReader(postData))
+	if err != nil {
+		golog.Printf("http.NewRequest error: %s", err)
+		return agentUuid, err
+	}
+	req.Header.Add("X-Percona-API-Key", "5ece60bde7663364824fc3215ad40a50")
+	resp, err := client.Do(req)
+
+	if err != nil {
+		golog.Printf("http POST /agents/ error: %s", err)
+		return agentUuid, err
+	}
+
+	if resp.StatusCode != 201 {
+		golog.Printf("Error: http response code: %d, while expected 201", resp.StatusCode)
+		return agentUuid, errors.New(fmt.Sprintf("Return code: %d", resp.StatusCode))
+	}
+
+        var validUuid = regexp.MustCompile(`[a-z0-9\-]+$`)
+        agentUuid = validUuid.FindString(resp.Header.Get("Location"))
+        if agentUuid == "" {
+                golog.Printf("No uuid found in the Header Location. It is a shame, we blame Daniel for this.")
+		golog.Printf("Full headers: ", resp.Header)
+		return agentUuid, errors.New("No uuid found")
+        }
+
+	return agentUuid, nil
+
+}
+
