@@ -1,18 +1,18 @@
 /*
-    Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
+   Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
 
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>
+   You should have received a copy of the GNU Affero General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
 package mysql
@@ -20,6 +20,7 @@ package mysql
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/percona/cloud-tools/mm"
@@ -68,8 +69,9 @@ func (m *Monitor) Start(config []byte, tickChan chan time.Time, collectionChan c
 
 	c := &Config{}
 	if err := json.Unmarshal(config, c); err != nil {
-		return err
+		return errors.New("mysql.Start:json.Unmarshal:" + err.Error())
 	}
+
 	m.config = c
 	m.tickChan = tickChan
 	m.collectionChan = collectionChan
@@ -104,6 +106,11 @@ func (m *Monitor) Status() map[string]string {
 // @goroutine[0]
 func (m *Monitor) TickChan() chan time.Time {
 	return m.tickChan
+}
+
+// @goroutine[0]
+func (m *Monitor) Config() interface{} {
+	return m.config
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -306,11 +313,11 @@ func (m *Monitor) GetInnoDBMetrics(conn *sql.DB, prefix string, c *mm.Collection
 		if err != nil {
 			metricValue = 0.0
 		}
-		var metricType byte
+		var metricType string
 		if statType == "value" {
-			metricType = mm.NUMBER
+			metricType = "gauge"
 		} else {
-			metricType = mm.COUNTER
+			metricType = "counter"
 		}
 		c.Metrics = append(c.Metrics, mm.Metric{metricName, metricType, metricValue, ""})
 	}
@@ -356,17 +363,17 @@ func (m *Monitor) getTableUserStats(conn *sql.DB, prefix string, c *mm.Collectio
 
 		c.Metrics = append(c.Metrics, mm.Metric{
 			Name:   prefix + "/db." + tableSchema + "/t." + tableName + "/rows_read",
-			Type:   mm.COUNTER,
+			Type:   "counter",
 			Number: float64(rowsRead),
 		})
 		c.Metrics = append(c.Metrics, mm.Metric{
 			Name:   prefix + "/db." + tableSchema + "/t." + tableName + "/rows_changed",
-			Type:   mm.COUNTER,
+			Type:   "counter",
 			Number: float64(rowsChanged),
 		})
 		c.Metrics = append(c.Metrics, mm.Metric{
 			Name:   prefix + "/db." + tableSchema + "/t." + tableName + "/rows_changed_x_indexes",
-			Type:   mm.COUNTER,
+			Type:   "counter",
 			Number: float64(rowsChangedIndexes),
 		})
 	}
@@ -407,7 +414,7 @@ func (m *Monitor) getIndexUserStats(conn *sql.DB, prefix string, c *mm.Collectio
 
 		metricName := prefix + "/db." + tableSchema + "/t." + tableName + "/idx." + indexName + "/rows_read"
 		metricValue := float64(rowsRead)
-		c.Metrics = append(c.Metrics, mm.Metric{metricName, mm.COUNTER, metricValue, ""})
+		c.Metrics = append(c.Metrics, mm.Metric{metricName, "counter", metricValue, ""})
 	}
 	err = rows.Err()
 	if err != nil {

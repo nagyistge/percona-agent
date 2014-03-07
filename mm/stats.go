@@ -22,7 +22,7 @@ import (
 )
 
 type Stats struct {
-	metricType byte      `json:"-"` // ignore
+	metricType string    `json:"-"` // ignore
 	str        string    `json:",omitempty"`
 	firstVal   bool      `json:"-"`
 	prevTs     int64     `json:"-"`
@@ -38,7 +38,7 @@ type Stats struct {
 	Max        float64
 }
 
-func NewStats(metricType byte) *Stats {
+func NewStats(metricType string) *Stats {
 	s := &Stats{
 		metricType: metricType,
 		vals:       []float64{},
@@ -49,10 +49,10 @@ func NewStats(metricType byte) *Stats {
 
 func (s *Stats) Add(m *Metric, ts int64) {
 	switch s.metricType {
-	case NUMBER:
+	case "gauge":
 		s.vals = append(s.vals, m.Number)
 		s.sum += m.Number
-	case COUNTER:
+	case "counter":
 		if !s.firstVal {
 			if m.Number >= s.prevVal {
 				// Metric value increased (or stayed same); this is what we expect.
@@ -79,7 +79,7 @@ func (s *Stats) Add(m *Metric, ts int64) {
 			s.prevVal = m.Number
 			s.firstVal = false
 		}
-	case STRING:
+	case "string":
 		if s.str == "" {
 			s.str = m.String
 		}
@@ -88,7 +88,7 @@ func (s *Stats) Add(m *Metric, ts int64) {
 
 func (s *Stats) Summarize() {
 	switch s.metricType {
-	case NUMBER, COUNTER:
+	case "gauge", "counter":
 		s.Cnt = len(s.vals)
 		if s.Cnt > 1 {
 			sort.Float64s(s.vals)

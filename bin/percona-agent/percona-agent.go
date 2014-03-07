@@ -132,6 +132,7 @@ func main() {
 		if links, err = GetAgentLinks(agentConfig.ApiKey, agentConfig.AgentUuid, schema+agentConfig.ApiHostname); err != nil {
 			golog.Fatalln(err)
 		}
+		golog.Printf("Agent links: %+v\n", links)
 	}
 
 	hostname, _ := os.Hostname()
@@ -405,21 +406,23 @@ func StartMonitors(configDir string, manager pct.ServiceManager) error {
 	}
 
 	for _, configFile := range configFiles {
-		config, err := ioutil.ReadFile(configFile)
+		data, err := ioutil.ReadFile(configFile)
 		if err != nil {
-			golog.Println(err)
+			golog.Println("Read " + configFile + ": " + err.Error())
 			continue
 		}
+		config := &mm.Config{}
+		json.Unmarshal(data, config)
 		cmd := &proto.Cmd{
 			Ts:      time.Now().UTC(),
 			User:    "percona-agent",
 			Service: "mm",
 			Cmd:     "StartService",
-			Data:    config,
+			Data:    data,
 		}
 		reply := manager.Handle(cmd)
 		if reply.Error != "" {
-			golog.Println(reply.Error)
+			golog.Println("Start " + configFile + " monitor:" + reply.Error)
 		}
 	}
 	return nil

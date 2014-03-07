@@ -1,7 +1,7 @@
 {
   "Ts":1257894180,
   "Metrics":[
-    {"Name":"host1/Foo","Type":1,"Number":3},
-    {"Name":"host1/Bar","Type":1,"Number":3.3}
+    {"Name":"host1/Foo","Type":"gauge","Number":3},
+    {"Name":"host1/Bar","Type":"gauge","Number":3.3}
   ]
 }

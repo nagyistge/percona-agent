@@ -9,6 +9,7 @@ type Monitor struct {
 	tickChan  chan time.Time
 	ReadyChan chan bool
 	running   bool
+	config    interface{}
 }
 
 func NewMonitor() *Monitor {
@@ -41,4 +42,12 @@ func (m *Monitor) Status() map[string]string {
 
 func (m *Monitor) TickChan() chan time.Time {
 	return m.tickChan
+}
+
+func (m *Monitor) Config() interface{} {
+	return m.config
+}
+
+func (m *Monitor) SetConfig(v interface{}) {
+	m.config = v
 }

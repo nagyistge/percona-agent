@@ -279,7 +279,7 @@ func (s *AggregatorTestSuite) TestC003Lost(t *C) {
 type ManagerTestSuite struct {
 	logChan     chan *proto.LogEntry
 	logger      *pct.Logger
-	mockMonitor mm.Monitor
+	mockMonitor *mock.Monitor
 	factory     *mock.MonitorFactory
 	tickChan    chan time.Time
 	clock       *mock.Clock
@@ -348,7 +348,7 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 		Type:    "mysql",
 		Collect: 1,
 		Report:  60,
-		Config:  []byte{},
+		// No monitor-specific config
 	}
 	data, err := json.Marshal(config)
 	if err != nil {
@@ -412,25 +412,20 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 	// Starting a monitor is like starting the manager: it requires
 	// a "StartService" cmd and the monitor's config.  This is the
 	// config in configDir/db1-mysql-monitor.conf.
-	mysqlConfig := &mysql.Config{
+	mmConfig := &mysql.Config{
+		Config: mm.Config{
+			Name:    "db1",
+			Type:    "mysql",
+			Collect: 1,
+			Report:  60,
+		},
+		// Monitor-specific config:
 		DSN:          "user:host@tcp:(127.0.0.1:3306)",
 		InstanceName: "db1",
-		Status: map[string]byte{
-			"threads_connected": mm.NUMBER,
-			"threads_running":   mm.NUMBER,
+		Status: map[string]string{
+			"threads_connected": "gauge",
+			"threads_running":   "gauge",
 		},
-	}
-	mysqlConfigData, err := json.Marshal(mysqlConfig)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	mmConfig := &mm.Config{
-		Name:    "db1",
-		Type:    "mysql",
-		Collect: 1,
-		Report:  60,
-		Config:  mysqlConfigData,
 	}
 	mmConfigData, err := json.Marshal(mmConfig)
 	if err != nil {
@@ -443,6 +438,10 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 		Cmd:     "StartService",
 		Data:    mmConfigData,
 	}
+
+	// If this were a real monitor, it would decode and set its own config.
+	// The mock monitor doesn't have any real config type, so we set it manually.
+	s.mockMonitor.SetConfig(mmConfig)
 
 	// The agent calls mm.Handle() with the cmd (for logging and status) and the config data.
 	reply := m.Handle(cmd)
@@ -467,7 +466,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 	// it will have mm start the monitor with this config.
 	data, err := ioutil.ReadFile(s.configDir + "/db1-mysql-monitor.conf")
 	t.Check(err, IsNil)
-	gotConfig := &mm.Config{}
+	gotConfig := &mysql.Config{}
 	err = json.Unmarshal(data, gotConfig)
 	t.Check(err, IsNil)
 	if same, diff := test.IsDeeply(gotConfig, mmConfig); !same {
