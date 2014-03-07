@@ -58,8 +58,18 @@ func main() {
 	// Overwrite default config with config file.
 	configFile := agent.DEFAULT_CONFIG_FILE
 	
-	if err := pct.ReadConfig(configFile, config); err != nil {
-		golog.Fatal(err)
+	golog.Printf("Generating config with following parameters:")
+	golog.Printf("ApiKey: %s", *apiKey)
+	golog.Printf("Api URL: %s", *apiURL)
+	golog.Printf("Config file: %s", configFile)
+
+
+
+	if _, err := os.Stat(configFile); err == nil {
+		golog.Printf("Config file %s exits, will update it", configFile)
+		if err := pct.ReadConfig(configFile, config); err != nil {
+			golog.Fatal(err)
+		}
 	}
 
 	uuid, err := CreateAgent()
