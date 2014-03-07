@@ -72,7 +72,7 @@ func main() {
 		}
 	}
 
-	uuid, err := CreateAgent()
+	uuid, err := CreateAgent(*apiURL,*apiKey)
 	if err != nil {
 		golog.Fatal(err)
 	}
@@ -113,10 +113,18 @@ func CheckConfig(config *agent.Config, configFile string) (bool, []string) {
 	return isValid, missing
 }
 
-func CreateAgent() (string, error) {
+func CreateAgent(apiURL,apiKey string) (string, error) {
 	agentUuid := ""
+	hostname, err := os.Hostname()
+	if err != nil {
+		golog.Printf("Error getting hostname: %s", err)
+		return agentUuid, err
+	}
+
+	golog.Printf("Using hostname: %s", hostname)
+	
         data := proto.AgentData{
-                Hostname: "test.vadim-dev.com",
+                Hostname: hostname,
                 Configs: map[string]string{
                         "agent": "{ type: \"agent_inserted\"}",
                         "mm": "{ type: \"mm_inserted\"}",
@@ -133,12 +141,12 @@ func CreateAgent() (string, error) {
 
 	//postData, err := json.Marshal(data)
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", "https://cloud-api-v2.percona.com/agents", bytes.NewReader(postData))
+	req, err := http.NewRequest("POST", "https://"+apiURL+"/agents", bytes.NewReader(postData))
 	if err != nil {
 		golog.Printf("http.NewRequest error: %s", err)
 		return agentUuid, err
 	}
-	req.Header.Add("X-Percona-API-Key", "5ece60bde7663364824fc3215ad40a50")
+	req.Header.Add("X-Percona-API-Key", apiKey)
 	resp, err := client.Do(req)
 
 	if err != nil {
