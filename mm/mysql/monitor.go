@@ -204,7 +204,7 @@ func (m *Monitor) run() {
 			m.status.Update("mysql", "Running")
 
 			c := &mm.Collection{
-				Ts:      now.Unix(),
+				Ts:      now.UTC().Unix(),
 				Metrics: []mm.Metric{},
 			}
 

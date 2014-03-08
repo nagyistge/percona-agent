@@ -151,9 +151,12 @@ func checkPrimitives(got reflect.Value, expect reflect.Value) (bool, string) {
 	switch expect.Kind() {
 	case reflect.Float32, reflect.Float64:
 		if got.IsValid() {
-			if got.Float() != expect.Float() {
-				err := fmt.Sprintf("     got: %f\nexpected: %f\n",
-					got.Float(), expect.Float())
+			// Avoid 0.04147685731961082 != 0.041476857319611
+			// 6 decimal places is close enough
+			g := fmt.Sprintf("%.6f", got.Float())
+			e := fmt.Sprintf("%.6f", expect.Float())
+			if g != e {
+				err := fmt.Sprintf("     got: %s\nexpected: %s\n", g, e)
 				return false, err
 			}
 		} else {
