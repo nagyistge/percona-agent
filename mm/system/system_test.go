@@ -27,7 +27,6 @@ import (
 	. "launchpad.net/gocheck"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 func Test(t *testing.T) { TestingT(t) }
@@ -39,10 +38,8 @@ var sample = test.RootDir + "/mm"
 /////////////////////////////////////////////////////////////////////////////
 
 type ProcStatTestSuite struct {
-	logChan        chan *proto.LogEntry
-	logger         *pct.Logger
-	tickChan       chan time.Time
-	collectionChan chan *mm.Collection
+	logChan chan *proto.LogEntry
+	logger  *pct.Logger
 }
 
 var _ = Suite(&ProcStatTestSuite{})
@@ -50,9 +47,6 @@ var _ = Suite(&ProcStatTestSuite{})
 func (s *ProcStatTestSuite) SetUpSuite(t *C) {
 	s.logChan = make(chan *proto.LogEntry, 10)
 	s.logger = pct.NewLogger(s.logChan, "system-monitor-test")
-
-	s.tickChan = make(chan time.Time)
-	s.collectionChan = make(chan *mm.Collection, 1)
 }
 
 // --------------------------------------------------------------------------
@@ -174,6 +168,54 @@ func (s *ProcStatTestSuite) TestProcStat001(t *C) {
 
 	if same, diff := test.IsDeeply(metrics, expect); !same {
 		test.Dump(metrics)
+		t.Error(diff)
+	}
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// ProcMeminfo
+/////////////////////////////////////////////////////////////////////////////
+
+type ProcMeminfoTestSuite struct {
+	logChan chan *proto.LogEntry
+	logger  *pct.Logger
+}
+
+var _ = Suite(&ProcMeminfoTestSuite{})
+
+func (s *ProcMeminfoTestSuite) SetUpSuite(t *C) {
+	s.logChan = make(chan *proto.LogEntry, 10)
+	s.logger = pct.NewLogger(s.logChan, "system-monitor-test")
+}
+
+// --------------------------------------------------------------------------
+
+func (s *ProcMeminfoTestSuite) TestProcMeminfo001(t *C) {
+	m := system.NewMonitor(s.logger)
+	content, err := ioutil.ReadFile(sample + "/proc/meminfo001.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.ProcMeminfo(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Remember: the order of this array must match order in which each
+	// stat appears in the input file:
+	expect := []mm.Metric{
+		{Name: "memory/MemTotal", Type: "gauge", Number: 8046892},  // ok
+		{Name: "memory/MemFree", Type: "gauge", Number: 5273644},   // ok
+		{Name: "memory/Buffers", Type: "gauge", Number: 300684},    // ok
+		{Name: "memory/Cached", Type: "gauge", Number: 946852},     // ok
+		{Name: "memory/SwapCached", Type: "gauge", Number: 0},      // ok
+		{Name: "memory/Active", Type: "gauge", Number: 1936436},    // ok
+		{Name: "memory/Inactive", Type: "gauge", Number: 598916},   // ok
+		{Name: "memory/SwapTotal", Type: "gauge", Number: 8253436}, // ok
+		{Name: "memory/SwapFree", Type: "gauge", Number: 8253436},  // ok
+		{Name: "memory/Dirty", Type: "gauge", Number: 0},           // ok
+	}
+	if same, diff := test.IsDeeply(got, expect); !same {
+		test.Dump(got)
 		t.Error(diff)
 	}
 }

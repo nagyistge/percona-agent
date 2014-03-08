@@ -322,23 +322,33 @@ func (m *Monitor) ProcStat(content []byte) ([]mm.Metric, error) {
 }
 
 func (m *Monitor) ProcMeminfo(content []byte) ([]mm.Metric, error) {
+	/**
+	 * MemTotal:        8046892 kB
+	 * MemFree:         5273644 kB
+	 * Buffers:          300684 kB
+	 * Cached:           946852 kB
+	 * SwapCached:            0 kB
+	 * Active:          1936436 kB
+	 * ...
+	 */
 	metrics := []mm.Metric{}
-	/*
-		lines = strings.Split(string(content), "\n")
-		for _, v := range lines {
-			fields := strings.Fields(v)
-			if len(fields) < 2 { // at least two fields expected
-				continue
-			}
-
-			switch s := strings.TrimRight(fields[0], ":"); s {
-			case "MemTotal", "MemFree", "MemShared", "Buffers", "Cached", "SwapCached", "SwapTotal", "SwapFree", "Dirty", "Active", "Inactive":
-				{
-					storage[metrics.GetIdByName("memory/"+s)] = metrics.NewMetricValue(StrToFloat(fields[1]))
-				}
-			}
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) < 2 { // at least two fields expected
+			continue
 		}
-	*/
+
+		switch s := strings.TrimRight(fields[0], ":"); s {
+		case "MemTotal", "MemFree", "MemShared", "Buffers", "Cached", "SwapCached", "SwapTotal", "SwapFree", "Dirty", "Active", "Inactive":
+			m := mm.Metric{
+				Name:   "memory/" + s,
+				Type:   "gauge",
+				Number: StrToFloat(fields[1]),
+			}
+			metrics = append(metrics, m)
+		}
+	}
 	return metrics, nil
 }
 
