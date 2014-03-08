@@ -5,6 +5,7 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/mm"
 	"github.com/percona/cloud-tools/mm/mysql"
+	"github.com/percona/cloud-tools/mm/system"
 	"github.com/percona/cloud-tools/pct"
 )
 
@@ -24,6 +25,8 @@ func (f *Factory) Make(mtype, name string) (mm.Monitor, error) {
 	switch mtype {
 	case "mysql":
 		monitor = mysql.NewMonitor(pct.NewLogger(f.logChan, name))
+	case "system":
+		monitor = system.NewMonitor(pct.NewLogger(f.logChan, name))
 	default:
 		return nil, errors.New("Unknown monitor type: " + mtype)
 	}
