@@ -18,6 +18,8 @@
 package system_test
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/mm"
 	"github.com/percona/cloud-tools/mm/system"
@@ -27,6 +29,7 @@ import (
 	. "launchpad.net/gocheck"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func Test(t *testing.T) { TestingT(t) }
@@ -441,5 +444,89 @@ func (s *ProcDiskstatsTestSuite) TestProcDiskstats001(t *C) {
 	if same, diff := test.IsDeeply(got, expect); !same {
 		t.Logf("%+v\n", got)
 		t.Error(diff)
+	}
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Manager
+/////////////////////////////////////////////////////////////////////////////
+
+type ManagerTestSuite struct {
+	logChan        chan *proto.LogEntry
+	logger         *pct.Logger
+	tickChan       chan time.Time
+	collectionChan chan *mm.Collection
+}
+
+var _ = Suite(&ManagerTestSuite{})
+
+func (s *ManagerTestSuite) SetUpSuite(t *C) {
+	s.logChan = make(chan *proto.LogEntry, 10)
+	s.logger = pct.NewLogger(s.logChan, "system-monitor-test")
+
+	s.tickChan = make(chan time.Time)
+	s.collectionChan = make(chan *mm.Collection, 1)
+}
+
+// --------------------------------------------------------------------------
+
+func (s *ManagerTestSuite) TestStartCollectStop(t *C) {
+	if !pct.FileExists("/proc/stat") {
+		t.Fatal("/proc/stat does not exist")
+	}
+
+	m := system.NewMonitor(s.logger)
+	if m == nil {
+		t.Fatal("Make new system.Monitor")
+	}
+
+	// First think we need is a system.Config.
+	config := &system.Config{}
+	data, err := json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Start the monitor.
+	err = m.Start(data, s.tickChan, s.collectionChan)
+	if err != nil {
+		t.Fatalf("Start monitor without error, got %s", err)
+	}
+
+	// system-monitor=Ready once it has started its internals,
+	// should be very fast.
+	if ok := test.WaitStatus(3, m, "system-monitor", "Ready"); !ok {
+		t.Fatal("Monitor is ready")
+	}
+
+	// The monitor should only collect and send metrics on ticks; we haven't ticked yet.
+	got := test.WaitCollection(s.collectionChan, 0)
+	if len(got) > 0 {
+		t.Fatal("No tick, no collection; got %+v", got)
+	}
+
+	// Now tick.  This should make monitor collect.
+	now := time.Now()
+	s.tickChan <- now
+	got = test.WaitCollection(s.collectionChan, 1)
+	if len(got) == 0 {
+		t.Fatal("Got a collection after tick")
+	}
+	c := got[0]
+
+	if c.Ts != now.Unix() {
+		t.Error("Collection.Ts set to %s; got %s", now.Unix(), c.Ts)
+	}
+
+	fmt.Printf("%+v\n", got)
+
+	/**
+	 * Stop the monitor.
+	 */
+
+	m.Stop()
+
+	if ok := test.WaitStatus(5, m, "system-monitor", "Stopped"); !ok {
+		t.Fatal("Monitor has stopped")
 	}
 }
