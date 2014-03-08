@@ -379,26 +379,44 @@ func (m *Monitor) ProcVmstat(content []byte) ([]mm.Metric, error) {
 }
 
 func (m *Monitor) ProcLoadavg(content []byte) ([]mm.Metric, error) {
+	/**
+	 * Should be just one line:
+	 * 0.00 0.01 0.05 1/201 16038
+	 *
+	 * "The first three fields in this file are load average figures
+	 *  giving the number of jobs in the run queue (state R) or
+	 *  waiting for disk I/O (state D) averaged over 1, 5, and 15
+	 *  minutes.  They are the same as the load average numbers given
+	 *  by uptime(1) and other programs.  The fourth field consists of
+	 *  two numbers separated by a slash (/).  The first of these is
+	 *  the number of currently runnable kernel scheduling entities
+	 *  (processes, threads).  The value after the slash is the number
+	 *  of kernel scheduling entities that currently exist on the
+	 *  system.  The fifth field is the PID of the process that was
+	 *  most recently created on the system."
+	 * http://man7.org/linux/man-pages/man5/proc.5.html
+	 */
 	metrics := []mm.Metric{}
-	/*
-		lines = strings.Split(string(content), "\n")
-		for _, v := range lines {
-			fields := strings.Fields(v)
-			if len(fields) < 4 { // at least 4 fields expected
-				continue
-			}
-
-			storage[metrics.GetIdByName("loadavg/1min")] = metrics.NewMetricValue(StrToFloat(fields[0]))
-			storage[metrics.GetIdByName("loadavg/5min")] = metrics.NewMetricValue(StrToFloat(fields[1]))
-			storage[metrics.GetIdByName("loadavg/15min")] = metrics.NewMetricValue(StrToFloat(fields[2]))
-			procs := strings.Split(fields[3], "/")
-			if len(procs) > 1 {
-				storage[metrics.GetIdByName("loadavg/running")] = metrics.NewMetricValue(StrToFloat(procs[0]))
-				storage[metrics.GetIdByName("loadavg/processes")] = metrics.NewMetricValue(StrToFloat(procs[1]))
-			}
-			break
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) < 4 { // at least 4 fields expected
+			continue
 		}
-	*/
+
+		metrics = append(metrics, mm.Metric{Name: "loadavg/1min", Type: "guage", Number: StrToFloat(fields[0])})
+		metrics = append(metrics, mm.Metric{Name: "loadavg/5min", Type: "guage", Number: StrToFloat(fields[1])})
+		metrics = append(metrics, mm.Metric{Name: "loadavg/15min", Type: "guage", Number: StrToFloat(fields[2])})
+
+		procs := strings.Split(fields[3], "/")
+		if len(procs) > 1 {
+			metrics = append(metrics, mm.Metric{Name: "loadavg/running", Type: "guage", Number: StrToFloat(procs[0])})
+			metrics = append(metrics, mm.Metric{Name: "loadavg/processes", Type: "guage", Number: StrToFloat(procs[1])})
+		}
+
+		break // stop after first valid line
+	}
+
 	return metrics, nil
 }
 

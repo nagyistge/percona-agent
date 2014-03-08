@@ -267,3 +267,46 @@ func (s *ProcVmstatTestSuite) TestProcVmstat001(t *C) {
 		t.Error(diff)
 	}
 }
+
+/////////////////////////////////////////////////////////////////////////////
+// ProcLoadavg
+/////////////////////////////////////////////////////////////////////////////
+
+type ProcLoadavgTestSuite struct {
+	logChan chan *proto.LogEntry
+	logger  *pct.Logger
+}
+
+var _ = Suite(&ProcLoadavgTestSuite{})
+
+func (s *ProcLoadavgTestSuite) SetUpSuite(t *C) {
+	s.logChan = make(chan *proto.LogEntry, 10)
+	s.logger = pct.NewLogger(s.logChan, "system-monitor-test")
+}
+
+// --------------------------------------------------------------------------
+
+func (s *ProcLoadavgTestSuite) TestProcLoadavg001(t *C) {
+	m := system.NewMonitor(s.logger)
+	content, err := ioutil.ReadFile(sample + "/proc/loadavg001.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.ProcLoadavg(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Remember: the order of this array must match order in which each
+	// stat appears in the input file:
+	expect := []mm.Metric{
+		{Name: "loadavg/1min", Type: "guage", Number: 0.45},     // ok
+		{Name: "loadavg/5min", Type: "guage", Number: 0.56},     // ok
+		{Name: "loadavg/15min", Type: "guage", Number: 0.58},    // ok
+		{Name: "loadavg/running", Type: "guage", Number: 1},     // ok
+		{Name: "loadavg/processes", Type: "guage", Number: 598}, // ok
+	}
+	if same, diff := test.IsDeeply(got, expect); !same {
+		test.Dump(got)
+		t.Error(diff)
+	}
+}
