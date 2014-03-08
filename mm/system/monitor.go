@@ -27,6 +27,7 @@ import (
 	"time"
 )
 
+// Keep CPUStates and nCPUStates in sync, else Go will panic accessing index out of range.
 var CPUStates []string = []string{"user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal", "guest", "guestlow"}
 
 const nCPUStates = 10
@@ -40,7 +41,6 @@ type Monitor struct {
 	// --
 	prevCPUval map[string][]float64 // [cpu0] => [user, nice, ...]
 	prevCPUsum map[string]float64   // [cpu0] => user + nice + ...
-	prefix     string
 	sync       *pct.SyncChan
 	status     *pct.Status
 }
@@ -49,8 +49,10 @@ func NewMonitor(logger *pct.Logger) *Monitor {
 	m := &Monitor{
 		logger: logger,
 		// --
-		status: pct.NewStatus([]string{"system-monitor"}),
-		sync:   pct.NewSyncChan(),
+		prevCPUval: make(map[string][]float64),
+		prevCPUsum: make(map[string]float64),
+		status:     pct.NewStatus([]string{"system-monitor"}),
+		sync:       pct.NewSyncChan(),
 	}
 	return m
 }
@@ -208,6 +210,9 @@ func (m *Monitor) run() {
 func (m *Monitor) ProcStat(content []byte) ([]mm.Metric, error) {
 	metrics := []mm.Metric{}
 
+	currCPUval := make(map[string][]float64)
+	currCPUsum := make(map[string]float64)
+
 	lines := strings.Split(string(content), "\n")
 	for _, v := range lines {
 		fields := strings.Fields(v)
@@ -231,7 +236,7 @@ func (m *Monitor) ProcStat(content []byte) ([]mm.Metric, error) {
 			 * for total CPU time, then report the percentage of each/total CPU time.
 			 * E.g. if all fields add to 1000, and first field (user state) is 500,
 			 * then CPU spent 50% of time in user state.  To complicate things more:
-			 * /proc/stat is a counter not a gauage, meaning that values increase
+			 * /proc/stat is a counter not a gauge, meaning that values increase
 			 * monotonically.  So a single measurement is also meaningless: we must
 			 * calc the diff, current - prev, and compare values to this.  E.g. if
 			 * prev total/user was 1000/500 and current total/user is 2000/550, then
@@ -242,8 +247,6 @@ func (m *Monitor) ProcStat(content []byte) ([]mm.Metric, error) {
 			 */
 
 			cpu := fields[0]
-			currCPUval := make(map[string][]float64)
-			currCPUsum := make(map[string]float64)
 
 			for state, valStr := range fields {
 				if state == 0 || state >= nCPUStates {
@@ -257,7 +260,7 @@ func (m *Monitor) ProcStat(content []byte) ([]mm.Metric, error) {
 				currCPUsum[cpu] += val
 			}
 
-			if m.prevCPUsum != nil {
+			if _, ok := m.prevCPUsum[cpu]; ok {
 				for state, _ := range fields {
 					if state == 0 || state >= nCPUStates {
 						continue
@@ -265,7 +268,7 @@ func (m *Monitor) ProcStat(content []byte) ([]mm.Metric, error) {
 					if currCPUsum[cpu] > m.prevCPUsum[cpu] {
 						m := mm.Metric{
 							Name:   cpu + "/" + CPUStates[state-1],
-							Type:   "gauage",
+							Type:   "gauge",
 							Number: (currCPUval[cpu][state] - m.prevCPUval[cpu][state]) * 100 / (currCPUsum[cpu] - m.prevCPUsum[cpu]),
 						}
 						metrics = append(metrics, m)
@@ -273,18 +276,47 @@ func (m *Monitor) ProcStat(content []byte) ([]mm.Metric, error) {
 				}
 			}
 
-			m.prevCPUval = currCPUval
-			m.prevCPUsum = currCPUsum
 		} else {
-			// Not a cpu line.
+			// Not a cpu line; another metric we want?
 			switch fields[0] {
 			case "intr", "ctxt", "processes":
-				//storage[metrics.GetIdByName("cpu-ext/"+fields[0])] = metrics.NewMetricCounter(StrToFloat(fields[1]))
-			case "procs_blocked", "procs_running":
-				//storage[metrics.GetIdByName("cpu-ext/"+fields[0])] = metrics.NewMetricValue(StrToFloat(fields[1]))
+				/**
+				 * http://man7.org/linux/man-pages/man5/proc.5.html
+				 * intr
+				 *   This line shows counts of interrupts serviced since
+				 *   boot time, for each of the possible system interrupts.
+				 *   The first column is the total of all interrupts
+				 *   serviced; each subsequent column is the total for a
+				 *   particular interrupt.
+				 * ctxt
+				 *   The number of context switches that the system underwent.
+				 * proccess
+				 *   Number of forks since boot.
+				 */
+				m := mm.Metric{
+					Name:   "cpu-ext/" + fields[0],
+					Type:   "counter",
+					Number: StrToFloat(fields[1]),
+				}
+				metrics = append(metrics, m)
+			case "procs_running", "procs_blocked":
+				/**
+				 * http://man7.org/linux/man-pages/man5/proc.5.html
+				 * Number of processes in runnable state.  (Linux 2.5.45 onward.)
+				 * Number of processes blocked waiting for I/O to complete.  (Linux 2.5.45 onward.)
+				 */
+				m := mm.Metric{
+					Name:   "cpu-ext/" + fields[0],
+					Type:   "gauge",
+					Number: StrToFloat(fields[1]),
+				}
+				metrics = append(metrics, m)
 			}
 		}
 	}
+
+	m.prevCPUval = currCPUval
+	m.prevCPUsum = currCPUsum
 
 	return metrics, nil
 }
