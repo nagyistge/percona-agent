@@ -89,7 +89,7 @@ func (c *WebsocketClient) RecvChan() chan *proto.Cmd {
 	return c.userRecvChan
 }
 
-func (c *WebsocketClient) Send(data interface{}) error {
+func (c *WebsocketClient) Send(data interface{}, timeout uint) error {
 	// Relay data from user to test.
 	c.testRecvDataChan <- data
 	return nil

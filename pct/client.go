@@ -37,7 +37,7 @@ type WebsocketClient interface {
 
 	// Direct interface:
 	SendBytes(data []byte) error
-	Send(data interface{}) error
+	Send(data interface{}, timeout uint) error
 	Recv(data interface{}, timeout uint) error
 	Conn() *websocket.Conn
 }

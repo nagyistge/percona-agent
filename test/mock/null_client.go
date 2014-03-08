@@ -49,7 +49,7 @@ func (c *NullClient) SendBytes(data []byte) error {
 	return nil
 }
 
-func (c *NullClient) Send(data interface{}) error {
+func (c *NullClient) Send(data interface{}, timeout uint) error {
 	return nil
 }
 

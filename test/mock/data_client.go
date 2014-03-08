@@ -64,7 +64,7 @@ func (c *DataClient) RecvChan() chan *proto.Cmd {
 	return nil
 }
 
-func (c *DataClient) Send(data interface{}) error {
+func (c *DataClient) Send(data interface{}, timeout uint) error {
 	return nil
 }
 

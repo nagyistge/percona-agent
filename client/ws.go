@@ -121,30 +121,6 @@ func (c *WebsocketClient) ConnectOnce() error {
 		return err
 	}
 	c.conn = conn
-
-	// First API expects from us is our authentication credentials.
-	// If this fails, it's probably an internal API error, *not* failed auth
-	// because that happens next...
-	/*
-		if err := c.Send(c.auth); err != nil {
-			conn.Close()
-			return errors.New(fmt.Sprint("Send auth:", err))
-		}
-
-		// After we send our auth creds, API responds with AuthReponse: any error = auth failure.
-		authResponse := new(proto.AuthResponse)
-		if err := c.Recv(authResponse, 5); err != nil {
-			// websocket error, not auth fail
-			conn.Close()
-			return errors.New(fmt.Sprint("Recv auth response:", err))
-		}
-		if authResponse.Error != "" {
-			// auth fail (invalid API key, agent UUID, or combo of those)
-			conn.Close()
-			return errors.New(fmt.Sprint("Auth fail:", err))
-		}
-	*/
-
 	return nil
 }
 
@@ -179,7 +155,7 @@ func (c *WebsocketClient) send() {
 			select {
 			case reply := <-c.sendChan:
 				// Got Reply from agent, send to API.
-				if err := c.Send(reply); err != nil {
+				if err := c.Send(reply, 20); err != nil {
 					select {
 					case c.errChan <- err:
 					default:
@@ -246,7 +222,7 @@ func (c *WebsocketClient) RecvChan() chan *proto.Cmd {
 	return c.recvChan
 }
 
-func (c *WebsocketClient) Send(data interface{}) error {
+func (c *WebsocketClient) Send(data interface{}, timeout int) error {
 	/**
 	 * I cannot provoke an EOF error on websocket.Send(), only Receive().
 	 * Perhaps EOF errors are only reported on recv?  This only affects
@@ -254,7 +230,11 @@ func (c *WebsocketClient) Send(data interface{}) error {
 	 * on Recieve() that, upon error, notifies the sending goroutine
 	 * to reconnect.
 	 */
-	c.conn.SetWriteDeadline(time.Now().Add(20 * time.Second))
+	if timeout > 0 {
+		c.conn.SetWriteDeadline(time.Now().Add(20 * time.Second))
+	} else {
+		c.conn.SetWriteDeadline(time.Time{})
+	}
 	return websocket.JSON.Send(c.conn, data)
 }
 

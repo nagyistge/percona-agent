@@ -98,7 +98,7 @@ func (s *TestSuite) TestSend(t *C) {
 		Service: "qan",
 		Msg:     "Hello",
 	}
-	err = ws.Send(logEntry)
+	err = ws.Send(logEntry, 5)
 	t.Assert(err, IsNil)
 
 	// Recv what we just sent.

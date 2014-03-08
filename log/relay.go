@@ -115,15 +115,9 @@ func (r *Relay) Run() {
 				r.logger.Printf("%s: %s: %s\n", entry.Service, proto.LogLevelName[entry.Level], entry.Msg)
 			}
 
-			// Send to API if we have a websocket client, and not in offline mode, and...
+			// Send to API if we have a websocket client, and not in offline mode.
 			if !r.offline && r.client != nil {
-				// .. the websocket client is connected.
-				if r.connected {
-					r.send(entry, true) // buffer on err
-				} else {
-					// API not available right now, buffer and try later on reconnect.
-					r.buffer(entry)
-				}
+				r.send(entry, true) // buffer on err
 			}
 
 			r.status.Update("log-chan", fmt.Sprintf("%d", len(r.logChan)))
@@ -226,11 +220,15 @@ func (r *Relay) buffer(e *proto.LogEntry) {
 
 func (r *Relay) send(entry *proto.LogEntry, bufferOnErr bool) error {
 	var err error
-	r.client.Conn().SetWriteDeadline(time.Now().Add(2 * time.Second))
-	if err = r.client.Send(entry); err != nil {
-		if bufferOnErr {
-			r.buffer(entry)
+	if r.connected {
+		if err = r.client.Send(entry, 5); err != nil {
+			if bufferOnErr {
+				// todo: if error is just timeout, when will this be resent?
+				r.buffer(entry)
+			}
 		}
+	} else {
+		r.buffer(entry)
 	}
 	return err
 }

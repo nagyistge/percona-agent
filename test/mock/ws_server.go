@@ -38,15 +38,6 @@ func wsHandler(ws *websocket.Conn) {
 	}
 	internalClientConnectChan <- c
 
-	// Client sends AgentAuth, expects AuthReponse
-	// todo: make controllable by test
-	/*
-		var data interface{}
-		websocket.JSON.Receive(ws, &data)
-		authResponse := &proto.AuthResponse{}
-		websocket.JSON.Send(ws, authResponse)
-	*/
-
 	defer func() {
 		ClientRmChan <- c
 		ClientDisconnectChan <- c
