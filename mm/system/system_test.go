@@ -19,7 +19,6 @@ package system_test
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/mm"
 	"github.com/percona/cloud-tools/mm/system"
@@ -468,11 +467,27 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.collectionChan = make(chan *mm.Collection, 1)
 }
 
+func haveMetric(name string, metrics []mm.Metric) (bool, float64) {
+	have := false
+	val := float64(0)
+	for _, metric := range metrics {
+		if metric.Name == name {
+			have = true
+			val = metric.Number
+			break
+		}
+	}
+	return have, val
+}
+
 // --------------------------------------------------------------------------
 
 func (s *ManagerTestSuite) TestStartCollectStop(t *C) {
-	if !pct.FileExists("/proc/stat") {
-		t.Fatal("/proc/stat does not exist")
+	files := []string{"stat", "meminfo", "vmstat", "loadavg", "diskstats"}
+	for _, file := range files {
+		if !pct.FileExists("/proc/" + file) {
+			t.Fatal("/proc/" + file + " does not exist")
+		}
 	}
 
 	m := system.NewMonitor(s.logger)
@@ -493,9 +508,9 @@ func (s *ManagerTestSuite) TestStartCollectStop(t *C) {
 		t.Fatalf("Start monitor without error, got %s", err)
 	}
 
-	// system-monitor=Ready once it has started its internals,
+	// system-monitor=Idle once it has started its internals,
 	// should be very fast.
-	if ok := test.WaitStatus(3, m, "system-monitor", "Ready"); !ok {
+	if ok := test.WaitStatus(3, m, "system-monitor", "Idle"); !ok {
 		t.Fatal("Monitor is ready")
 	}
 
@@ -508,17 +523,51 @@ func (s *ManagerTestSuite) TestStartCollectStop(t *C) {
 	// Now tick.  This should make monitor collect.
 	now := time.Now()
 	s.tickChan <- now
+
 	got = test.WaitCollection(s.collectionChan, 1)
-	if len(got) == 0 {
-		t.Fatal("Got a collection after tick")
-	}
+	t.Assert(got, Not(HasLen), 0)
+	t.Check(got, HasLen, 1)
+
 	c := got[0]
+	t.Check(c.Ts, Equals, now.Unix())
 
-	if c.Ts != now.Unix() {
-		t.Error("Collection.Ts set to %s; got %s", now.Unix(), c.Ts)
+	t.Assert(c.Metrics, Not(HasLen), 0)
+
+	// /proc/stat values are relative (current - prev) so there shouldn't be any
+	// after one tick.
+	haveCPU, _ := haveMetric("cpu/user", c.Metrics)
+	t.Check(haveCPU, Equals, false)
+
+	// But other metrics are not relative, so we should have them.
+	metrics := []string{"memory/MemTotal", "vmstat/numa_local", "loadavg/running", "disk/sda/reads"}
+	for _, metric := range metrics {
+		ok, val := haveMetric(metric, c.Metrics)
+		t.Check(ok, Equals, true)
+		t.Check(val, Not(Equals), 0)
 	}
 
-	fmt.Printf("%+v\n", got)
+	// Tick a 2nd time and now we should get CPU metrics.
+	time.Sleep(200 * time.Millisecond)
+	now = time.Now()
+	s.tickChan <- now
+
+	got = test.WaitCollection(s.collectionChan, 1)
+	t.Assert(got, Not(HasLen), 0)
+	t.Check(got, HasLen, 1)
+	c = got[0]
+	t.Check(c.Ts, Equals, now.Unix())
+	t.Assert(c.Metrics, Not(HasLen), 0)
+
+	metrics = []string{"cpu/user", "cpu/nice", "cpu/system", "cpu/idle"}
+	for _, metric := range metrics {
+		ok, val := haveMetric(metric, c.Metrics)
+		t.Check(ok, Equals, true)
+
+		// Running this test requires some CPU so user and idle shouldn't be zero.
+		if metric == "cpu/user" || metric == "cpu/idle" {
+			t.Check(val, Not(Equals), 0)
+		}
+	}
 
 	/**
 	 * Stop the monitor.
