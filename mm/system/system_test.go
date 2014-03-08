@@ -310,3 +310,136 @@ func (s *ProcLoadavgTestSuite) TestProcLoadavg001(t *C) {
 		t.Error(diff)
 	}
 }
+
+/////////////////////////////////////////////////////////////////////////////
+// ProcDiskstats
+/////////////////////////////////////////////////////////////////////////////
+
+type ProcDiskstatsTestSuite struct {
+	logChan chan *proto.LogEntry
+	logger  *pct.Logger
+}
+
+var _ = Suite(&ProcDiskstatsTestSuite{})
+
+func (s *ProcDiskstatsTestSuite) SetUpSuite(t *C) {
+	s.logChan = make(chan *proto.LogEntry, 10)
+	s.logger = pct.NewLogger(s.logChan, "system-monitor-test")
+}
+
+// --------------------------------------------------------------------------
+
+func (s *ProcDiskstatsTestSuite) TestProcDiskstats001(t *C) {
+	m := system.NewMonitor(s.logger)
+	content, err := ioutil.ReadFile(sample + "/proc/diskstats001.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.ProcDiskstats(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Remember: the order of this array must match order in which each
+	// stat appears in the input file:
+	expect := []mm.Metric{
+		{Name: "disk/sda/reads", Type: "counter", Number: 56058},
+		{Name: "disk/sda/reads_merged", Type: "counter", Number: 2313},
+		{Name: "disk/sda/sectors_read", Type: "counter", Number: 1270506},
+		{Name: "disk/sda/read_time", Type: "counter", Number: 280760},
+		{Name: "disk/sda/writes", Type: "counter", Number: 232825},
+		{Name: "disk/sda/writes_merged", Type: "counter", Number: 256917},
+		{Name: "disk/sda/sectors_written", Type: "counter", Number: 10804063},
+		{Name: "disk/sda/write_time", Type: "counter", Number: 2097320},
+		{Name: "disk/sda/io_time", Type: "counter", Number: 1163068},
+		{Name: "disk/sda/io_time_weighted", Type: "counter", Number: 2378728},
+		{Name: "disk/sda/iops", Type: "counter", Number: 56058 + 232825},
+		// --
+		{Name: "disk/sda1/reads", Type: "counter", Number: 385},
+		{Name: "disk/sda1/reads_merged", Type: "counter", Number: 1138},
+		{Name: "disk/sda1/sectors_read", Type: "counter", Number: 4518},
+		{Name: "disk/sda1/read_time", Type: "counter", Number: 4480},
+		{Name: "disk/sda1/writes", Type: "counter", Number: 1},
+		{Name: "disk/sda1/writes_merged", Type: "counter", Number: 0},
+		{Name: "disk/sda1/sectors_written", Type: "counter", Number: 1},
+		{Name: "disk/sda1/write_time", Type: "counter", Number: 0},
+		{Name: "disk/sda1/io_time", Type: "counter", Number: 2808},
+		{Name: "disk/sda1/io_time_weighted", Type: "counter", Number: 4480},
+		{Name: "disk/sda1/iops", Type: "counter", Number: 385 + 1},
+		// --
+		{Name: "disk/sda2/reads", Type: "counter", Number: 276},
+		{Name: "disk/sda2/reads_merged", Type: "counter", Number: 240},
+		{Name: "disk/sda2/sectors_read", Type: "counter", Number: 2104},
+		{Name: "disk/sda2/read_time", Type: "counter", Number: 1692},
+		{Name: "disk/sda2/writes", Type: "counter", Number: 15},
+		{Name: "disk/sda2/writes_merged", Type: "counter", Number: 0},
+		{Name: "disk/sda2/sectors_written", Type: "counter", Number: 30},
+		{Name: "disk/sda2/write_time", Type: "counter", Number: 0},
+		{Name: "disk/sda2/io_time", Type: "counter", Number: 1592},
+		{Name: "disk/sda2/io_time_weighted", Type: "counter", Number: 1692},
+		{Name: "disk/sda2/iops", Type: "counter", Number: 276 + 15},
+		// --
+		{Name: "disk/sda3/reads", Type: "counter", Number: 55223},
+		{Name: "disk/sda3/reads_merged", Type: "counter", Number: 932},
+		{Name: "disk/sda3/sectors_read", Type: "counter", Number: 1262468},
+		{Name: "disk/sda3/read_time", Type: "counter", Number: 270204},
+		{Name: "disk/sda3/writes", Type: "counter", Number: 184397},
+		{Name: "disk/sda3/writes_merged", Type: "counter", Number: 256917},
+		{Name: "disk/sda3/sectors_written", Type: "counter", Number: 10804032},
+		{Name: "disk/sda3/write_time", Type: "counter", Number: 1436428},
+		{Name: "disk/sda3/io_time", Type: "counter", Number: 512824},
+		{Name: "disk/sda3/io_time_weighted", Type: "counter", Number: 1707280},
+		{Name: "disk/sda3/iops", Type: "counter", Number: 55223 + 184397},
+		// --
+		{Name: "disk/sr0/reads", Type: "counter", Number: 0},
+		{Name: "disk/sr0/reads_merged", Type: "counter", Number: 0},
+		{Name: "disk/sr0/sectors_read", Type: "counter", Number: 0},
+		{Name: "disk/sr0/read_time", Type: "counter", Number: 0},
+		{Name: "disk/sr0/writes", Type: "counter", Number: 0},
+		{Name: "disk/sr0/writes_merged", Type: "counter", Number: 0},
+		{Name: "disk/sr0/sectors_written", Type: "counter", Number: 0},
+		{Name: "disk/sr0/write_time", Type: "counter", Number: 0},
+		{Name: "disk/sr0/io_time", Type: "counter", Number: 0},
+		{Name: "disk/sr0/io_time_weighted", Type: "counter", Number: 0},
+		{Name: "disk/sr0/iops", Type: "counter", Number: 0},
+		// --
+		{Name: "disk/dm-0/reads", Type: "counter", Number: 43661},
+		{Name: "disk/dm-0/reads_merged", Type: "counter", Number: 0},
+		{Name: "disk/dm-0/sectors_read", Type: "counter", Number: 1094074},
+		{Name: "disk/dm-0/read_time", Type: "counter", Number: 262092},
+		{Name: "disk/dm-0/writes", Type: "counter", Number: 132099},
+		{Name: "disk/dm-0/writes_merged", Type: "counter", Number: 0},
+		{Name: "disk/dm-0/sectors_written", Type: "counter", Number: 5731328},
+		{Name: "disk/dm-0/write_time", Type: "counter", Number: 4209168},
+		{Name: "disk/dm-0/io_time", Type: "counter", Number: 231792},
+		{Name: "disk/dm-0/io_time_weighted", Type: "counter", Number: 4471268},
+		{Name: "disk/dm-0/iops", Type: "counter", Number: 43661 + 132099},
+		// --
+		{Name: "disk/dm-1/reads", Type: "counter", Number: 287},
+		{Name: "disk/dm-1/reads_merged", Type: "counter", Number: 0},
+		{Name: "disk/dm-1/sectors_read", Type: "counter", Number: 2296},
+		{Name: "disk/dm-1/read_time", Type: "counter", Number: 1692},
+		{Name: "disk/dm-1/writes", Type: "counter", Number: 0},
+		{Name: "disk/dm-1/writes_merged", Type: "counter", Number: 0},
+		{Name: "disk/dm-1/sectors_written", Type: "counter", Number: 0},
+		{Name: "disk/dm-1/write_time", Type: "counter", Number: 0},
+		{Name: "disk/dm-1/io_time", Type: "counter", Number: 700},
+		{Name: "disk/dm-1/io_time_weighted", Type: "counter", Number: 1692},
+		{Name: "disk/dm-1/iops", Type: "counter", Number: 287 + 0},
+		// --
+		{Name: "disk/dm-2/reads", Type: "counter", Number: 12213},
+		{Name: "disk/dm-2/reads_merged", Type: "counter", Number: 0},
+		{Name: "disk/dm-2/sectors_read", Type: "counter", Number: 165618},
+		{Name: "disk/dm-2/read_time", Type: "counter", Number: 42444},
+		{Name: "disk/dm-2/writes", Type: "counter", Number: 310480},
+		{Name: "disk/dm-2/writes_merged", Type: "counter", Number: 0},
+		{Name: "disk/dm-2/sectors_written", Type: "counter", Number: 5072704},
+		{Name: "disk/dm-2/write_time", Type: "counter", Number: 1084328},
+		{Name: "disk/dm-2/io_time", Type: "counter", Number: 946036},
+		{Name: "disk/dm-2/io_time_weighted", Type: "counter", Number: 1126764},
+		{Name: "disk/dm-2/iops", Type: "counter", Number: 12213 + 310480},
+	}
+	if same, diff := test.IsDeeply(got, expect); !same {
+		t.Logf("%+v\n", got)
+		t.Error(diff)
+	}
+}

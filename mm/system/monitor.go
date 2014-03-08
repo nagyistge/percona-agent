@@ -421,49 +421,63 @@ func (m *Monitor) ProcLoadavg(content []byte) ([]mm.Metric, error) {
 }
 
 func (m *Monitor) ProcDiskstats(content []byte) ([]mm.Metric, error) {
+	/**
+	 *   1       0 ram0 0 0 0 0 0 0 0 0 0 0 0
+	 *   1       1 ram1 0 0 0 0 0 0 0 0 0 0 0
+	 * ...
+	 *   8       0 sda 56058 2313 1270506 280760 232825 256917 10804063 2097320 0 1163068 2378728
+	 *   8       1 sda1 385 1138 4518 4480 1 0 1 0 0 2808 4480
+	 *   8       2 sda2 276 240 2104 1692 15 0 30 0 0 1592 1692
+	 *   8       3 sda3 55223 932 1262468 270204 184397 256917 10804032 1436428 0 512824 1707280
+	 *  11       0 sr0 0 0 0 0 0 0 0 0 0 0 0
+	 * 252       0 dm-0 43661 0 1094074 262092 132099 0 5731328 4209168 0 231792 4471268
+	 * ...
+	 *
+	 * Field 0: major device number
+	 *       1: minor device number
+	 *       2: device name
+	 *    3-13: 11 stats: https://www.kernel.org/doc/Documentation/iostats.txt
+	 */
 	metrics := []mm.Metric{}
-	/*
-		lines = strings.Split(string(content), "\n")
-		for _, v := range lines {
-			fields := strings.Fields(v)
-			if len(fields) < 7 { // at least 7 fields expected
-				continue
-			}
-			// we ignore ram and loop devices
-			if strings.HasPrefix(fields[2], "ram") {
-				continue
-			}
-			if strings.HasPrefix(fields[2], "loop") {
-				continue
-			}
-
-			var currVals [14]metrics.MetricType
-
-
-			for k := 3; k <= 13 && k < len(fields); k++ {
-				currVals[k] = StrToFloat(fields[k])
-			}
-
-			if len(fields) > 10 {
-				storage[metrics.GetIdByName("disk/"+fields[2]+"/reads")] = metrics.NewMetricCounter(currVals[3])
-				storage[metrics.GetIdByName("disk/"+fields[2]+"/reads_merged")] = metrics.NewMetricCounter(currVals[4])
-				storage[metrics.GetIdByName("disk/"+fields[2]+"/sectors_read")] = metrics.NewMetricCounter(currVals[5])
-				storage[metrics.GetIdByName("disk/"+fields[2]+"/read_time")] = metrics.NewMetricCounter(currVals[6])
-				storage[metrics.GetIdByName("disk/"+fields[2]+"/writes")] = metrics.NewMetricCounter(currVals[7])
-				storage[metrics.GetIdByName("disk/"+fields[2]+"/writes_merged")] = metrics.NewMetricCounter(currVals[8])
-				storage[metrics.GetIdByName("disk/"+fields[2]+"/sectors_written")] = metrics.NewMetricCounter(currVals[9])
-				storage[metrics.GetIdByName("disk/"+fields[2]+"/write_time")] = metrics.NewMetricCounter(currVals[10])
-				storage[metrics.GetIdByName("disk/"+fields[2]+"/io_time")] = metrics.NewMetricCounter(currVals[12])
-				storage[metrics.GetIdByName("disk/"+fields[2]+"/io_time_weighted")] = metrics.NewMetricCounter(currVals[13])
-				storage[metrics.GetIdByName("disk/"+fields[2]+"/iops")] = metrics.NewMetricCounter(currVals[3] + currVals[7])
-			} else { // Early 2.6 kernels had only 4 fields for partitions.
-				storage[metrics.GetIdByName("disk/"+fields[2]+"/reads")] = metrics.NewMetricCounter(currVals[3])
-				storage[metrics.GetIdByName("disk/"+fields[2]+"/sectors_read")] = metrics.NewMetricCounter(currVals[4])
-				storage[metrics.GetIdByName("disk/"+fields[2]+"/writes")] = metrics.NewMetricCounter(currVals[5])
-				storage[metrics.GetIdByName("disk/"+fields[2]+"/sectors_written")] = metrics.NewMetricCounter(currVals[6])
-				storage[metrics.GetIdByName("disk/"+fields[2]+"/iops")] = metrics.NewMetricCounter(currVals[3] + currVals[5])
-			}
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) < 7 { // at least 7 fields expected
+			continue
 		}
-	*/
+
+		// Ignore ram and loop devices.
+		device := fields[2]
+		if strings.HasPrefix(device, "ram") || strings.HasPrefix(device, "loop") {
+			continue
+		}
+
+		// 11 stats
+		val := [14]float64{}
+		for k := 3; k <= 13 && k < len(fields); k++ {
+			val[k] = StrToFloat(fields[k])
+		}
+
+		if len(fields) > 10 {
+			metrics = append(metrics, mm.Metric{Name: "disk/" + device + "/reads", Type: "counter", Number: val[3]})
+			metrics = append(metrics, mm.Metric{Name: "disk/" + device + "/reads_merged", Type: "counter", Number: val[4]})
+			metrics = append(metrics, mm.Metric{Name: "disk/" + device + "/sectors_read", Type: "counter", Number: val[5]})
+			metrics = append(metrics, mm.Metric{Name: "disk/" + device + "/read_time", Type: "counter", Number: val[6]})
+			metrics = append(metrics, mm.Metric{Name: "disk/" + device + "/writes", Type: "counter", Number: val[7]})
+			metrics = append(metrics, mm.Metric{Name: "disk/" + device + "/writes_merged", Type: "counter", Number: val[8]})
+			metrics = append(metrics, mm.Metric{Name: "disk/" + device + "/sectors_written", Type: "counter", Number: val[9]})
+			metrics = append(metrics, mm.Metric{Name: "disk/" + device + "/write_time", Type: "counter", Number: val[10]})
+			metrics = append(metrics, mm.Metric{Name: "disk/" + device + "/io_time", Type: "counter", Number: val[12]})
+			metrics = append(metrics, mm.Metric{Name: "disk/" + device + "/io_time_weighted", Type: "counter", Number: val[13]})
+			metrics = append(metrics, mm.Metric{Name: "disk/" + device + "/iops", Type: "counter", Number: val[3] + val[7]})
+		} else {
+			// Early 2.6 kernels had only 4 fields for partitions.
+			metrics = append(metrics, mm.Metric{Name: "disk/" + device + "/reads", Type: "counter", Number: val[3]})
+			metrics = append(metrics, mm.Metric{Name: "disk/" + device + "/sectors_read", Type: "counter", Number: val[4]})
+			metrics = append(metrics, mm.Metric{Name: "disk/" + device + "/writes", Type: "counter", Number: val[5]})
+			metrics = append(metrics, mm.Metric{Name: "disk/" + device + "/sectors_written", Type: "counter", Number: val[6]})
+			metrics = append(metrics, mm.Metric{Name: "disk/" + device + "/iops", Type: "counter", Number: val[3] + val[5]})
+		}
+	}
 	return metrics, nil
 }
