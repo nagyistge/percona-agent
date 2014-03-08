@@ -222,7 +222,7 @@ func (c *WebsocketClient) RecvChan() chan *proto.Cmd {
 	return c.recvChan
 }
 
-func (c *WebsocketClient) Send(data interface{}, timeout int) error {
+func (c *WebsocketClient) Send(data interface{}, timeout uint) error {
 	/**
 	 * I cannot provoke an EOF error on websocket.Send(), only Receive().
 	 * Perhaps EOF errors are only reported on recv?  This only affects
@@ -231,7 +231,7 @@ func (c *WebsocketClient) Send(data interface{}, timeout int) error {
 	 * to reconnect.
 	 */
 	if timeout > 0 {
-		c.conn.SetWriteDeadline(time.Now().Add(20 * time.Second))
+		c.conn.SetWriteDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
 	} else {
 		c.conn.SetWriteDeadline(time.Time{})
 	}
