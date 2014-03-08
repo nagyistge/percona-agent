@@ -326,9 +326,6 @@ func (m *Monitor) ProcMeminfo(content []byte) ([]mm.Metric, error) {
 	 * MemTotal:        8046892 kB
 	 * MemFree:         5273644 kB
 	 * Buffers:          300684 kB
-	 * Cached:           946852 kB
-	 * SwapCached:            0 kB
-	 * Active:          1936436 kB
 	 * ...
 	 */
 	metrics := []mm.Metric{}
@@ -353,22 +350,31 @@ func (m *Monitor) ProcMeminfo(content []byte) ([]mm.Metric, error) {
 }
 
 func (m *Monitor) ProcVmstat(content []byte) ([]mm.Metric, error) {
+	/**
+	 * nr_free_pages 1318376
+	 * nr_inactive_anon 1875
+	 * nr_active_anon 322319
+	 * ...
+	 */
 	metrics := []mm.Metric{}
-	/*
-		lines = strings.Split(string(content), "\n")
-		for _, v := range lines {
-			fields := strings.Fields(v)
-			if len(fields) < 2 { // at least two fields expected
-				continue
-			}
-
-			if strings.HasPrefix(fields[0], "pswp") ||
-				strings.HasPrefix(fields[0], "pgpg") ||
-				strings.HasPrefix(fields[0], "numa") {
-				storage[metrics.GetIdByName("vmstat/"+fields[0])] = metrics.NewMetricCounter(StrToFloat(fields[1]))
-			}
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) < 2 { // at least two fields expected
+			continue
 		}
-	*/
+
+		if strings.HasPrefix(fields[0], "pswp") ||
+			strings.HasPrefix(fields[0], "pgpg") ||
+			strings.HasPrefix(fields[0], "numa") {
+			m := mm.Metric{
+				Name:   "vmstat/" + fields[0],
+				Type:   "counter",
+				Number: StrToFloat(fields[1]),
+			}
+			metrics = append(metrics, m)
+		}
+	}
 	return metrics, nil
 }
 

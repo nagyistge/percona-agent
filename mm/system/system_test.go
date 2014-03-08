@@ -219,3 +219,51 @@ func (s *ProcMeminfoTestSuite) TestProcMeminfo001(t *C) {
 		t.Error(diff)
 	}
 }
+
+/////////////////////////////////////////////////////////////////////////////
+// ProcVmstat
+/////////////////////////////////////////////////////////////////////////////
+
+type ProcVmstatTestSuite struct {
+	logChan chan *proto.LogEntry
+	logger  *pct.Logger
+}
+
+var _ = Suite(&ProcVmstatTestSuite{})
+
+func (s *ProcVmstatTestSuite) SetUpSuite(t *C) {
+	s.logChan = make(chan *proto.LogEntry, 10)
+	s.logger = pct.NewLogger(s.logChan, "system-monitor-test")
+}
+
+// --------------------------------------------------------------------------
+
+func (s *ProcVmstatTestSuite) TestProcVmstat001(t *C) {
+	m := system.NewMonitor(s.logger)
+	content, err := ioutil.ReadFile(sample + "/proc/vmstat001.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.ProcVmstat(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Remember: the order of this array must match order in which each
+	// stat appears in the input file:
+	expect := []mm.Metric{
+		{Name: "vmstat/numa_hit", Type: "counter", Number: 42594095},    // ok
+		{Name: "vmstat/numa_miss", Type: "counter", Number: 0},          // ok
+		{Name: "vmstat/numa_foreign", Type: "counter", Number: 0},       // ok
+		{Name: "vmstat/numa_interleave", Type: "counter", Number: 7297}, // ok
+		{Name: "vmstat/numa_local", Type: "counter", Number: 42594095},  // ok
+		{Name: "vmstat/numa_other", Type: "counter", Number: 0},         // ok
+		{Name: "vmstat/pgpgin", Type: "counter", Number: 646645},        // ok
+		{Name: "vmstat/pgpgout", Type: "counter", Number: 5401659},      // ok
+		{Name: "vmstat/pswpin", Type: "counter", Number: 0},             // ok
+		{Name: "vmstat/pswpout", Type: "counter", Number: 0},            // ok
+	}
+	if same, diff := test.IsDeeply(got, expect); !same {
+		test.Dump(got)
+		t.Error(diff)
+	}
+}
