@@ -22,6 +22,7 @@ import (
 	"errors"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
+	"os"
 	"time"
 )
 
@@ -146,7 +147,9 @@ func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
 	m.configDir = configDir
 	config := &Config{}
 	if err := pct.ReadConfig(configDir+"/"+CONFIG_FILE, config); err != nil {
-		return nil, err
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
 	}
 	if config.Level == "" {
 		config.Level = DEFAULT_LOG_LEVEL
@@ -159,7 +162,7 @@ func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return data,nil
+	return data, nil
 }
 
 func (m *Manager) WriteConfig(config interface{}, name string) error {

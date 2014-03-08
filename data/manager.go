@@ -22,6 +22,7 @@ import (
 	"errors"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
+	"os"
 	"time"
 )
 
@@ -150,8 +151,10 @@ func (m *Manager) Sender() *Sender {
 func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
 	m.configDir = configDir
 	config := &Config{}
-	if err := pct.ReadConfig(configDir + "/" + CONFIG_FILE, config); err != nil {
-		return nil, err
+	if err := pct.ReadConfig(configDir+"/"+CONFIG_FILE, config); err != nil {
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
 	}
 	if config.Dir == "" {
 		config.Dir = DEFAULT_DATA_DIR
