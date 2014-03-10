@@ -30,6 +30,8 @@ import (
 	"errors"
 	"regexp"
 	"flag"
+	"io/ioutil"
+	"path/filepath"
 	//"os/user"
 	//"time"
 )
@@ -40,6 +42,14 @@ const (
 
 var apiKey = flag.String("api-key", "", "ApiKey to Percona Cloud Tools")
 var apiURL = flag.String("api-url", agent.DEFAULT_API_HOSTNAME, "Api URL to Percona Cloud Tools")
+
+var systemMonitorConfig=
+`{
+    "Name": "default",
+    "Type": "system",
+    "Collect": 10,
+    "Report": 60
+} `
 
 func main() {
 	golog.SetFlags(golog.Ldate | golog.Ltime | golog.Lmicroseconds | golog.Lshortfile)
@@ -91,6 +101,14 @@ func main() {
 		os.Exit(-1)
 	}
 	pct.WriteConfig(configFile, config)
+
+	systemMonitorConfigFile := filepath.Join(filepath.Dir(configFile),"system-monitor.conf")
+	golog.Printf("Writeing config for OS monitoring to: %s", systemMonitorConfigFile)
+	err = ioutil.WriteFile(systemMonitorConfigFile, []byte(systemMonitorConfig), 0644)
+	if err != nil {
+		golog.Fatal(err)
+	}
+
 
 }
 
