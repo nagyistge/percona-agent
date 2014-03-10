@@ -4,6 +4,7 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/mm"
 	"github.com/percona/cloud-tools/pct"
+	"github.com/percona/cloud-tools/sysconfig"
 	"io/ioutil"
 	"os"
 	"time"
@@ -282,4 +283,36 @@ func WaitState(c chan bool) bool {
 	case <-time.After(100 * time.Millisecond):
 		return false
 	}
+}
+
+func WaitSystemConfig(cChan chan *sysconfig.SystemConfig, n int) []*sysconfig.SystemConfig {
+	var buf []*sysconfig.SystemConfig
+	var cnt int = 0
+	timeout := time.After(300 * time.Millisecond)
+FIRST_LOOP:
+	for {
+		select {
+		case c := <-cChan:
+			buf = append(buf, c)
+			cnt++
+			if n > 0 && cnt >= n {
+				break FIRST_LOOP
+			}
+		case <-timeout:
+			break FIRST_LOOP
+		}
+	}
+	if n > 0 && cnt >= n {
+	SECOND_LOOP:
+		for {
+			select {
+			case c := <-cChan:
+				buf = append(buf, c)
+				cnt++
+			case <-time.After(100 * time.Millisecond):
+				break SECOND_LOOP
+			}
+		}
+	}
+	return buf
 }
