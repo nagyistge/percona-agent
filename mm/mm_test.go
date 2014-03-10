@@ -279,8 +279,8 @@ func (s *AggregatorTestSuite) TestC003Lost(t *C) {
 type ManagerTestSuite struct {
 	logChan     chan *proto.LogEntry
 	logger      *pct.Logger
-	mockMonitor *mock.Monitor
-	factory     *mock.MonitorFactory
+	mockMonitor *mock.MmMonitor
+	factory     *mock.MmMonitorFactory
 	tickChan    chan time.Time
 	clock       *mock.Clock
 	dataChan    chan interface{}
@@ -296,8 +296,8 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.logChan = make(chan *proto.LogEntry, 10)
 	s.logger = pct.NewLogger(s.logChan, "mm-manager-test")
 
-	s.mockMonitor = mock.NewMonitor()
-	s.factory = mock.NewMonitorFactory([]mm.Monitor{s.mockMonitor})
+	s.mockMonitor = mock.NewMmMonitor()
+	s.factory = mock.NewMmMonitorFactory([]mm.Monitor{s.mockMonitor})
 
 	s.tickChan = make(chan time.Time)
 
