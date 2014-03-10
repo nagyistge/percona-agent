@@ -27,10 +27,12 @@ import (
 	"github.com/percona/cloud-tools/data"
 	"github.com/percona/cloud-tools/log"
 	"github.com/percona/cloud-tools/mm"
-	"github.com/percona/cloud-tools/mm/monitor"
+	mmMonitor "github.com/percona/cloud-tools/mm/monitor"
 	"github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/qan"
+	"github.com/percona/cloud-tools/sysconfig"
+	sysconfigMonitor "github.com/percona/cloud-tools/sysconfig/monitor"
 	"github.com/percona/cloud-tools/ticker"
 	"io/ioutil"
 	golog "log"
@@ -181,12 +183,12 @@ func main() {
 	clock := ticker.NewRolex(&ticker.EvenTickerFactory{}, nowFunc)
 
 	/**
-	 * Metric monitors
+	 * Metric and system config monitors
 	 */
 
 	mmManager := mm.NewManager(
 		pct.NewLogger(logChan, "mm"),
-		monitor.NewFactory(logChan),
+		mmMonitor.NewFactory(logChan),
 		clock,
 		dataManager.Spooler(),
 	)
@@ -196,7 +198,21 @@ func main() {
 			golog.Panicf("Error starting mm service: ", err)
 		}
 	}
-	StartMonitors(configDir, mmManager)
+	StartMonitors("mm", configDir, configDir+"/*-monitor.conf", mmManager)
+
+	sysconfigManager := sysconfig.NewManager(
+		pct.NewLogger(logChan, "sysconfig"),
+		sysconfigMonitor.NewFactory(logChan),
+		clock,
+		dataManager.Spooler(),
+	)
+	sysconfigConfig, err := sysconfigManager.LoadConfig(configDir)
+	if sysconfigConfig != nil {
+		if err := sysconfigManager.Start(&proto.Cmd{}, sysconfigConfig); err != nil {
+			golog.Panicf("Error starting sysconfig service: ", err)
+		}
+	}
+	StartMonitors("sysconfig", configDir, "sysconfig-*.conf", sysconfigManager)
 
 	/**
 	 * Query Analytics
@@ -399,8 +415,8 @@ func WritePidFile(pidFile string) error {
 	return err
 }
 
-func StartMonitors(configDir string, manager pct.ServiceManager) error {
-	configFiles, err := filepath.Glob(configDir + "/*-monitor.conf")
+func StartMonitors(service, configDir, glob string, manager pct.ServiceManager) error {
+	configFiles, err := filepath.Glob(glob)
 	if err != nil {
 		golog.Fatal(err)
 	}
@@ -416,7 +432,7 @@ func StartMonitors(configDir string, manager pct.ServiceManager) error {
 		cmd := &proto.Cmd{
 			Ts:      time.Now().UTC(),
 			User:    "percona-agent",
-			Service: "mm",
+			Service: service,
 			Cmd:     "StartService",
 			Data:    data,
 		}
