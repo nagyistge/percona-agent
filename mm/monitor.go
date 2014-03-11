@@ -44,6 +44,11 @@ type MonitorFactory interface {
 	Make(mtype, name string) (Monitor, error)
 }
 
+var MetricTypes map[string]bool = map[string]bool{
+	"gauge":   true,
+	"counter": true,
+}
+
 type Metric struct {
 	Name   string // mysql/status/Threads_running
 	Type   string // gauge, counter, string

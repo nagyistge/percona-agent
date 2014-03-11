@@ -76,6 +76,8 @@ func sendCollection(file string, collectionChan chan *mm.Collection) error {
 	return nil
 }
 
+// --------------------------------------------------------------------------
+
 func (s *AggregatorTestSuite) TestC001(t *C) {
 	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
 	go a.Start()
@@ -270,6 +272,33 @@ func (s *AggregatorTestSuite) TestC003Lost(t *C) {
 	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
 		t.Fatal(diff)
 	}
+}
+
+func (s *AggregatorTestSuite) TestBadMetric(t *C) {
+	/**
+	 * Bad metrics should not exist and certainly not aggregated because they
+	 * can go undetected for a long time because they'll result in zero values
+	 * which are valid in normal cases.  The metric is bad in the input because
+	 * its type is "guage" instead of "gauge", and it's the only metric so the
+	 * result should be zero metrics.
+	 */
+	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
+	go a.Start()
+	defer a.Stop()
+
+	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
+	s.tickChan <- t1
+
+	file := fmt.Sprintf("%s/bad_metric.json", sample)
+	if err := sendCollection(file, s.collectionChan); err != nil {
+		t.Fatal(file, err)
+	}
+
+	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
+	s.tickChan <- t2
+
+	got := test.WaitMmReport(s.dataChan)
+	t.Check(len(got.Metrics), Equals, 0)
 }
 
 /////////////////////////////////////////////////////////////////////////////
