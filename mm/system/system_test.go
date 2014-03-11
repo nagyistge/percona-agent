@@ -301,11 +301,11 @@ func (s *ProcLoadavgTestSuite) TestProcLoadavg001(t *C) {
 	// Remember: the order of this array must match order in which each
 	// stat appears in the input file:
 	expect := []mm.Metric{
-		{Name: "loadavg/1min", Type: "guage", Number: 0.45},     // ok
-		{Name: "loadavg/5min", Type: "guage", Number: 0.56},     // ok
-		{Name: "loadavg/15min", Type: "guage", Number: 0.58},    // ok
-		{Name: "loadavg/running", Type: "guage", Number: 1},     // ok
-		{Name: "loadavg/processes", Type: "guage", Number: 598}, // ok
+		{Name: "loadavg/1min", Type: "gauge", Number: 0.45},     // ok
+		{Name: "loadavg/5min", Type: "gauge", Number: 0.56},     // ok
+		{Name: "loadavg/15min", Type: "gauge", Number: 0.58},    // ok
+		{Name: "loadavg/running", Type: "gauge", Number: 1},     // ok
+		{Name: "loadavg/processes", Type: "gauge", Number: 598}, // ok
 	}
 	if same, diff := test.IsDeeply(got, expect); !same {
 		test.Dump(got)

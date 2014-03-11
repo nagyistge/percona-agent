@@ -404,14 +404,14 @@ func (m *Monitor) ProcLoadavg(content []byte) ([]mm.Metric, error) {
 			continue
 		}
 
-		metrics = append(metrics, mm.Metric{Name: "loadavg/1min", Type: "guage", Number: StrToFloat(fields[0])})
-		metrics = append(metrics, mm.Metric{Name: "loadavg/5min", Type: "guage", Number: StrToFloat(fields[1])})
-		metrics = append(metrics, mm.Metric{Name: "loadavg/15min", Type: "guage", Number: StrToFloat(fields[2])})
+		metrics = append(metrics, mm.Metric{Name: "loadavg/1min", Type: "gauge", Number: StrToFloat(fields[0])})
+		metrics = append(metrics, mm.Metric{Name: "loadavg/5min", Type: "gauge", Number: StrToFloat(fields[1])})
+		metrics = append(metrics, mm.Metric{Name: "loadavg/15min", Type: "gauge", Number: StrToFloat(fields[2])})
 
 		procs := strings.Split(fields[3], "/")
 		if len(procs) > 1 {
-			metrics = append(metrics, mm.Metric{Name: "loadavg/running", Type: "guage", Number: StrToFloat(procs[0])})
-			metrics = append(metrics, mm.Metric{Name: "loadavg/processes", Type: "guage", Number: StrToFloat(procs[1])})
+			metrics = append(metrics, mm.Metric{Name: "loadavg/running", Type: "gauge", Number: StrToFloat(procs[0])})
+			metrics = append(metrics, mm.Metric{Name: "loadavg/processes", Type: "gauge", Number: StrToFloat(procs[1])})
 		}
 
 		break // stop after first valid line
