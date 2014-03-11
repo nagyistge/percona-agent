@@ -103,7 +103,12 @@ func (a *Aggregator) run() {
 			for _, metric := range collection.Metrics {
 				stats, haveStats := cur[metric.Name]
 				if !haveStats {
-					stats = NewStats(metric.Type)
+					var err error
+					stats, err = NewStats(metric.Type)
+					if err != nil {
+						a.logger.Error(metric.Name, "invalid:", err.Error())
+						continue
+					}
 					cur[metric.Name] = stats
 				}
 				stats.Add(&metric, collection.Ts)

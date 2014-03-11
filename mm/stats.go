@@ -18,6 +18,8 @@
 package mm
 
 import (
+	"errors"
+	"log"
 	"sort"
 )
 
@@ -38,13 +40,16 @@ type Stats struct {
 	Max        float64
 }
 
-func NewStats(metricType string) *Stats {
+func NewStats(metricType string) (*Stats, error) {
+	if !MetricTypes[metricType] {
+		return nil, errors.New("Invalid metric type: " + metricType)
+	}
 	s := &Stats{
 		metricType: metricType,
 		vals:       []float64{},
 		firstVal:   true,
 	}
-	return s
+	return s, nil
 }
 
 func (s *Stats) Add(m *Metric, ts int64) {
@@ -79,10 +84,9 @@ func (s *Stats) Add(m *Metric, ts int64) {
 			s.prevVal = m.Number
 			s.firstVal = false
 		}
-	case "string":
-		if s.str == "" {
-			s.str = m.String
-		}
+	default:
+		// This should not happen because type is checked in NewStats().
+		log.Panic("mm:Aggregator:Add: Invalid metric type: " + s.metricType)
 	}
 }
 
