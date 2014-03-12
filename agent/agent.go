@@ -35,6 +35,7 @@ const (
 
 type Agent struct {
 	config    *Config
+	configMux  *sync.RWMutex
 	configDir string
 	logger    *pct.Logger
 	client    pct.WebsocketClient
@@ -42,8 +43,6 @@ type Agent struct {
 	// --
 	cmdSync *pct.SyncChan
 	cmdChan chan *proto.Cmd
-	cmdq    []*proto.Cmd
-	cmdqMux *sync.RWMutex
 	//
 	statusSync *pct.SyncChan
 	status     *pct.Status
@@ -61,13 +60,12 @@ type Agent struct {
 func NewAgent(config *Config, logger *pct.Logger, client pct.WebsocketClient, services map[string]pct.ServiceManager) *Agent {
 	agent := &Agent{
 		config:   config,
+		configMux: &sync.RWMutex{},
 		logger:   logger,
 		client:   client,
 		services: services,
 		// --
-		cmdq:       make([]*proto.Cmd, CMD_QUEUE_SIZE),
-		cmdqMux:    new(sync.RWMutex),
-		status:     pct.NewStatus([]string{"agent", "agent-cmd-handler", "agent-cmd-queue", "agent-api"}),
+		status:     pct.NewStatus([]string{"agent", "agent-cmd-handler", "agent-api"}),
 		cmdChan:    make(chan *proto.Cmd, CMD_QUEUE_SIZE),
 		statusChan: make(chan *proto.Cmd, STATUS_QUEUE_SIZE),
 		stopChan:   make(chan bool, 1),
@@ -79,7 +77,7 @@ func NewAgent(config *Config, logger *pct.Logger, client pct.WebsocketClient, se
 // Interface
 /////////////////////////////////////////////////////////////////////////////
 
-// @goroutine[0]
+// percona-agent:@goroutine[0]
 func (agent *Agent) Run() (stopReason string, update bool) {
 	logger := agent.logger
 	logger.Debug("start")
@@ -281,9 +279,10 @@ func (m *Agent) RemoveConfig(name string) error {
 // Command handler
 // --------------------------------------------------------------------------
 
-// @goroutine[1]
+// Run:@goroutine[1]
 func (agent *Agent) cmdHandler() {
 	replyChan := agent.client.SendChan()
+	cmdReply := make(chan *proto.Reply, 1)
 
 	// defer is LIFO, so send done signal last.
 	defer func() {
@@ -293,14 +292,40 @@ func (agent *Agent) cmdHandler() {
 
 	for {
 		agent.status.Update("agent-cmd-handler", "Idle")
+
 		select {
 		case cmd := <-agent.cmdChan:
-			reply := agent.handleCmd(cmd)
-			if reply.Error != "" {
-				agent.logger.Warn(reply.Error)
+			agent.status.UpdateRe("agent-cmd-handler", "Running", cmd)
+
+			// Handle the cmd in a separate goroutine so if it gets stuck it won't affect us.
+			go func() {
+				var reply *proto.Reply
+				if cmd.Service == "agent" {
+					reply = agent.Handle(cmd)
+				} else {
+					if manager, ok := agent.services[cmd.Service]; ok {
+						reply = manager.Handle(cmd)
+					} else {
+						reply = cmd.Reply(nil, pct.UnknownServiceError{Service: cmd.Service})
+					}
+				}
+				cmdReply <- reply
+			}()
+
+			// Wait for the cmd to complete.
+			var reply *proto.Reply
+			select {
+			case reply = <-cmdReply:
+				// todo: instrument cmd exec time
+			case <-time.After(20 * time.Second):
+				reply = cmd.Reply(nil, pct.CmdTimeoutError{Cmd: cmd.Cmd})
 			}
-			agent.status.UpdateRe("agent-cmd-handler", "Replying", cmd)
-			replyChan <- reply
+
+			select {
+			case replyChan <- reply:
+			case <-time.After(20 * time.Second):
+				agent.logger.Warn("Failed to send reply:", reply)
+			}
 		case <-agent.cmdHandlerSync.StopChan: // from stop()
 			agent.cmdHandlerSync.Graceful()
 			return
@@ -308,128 +333,142 @@ func (agent *Agent) cmdHandler() {
 	}
 }
 
-// @goroutine[0:1]
-func (agent *Agent) handleCmd(cmd *proto.Cmd) *proto.Reply {
+// cmdHandler:@goroutine[3]
+func (agent *Agent) Handle(cmd *proto.Cmd) *proto.Reply {
 	agent.status.UpdateRe("agent-cmd-handler", "Running", cmd)
 	agent.logger.Info("Running", cmd)
 
-	agent.cmdqMux.Lock()
-	agent.cmdq = append(agent.cmdq, cmd)
-	agent.status.Update("agent-cmd-queue", fmt.Sprintf("%d", len(agent.cmdq)))
-	agent.cmdqMux.Unlock()
-
 	defer func() {
-		// Pop the cmd from the queue.
-		agent.status.UpdateRe("agent-cmd-handler", "Finishing", cmd)
-		agent.cmdqMux.Lock()
-		agent.cmdq = agent.cmdq[0 : len(agent.cmdq)-1]
-		agent.status.Update("agent-cmd-queue", fmt.Sprintf("%d", len(agent.cmdq)))
-		agent.cmdqMux.Unlock()
 		agent.logger.Info("Done running", cmd)
 	}()
 
-	// Run the command in another goroutine so we can wait for it
-	// (and possibly timeout) in this goroutine.
-	cmdReply := make(chan *proto.Reply, 1)
-	go func() {
-		var data interface{}
-		var reply *proto.Reply
-		defer func() { cmdReply <- reply }()
-
-		if cmd.Service == "agent" {
-			// Agent command
-			var err error
-			switch cmd.Cmd {
-			case "StartService":
-				err = agent.handleStartService(cmd)
-			case "StopService":
-				err = agent.handleStopService(cmd)
-			case "GetConfig":
-				data = agent.config
-			default:
-				// todo: handle SetConfig
-				err = pct.UnknownCmdError{Cmd: cmd.Cmd}
-			}
-			reply = cmd.Reply(data, err)
-		} else {
-			// Service command
-			if manager, ok := agent.services[cmd.Service]; ok {
-				reply = manager.Handle(cmd)
-			} else {
-				reply = cmd.Reply(nil, pct.UnknownServiceError{Service: cmd.Service})
-			}
-		}
-	}()
-
-	// Wait for the cmd to complete.
-	var reply *proto.Reply
-	select {
-	case reply = <-cmdReply:
-		// todo: instrument cmd exec time
-	case <-time.After(20 * time.Second):
-		reply = cmd.Reply(nil, pct.CmdTimeoutError{Cmd: cmd.Cmd})
+	var data interface{}
+	var err error
+	switch cmd.Cmd {
+	case "StartService":
+		data, err = agent.handleStartService(cmd)
+	case "StopService":
+		data, err = agent.handleStopService(cmd)
+	case "GetConfig":
+		data, err = agent.handleGetConfig(cmd)
+	case "SetConfig":
+		data, err = agent.handleSetConfig(cmd)
+	default:
+		err = pct.UnknownCmdError{Cmd: cmd.Cmd}
 	}
 
-	return reply
+	if err != nil {
+		agent.logger.Error(err)
+	}
+
+	return cmd.Reply(data, err)
 }
 
-func (agent *Agent) handleStartService(cmd *proto.Cmd) error {
+// Handle:@goroutine[3]
+func (agent *Agent) handleStartService(cmd *proto.Cmd) (interface{}, error) {
 	agent.status.UpdateRe("agent-cmd-handler", "StartService", cmd)
 	agent.logger.Info(cmd)
 
 	// Unmarshal the data to get the service name and config.
-	s := new(proto.ServiceData)
+	s := &proto.ServiceData{}
 	if err := json.Unmarshal(cmd.Data, s); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Check if we have a manager for the service.
 	m, ok := agent.services[s.Name]
 	if !ok {
-		return pct.UnknownServiceError{Service: s.Name}
+		return nil, pct.UnknownServiceError{Service: s.Name}
 	}
 
 	// Start the service with the given config.
 	if err := m.Start(cmd, s.Config); err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return nil, nil
 }
 
-func (agent *Agent) handleStopService(cmd *proto.Cmd) error {
+// Handle:@goroutine[3]
+func (agent *Agent) handleStopService(cmd *proto.Cmd) (interface{}, error) {
 	agent.status.UpdateRe("agent-cmd-handler", "StopService", cmd)
 	agent.logger.Info(cmd)
 
 	// Unmarshal the data to get the service name.
 	s := new(proto.ServiceData)
 	if err := json.Unmarshal(cmd.Data, s); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Check if we have a manager for the service.  If not, that's ok,
 	// just return because the service can't be running if we don't have it.
 	m, ok := agent.services[s.Name]
 	if !ok {
-		return nil
+		return nil, pct.UnknownServiceError{Service: s.Name}
 	}
 
 	// Stop the service.
 	err := m.Stop(cmd)
-	return err
+	return nil, err
+}
+
+// Handle:@goroutine[3]
+func (agent *Agent) handleGetConfig(cmd *proto.Cmd) (interface{}, error) {
+	agent.status.UpdateRe("agent-cmd-handler", "GetConfig", cmd)
+	agent.logger.Info(cmd)
+
+	agent.configMux.RLock()
+	defer agent.configMux.RUnlock()
+
+	config := agent.config
+	config.Links = nil  // not saved, not reported
+
+	return config, nil
+}
+
+// Handle:@goroutine[3]
+func (agent *Agent) handleSetConfig(cmd *proto.Cmd) (interface{}, error) {
+	agent.status.UpdateRe("agent-cmd-handler", "SetConfig", cmd)
+	agent.logger.Info(cmd)
+
+	newConfig := &Config{}
+	if err := json.Unmarshal(cmd.Data, newConfig); err != nil {
+		return nil, err
+	}
+
+	agent.configMux.Lock()
+	defer agent.configMux.Unlock()
+
+	finalConfig := agent.config
+
+	if newConfig.ApiKey != "" && newConfig.ApiKey != agent.config.ApiKey {
+		// todo: test access with new API key?
+		agent.logger.Warn("Changing API key from", agent.config.ApiKey, "to", newConfig.ApiKey)
+		finalConfig.ApiKey = newConfig.ApiKey
+	}
+
+	// todo: change ApiHostname and PidFile
+
+	if err := agent.WriteConfig(finalConfig, "agent"); err != nil {
+		agent.logger.Error("New agent config not applied")
+		return nil, err
+	}
+
+	agent.config = finalConfig
+	return finalConfig, nil
 }
 
 //---------------------------------------------------------------------------
 // Status handler
 // --------------------------------------------------------------------------
 
-// @goroutine[2]
+// Run:@goroutine[2]
 func (agent *Agent) statusHandler() {
 	replyChan := agent.client.SendChan()
 
 	defer agent.statusHandlerSync.Done()
 
-	// Status handler doesn't have its own because that's circular,
+	// Status handler doesn't have its own status because that's circular,
 	// e.g. "How am I? I'm good!".
 
 	for {
@@ -454,10 +493,12 @@ func (agent *Agent) statusHandler() {
 	}
 }
 
+// statusHandler:@goroutine[2]
 func (agent *Agent) Status() map[string]string {
 	return agent.status.All()
 }
 
+// statusHandler:@goroutine[2]
 func (agent *Agent) AllStatus() map[string]string {
 	status := agent.status.All()
 	for service, manager := range agent.services {
