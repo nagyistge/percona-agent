@@ -115,6 +115,7 @@ func (m *Monitor) connect() (*sql.DB, error) {
 	m.status.Update("mysql-sysconfig", "Connecting")
 
 	// Open connection to MySQL but...
+	m.logger.Debug("DSN:", m.config.DSN)
 	db, err := sql.Open("mysql", m.config.DSN)
 	if err != nil {
 		m.logger.Error("sql.Open: ", err)
