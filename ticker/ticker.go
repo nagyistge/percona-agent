@@ -32,14 +32,18 @@ type Ticker interface {
 }
 
 type TickerFactory interface {
-	Make(atInterval uint) Ticker
+	Make(atInterval uint, sync bool) Ticker
 }
 
-type EvenTickerFactory struct {
+type RealTickerFactory struct {
 }
 
-func (f *EvenTickerFactory) Make(atInterval uint) Ticker {
-	return NewEvenTicker(atInterval, time.Sleep)
+func (f *RealTickerFactory) Make(atInterval uint, sync bool) Ticker {
+	if sync {
+		return NewEvenTicker(atInterval, time.Sleep)
+	} else {
+		return NewWaitTicker(atInterval)
+	}
 }
 
 type EvenTicker struct {

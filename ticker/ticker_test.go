@@ -188,10 +188,10 @@ func (s *ManagerTestSuite) TestAddWatcher(t *gocheck.C) {
 	now = int64(1380330697385120263) // Fri Sep 27 18:11:37.385120 -0700 PDT 2013
 	s.tickerFactory.Set([]ticker.Ticker{s.mockTicker})
 
-	m := ticker.NewRolex(s.tickerFactory, nowFunc)
+	m := ticker.NewClock(s.tickerFactory, nowFunc)
 
 	c := make(chan time.Time)
-	m.Add(c, 79)
+	m.Add(c, 79, true)
 
 	if !test.WaitState(s.mockTicker.RunningChan) {
 		t.Error("Starts ticker")

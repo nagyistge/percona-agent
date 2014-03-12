@@ -17,7 +17,7 @@ func NewTickerFactory() *TickerFactory {
 	return tf
 }
 
-func (tf *TickerFactory) Make(atInterval uint) ticker.Ticker {
+func (tf *TickerFactory) Make(atInterval uint, sync bool) ticker.Ticker {
 	tf.Made = append(tf.Made, atInterval)
 	if tf.tickerNo > len(tf.tickers) {
 		return tf.tickers[tf.tickerNo-1]

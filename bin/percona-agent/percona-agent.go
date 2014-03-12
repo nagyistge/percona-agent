@@ -180,7 +180,7 @@ func main() {
 	 */
 
 	nowFunc := func() int64 { return time.Now().UTC().UnixNano() }
-	clock := ticker.NewRolex(&ticker.EvenTickerFactory{}, nowFunc)
+	clock := ticker.NewClock(&ticker.RealTickerFactory{}, nowFunc)
 
 	/**
 	 * Metric and system config monitors

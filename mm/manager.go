@@ -137,9 +137,13 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 			return cmd.Reply(nil, errors.New("Factory: "+err.Error()))
 		}
 
-		// Make ticker for collect interval.
+		// Make synchronized (3rd arg=true) ticker for collect interval.  It's
+		// synchronized so all data aligns in charts, else we can get MySQL metrics
+		// at 00:03 and system metrics at 00:05 and other metrics at 00:06 which
+		// makes it very difficult to see all metrics at a single point in time
+		// or meaningfully compare a single interval, e.g. 00:00 to 00:05.
 		tickChan := make(chan time.Time)
-		m.clock.Add(tickChan, mm.Collect)
+		m.clock.Add(tickChan, mm.Collect, true)
 
 		// We need one aggregator for each unique report interval.  There's usually
 		// just one: 60s.  Remember: report interval != collect interval.  Monitors
@@ -150,7 +154,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 			// Make new aggregator for this report interval.
 			logger := pct.NewLogger(m.logger.LogChan(), fmt.Sprintf("mm-ag-%d", mm.Report))
 			tickChan := make(chan time.Time)
-			m.clock.Add(tickChan, mm.Report)
+			m.clock.Add(tickChan, mm.Report, true)
 			collectionChan := make(chan *Collection, 2*len(m.monitors)+1)
 			aggregator := NewAggregator(logger, tickChan, collectionChan, m.spool)
 			aggregator.Start()
