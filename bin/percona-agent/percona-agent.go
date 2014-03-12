@@ -212,7 +212,7 @@ func main() {
 			golog.Panicf("Error starting sysconfig service: ", err)
 		}
 	}
-	StartMonitors("sysconfig", configDir, "sysconfig-*.conf", sysconfigManager)
+	StartMonitors("sysconfig", configDir, configDir+"/sysconfig-*.conf", sysconfigManager)
 
 	/**
 	 * Query Analytics
@@ -436,6 +436,7 @@ func StartMonitors(service, configDir, glob string, manager pct.ServiceManager) 
 			Cmd:     "StartService",
 			Data:    data,
 		}
+		golog.Println("Starting " + service + " monitor: " + configFile)
 		reply := manager.Handle(cmd)
 		if reply.Error != "" {
 			golog.Println("Start " + configFile + " monitor:" + reply.Error)
