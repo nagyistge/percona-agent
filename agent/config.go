@@ -35,7 +35,7 @@ type Config struct {
 	ApiKey      string
 	PidFile     string
 	Links       map[string]string `json:",omitempty"`
-	Dir         string `json:"-"`
+	Dir         string            `json:"-"`
 }
 
 func LoadConfig(file string) (*Config, error) {

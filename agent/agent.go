@@ -35,7 +35,7 @@ const (
 
 type Agent struct {
 	config    *Config
-	configMux  *sync.RWMutex
+	configMux *sync.RWMutex
 	configDir string
 	logger    *pct.Logger
 	client    pct.WebsocketClient
@@ -59,11 +59,11 @@ type Agent struct {
 
 func NewAgent(config *Config, logger *pct.Logger, client pct.WebsocketClient, services map[string]pct.ServiceManager) *Agent {
 	agent := &Agent{
-		config:   config,
+		config:    config,
 		configMux: &sync.RWMutex{},
-		logger:   logger,
-		client:   client,
-		services: services,
+		logger:    logger,
+		client:    client,
+		services:  services,
 		// --
 		status:     pct.NewStatus([]string{"agent", "agent-cmd-handler", "agent-api"}),
 		cmdChan:    make(chan *proto.Cmd, CMD_QUEUE_SIZE),
@@ -257,21 +257,21 @@ func (agent *Agent) stop(cmd *proto.Cmd) {
 	agent.status.UpdateRe("agent", "Stopped", cmd)
 }
 
-func (m *Agent) WriteConfig(config interface{}, name string) error {
-	if m.configDir == "" {
-		return nil
+func (agent *Agent) WriteConfig(config interface{}, name string) error {
+	if agent.config.Dir == "" {
+		golog.Panic("agent:WriteConfig:agent.config.Dir is not set")
 	}
-	file := m.configDir + "/" + CONFIG_FILE
-	m.logger.Info("Writing", file)
+	file := agent.config.Dir + "/" + CONFIG_FILE
+	agent.logger.Info("Writing", file)
 	return pct.WriteConfig(file, config)
 }
 
-func (m *Agent) RemoveConfig(name string) error {
-	if m.configDir == "" {
-		return nil
+func (agent *Agent) RemoveConfig(name string) error {
+	if agent.configDir == "" {
+		golog.Panic("agent:RemoveConfig:agent.config.Dir is not set")
 	}
-	file := m.configDir + "/" + CONFIG_FILE
-	m.logger.Info("Removing", file)
+	file := agent.config.Dir + "/" + CONFIG_FILE
+	agent.logger.Info("Removing", file)
 	return pct.RemoveFile(file)
 }
 
@@ -420,8 +420,8 @@ func (agent *Agent) handleGetConfig(cmd *proto.Cmd) (interface{}, error) {
 	agent.configMux.RLock()
 	defer agent.configMux.RUnlock()
 
-	config := agent.config
-	config.Links = nil  // not saved, not reported
+	config := *agent.config
+	config.Links = nil // not saved, not reported
 
 	return config, nil
 }
