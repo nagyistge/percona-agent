@@ -125,9 +125,12 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 			return cmd.Reply(nil, errors.New("Factory: "+err.Error()))
 		}
 
-		// Make ticker for collect interval.
+		// Make unsynchronized (3rd arg=false) ticker for collect interval,
+		// it's unsynchronized because 1) we don't need sysconfig data to be
+		// synchronized, and 2) sysconfig monitors usually collect very slowly,
+		// e.g. 1h, so if we synced it it could wait awhile before 1st tick.
 		tickChan := make(chan time.Time)
-		m.clock.Add(tickChan, c.Collect)
+		m.clock.Add(tickChan, c.Collect, false)
 
 		// Start the monitor.
 		if err = monitor.Start(cmd.Data, tickChan, m.sysconfigChan); err != nil {

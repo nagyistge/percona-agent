@@ -160,7 +160,9 @@ func (m *Monitor) run() {
 				System: "mysql global variables",
 				Config: []sysconfig.Setting{},
 			}
-			m.GetGlobalVariables(conn, prefix, c)
+			if err := m.GetGlobalVariables(conn, prefix, c); err != nil {
+				m.logger.Warn(err)
+			}
 			conn.Close()
 
 			if len(c.Config) > 0 {

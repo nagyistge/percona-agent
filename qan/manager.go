@@ -102,7 +102,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 
 	// Add a tickChan to the clock so it receives ticks at intervals.
 	m.tickChan = make(chan time.Time)
-	m.clock.Add(m.tickChan, c.Interval)
+	m.clock.Add(m.tickChan, c.Interval, true)
 
 	// Make an iterator for the slow log file at interval ticks.
 	filenameFunc := func() (string, error) {

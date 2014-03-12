@@ -18,60 +18,85 @@
 package ticker
 
 import (
+	"log"
 	"sync"
 	"time"
 )
 
 type Manager interface {
-	Add(c chan time.Time, atInterval uint)
+	Add(c chan time.Time, atInterval uint, sync bool)
 	Remove(c chan time.Time)
 }
 
 // Solid gold
-type Rolex struct {
+type Clock struct {
 	tickerFactory TickerFactory
-	ticker        map[uint]Ticker
-	tickerMux     *sync.Mutex
+	syncTicker    map[uint]Ticker
+	syncTickerMux *sync.Mutex
+	waitTicker    map[chan time.Time]Ticker
+	waitTickerMux *sync.Mutex
 	nowFunc       func() int64
 	watcher       map[chan time.Time]Ticker
 	watcherMux    *sync.Mutex
 }
 
-func NewRolex(tickerFactory TickerFactory, nowFunc func() int64) *Rolex {
-	r := &Rolex{
+func NewClock(tickerFactory TickerFactory, nowFunc func() int64) *Clock {
+	r := &Clock{
 		tickerFactory: tickerFactory,
 		nowFunc:       nowFunc,
-		ticker:        make(map[uint]Ticker),
-		tickerMux:     new(sync.Mutex),
+		syncTicker:    make(map[uint]Ticker),
+		syncTickerMux: new(sync.Mutex),
+		waitTicker:    make(map[chan time.Time]Ticker),
+		waitTickerMux: new(sync.Mutex),
 		watcher:       make(map[chan time.Time]Ticker),
 		watcherMux:    new(sync.Mutex),
 	}
 	return r
 }
 
-func (r *Rolex) Add(c chan time.Time, atInterval uint) {
-	r.tickerMux.Lock()
-	defer r.tickerMux.Unlock()
-	ticker, ok := r.ticker[atInterval]
-	if !ok {
-		ticker = r.tickerFactory.Make(atInterval)
-		go ticker.Run(r.nowFunc())
-		r.ticker[atInterval] = ticker
+func (clock *Clock) Add(c chan time.Time, atInterval uint, sync bool) {
+	var ticker Ticker
+	var ok bool
+	if sync {
+		clock.syncTickerMux.Lock()
+		defer clock.syncTickerMux.Unlock()
+		ticker, ok = clock.syncTicker[atInterval]
+		if !ok {
+			ticker = clock.tickerFactory.Make(atInterval, sync)
+			go ticker.Run(clock.nowFunc())
+			clock.syncTicker[atInterval] = ticker
+		}
+	} else {
+		clock.waitTickerMux.Lock()
+		defer clock.waitTickerMux.Unlock()
+		if _, ok := clock.waitTicker[c]; ok {
+			log.Panic("WaitTicker exists for ", c)
+		}
+		ticker = clock.tickerFactory.Make(atInterval, sync)
+		go ticker.Run(clock.nowFunc())
+		clock.waitTicker[c] = ticker
 	}
+
 	ticker.Add(c)
 
-	r.watcherMux.Lock()
-	defer r.watcherMux.Unlock()
-	r.watcher[c] = ticker
-
-	// todo: stop ticker if it has no watchers
+	clock.watcherMux.Lock()
+	defer clock.watcherMux.Unlock()
+	clock.watcher[c] = ticker
 }
 
-func (r *Rolex) Remove(c chan time.Time) {
-	r.watcherMux.Lock()
-	defer r.watcherMux.Unlock()
-	if ticker, ok := r.watcher[c]; ok {
+func (clock *Clock) Remove(c chan time.Time) {
+	clock.watcherMux.Lock()
+	defer clock.watcherMux.Unlock()
+	if ticker, ok := clock.watcher[c]; ok {
 		ticker.Remove(c)
-		delete(r.watcher, c)
+		delete(clock.watcher, c)
+	}
+
+	// todo: stop ticker if it has no watchers
+
+	clock.waitTickerMux.Lock()
+	defer clock.waitTickerMux.Unlock()
+	if _, ok := clock.waitTicker[c]; ok {
+		delete(clock.waitTicker, c)
 	}
 }

@@ -188,10 +188,10 @@ func (s *ManagerTestSuite) TestAddWatcher(t *gocheck.C) {
 	now = int64(1380330697385120263) // Fri Sep 27 18:11:37.385120 -0700 PDT 2013
 	s.tickerFactory.Set([]ticker.Ticker{s.mockTicker})
 
-	m := ticker.NewRolex(s.tickerFactory, nowFunc)
+	m := ticker.NewClock(s.tickerFactory, nowFunc)
 
 	c := make(chan time.Time)
-	m.Add(c, 79)
+	m.Add(c, 79, true)
 
 	if !test.WaitState(s.mockTicker.RunningChan) {
 		t.Error("Starts ticker")
@@ -206,4 +206,39 @@ func (s *ManagerTestSuite) TestAddWatcher(t *gocheck.C) {
 	}
 
 	m.Remove(c)
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// WaitTicker test suite
+/////////////////////////////////////////////////////////////////////////////
+
+type WaitTickerTestSuite struct{}
+
+var _ = gocheck.Suite(&WaitTickerTestSuite{})
+
+func (s *WaitTickerTestSuite) TestWaitTicker(t *gocheck.C) {
+	wt := ticker.NewWaitTicker(2)
+
+	tickChan := make(chan time.Time)
+	wt.Add(tickChan)
+	go wt.Run(0)
+
+	ticks := []time.Time{time.Now()}
+	for i := 0; i < 2; i++ {
+		now := <-tickChan
+		ticks = append(ticks, now)
+	}
+	wt.Stop()
+
+	t.Assert(len(ticks), gocheck.Equals, 3)
+
+	d := ticks[1].Sub(ticks[0])
+	if d.Seconds() >= 1.0 {
+		t.Error("Ticks when receiver ready; got %f", d.Seconds())
+	}
+
+	d = ticks[2].Sub(ticks[1])
+	if d.Seconds() < 1.9 || d.Seconds() > 2.5 {
+		t.Error("Waits interval seconds; got %f", d.Seconds())
+	}
 }

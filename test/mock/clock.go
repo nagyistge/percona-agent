@@ -17,7 +17,7 @@ func NewClock() *Clock {
 	return m
 }
 
-func (m *Clock) Add(c chan time.Time, t uint) {
+func (m *Clock) Add(c chan time.Time, t uint, sync bool) {
 	m.Added = append(m.Added, t)
 }
 
