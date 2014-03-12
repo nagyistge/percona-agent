@@ -193,10 +193,8 @@ func main() {
 		dataManager.Spooler(),
 	)
 	mmConfig, err := mmManager.LoadConfig(configDir)
-	if mmConfig != nil {
-		if err := mmManager.Start(&proto.Cmd{}, mmConfig); err != nil {
-			golog.Panicf("Error starting mm service: ", err)
-		}
+	if err := mmManager.Start(&proto.Cmd{}, mmConfig); err != nil {
+		golog.Panicf("Error starting mm service: ", err)
 	}
 	StartMonitors("mm", configDir, configDir+"/*-monitor.conf", mmManager)
 
@@ -207,10 +205,8 @@ func main() {
 		dataManager.Spooler(),
 	)
 	sysconfigConfig, err := sysconfigManager.LoadConfig(configDir)
-	if sysconfigConfig != nil {
-		if err := sysconfigManager.Start(&proto.Cmd{}, sysconfigConfig); err != nil {
-			golog.Panicf("Error starting sysconfig service: ", err)
-		}
+	if err := sysconfigManager.Start(&proto.Cmd{}, sysconfigConfig); err != nil {
+		golog.Panicf("Error starting sysconfig service: ", err)
 	}
 	StartMonitors("sysconfig", configDir, configDir+"/sysconfig-*.conf", sysconfigManager)
 
