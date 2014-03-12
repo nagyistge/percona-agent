@@ -207,3 +207,38 @@ func (s *ManagerTestSuite) TestAddWatcher(t *gocheck.C) {
 
 	m.Remove(c)
 }
+
+/////////////////////////////////////////////////////////////////////////////
+// WaitTicker test suite
+/////////////////////////////////////////////////////////////////////////////
+
+type WaitTickerTestSuite struct{}
+
+var _ = gocheck.Suite(&WaitTickerTestSuite{})
+
+func (s *WaitTickerTestSuite) TestWaitTicker(t *gocheck.C) {
+	wt := ticker.NewWaitTicker(2)
+
+	tickChan := make(chan time.Time)
+	wt.Add(tickChan)
+	go wt.Run(0)
+
+	ticks := []time.Time{time.Now()}
+	for i := 0; i < 2; i++ {
+		now := <-tickChan
+		ticks = append(ticks, now)
+	}
+	wt.Stop()
+
+	t.Assert(len(ticks), gocheck.Equals, 3)
+
+	d := ticks[1].Sub(ticks[0])
+	if d.Seconds() >= 1.0 {
+		t.Error("Ticks when receiver ready; got %f", d.Seconds())
+	}
+
+	d = ticks[2].Sub(ticks[1])
+	if d.Seconds() < 1.9 || d.Seconds() > 2.5 {
+		t.Error("Waits interval seconds; got %f", d.Seconds())
+	}
+}
