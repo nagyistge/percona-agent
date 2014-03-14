@@ -28,35 +28,40 @@ import (
 	"errors"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/data"
+	"github.com/percona/cloud-tools/factory"
+	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/ticker"
-	"strings"
 	"time"
 )
 
 type Manager struct {
-	logger  *pct.Logger
 	factory MonitorFactory
-	clock   ticker.Manager
-	spool   data.Spooler
 	// --
-	sysconfigChan  chan *SystemConfig // <- SystemConfig from monitor
+	logger *pct.Logger
+	clock  ticker.Manager
+	spool  data.Spooler
+	im     *instance.Manager
+	// --
+	reportChan     chan *Report // <- Report from monitor
 	monitors       map[string]Monitor
 	status         *pct.Status
 	configDir      string
 	spoolerRunning bool
 }
 
-func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager, spool data.Spooler) *Manager {
+func NewManager(f factory.CommonArgsFactory, factory MonitorFactory) *Manager {
 	m := &Manager{
-		logger:  logger,
 		factory: factory,
-		clock:   clock,
-		spool:   spool,
 		// --
-		sysconfigChan: make(chan *SystemConfig, 3),
-		monitors:      make(map[string]Monitor),
-		status:        pct.NewStatus([]string{"sysconfig", "sysconfig-spooler"}),
+		logger: f.MakeLogger("sysconfig"),
+		clock:  f.GetClock(),
+		spool:  f.GetSpooler(),
+		im:     f.GetInstanceManager(),
+		// --
+		reportChan: make(chan *Report, 3),
+		monitors:   make(map[string]Monitor),
+		status:     pct.NewStatus([]string{"sysconfig", "sysconfig-spooler"}),
 	}
 	return m
 }
@@ -106,7 +111,8 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		return cmd.Reply(nil, errors.New("sysconfig.Handle:json.Unmarshal:"+err.Error()))
 	}
 
-	name := strings.ToLower("sysconfig-" + c.Type + "-" + c.Name)
+	// The real name of the internal service, e.g. sysconfig-mysql-1:
+	name := "sysconfig-" + m.im.Name(c.Service, c.InstanceId)
 
 	switch cmd.Cmd {
 	case "StartService":
@@ -121,7 +127,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 		// Create the monitor based on its type.
 		var monitor Monitor
-		if monitor, err = m.factory.Make(c.Type, name); err != nil {
+		if monitor, err = m.factory.Make(c.Service, c.InstanceId, cmd.Data); err != nil {
 			return cmd.Reply(nil, errors.New("Factory: "+err.Error()))
 		}
 
@@ -130,10 +136,10 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		// synchronized, and 2) sysconfig monitors usually collect very slowly,
 		// e.g. 1h, so if we synced it it could wait awhile before 1st tick.
 		tickChan := make(chan time.Time)
-		m.clock.Add(tickChan, c.Collect, false)
+		m.clock.Add(tickChan, c.Report, false)
 
 		// Start the monitor.
-		if err = monitor.Start(cmd.Data, tickChan, m.sysconfigChan); err != nil {
+		if err = monitor.Start(tickChan, m.reportChan); err != nil {
 			return cmd.Reply(nil, errors.New("Start "+name+": "+err.Error()))
 		}
 		m.monitors[name] = monitor
@@ -198,7 +204,7 @@ func (m *Manager) Status() map[string]string {
 func (m *Manager) spooler() {
 	defer m.status.Update("sysconfig-spooler", "Stopped")
 	m.status.Update("sysconfig-spooler", "Running")
-	for s := range m.sysconfigChan {
+	for s := range m.reportChan {
 		m.spool.Write("sysconfig", s)
 	}
 }

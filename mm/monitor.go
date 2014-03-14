@@ -18,6 +18,7 @@
 package mm
 
 import (
+	"github.com/percona/cloud-tools/instance"
 	"time"
 )
 
@@ -41,7 +42,7 @@ type Monitor interface {
 }
 
 type MonitorFactory interface {
-	Make(mtype, name string) (Monitor, error)
+	Make(service string, instanceId uint, data []byte) (Monitor, error)
 }
 
 var MetricTypes map[string]bool = map[string]bool{
@@ -64,6 +65,7 @@ type Collection struct {
 type Metrics map[string]*Stats
 
 type Report struct {
+	instance.Config
 	Ts       time.Time // start, UTC
 	Duration uint      // seconds
 	Metrics  Metrics

@@ -17,8 +17,11 @@
 
 package sysconfig
 
+import (
+	"github.com/percona/cloud-tools/instance"
+)
+
 type Config struct {
-	Type    string // cloud-tools/sysconfig/<type>/collector.go
-	SID     uint   // proto.<service>Instance.Id
-	Collect uint   // how often to collect config (seconds)
+	instance.Config
+	Report uint // how often to collect and send config (seconds)
 }

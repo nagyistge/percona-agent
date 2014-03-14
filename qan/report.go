@@ -24,6 +24,7 @@ import (
 )
 
 type Report struct {
+	instance.Config
 	StartTs     time.Time // UTC
 	EndTs       time.Time // UTC
 	SlowLogFile string    // not slow_query_log_file if rotated

@@ -20,15 +20,15 @@ func NewFactory(logChan chan *proto.LogEntry) *Factory {
 	return f
 }
 
-func (f *Factory) Make(mtype, name string) (mm.Monitor, error) {
+func Make(service string, instanceId uint, data []byte) (Monitor, error) {
 	var monitor mm.Monitor
-	switch mtype {
+	switch service {
 	case "mysql":
 		monitor = mysql.NewMonitor(pct.NewLogger(f.logChan, name))
 	case "system":
 		monitor = system.NewMonitor(pct.NewLogger(f.logChan, name))
 	default:
-		return nil, errors.New("Unknown monitor type: " + mtype)
+		return nil, errors.New("Unknown monitor type: " + service)
 	}
 	return monitor, nil
 }

@@ -46,6 +46,8 @@ type Monitor struct {
 }
 
 func NewMonitor(logger *pct.Logger) *Monitor {
+
+
 	m := &Monitor{
 		logger: logger,
 		// --

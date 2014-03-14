@@ -1,4 +1,21 @@
-package sid
+/*
+   Copyright (c) 2014, Percona LLC and/or its affiliates. All rights reserved.
+
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
+
+   You should have received a copy of the GNU Affero General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>
+*/
+
+package instance
 
 import (
 	"encoding/json"
@@ -11,10 +28,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-)
-
-const (
-	PREFIX = "instance-"
 )
 
 type Manager struct {
@@ -34,7 +47,16 @@ func NewManager(logger *pct.Logger, configDir string) *Manager {
 }
 
 func (m *Manager) Init() error {
-	files, err := filepath.Glob(m.configDir + "/" + PREFIX + "*")
+	for service, _ := range proto.ExternalService {
+		if err := m.loadInstances(service); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *Manager) loadInstances(service string) error {
+	files, err := filepath.Glob(m.configDir + "/" + service + "-*.conf")
 	if err != nil {
 		return err
 	}
@@ -67,13 +89,13 @@ func (m *Manager) Init() error {
 		case "server":
 			it := &proto.ServerInstance{}
 			if err := json.Unmarshal(data, it); err != nil {
-				return errors.New("sid:Init:json.Unmarshal:" + file + ":" + err.Error())
+				return errors.New("it:Init:json.Unmarshal:" + file + ":" + err.Error())
 			}
 			info = it
 		case "mysql":
 			it := &proto.MySQLInstance{}
 			if err := json.Unmarshal(data, it); err != nil {
-				return errors.New("sid:Init:json.Unmarshal:" + file + ":" + err.Error())
+				return errors.New("it:Init:json.Unmarshal:" + file + ":" + err.Error())
 			}
 			info = it
 		default:
@@ -92,12 +114,12 @@ func (m *Manager) Add(service string, id uint, info interface{}) error {
 	if !valid(service, id) {
 		return pct.InvalidServiceInstanceError{Service: service, Id: id}
 	}
-	name := name(service, id)
+	name := m.Name(service, id)
 	if _, ok := m.it[name]; ok {
 		return pct.DuplicateServiceInstanceError{Service: service, Id: id}
 	}
 
-	file := m.configDir + "/" + PREFIX + name
+	file := m.configDir + "/" + name + ".conf"
 	m.logger.Info("Writing", file)
 	if err := pct.WriteConfig(file, info); err != nil {
 		return err
@@ -111,7 +133,7 @@ func (m *Manager) Get(service string, id uint, info interface{}) error {
 	if !valid(service, id) {
 		return pct.InvalidServiceInstanceError{Service: service, Id: id}
 	}
-	name := name(service, id)
+	name := m.Name(service, id)
 
 	it, ok := m.it[name]
 	if !ok {
@@ -141,7 +163,7 @@ func (m *Manager) Update(service string, id uint, info []byte) error {
 	return nil
 }
 
-func (m *Manager) Remove(sid uint) error {
+func (m *Manager) Remove(id uint) error {
 	// todo: API --> agent --> side.Remove()
 	// Agent should stop all services using the instance before call this.
 	return nil
@@ -157,6 +179,6 @@ func valid(service string, id uint) bool {
 	return true
 }
 
-func name(service string, id uint) string {
+func (m * Manager) Name(service string, id uint) string {
 	return fmt.Sprintf("%s-%d", service, id)
 }

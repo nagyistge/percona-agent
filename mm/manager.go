@@ -29,9 +29,10 @@ import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/data"
+	"github.com/percona/cloud-tools/factory"
+	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/ticker"
-	"strings"
 	"time"
 )
 
@@ -49,10 +50,12 @@ type Binding struct {
 //       return with ServiceIsRunningError
 
 type Manager struct {
-	logger  *pct.Logger
 	factory MonitorFactory
-	clock   ticker.Manager
-	spool   data.Spooler
+	// --
+	logger *pct.Logger
+	clock  ticker.Manager
+	spool  data.Spooler
+	im     *instance.Manager
 	// --
 	monitors    map[string]Monitor
 	status      *pct.Status
@@ -60,12 +63,14 @@ type Manager struct {
 	configDir   string
 }
 
-func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager, spool data.Spooler) *Manager {
+func NewManager(f factory.CommonArgsFactory, factory MonitorFactory) *Manager {
 	m := &Manager{
-		logger:  logger,
 		factory: factory,
-		clock:   clock,
-		spool:   spool,
+		// --
+		logger: f.MakeLogger("mm"),
+		clock:  f.GetClock(),
+		spool:  f.GetSpooler(),
+		im:     f.GetInstanceManager(),
 		// --
 		monitors:    make(map[string]Monitor),
 		status:      pct.NewStatus([]string{"mm"}),
@@ -116,9 +121,8 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		return cmd.Reply(nil, errors.New("mm.Handle:json.Unmarshal:"+err.Error()))
 	}
 
-	// e.g. default-mysql-monitor, default-system-monitoir,
-	// db1-msyql-monitor, db2-mysql-monitor
-	name := strings.ToLower(mm.Name + "-" + mm.Type + "-monitor")
+	// The real name of the internal service, e.g. mm-mysql-1:
+	name := "mm-" + m.im.Name(mm.Service, mm.InstanceId)
 
 	switch cmd.Cmd {
 	case "StartService":
@@ -133,7 +137,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 		// Create the monitor based on its type.
 		var monitor Monitor
-		if monitor, err = m.factory.Make(mm.Type, name); err != nil {
+		if monitor, err = m.factory.Make(mm.Service, mm.InstanceId, cmd.Data); err != nil {
 			return cmd.Reply(nil, errors.New("Factory: "+err.Error()))
 		}
 

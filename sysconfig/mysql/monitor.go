@@ -19,9 +19,9 @@ package mysql
 
 import (
 	"database/sql"
-	"encoding/json"
-	"errors"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/percona/cloud-tools/instance"
+	"github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/sysconfig"
 	"strings"
@@ -29,22 +29,28 @@ import (
 )
 
 type Monitor struct {
+	name   string
+	config *Config
 	logger *pct.Logger
+	conn   mysql.Connector
 	// --
-	config        *Config
-	tickChan      chan time.Time
-	sysconfigChan chan *sysconfig.SystemConfig
+	tickChan   chan time.Time
+	reportChan chan *sysconfig.Report
 	// --
-	status *pct.Status
-	sync   *pct.SyncChan
+	status  *pct.Status
+	sync    *pct.SyncChan
+	running bool
 }
 
-func NewMonitor(logger *pct.Logger) *Monitor {
+func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Connector) *Monitor {
 	m := &Monitor{
+		name:   name,
+		config: config,
 		logger: logger,
+		conn:   conn,
 		// --
 		sync:   pct.NewSyncChan(),
-		status: pct.NewStatus([]string{"mysql-sysconfig"}),
+		status: pct.NewStatus([]string{name, name + "-mysql"}),
 	}
 	return m
 }
@@ -54,20 +60,14 @@ func NewMonitor(logger *pct.Logger) *Monitor {
 /////////////////////////////////////////////////////////////////////////////
 
 // @goroutine[0]
-func (m *Monitor) Start(config []byte, tickChan chan time.Time, sysconfigChan chan *sysconfig.SystemConfig) error {
-	if m.config != nil {
-		return pct.ServiceIsRunningError{"mysql-monitor"}
+func (m *Monitor) Start(tickChan chan time.Time, reportChan chan *sysconfig.Report) error {
+	if m.running {
+		return pct.ServiceIsRunningError{m.name}
 	}
 
-	c := &Config{}
-	if err := json.Unmarshal(config, c); err != nil {
-		return errors.New("mysql.Start:json.Unmarshal:" + err.Error())
-	}
-
-	m.config = c
+	m.status.Update(m.name, "Starting")
 	m.tickChan = tickChan
-	m.sysconfigChan = sysconfigChan
-
+	m.reportChan = reportChan
 	go m.run()
 
 	return nil
@@ -75,18 +75,17 @@ func (m *Monitor) Start(config []byte, tickChan chan time.Time, sysconfigChan ch
 
 // @goroutine[0]
 func (m *Monitor) Stop() error {
-	if m.config == nil {
+	if !m.running {
 		return nil // already stopped
 	}
 
 	// Stop run().  When it returns, it updates status to "Stopped".
-	m.status.Update("mysql-sysconfig", "Stopping")
+	m.status.Update(m.name, "Stopping")
 	m.sync.Stop()
 	m.sync.Wait()
-
-	m.config = nil // no config if not running
-
+	m.running = false
 	// Do not update status to "Stopped" here; run() does that on return.
+
 	return nil
 }
 
@@ -109,66 +108,48 @@ func (m *Monitor) Config() interface{} {
 // Implementation
 /////////////////////////////////////////////////////////////////////////////
 
-// @goroutine[1]
-func (m *Monitor) connect() (*sql.DB, error) {
-	m.logger.Debug("Connecting")
-	m.status.Update("mysql-sysconfig", "Connecting")
-
-	// Open connection to MySQL but...
-	m.logger.Debug("DSN:", m.config.DSN)
-	db, err := sql.Open("mysql", m.config.DSN)
-	if err != nil {
-		m.logger.Error("sql.Open: ", err)
-		return nil, err
-	}
-
-	// ...try to use the connection for real.
-	if err := db.Ping(); err != nil {
-		// Connection failed.  Wrong username or password?
-		m.logger.Warn("db.Ping: ", err)
-		db.Close()
-		return nil, err
-	}
-
-	return db, nil
-}
-
 // @goroutine[2]
 func (m *Monitor) run() {
 	defer func() {
-		m.status.Update("mysql-sysconfig", "Stopped")
+		m.status.Update(m.name, "Stopped")
 		m.sync.Done()
 	}()
 
-	prefix := m.config.InstanceName
-
 	for {
 		m.logger.Debug("Ready")
-		m.status.Update("mysql-sysconfig", "Ready")
+		m.status.Update(m.name, "Ready")
 
 		select {
 		case now := <-m.tickChan:
-			conn, err := m.connect()
-			if err != nil {
+			if err := m.conn.Connect(2); err != nil {
+				m.status.Update(m.name+"-mysql", "Error: "+err.Error())
 				m.logger.Warn(err)
 				continue
 			}
+			m.status.Update(m.name+"-mysql", "Connected")
 
 			m.logger.Debug("Running")
-			m.status.Update("mysql-sysconfig", "Running")
-			c := &sysconfig.SystemConfig{
-				Ts:     now.UTC().Unix(),
-				System: "mysql global variables",
-				Config: []sysconfig.Setting{},
+			m.status.Update(m.name, "Running")
+
+			c := &sysconfig.Report{
+				Config: instance.Config{
+					Service:    m.config.Service,
+					InstanceId: m.config.InstanceId,
+				},
+				Ts:       now.UTC().Unix(),
+				System:   "mysql global variables",
+				Settings: []sysconfig.Setting{},
 			}
-			if err := m.GetGlobalVariables(conn, prefix, c); err != nil {
+			if err := m.GetGlobalVariables(m.conn.DB(), c); err != nil {
 				m.logger.Warn(err)
 			}
-			conn.Close()
 
-			if len(c.Config) > 0 {
+			m.conn.Close()
+			m.status.Update(m.name+"-mysql", "Disconnected (OK)")
+
+			if len(c.Settings) > 0 {
 				select {
-				case m.sysconfigChan <- c:
+				case m.reportChan <- c:
 				case <-time.After(500 * time.Millisecond):
 					// lost sysconfig
 					m.logger.Debug("Lost MySQL settings; timeout spooling after 500ms")
@@ -183,7 +164,10 @@ func (m *Monitor) run() {
 }
 
 // @goroutine[2]
-func (m *Monitor) GetGlobalVariables(conn *sql.DB, prefix string, c *sysconfig.SystemConfig) error {
+func (m *Monitor) GetGlobalVariables(conn *sql.DB, c *sysconfig.Report) error {
+	m.logger.Debug("Getting global variables")
+	m.status.Update(m.name, "Getting global variables")
+
 	rows, err := conn.Query("SHOW /*!50002 GLOBAL */ VARIABLES")
 	if err != nil {
 		return err
@@ -195,10 +179,8 @@ func (m *Monitor) GetGlobalVariables(conn *sql.DB, prefix string, c *sysconfig.S
 		if err = rows.Scan(&varName, &varValue); err != nil {
 			return err
 		}
-
-		varName = prefix + "/" + strings.ToLower(varName)
-
-		c.Config = append(c.Config, sysconfig.Setting{varName, varValue})
+		varName = strings.ToLower(varName)
+		c.Settings = append(c.Settings, sysconfig.Setting{varName, varValue})
 	}
 	err = rows.Err()
 	if err != nil {
