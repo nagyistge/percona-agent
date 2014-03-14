@@ -79,6 +79,8 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 
 	// Agent
 	s.config = &agent.Config{
+		AgentUuid:   "abc-123-def",
+		ApiKey:      "789",
 		ApiHostname: agent.DEFAULT_API_HOSTNAME,
 		Dir:         s.tmpDir,
 	}
@@ -150,16 +152,14 @@ func (s *AgentTestSuite) TestStatus(t *C) {
 	}
 	s.sendChan <- statusCmd
 
-	got := test.WaitReply(s.recvChan)
-	if len(got) == 0 {
-		t.Fatal("Got reply")
-	}
+	got := test.WaitStatusReply(s.recvChan)
+	t.Assert(got, NotNil)
 
 	expectStatus := map[string]string{
 		"agent": "Ready",
 	}
-	if ok, diff := test.IsDeeply(got[0].Status, expectStatus); !ok {
-		t.Logf("%+v", got[0].Status)
+	if ok, diff := test.IsDeeply(got, expectStatus); !ok {
+		t.Logf("%+v", got)
 		t.Error(diff)
 	}
 }
@@ -186,13 +186,9 @@ func (s *AgentTestSuite) TestStatusAfterConnFail(t *C) {
 	s.sendChan <- statusCmd
 
 	// Get reply.
-	got := test.WaitReply(s.recvChan)
-	if len(got) == 0 {
-		t.Fatal("Got reply")
-	}
-	if got[0].Status["agent"] != "Ready" {
-		t.Errorf("Agent reply and ready after reconnect, got %#v", got[0].Status)
-	}
+	got := test.WaitStatusReply(s.recvChan)
+	t.Assert(got, NotNil)
+	t.Check(got["agent"], Equals, "Ready")
 }
 
 func (s *AgentTestSuite) TestStartStopService(t *C) {
@@ -387,5 +383,76 @@ func (s *AgentTestSuite) TestLoadConfig(t *C) {
 	if same, diff := test.IsDeeply(fullConfig, expect); !same {
 		t.Error(diff)
 		t.Logf("got: %+v", config)
+	}
+}
+
+func (s *AgentTestSuite) TestGetConfig(t *C) {
+	cmd := &proto.Cmd{
+		Ts:      time.Now(),
+		User:    "daniel",
+		Cmd:     "GetConfig",
+		Service: "agent",
+	}
+	s.sendChan <- cmd
+
+	got := test.WaitReply(s.recvChan)
+	t.Assert(len(got), Equals, 1)
+	gotConfig := &agent.Config{}
+	if err := json.Unmarshal(got[0].Data, gotConfig); err != nil {
+		t.Fatal(err)
+	}
+
+	expect := *s.config
+	expect.Dir = ""
+	expect.Links = nil
+
+	if ok, diff := test.IsDeeply(gotConfig, &expect); !ok {
+		t.Logf("%+v", gotConfig)
+		t.Error(diff)
+	}
+}
+
+func (s *AgentTestSuite) TestSetConfig(t *C) {
+	newConfig := *s.config
+	newConfig.ApiKey = "101"
+	data, err := json.Marshal(newConfig)
+	t.Assert(err, IsNil)
+
+	cmd := &proto.Cmd{
+		Ts:      time.Now(),
+		User:    "daniel",
+		Cmd:     "SetConfig",
+		Service: "agent",
+		Data:    data,
+	}
+	s.sendChan <- cmd
+
+	got := test.WaitReply(s.recvChan)
+	t.Assert(len(got), Equals, 1)
+	gotConfig := &agent.Config{}
+	if err := json.Unmarshal(got[0].Data, gotConfig); err != nil {
+		t.Fatal(err)
+	}
+
+	expect := *s.config
+	expect.ApiKey = "101"
+	expect.Dir = ""
+	expect.Links = nil
+
+	if ok, diff := test.IsDeeply(gotConfig, &expect); !ok {
+		t.Logf("%+v", gotConfig)
+		t.Error(diff)
+	}
+
+	data, err = ioutil.ReadFile(s.tmpDir + "/agent.conf")
+	t.Assert(err, IsNil)
+	gotConfig = &agent.Config{}
+	if err := json.Unmarshal(data, gotConfig); err != nil {
+		t.Fatal(err)
+	}
+	if same, diff := test.IsDeeply(gotConfig, &expect); !same {
+		// @todo: if expect is not ptr, IsDeeply dies with "got ptr, expected struct"
+		t.Logf("%+v", gotConfig)
+		t.Error(diff)
 	}
 }

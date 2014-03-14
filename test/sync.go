@@ -1,11 +1,13 @@
 package test
 
 import (
+	"encoding/json"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/mm"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/sysconfig"
 	"io/ioutil"
+	"log"
 	"os"
 	"time"
 )
@@ -38,6 +40,19 @@ func WaitReply(replyChan chan *proto.Reply) []proto.Reply {
 		}
 	}
 	return buf
+}
+
+func WaitStatusReply(replyChan chan *proto.Reply) map[string]string {
+	select {
+	case reply := <-replyChan:
+		status := make(map[string]string)
+		if err := json.Unmarshal(reply.Data, &status); err != nil {
+			log.Println(err)
+		}
+		return status
+	case <-time.After(250 * time.Millisecond):
+	}
+	return nil
 }
 
 func WaitData(recvDataChan chan interface{}) []interface{} {

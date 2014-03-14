@@ -33,9 +33,9 @@ type Config struct {
 	AgentUuid   string
 	ApiHostname string
 	ApiKey      string
-	Links       map[string]string
 	PidFile     string
-	Dir         string `json:"-"`
+	Links       map[string]string `json:",omitempty"`
+	Dir         string            `json:"-"`
 }
 
 func LoadConfig(file string) (*Config, error) {

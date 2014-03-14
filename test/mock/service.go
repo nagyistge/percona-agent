@@ -63,7 +63,7 @@ func (m *MockServiceManager) Reset() {
 	m.status = ""
 }
 
-func (m *MockServiceManager) LoadConfig(configDir string) (interface{}, error) {
+func (m *MockServiceManager) LoadConfig(configDir string) ([]byte, error) {
 	return nil, nil
 }
 
