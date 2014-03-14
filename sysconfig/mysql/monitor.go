@@ -115,6 +115,7 @@ func (m *Monitor) connect() (*sql.DB, error) {
 	m.status.Update("mysql-sysconfig", "Connecting")
 
 	// Open connection to MySQL but...
+	m.logger.Debug("DSN:", m.config.DSN)
 	db, err := sql.Open("mysql", m.config.DSN)
 	if err != nil {
 		m.logger.Error("sql.Open: ", err)
@@ -160,7 +161,9 @@ func (m *Monitor) run() {
 				System: "mysql global variables",
 				Config: []sysconfig.Setting{},
 			}
-			m.GetGlobalVariables(conn, prefix, c)
+			if err := m.GetGlobalVariables(conn, prefix, c); err != nil {
+				m.logger.Warn(err)
+			}
 			conn.Close()
 
 			if len(c.Config) > 0 {
