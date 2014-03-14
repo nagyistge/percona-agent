@@ -22,20 +22,24 @@ import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/data"
+	"github.com/percona/cloud-tools/factory"
 	"github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
+	"github.com/percona/cloud-tools/sid"
 	"github.com/percona/cloud-tools/ticker"
 	"os"
 	"time"
 )
 
 type Manager struct {
-	logger        *pct.Logger
-	mysqlConn     mysql.Connector
-	clock         ticker.Manager
 	iterFactory   IntervalIterFactory
 	workerFactory WorkerFactory
-	spool         data.Spooler
+	// --
+	logger    *pct.Logger
+	mysqlConn mysql.Connector
+	clock     ticker.Manager
+	spool     data.Spooler
+	sid       sid.Manager
 	// --
 	config         *Config // nil if not running
 	configDir      string
@@ -48,14 +52,15 @@ type Manager struct {
 	oldSlowLogs    map[string]int
 }
 
-func NewManager(logger *pct.Logger, mysqlConn mysql.Connector, clock ticker.Manager, iterFactory IntervalIterFactory, workerFactory WorkerFactory, spool data.Spooler) *Manager {
+func NewManager(f factory.CommonArgsFactory, iterFactory IntervalIterFactory, workerFactory WorkerFactory) *Manager {
 	m := &Manager{
-		logger:        logger,
-		mysqlConn:     mysqlConn,
-		clock:         clock,
 		iterFactory:   iterFactory,
 		workerFactory: workerFactory,
-		spool:         spool,
+		// --
+		logger:    f.MakeLogger("qan"),
+		mysqlConn: f.MakeMySQLConnector(),
+		clock:     f.GetClock(),
+		spool:     f.GetSpooler(),
 		// --
 		workers:     make(map[Worker]bool),
 		status:      pct.NewStatus([]string{"qan", "qan-log-parser"}),
@@ -92,8 +97,15 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 		return err
 	}
 
+	// Get MySQL instance info from service instance database (SID).
+	mysqlIt := &proto.MySQLInstance{}
+	if err := m.sid.Get("mysql", c.InstanceId, mysqlIt); err != nil {
+		logger.Warn(err)
+		return err
+	}
+
 	// Connect to MySQL and set global vars to config/enable slow log.
-	if err := m.mysqlConn.Connect(c.DSN); err != nil {
+	if err := m.mysqlConn.Connect(mysqlIt.DSN); err != nil {
 		return err
 	}
 	if err := m.mysqlConn.Set(c.Start); err != nil {

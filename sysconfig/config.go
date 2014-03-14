@@ -18,7 +18,7 @@
 package sysconfig
 
 type Config struct {
-	Name    string
 	Type    string // cloud-tools/sysconfig/<type>/collector.go
+	SID     uint   // proto.<service>Instance.Id
 	Collect uint   // how often to collect config (seconds)
 }

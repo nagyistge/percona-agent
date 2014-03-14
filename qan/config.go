@@ -27,7 +27,7 @@ const (
 
 type Config struct {
 	// Manager
-	DSN               string
+	InstanceId        uint // proto.MySQLInstance.Id
 	Start             []mysql.Query
 	Stop              []mysql.Query
 	MaxWorkers        int

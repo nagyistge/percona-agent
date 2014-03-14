@@ -24,8 +24,8 @@ package mm
  */
 
 type Config struct {
-	Name    string
-	Type    string // cloud-tools/mm/<type>/monitor.go
-	Collect uint   // how often monitor collects metrics (seconds)
-	Report  uint   // how often aggregator reports metrics (seconds)
+	Type       string // cloud-tools/mm/<type>/monitor.go
+	InstanceId uint   // proto.<type>Instance.Id
+	Collect    uint   // how often monitor collects metrics (seconds)
+	Report     uint   // how often aggregator reports metrics (seconds)
 }
