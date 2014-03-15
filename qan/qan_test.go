@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/qan"
@@ -40,7 +41,7 @@ import (
 // Hook up gocheck into the "go test" runner.
 func Test(t *testing.T) { gocheck.TestingT(t) }
 
-var sample = os.Getenv("GOPATH") + "/src/github.com/percona/cloud-tools/test/qan/"
+var sample = test.RootDir + "/qan/"
 
 /////////////////////////////////////////////////////////////////////////////
 // Worker test suite
@@ -126,6 +127,9 @@ type ManagerTestSuite struct {
 	spool         *mock.Spooler
 	workerFactory qan.WorkerFactory
 	clock         *mock.Clock
+	configDir     string
+	im            *instance.Manager
+	mysqlInstance instance.Config
 }
 
 var _ = gocheck.Suite(&ManagerTestSuite{})
@@ -135,8 +139,8 @@ func (s *ManagerTestSuite) SetUpSuite(c *gocheck.C) {
 	if s.dsn == "" {
 		c.Fatal("PCT_TEST_MYSQL_DSN is not set")
 	}
-	s.realmysql = &mysql.Connection{}
-	if err := s.realmysql.Connect(s.dsn); err != nil {
+	s.realmysql = mysql.NewConnection(s.dsn)
+	if err := s.realmysql.Connect(1); err != nil {
 		c.Fatal(err)
 	}
 	s.reset = []mysql.Query{
@@ -158,6 +162,13 @@ func (s *ManagerTestSuite) SetUpSuite(c *gocheck.C) {
 	s.dataChan = make(chan interface{}, 2)
 	s.spool = mock.NewSpooler(s.dataChan)
 	s.workerFactory = &qan.SlowLogWorkerFactory{}
+
+	tmpdir, err := ioutil.TempDir("/tmp", "qan-manager-test")
+	c.Assert(err, gocheck.IsNil)
+	s.configDir = tmpdir
+	s.im = instance.NewManager(pct.NewLogger(s.logChan, "im-test"), s.configDir)
+	s.im.Add("mysql", 1, proto.MySQLInstance{Name: "db1", DSN: s.dsn})
+	s.mysqlInstance = instance.Config{Service: "mysql", InstanceId: 1}
 }
 
 func (s *ManagerTestSuite) SetUpTest(c *gocheck.C) {
@@ -176,6 +187,12 @@ func (s *ManagerTestSuite) TearDownTest(c *gocheck.C) {
 	}
 }
 
+func (s *ManagerTestSuite) TearDownSuite(c *gocheck.C) {
+	if err := os.RemoveAll(s.configDir); err != nil {
+		c.Error(err)
+	}
+}
+
 // --------------------------------------------------------------------------
 
 func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
@@ -184,7 +201,7 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	 * Create and start manager.
 	 */
 
-	m := qan.NewManager(s.logger, s.realmysql, s.clock, s.iterFactory, s.workerFactory, s.spool)
+	m := qan.NewManager(s.logger, &mysql.RealConnectionFactory{}, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im)
 	if m == nil {
 		c.Fatal("Create qan.Manager")
 	}
@@ -193,7 +210,7 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	tmpFile := fmt.Sprintf("/tmp/qan_test.TestStartService.%d", os.Getpid())
 	defer func() { os.Remove(tmpFile) }()
 	config := &qan.Config{
-		DSN: s.dsn,
+		Config: s.mysqlInstance,
 		Start: []mysql.Query{
 			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
 			mysql.Query{Set: "SET GLOBAL long_query_time=0.123"},
@@ -360,12 +377,13 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
 	 */
 
 	// See TestStartService() for description of these startup tasks.
-	m := qan.NewManager(s.logger, s.nullmysql, s.clock, s.iterFactory, s.workerFactory, s.spool)
+	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
+	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im)
 	if m == nil {
 		c.Fatal("Create qan.Manager")
 	}
 	config := &qan.Config{
-		DSN:               s.dsn,
+		Config:            s.mysqlInstance,
 		Interval:          300,
 		MaxSlowLogSize:    1000, // <-- HERE
 		RemoveOldSlowLogs: true, // <-- HERE too
@@ -470,12 +488,13 @@ func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
 		os.Remove(file)
 	}
 
-	m := qan.NewManager(s.logger, s.nullmysql, s.clock, s.iterFactory, s.workerFactory, s.spool)
+	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
+	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im)
 	if m == nil {
 		c.Fatal("Create qan.Manager")
 	}
 	config := &qan.Config{
-		DSN:               s.dsn,
+		Config:            s.mysqlInstance,
 		Interval:          300,
 		MaxSlowLogSize:    1000,
 		RemoveOldSlowLogs: false, // <-- HERE
@@ -610,11 +629,13 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
 	cp.Run()
 
 	// Create and start manager with mock workers.
-	m := qan.NewManager(s.logger, s.nullmysql, s.clock, s.iterFactory, f, s.spool)
+	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
+	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, f, s.spool, s.im)
 	if m == nil {
 		c.Fatal("Create qan.Manager")
 	}
 	config := &qan.Config{
+		Config: s.mysqlInstance,
 		// very abbreviated qan.Config because we're mocking a lot
 		MaxSlowLogSize:    1000,
 		RemoveOldSlowLogs: true, // done after w2 and w1 done
@@ -837,6 +858,8 @@ func (s *ReportTestSuite) TestResult001(c *gocheck.C) {
 	start := time.Now().Add(-1 * time.Second)
 	stop := time.Now()
 
+	it := instance.Config{Service: "mysql", InstanceId: 1}
+
 	interval := &qan.Interval{
 		Filename:    "slow.log",
 		StartTime:   start,
@@ -847,7 +870,7 @@ func (s *ReportTestSuite) TestResult001(c *gocheck.C) {
 	config := &qan.Config{
 		ReportLimit: 10,
 	}
-	report := qan.MakeReport(interval, result, config)
+	report := qan.MakeReport(it, interval, result, config)
 
 	// 1st: 2.9
 	c.Check(report.Class[0].Id, gocheck.Equals, "3000000000000003")
@@ -862,7 +885,7 @@ func (s *ReportTestSuite) TestResult001(c *gocheck.C) {
 
 	// Limit=2 results in top 2 queries and the rest in 1 LRQ "query".
 	config.ReportLimit = 2
-	report = qan.MakeReport(interval, result, config)
+	report = qan.MakeReport(it, interval, result, config)
 	c.Check(len(report.Class), gocheck.Equals, 3)
 
 	c.Check(report.Class[0].Id, gocheck.Equals, "3000000000000003")

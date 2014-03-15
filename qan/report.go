@@ -46,15 +46,12 @@ func (a ByQueryTime) Less(i, j int) bool {
 	return a[i].Metrics.TimeMetrics["Query_time"].Sum > a[j].Metrics.TimeMetrics["Query_time"].Sum
 }
 
-func (m *Manager) MakeReport(interval *Interval, result *Result, config *Config) *Report {
+func MakeReport(it instance.Config, interval *Interval, result *Result, config *Config) *Report {
 
 	sort.Sort(ByQueryTime(result.Classes))
 
 	report := &Report{
-		Config: instance.Config{
-			Service:    m.config.Service,
-			InstanceId: m.config.InstanceId,
-		},
+		Config:      it,
 		StartTs:     interval.StartTime,
 		EndTs:       interval.StopTime,
 		SlowLogFile: interval.Filename,

@@ -151,7 +151,7 @@ func (m *Manager) Get(service string, id uint, info interface{}) error {
 	 * you grok reflection; I leave that to you.
 	 */
 	infoVal := reflect.ValueOf(info).Elem()
-	infoVal.Set(reflect.ValueOf(it).Elem())
+	infoVal.Set(reflect.ValueOf(it))
 
 	return nil
 }

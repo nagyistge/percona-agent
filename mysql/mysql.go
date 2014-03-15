@@ -28,6 +28,7 @@ import (
 
 type Connector interface {
 	DB() *sql.DB
+	DSN() string
 	Connect(tries uint) error
 	Close()
 	Set([]Query) error
@@ -50,6 +51,10 @@ func NewConnection(dsn string) *Connection {
 
 func (c *Connection) DB() *sql.DB {
 	return c.conn
+}
+
+func (c *Connection) DSN() string {
+	return c.dsn
 }
 
 func (c *Connection) Connect(tries uint) error {
