@@ -65,7 +65,7 @@ func (l *Logger) Fatal(entry ...interface{}) {
 	l.log(proto.LOG_CRITICAL, entry)
 }
 
-func (l *Logger) log(level byte, entry ...interface{}) {
+func (l *Logger) log(level byte, entry []interface{}) {
 	fullMsg := ""
 	for i, str := range entry {
 		if i > 0 {
