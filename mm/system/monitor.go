@@ -18,8 +18,8 @@
 package system
 
 import (
-	"github.com/percona/cloud-tools/mm"
 	"github.com/percona/cloud-tools/instance"
+	"github.com/percona/cloud-tools/mm"
 	"github.com/percona/cloud-tools/pct"
 	"io/ioutil"
 	"strconv"
@@ -33,9 +33,9 @@ var CPUStates []string = []string{"user", "nice", "system", "idle", "iowait", "i
 const nCPUStates = 10
 
 type Monitor struct {
-	name string
+	name   string
 	logger *pct.Logger
-	config         *Config
+	config *Config
 	// --
 	tickChan       chan time.Time
 	collectionChan chan *mm.Collection
@@ -44,12 +44,12 @@ type Monitor struct {
 	prevCPUsum map[string]float64   // [cpu0] => user + nice + ...
 	sync       *pct.SyncChan
 	status     *pct.Status
-	running bool
+	running    bool
 }
 
 func NewMonitor(name string, config *Config, logger *pct.Logger) *Monitor {
 	m := &Monitor{
-		name: name,
+		name:   name,
 		config: config,
 		logger: logger,
 		// --
@@ -67,6 +67,9 @@ func NewMonitor(name string, config *Config, logger *pct.Logger) *Monitor {
 
 // @goroutine[0]
 func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collection) error {
+	m.logger.Debug("Start:call")
+	defer m.logger.Debug("Start:return")
+
 	if m.running {
 		return pct.ServiceIsRunningError{m.name}
 	}
@@ -82,6 +85,9 @@ func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collect
 
 // @goroutine[0]
 func (m *Monitor) Stop() error {
+	m.logger.Debug("Stop:call")
+	defer m.logger.Debug("Stop:return")
+
 	if m.config == nil {
 		return nil // already stopped
 	}
@@ -126,9 +132,11 @@ func StrToFloat(s string) float64 {
 }
 
 func (m *Monitor) run() {
+	m.logger.Debug("run:call")
 	defer func() {
 		m.status.Update(m.name, "Stopped")
 		m.sync.Done()
+		m.logger.Debug("run:return")
 	}()
 
 	for {
@@ -136,11 +144,12 @@ func (m *Monitor) run() {
 
 		select {
 		case now := <-m.tickChan:
+			m.logger.Debug("run:collect:start")
 			m.status.Update(m.name, "Running")
 
 			c := &mm.Collection{
 				Config: instance.Config{
-					Service: m.config.Service,
+					Service:    m.config.Service,
 					InstanceId: m.config.InstanceId,
 				},
 				Ts:      now.UTC().Unix(),
@@ -201,19 +210,23 @@ func (m *Monitor) run() {
 					m.logger.Debug("Lost system metrics; timeout spooling after 500ms")
 				}
 			} else {
-				m.logger.Debug("No metrics") // shouldn't happen
+				m.logger.Debug("run:no metrics") // shouldn't happen
 			}
 
+			m.logger.Debug("run:collect:stop")
 			m.status.Update(m.name, "Ready")
 		case <-m.sync.StopChan:
+			m.logger.Debug("run:stop")
 			return
 		}
 	}
 }
 
 func (m *Monitor) ProcStat(content []byte) ([]mm.Metric, error) {
-	metrics := []mm.Metric{}
+	m.logger.Debug("ProcStat:call")
+	defer m.logger.Debug("ProcStat:return")
 
+	metrics := []mm.Metric{}
 	currCPUval := make(map[string][]float64)
 	currCPUsum := make(map[string]float64)
 
@@ -326,6 +339,9 @@ func (m *Monitor) ProcStat(content []byte) ([]mm.Metric, error) {
 }
 
 func (m *Monitor) ProcMeminfo(content []byte) ([]mm.Metric, error) {
+	m.logger.Debug("ProcMeminfo:call")
+	defer m.logger.Debug("ProcMeminfo:return")
+
 	/**
 	 * MemTotal:        8046892 kB
 	 * MemFree:         5273644 kB
@@ -354,6 +370,9 @@ func (m *Monitor) ProcMeminfo(content []byte) ([]mm.Metric, error) {
 }
 
 func (m *Monitor) ProcVmstat(content []byte) ([]mm.Metric, error) {
+	m.logger.Debug("ProcVmstat:call")
+	defer m.logger.Debug("ProcVmstat:return")
+
 	/**
 	 * nr_free_pages 1318376
 	 * nr_inactive_anon 1875
@@ -383,6 +402,9 @@ func (m *Monitor) ProcVmstat(content []byte) ([]mm.Metric, error) {
 }
 
 func (m *Monitor) ProcLoadavg(content []byte) ([]mm.Metric, error) {
+	m.logger.Debug("ProcLoadavg:call")
+	defer m.logger.Debug("ProcLoadavg:return")
+
 	/**
 	 * Should be just one line:
 	 * 0.00 0.01 0.05 1/201 16038
@@ -425,6 +447,9 @@ func (m *Monitor) ProcLoadavg(content []byte) ([]mm.Metric, error) {
 }
 
 func (m *Monitor) ProcDiskstats(content []byte) ([]mm.Metric, error) {
+	m.logger.Debug("ProcDiskstats:call")
+	defer m.logger.Debug("ProcDiskstats:return")
+
 	/**
 	 *   1       0 ram0 0 0 0 0 0 0 0 0 0 0 0
 	 *   1       1 ram1 0 0 0 0 0 0 0 0 0 0 0

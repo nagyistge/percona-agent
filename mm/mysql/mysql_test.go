@@ -176,7 +176,6 @@ func (s *TestSuite) TestStartCollectStop(t *C) {
 }
 
 func (s *TestSuite) TestCollectInnoDBStats(t *C) {
-	go test.Debug(s.logChan)
 	/**
 	 * Disable and reset InnoDB metrics so we can test that the monitor enables and sets them.
 	 */
