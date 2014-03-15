@@ -1,6 +1,7 @@
 package mock
 
 import (
+	"fmt"
 	"github.com/percona/cloud-tools/mm"
 	"time"
 )
@@ -19,8 +20,8 @@ func NewMmMonitorFactory(monitors []mm.Monitor) *MmMonitorFactory {
 	return f
 }
 
-func (f *MmMonitorFactory) Make(mtype, name string) (mm.Monitor, error) {
-	f.Made = append(f.Made, mtype+"/"+name)
+func (f *MmMonitorFactory) Make(service string, id uint, data []byte) (mm.Monitor, error) {
+	f.Made = append(f.Made, fmt.Sprintf("%s-%d", service, id))
 	if f.monitorNo > len(f.monitors) {
 		return f.monitors[f.monitorNo-1], nil
 	}
@@ -49,7 +50,7 @@ func NewMmMonitor() *MmMonitor {
 	return m
 }
 
-func (m *MmMonitor) Start(config []byte, tickChan chan time.Time, collectionChan chan *mm.Collection) error {
+func (m *MmMonitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collection) error {
 	if m.ReadyChan != nil {
 		<-m.ReadyChan
 	}

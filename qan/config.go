@@ -18,6 +18,7 @@
 package qan
 
 import (
+	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/mysql"
 )
 

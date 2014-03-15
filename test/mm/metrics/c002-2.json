@@ -1,4 +1,6 @@
 {
+  "Service":"mysql",
+  "InstanceId":1,
   "Ts":1257894060,
   "Metrics":[
     {"Name":"host1/Foo","Type":"gauge","Number":5},

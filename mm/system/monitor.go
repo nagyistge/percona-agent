@@ -18,8 +18,8 @@
 package system
 
 import (
-	"encoding/json"
 	"github.com/percona/cloud-tools/mm"
+	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/pct"
 	"io/ioutil"
 	"strconv"
@@ -33,9 +33,10 @@ var CPUStates []string = []string{"user", "nice", "system", "idle", "iowait", "i
 const nCPUStates = 10
 
 type Monitor struct {
+	name string
 	logger *pct.Logger
-	// --
 	config         *Config
+	// --
 	tickChan       chan time.Time
 	collectionChan chan *mm.Collection
 	// --
@@ -43,15 +44,18 @@ type Monitor struct {
 	prevCPUsum map[string]float64   // [cpu0] => user + nice + ...
 	sync       *pct.SyncChan
 	status     *pct.Status
+	running bool
 }
 
-func NewMonitor(logger *pct.Logger) *Monitor {
+func NewMonitor(name string, config *Config, logger *pct.Logger) *Monitor {
 	m := &Monitor{
+		name: name,
+		config: config,
 		logger: logger,
 		// --
 		prevCPUval: make(map[string][]float64),
 		prevCPUsum: make(map[string]float64),
-		status:     pct.NewStatus([]string{"system-monitor"}),
+		status:     pct.NewStatus([]string{name}),
 		sync:       pct.NewSyncChan(),
 	}
 	return m
@@ -62,21 +66,16 @@ func NewMonitor(logger *pct.Logger) *Monitor {
 /////////////////////////////////////////////////////////////////////////////
 
 // @goroutine[0]
-func (m *Monitor) Start(config []byte, tickChan chan time.Time, collectionChan chan *mm.Collection) error {
-	if m.config != nil {
-		return pct.ServiceIsRunningError{"system-monitor"}
+func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collection) error {
+	if m.running {
+		return pct.ServiceIsRunningError{m.name}
 	}
 
-	c := &Config{}
-	if err := json.Unmarshal(config, c); err != nil {
-		return err
-	}
-
-	m.config = c
 	m.tickChan = tickChan
 	m.collectionChan = collectionChan
 
 	go m.run()
+	m.running = true
 
 	return nil
 }
@@ -88,11 +87,12 @@ func (m *Monitor) Stop() error {
 	}
 
 	// Stop run().  When it returns, it updates status to "Stopped".
-	m.status.Update("system-monitor", "Stopping")
+	m.status.Update(m.name, "Stopping")
 	m.sync.Stop()
 	m.sync.Wait()
 
 	m.config = nil // no config if not running
+	m.running = false
 
 	// Do not update status to "Stopped" here; run() does that on return.
 	return nil
@@ -127,18 +127,22 @@ func StrToFloat(s string) float64 {
 
 func (m *Monitor) run() {
 	defer func() {
-		m.status.Update("system-monitor", "Stopped")
+		m.status.Update(m.name, "Stopped")
 		m.sync.Done()
 	}()
 
 	for {
-		m.status.Update("system-monitor", "Idle")
+		m.status.Update(m.name, "Idle")
 
 		select {
 		case now := <-m.tickChan:
-			m.status.Update("system-monitor", "Running")
+			m.status.Update(m.name, "Running")
 
 			c := &mm.Collection{
+				Config: instance.Config{
+					Service: m.config.Service,
+					InstanceId: m.config.InstanceId,
+				},
 				Ts:      now.UTC().Unix(),
 				Metrics: []mm.Metric{},
 			}
@@ -200,7 +204,7 @@ func (m *Monitor) run() {
 				m.logger.Debug("No metrics") // shouldn't happen
 			}
 
-			m.status.Update("system-monitor", "Ready")
+			m.status.Update(m.name, "Ready")
 		case <-m.sync.StopChan:
 			return
 		}

@@ -22,28 +22,27 @@ import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/data"
-	"github.com/percona/cloud-tools/factory"
+	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
-	"github.com/percona/cloud-tools/sid"
 	"github.com/percona/cloud-tools/ticker"
 	"os"
 	"time"
 )
 
 type Manager struct {
+	logger        *pct.Logger
+	mysqlFactory  mysql.ConnectionFactory
+	clock         ticker.Manager
 	iterFactory   IntervalIterFactory
 	workerFactory WorkerFactory
-	// --
-	logger    *pct.Logger
-	mysqlConn mysql.Connector
-	clock     ticker.Manager
-	spool     data.Spooler
-	sid       sid.Manager
+	spool         data.Spooler
+	im            *instance.Manager
 	// --
 	config         *Config // nil if not running
 	configDir      string
 	tickChan       chan time.Time
+	mysqlConn      mysql.Connector
 	iter           IntervalIter
 	workers        map[Worker]bool
 	workerDoneChan chan Worker
@@ -52,15 +51,15 @@ type Manager struct {
 	oldSlowLogs    map[string]int
 }
 
-func NewManager(f factory.CommonArgsFactory, iterFactory IntervalIterFactory, workerFactory WorkerFactory) *Manager {
+func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock ticker.Manager, iterFactory IntervalIterFactory, workerFactory WorkerFactory, spool data.Spooler, im *instance.Manager) *Manager {
 	m := &Manager{
+		logger:        logger,
+		mysqlFactory:  mysqlFactory,
+		clock:         clock,
 		iterFactory:   iterFactory,
 		workerFactory: workerFactory,
-		// --
-		logger:    f.MakeLogger("qan"),
-		mysqlConn: f.MakeMySQLConnector(),
-		clock:     f.GetClock(),
-		spool:     f.GetSpooler(),
+		spool:         spool,
+		im:            im,
 		// --
 		workers:     make(map[Worker]bool),
 		status:      pct.NewStatus([]string{"qan", "qan-log-parser"}),
@@ -99,15 +98,18 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 
 	// Get MySQL instance info from service instance database (SID).
 	mysqlIt := &proto.MySQLInstance{}
-	if err := m.sid.Get("mysql", c.InstanceId, mysqlIt); err != nil {
+	if err := m.im.Get(c.Service, c.InstanceId, mysqlIt); err != nil {
 		logger.Warn(err)
 		return err
 	}
 
 	// Connect to MySQL and set global vars to config/enable slow log.
-	if err := m.mysqlConn.Connect(mysqlIt.DSN); err != nil {
+	m.mysqlConn = m.mysqlFactory.Make(mysqlIt.DSN)
+	if err := m.mysqlConn.Connect(2); err != nil {
 		return err
 	}
+	defer m.mysqlConn.Close()
+
 	if err := m.mysqlConn.Set(c.Start); err != nil {
 		return err
 	}
@@ -152,8 +154,14 @@ func (m *Manager) Stop(cmd *proto.Cmd) error {
 	m.sync.Stop()
 	m.sync.Wait()
 
-	var err error
-	if err = m.mysqlConn.Set(m.config.Stop); err != nil {
+	if err := m.mysqlConn.Connect(2); err != nil {
+		m.logger.Warn(err)
+		return err
+	}
+	defer m.mysqlConn.Close()
+
+	err := m.mysqlConn.Set(m.config.Stop)
+	if err != nil {
 		m.logger.Warn(err)
 	} else {
 		m.logger.Info("Stopped")
@@ -245,7 +253,7 @@ func (m *Manager) run() {
 					return
 				}
 				result.RunTime = t1.Sub(t0).Seconds()
-				m.spool.Write("qan", MakeReport(interval, result, m.config))
+				m.spool.Write("qan", m.MakeReport(interval, result, m.config))
 			}()
 		case worker := <-m.workerDoneChan:
 			m.status.Update("qan-log-parser", "Reaping worker")
@@ -273,6 +281,12 @@ func (m *Manager) run() {
 
 // @goroutine[1]
 func (m *Manager) rotateSlowLog(interval *Interval) error {
+	if err := m.mysqlConn.Connect(2); err != nil {
+		m.logger.Warn(err)
+		return err
+	}
+	defer m.mysqlConn.Close()
+
 	// Stop slow log so we don't move it while MySQL is using it.
 	if err := m.mysqlConn.Set(m.config.Stop); err != nil {
 		return err

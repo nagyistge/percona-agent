@@ -36,10 +36,9 @@ type Monitor struct {
 	// --
 	tickChan   chan time.Time
 	reportChan chan *sysconfig.Report
-	// --
-	status  *pct.Status
-	sync    *pct.SyncChan
-	running bool
+	status     *pct.Status
+	sync       *pct.SyncChan
+	running    bool
 }
 
 func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Connector) *Monitor {
@@ -69,7 +68,7 @@ func (m *Monitor) Start(tickChan chan time.Time, reportChan chan *sysconfig.Repo
 	m.tickChan = tickChan
 	m.reportChan = reportChan
 	go m.run()
-
+	m.running = true
 	return nil
 }
 

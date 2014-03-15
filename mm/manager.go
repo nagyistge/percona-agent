@@ -29,7 +29,6 @@ import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/data"
-	"github.com/percona/cloud-tools/factory"
 	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/ticker"
@@ -50,12 +49,11 @@ type Binding struct {
 //       return with ServiceIsRunningError
 
 type Manager struct {
+	logger  *pct.Logger
 	factory MonitorFactory
-	// --
-	logger *pct.Logger
-	clock  ticker.Manager
-	spool  data.Spooler
-	im     *instance.Manager
+	clock   ticker.Manager
+	spool   data.Spooler
+	im      *instance.Manager
 	// --
 	monitors    map[string]Monitor
 	status      *pct.Status
@@ -63,14 +61,13 @@ type Manager struct {
 	configDir   string
 }
 
-func NewManager(f factory.CommonArgsFactory, factory MonitorFactory) *Manager {
+func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager, spool data.Spooler, im *instance.Manager) *Manager {
 	m := &Manager{
+		logger:  logger,
 		factory: factory,
-		// --
-		logger: f.MakeLogger("mm"),
-		clock:  f.GetClock(),
-		spool:  f.GetSpooler(),
-		im:     f.GetInstanceManager(),
+		clock:   clock,
+		spool:   spool,
+		im:      im,
 		// --
 		monitors:    make(map[string]Monitor),
 		status:      pct.NewStatus([]string{"mm"}),
@@ -170,7 +167,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		}
 
 		// Start the monitor.
-		if err = monitor.Start(cmd.Data, tickChan, a.collectionChan); err != nil {
+		if err = monitor.Start(tickChan, a.collectionChan); err != nil {
 			return cmd.Reply(nil, errors.New("Start "+name+": "+err.Error()))
 		}
 		m.monitors[name] = monitor

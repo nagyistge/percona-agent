@@ -19,6 +19,7 @@ package mm
 
 import (
 	"github.com/percona/cloud-tools/data"
+	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/pct"
 	"time"
 )
@@ -85,7 +86,7 @@ func (a *Aggregator) run() {
 	 * aggregators, i.e. neither should have to wait for the other.
 	 */
 	var startTs time.Time
-	cur := make(Metrics)
+	cur := []*InstanceStats{}
 
 	for {
 		select {
@@ -96,20 +97,57 @@ func (a *Aggregator) run() {
 			}
 			// Next interval starts now.
 			startTs = now
-			cur = make(Metrics)
+
+			// Init next stats based on current ones to avoid re-creating them.
+			// todo: what if metrics from an instance aren't collected?
+			next := make([]*InstanceStats, len(cur))
+			for n := range cur {
+				i := &InstanceStats{
+					Config: cur[n].Config,
+					Stats:  make(map[string]*Stats),
+				}
+				next[n] = i
+			}
+			cur = next
+
 			a.logger.Debug("Start report interval")
 		case collection := <-a.collectionChan:
 			// todo: if colllect.Ts < lastNow, then discard: it missed its period
+
+			// Each collection is from a specific service instance ("it").
+			// Find the stats for this instance, create if they don't exist.
+			var is *InstanceStats
+			for _, i := range cur {
+				if collection.Service == i.Service && collection.InstanceId == i.InstanceId {
+					is = i
+					break
+				}
+			}
+
+			if is == nil {
+				// New service instance, create stats for it.
+				is = &InstanceStats{
+					Config: instance.Config{
+						Service:    collection.Service,
+						InstanceId: collection.InstanceId,
+					},
+					Stats: make(map[string]*Stats),
+				}
+				cur = append(cur, is)
+			}
+
+			// Add each metric in the collection to its Stats.
 			for _, metric := range collection.Metrics {
-				stats, haveStats := cur[metric.Name]
+				stats, haveStats := is.Stats[metric.Name]
 				if !haveStats {
+					// New metric, create stats for it.
 					var err error
 					stats, err = NewStats(metric.Type)
 					if err != nil {
 						a.logger.Error(metric.Name, "invalid:", err.Error())
 						continue
 					}
-					cur[metric.Name] = stats
+					is.Stats[metric.Name] = stats
 				}
 				stats.Add(&metric, collection.Ts)
 			}
@@ -120,16 +158,18 @@ func (a *Aggregator) run() {
 }
 
 // @goroutine[1]
-func (a *Aggregator) report(startTs, endTs time.Time, metrics Metrics) {
+func (a *Aggregator) report(startTs, endTs time.Time, is []*InstanceStats) {
 	d := uint(endTs.Unix() - startTs.Unix())
 	a.logger.Info("Summarize metrics from", startTs, "to", endTs, "in", d)
-	for _, s := range metrics {
-		s.Summarize()
+	for _, i := range is {
+		for _, s := range i.Stats {
+			s.Summarize()
+		}
 	}
 	report := &Report{
 		Ts:       startTs,
 		Duration: d,
-		Metrics:  metrics,
+		Stats:    is,
 	}
 	a.spool.Write("mm", report)
 }

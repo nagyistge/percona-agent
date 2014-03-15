@@ -49,7 +49,7 @@ func NewSysconfigMonitor() *SysconfigMonitor {
 	return m
 }
 
-func (m *SysconfigMonitor) Start(config []byte, tickChan chan time.Time, sysconfigChan chan *sysconfig.SystemConfig) error {
+func (m *SysconfigMonitor) Start(tickChan chan time.Time, reportChan chan *sysconfig.Report) error {
 	if m.ReadyChan != nil {
 		<-m.ReadyChan
 	}

@@ -41,7 +41,7 @@ func (f *SysconfigFactory) Make(service string, instanceId uint, data []byte) (s
 		}
 
 		// The user-friendly name of the service, e.g. sysconfig-mysql-db101:
-		alias := "mm-mysql-" + mysqlIt.Name
+		alias := "sysconfig-mysql-" + mysqlIt.Name
 
 		// Make a MySQL sysconfig monitor.
 		monitor = mysql.NewMonitor(

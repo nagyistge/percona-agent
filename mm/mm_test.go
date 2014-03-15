@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/data"
+	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/mm"
 	"github.com/percona/cloud-tools/mm/mysql"
 	"github.com/percona/cloud-tools/pct"
@@ -37,7 +38,7 @@ import (
 // Hook up gocheck into the "go test" runner.
 func Test(t *testing.T) { TestingT(t) }
 
-var sample = test.RootDir + "/mm"
+var sample = test.RootDir + "/mm/metrics"
 
 /////////////////////////////////////////////////////////////////////////////
 // Aggregator test suite
@@ -83,7 +84,7 @@ func (s *AggregatorTestSuite) TestC001(t *C) {
 	go a.Start()
 	defer a.Stop()
 
-	// Send load collection from file and send to aggregator.
+	// Load collection from file and send to aggregator.
 	if err := sendCollection(sample+"/c001.json", s.collectionChan); err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +123,9 @@ func (s *AggregatorTestSuite) TestC001(t *C) {
 		t.Fatal(err)
 	}
 	t.Check(got.Ts, Equals, t1)
-	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
+	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
+		test.Dump(got.Stats)
+		test.Dump(expect.Stats)
 		t.Fatal(diff)
 	}
 
@@ -158,7 +161,7 @@ func (s *AggregatorTestSuite) TestC002(t *C) {
 	}
 	t.Check(got.Ts, Equals, t1)
 	t.Check(got.Duration, Equals, uint(300))
-	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
+	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
 		t.Fatal(diff)
 	}
 }
@@ -187,7 +190,7 @@ func (s *AggregatorTestSuite) TestC000(t *C) {
 	}
 	t.Check(got.Ts, Equals, t1)
 	t.Check(got.Duration, Equals, uint(300))
-	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
+	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
 		t.Fatal(diff)
 	}
 }
@@ -230,7 +233,7 @@ func (s *AggregatorTestSuite) TestC003(t *C) {
 	}
 	t.Check(got.Ts, Equals, t1)
 	t.Check(got.Duration, Equals, uint(300))
-	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
+	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
 		t.Fatal(diff)
 	}
 }
@@ -269,7 +272,9 @@ func (s *AggregatorTestSuite) TestC003Lost(t *C) {
 	}
 	t.Check(got.Ts, Equals, t1)
 	t.Check(got.Duration, Equals, uint(300))
-	if ok, diff := test.IsDeeply(got.Metrics, expect.Metrics); !ok {
+	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
+		test.Dump(got.Stats)
+		test.Dump(expect.Stats)
 		t.Fatal(diff)
 	}
 }
@@ -298,7 +303,8 @@ func (s *AggregatorTestSuite) TestBadMetric(t *C) {
 	s.tickChan <- t2
 
 	got := test.WaitMmReport(s.dataChan)
-	t.Check(len(got.Metrics), Equals, 0)
+	t.Check(len(got.Stats), Equals, 1)          // instance
+	t.Check(len(got.Stats[0].Stats), Equals, 0) // ^ its metrics
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -317,6 +323,7 @@ type ManagerTestSuite struct {
 	traceChan   chan string
 	readyChan   chan bool
 	configDir   string
+	im          *instance.Manager
 }
 
 var _ = Suite(&ManagerTestSuite{})
@@ -339,6 +346,12 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	t.Log(err)
 	t.Assert(err, IsNil)
 	s.configDir = tmpdir
+
+	s.im = instance.NewManager(pct.NewLogger(s.logChan, "im"), s.configDir)
+	s.im.Add("mysql", 1, proto.MySQLInstance{
+		Name: "db1",
+		DSN:  "user:host@tcp:(127.0.0.1:3306)",
+	})
 }
 
 func (s *ManagerTestSuite) SetUpTest(t *C) {
@@ -361,7 +374,7 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 	 * in Handle, starting and stopping monitors (tested later).
 	 */
 
-	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool)
+	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
 	if m == nil {
 		t.Fatal("Make new mm.Manager")
 	}
@@ -373,8 +386,10 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 
 	// First the API marshals an mm.Config.
 	config := &mm.Config{
-		Name:    "mysql",
-		Type:    "mysql",
+		Config: instance.Config{
+			Service:    "mysql",
+			InstanceId: 1,
+		},
 		Collect: 1,
 		Report:  60,
 		// No monitor-specific config
@@ -426,7 +441,7 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 
 func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 
-	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool)
+	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
 	if m == nil {
 		t.Fatal("Make new mm.Manager")
 	}
@@ -443,14 +458,13 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 	// config in configDir/db1-mysql-monitor.conf.
 	mmConfig := &mysql.Config{
 		Config: mm.Config{
-			Name:    "db1",
-			Type:    "mysql",
+			Config: instance.Config{
+				Service:    "mysql",
+				InstanceId: 1,
+			},
 			Collect: 1,
 			Report:  60,
 		},
-		// Monitor-specific config:
-		DSN:          "user:host@tcp:(127.0.0.1:3306)",
-		InstanceName: "db1",
 		Status: map[string]string{
 			"threads_connected": "gauge",
 			"threads_running":   "gauge",

@@ -28,7 +28,6 @@ import (
 	"errors"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/data"
-	"github.com/percona/cloud-tools/factory"
 	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/ticker"
@@ -36,12 +35,11 @@ import (
 )
 
 type Manager struct {
+	logger  *pct.Logger
 	factory MonitorFactory
-	// --
-	logger *pct.Logger
-	clock  ticker.Manager
-	spool  data.Spooler
-	im     *instance.Manager
+	clock   ticker.Manager
+	spool   data.Spooler
+	im      *instance.Manager
 	// --
 	reportChan     chan *Report // <- Report from monitor
 	monitors       map[string]Monitor
@@ -50,14 +48,13 @@ type Manager struct {
 	spoolerRunning bool
 }
 
-func NewManager(f factory.CommonArgsFactory, factory MonitorFactory) *Manager {
+func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager, spool data.Spooler, im *instance.Manager) *Manager {
 	m := &Manager{
+		logger:  logger,
 		factory: factory,
-		// --
-		logger: f.MakeLogger("sysconfig"),
-		clock:  f.GetClock(),
-		spool:  f.GetSpooler(),
-		im:     f.GetInstanceManager(),
+		clock:   clock,
+		spool:   spool,
+		im:      im,
 		// --
 		reportChan: make(chan *Report, 3),
 		monitors:   make(map[string]Monitor),
