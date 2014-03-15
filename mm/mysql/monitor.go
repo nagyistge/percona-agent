@@ -46,9 +46,9 @@ type Monitor struct {
 }
 
 func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Connector) *Monitor {
-
 	m := &Monitor{
 		name:   name,
+		config: config,
 		logger: logger,
 		conn:   conn,
 		// --
@@ -65,6 +65,9 @@ func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Conn
 
 // @goroutine[0]
 func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collection) error {
+	m.logger.Debug("Start:call")
+	defer m.logger.Debug("Start:return")
+
 	if m.running {
 		return pct.ServiceIsRunningError{m.name}
 	}
@@ -80,6 +83,9 @@ func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collect
 
 // @goroutine[0]
 func (m *Monitor) Stop() error {
+	m.logger.Debug("Stop:call")
+	defer m.logger.Debug("Stop:return")
+
 	if !m.running {
 		return nil // already stopped
 	}
@@ -89,7 +95,10 @@ func (m *Monitor) Stop() error {
 	m.sync.Stop()
 	m.sync.Wait()
 
+	// XXX todo: this line will panic if connect() is running
 	m.config = nil // no config if not running
+
+	m.running = false
 
 	// Do not update status to "Stopped" here; run() does that on return.
 	return nil
@@ -116,11 +125,16 @@ func (m *Monitor) Config() interface{} {
 
 // run:@goroutine[3]
 func (m *Monitor) connect(err error) {
+	m.logger.Debug("connect:call")
+	defer m.logger.Debug("connect:return")
+
 	// Close/release previous connection, if any.
 	m.conn.Close()
 
 	// Try forever to connect to MySQL...
 	for {
+		m.logger.Debug("connect:try")
+
 		if err != nil {
 			m.status.Update(m.name+"-mysql", fmt.Sprintf("Connecting (%s)", err))
 		} else {
@@ -151,27 +165,34 @@ func (m *Monitor) connect(err error) {
 
 		// Tell run() goroutine that it can try to collect metrics.
 		// If connection is lost, it will call us again.
+		m.logger.Info("Connected")
 		m.status.Update(m.name+"-mysql", "Connected")
 		m.connectedChan <- true
+		return
 	}
 }
 
 // @goroutine[2]
 func (m *Monitor) run() {
-	go m.connect(nil)
+	m.logger.Debug("run:call")
 	defer func() {
 		m.conn.Close()
 		m.status.Update(m.name, "Stopped")
 		m.sync.Done()
+		m.logger.Debug("run:return")
 	}()
+
+	go m.connect(nil)
 
 	for {
 		select {
 		case now := <-m.tickChan:
 			if !m.connected {
+				m.logger.Debug("run:collect:!connected")
 				continue
 			}
 
+			m.logger.Debug("run:collect:start")
 			m.status.Update(m.name, "Running")
 
 			c := &mm.Collection{
@@ -183,18 +204,31 @@ func (m *Monitor) run() {
 				Metrics: []mm.Metric{},
 			}
 
-			// Get collection of metrics.
+			// SHOW GLOBAL STATUS
 			conn := m.conn.DB()
-			m.GetShowStatusMetrics(conn, c)
-			if m.config.InnoDB != "" {
-				m.GetInnoDBMetrics(conn, c)
-			}
-			if m.config.UserStats {
-				m.getTableUserStats(conn, c, m.config.UserStatsIgnoreDb)
-				m.getIndexUserStats(conn, c, m.config.UserStatsIgnoreDb)
+			if err := m.GetShowStatusMetrics(conn, c); err != nil {
+				m.logger.Warn(err)
 			}
 
-			// Send the metrics (to an mm.Aggregator).
+			// SELECT NAME, ... FROM INFORMATION_SCHEMA.INNODB_METRICS
+			if m.config.InnoDB != "" {
+				if err := m.GetInnoDBMetrics(conn, c); err != nil {
+					m.logger.Warn(err)
+				}
+			}
+
+			if m.config.UserStats {
+				// SELECT ... FROM INFORMATION_SCHEMA.TABLE_STATISTICS
+				if err := m.getTableUserStats(conn, c, m.config.UserStatsIgnoreDb); err != nil {
+					m.logger.Warn(err)
+				}
+				// SELECT ... FROM INFORMATION_SCHEMA.INDEX_STATISTICS
+				if err := m.getIndexUserStats(conn, c, m.config.UserStatsIgnoreDb); err != nil {
+					m.logger.Warn(err)
+				}
+			}
+
+			// Send the metrics to an mm.Aggregator.
 			if len(c.Metrics) > 0 {
 				select {
 				case m.collectionChan <- c:
@@ -203,20 +237,22 @@ func (m *Monitor) run() {
 					m.logger.Debug("Lost MySQL metrics; timeout spooling after 500ms")
 				}
 			} else {
-				m.logger.Debug("No metrics") // shouldn't happen
+				m.logger.Debug("run:no metrics") // shouldn't happen
 			}
 
+			m.logger.Debug("run:collect:stop")
 			m.status.Update(m.name, "Ready")
 		case connected := <-m.connectedChan:
 			m.connected = connected
 			if connected {
+				m.logger.Debug("run:connected:true")
 				m.status.Update(m.name, "Ready")
-				m.logger.Debug("Connected")
 			} else {
-				m.logger.Debug("Disconnected")
+				m.logger.Debug("run:connected:false")
 				go m.connect(nil)
 			}
 		case <-m.sync.StopChan:
+			m.logger.Debug("run:stop")
 			return
 		}
 	}
@@ -228,6 +264,9 @@ func (m *Monitor) run() {
 
 // @goroutine[2]
 func (m *Monitor) GetShowStatusMetrics(conn *sql.DB, c *mm.Collection) error {
+	m.logger.Debug("GetShowStatusMetrics:call")
+	defer m.logger.Debug("GetShowStatusMetrics:return")
+
 	rows, err := conn.Query("SHOW /*!50002 GLOBAL */ STATUS")
 	if err != nil {
 		return err
@@ -269,6 +308,9 @@ func (m *Monitor) GetShowStatusMetrics(conn *sql.DB, c *mm.Collection) error {
 
 // @goroutine[2]
 func (m *Monitor) GetInnoDBMetrics(conn *sql.DB, c *mm.Collection) error {
+	m.logger.Debug("GetInnoDBMetrics:call")
+	defer m.logger.Debug("GetInnoDBMetrics:return")
+
 	rows, err := conn.Query("SELECT NAME, SUBSYSTEM, COUNT, TYPE FROM INFORMATION_SCHEMA.INNODB_METRICS WHERE STATUS='enabled'")
 	if err != nil {
 		return err
@@ -284,7 +326,7 @@ func (m *Monitor) GetInnoDBMetrics(conn *sql.DB, c *mm.Collection) error {
 			return err
 		}
 
-		metricName := "innodb/" + strings.ToLower(statSubsystem) + "/" + strings.ToLower(statName)
+		metricName := "mysql/innodb/" + strings.ToLower(statSubsystem) + "/" + strings.ToLower(statName)
 		metricValue, err := strconv.ParseFloat(statCount, 64)
 		if err != nil {
 			metricValue = 0.0
@@ -311,6 +353,9 @@ func (m *Monitor) GetInnoDBMetrics(conn *sql.DB, c *mm.Collection) error {
 
 // @goroutine[2]
 func (m *Monitor) getTableUserStats(conn *sql.DB, c *mm.Collection, ignoreDb string) error {
+	m.logger.Debug("getTableUserStats:call")
+	defer m.logger.Debug("getTableUserStats:return")
+
 	/**
 	 *  SELECT * FROM INFORMATION_SCHEMA.TABLE_STATISTICS;
 	 *  +--------------+-------------+-----------+--------------+------------------------+
@@ -338,17 +383,17 @@ func (m *Monitor) getTableUserStats(conn *sql.DB, c *mm.Collection, ignoreDb str
 		}
 
 		c.Metrics = append(c.Metrics, mm.Metric{
-			Name:   "db." + tableSchema + "/t." + tableName + "/rows_read",
+			Name:   "mysql/db." + tableSchema + "/t." + tableName + "/rows_read",
 			Type:   "counter",
 			Number: float64(rowsRead),
 		})
 		c.Metrics = append(c.Metrics, mm.Metric{
-			Name:   "db." + tableSchema + "/t." + tableName + "/rows_changed",
+			Name:   "mysql/db." + tableSchema + "/t." + tableName + "/rows_changed",
 			Type:   "counter",
 			Number: float64(rowsChanged),
 		})
 		c.Metrics = append(c.Metrics, mm.Metric{
-			Name:   "db." + tableSchema + "/t." + tableName + "/rows_changed_x_indexes",
+			Name:   "mysql/db." + tableSchema + "/t." + tableName + "/rows_changed_x_indexes",
 			Type:   "counter",
 			Number: float64(rowsChangedIndexes),
 		})
@@ -362,6 +407,9 @@ func (m *Monitor) getTableUserStats(conn *sql.DB, c *mm.Collection, ignoreDb str
 
 // @goroutine[2]
 func (m *Monitor) getIndexUserStats(conn *sql.DB, c *mm.Collection, ignoreDb string) error {
+	m.logger.Debug("getIndexUserStats:call")
+	defer m.logger.Debug("getIndexUserStats:return")
+
 	/**
 	 *  SELECT * FROM INFORMATION_SCHEMA.INDEX_STATISTICS;
 	 *  +--------------+-------------+------------+-----------+
@@ -388,7 +436,7 @@ func (m *Monitor) getIndexUserStats(conn *sql.DB, c *mm.Collection, ignoreDb str
 			return err
 		}
 
-		metricName := "db." + tableSchema + "/t." + tableName + "/idx." + indexName + "/rows_read"
+		metricName := "mysql/db." + tableSchema + "/t." + tableName + "/idx." + indexName + "/rows_read"
 		metricValue := float64(rowsRead)
 		c.Metrics = append(c.Metrics, mm.Metric{metricName, "counter", metricValue, ""})
 	}

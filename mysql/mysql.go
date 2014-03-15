@@ -86,8 +86,10 @@ func (c *Connection) Connect(tries uint) error {
 }
 
 func (c *Connection) Close() {
-	c.conn.Close()
-	c.conn = nil
+	if c.conn != nil {
+		c.conn.Close()
+		c.conn = nil
+	}
 }
 
 func (c *Connection) Set(queries []Query) error {

@@ -18,12 +18,16 @@
 package mysql_test
 
 import (
-	"encoding/json"
+	"database/sql"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/mm"
 	"github.com/percona/cloud-tools/mm/mysql"
+	mysqlConn "github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/test"
+	. "launchpad.net/gocheck"
 	"os"
 	"testing"
 	"time"
@@ -34,64 +38,104 @@ import (
  */
 var dsn = os.Getenv("PCT_TEST_MYSQL_DSN")
 
-var logChan = make(chan *proto.LogEntry, 10)
-var logger = pct.NewLogger(logChan, "mm-manager-test")
-var tickChan = make(chan time.Time)
-var collectionChan = make(chan *mm.Collection, 1)
+// Hook up gocheck into the "go test" runner.
+func Test(t *testing.T) { TestingT(t) }
 
-/////////////////////////////////////////////////////////////////////////////
-// Test cases
-/////////////////////////////////////////////////////////////////////////////
+type TestSuite struct {
+	db             *sql.DB
+	logChan        chan *proto.LogEntry
+	logger         *pct.Logger
+	tickChan       chan time.Time
+	collectionChan chan *mm.Collection
+	name           string
+}
 
-func TestStartCollectStop(t *testing.T) {
+var _ = Suite(&TestSuite{})
+
+func (s *TestSuite) SetUpSuite(t *C) {
 	if dsn == "" {
 		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
 	}
 
-	instance := "test1"
-	prefix := "mysql/" + instance
-
-	m := mysql.NewMonitor(logger)
-	if m == nil {
-		t.Fatal("Make new mysql.Monitor")
+	// Get our own connection to MySQL.
+	db, err := test.ConnectMySQL(dsn)
+	if err != nil {
+		t.Fatal(err)
 	}
+	s.db = db
 
-	// First think we need is a mysql.Config.
+	s.logChan = make(chan *proto.LogEntry, 10)
+	s.logger = pct.NewLogger(s.logChan, "mm-manager-test")
+	s.tickChan = make(chan time.Time)
+	s.collectionChan = make(chan *mm.Collection, 1)
+	s.name = "mm-mysql-db1"
+}
+
+func (s *TestSuite) TearDownSuite(t *C) {
+	if s.db != nil {
+		s.db.Close()
+	}
+}
+
+// --------------------------------------------------------------------------
+
+func (s *TestSuite) TestStartCollectStop(t *C) {
+	/**
+	 * The mm manager uses a mm monitor factory to create monitors.  This is
+	 * what the factory does...
+	 */
+
+	// First, monitors monitor an instance of some service (MySQL, RabbitMQ, etc.)
+	// So the instance name and id are given.  Second, every monitor has its own
+	// specific config info which is sent as the proto.Cmd.Data.  This config
+	// embed a mm.Config which embed an instance.Config:
 	config := &mysql.Config{
-		DSN:          dsn,
-		InstanceName: instance,
+		Config: mm.Config{
+			Config: instance.Config{
+				Service:    "mysql",
+				InstanceId: 1,
+			},
+			Collect: 1,
+			Report:  60,
+		},
 		Status: map[string]string{
 			"threads_connected": "gauge",
 			"threads_running":   "gauge",
 		},
 	}
-	data, err := json.Marshal(config)
-	if err != nil {
-		t.Fatal(err)
+
+	// From the config, the factory determine's the monitor's name based on
+	// the service instance it's monitoring, and it creates a mysql.Connector
+	// for the DSN for that service (since it's a MySQL monitor in this case).
+	// It creates the monitor with these args:
+	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn))
+	if m == nil {
+		t.Fatal("Make new mysql.Monitor")
 	}
 
-	// Start the monitor.
-	err = m.Start(data, tickChan, collectionChan)
+	// The factory returns the monitor to the manager which starts it with
+	// the necessary channels:
+	err := m.Start(s.tickChan, s.collectionChan)
 	if err != nil {
 		t.Fatalf("Start monitor without error, got %s", err)
 	}
 
 	// monitor=Ready once it has successfully connected to MySQL.  This may
 	// take a few seconds (hopefully < 5) on a slow test machine.
-	if ok := test.WaitStatus(5, m, "mysql", "Ready"); !ok {
+	if ok := test.WaitStatus(5, m, s.name, "Ready"); !ok {
 		t.Fatal("Monitor is ready")
 	}
 
 	// The monitor should only collect and send metrics on ticks; we haven't ticked yet.
-	got := test.WaitCollection(collectionChan, 0)
+	got := test.WaitCollection(s.collectionChan, 0)
 	if len(got) > 0 {
 		t.Fatal("No tick, no collection; got %+v", got)
 	}
 
 	// Now tick.  This should make monitor collect.
 	now := time.Now()
-	tickChan <- now
-	got = test.WaitCollection(collectionChan, 1)
+	s.tickChan <- now
+	got = test.WaitCollection(s.collectionChan, 1)
 	if len(got) == 0 {
 		t.Fatal("Got a collection after tick")
 	}
@@ -101,21 +145,20 @@ func TestStartCollectStop(t *testing.T) {
 		t.Error("Collection.Ts set to %s; got %s", now.Unix(), c.Ts)
 	}
 
-	// Only two metrics should be reported, from the config ^: Threads_connected,
-	// Threads_running.  These will be prefixed and lowercase.  Their values
-	// (from MySQL) are variable, but we know they should be > 1 because we're a
-	// thread connected and running.
+	// Only two metrics should be reported, from the config ^: threads_connected,
+	// threads_running.  Their values (from MySQL) are variable, but we know they
+	// should be > 1 because we're a thread connected and running.
 	if len(c.Metrics) != 2 {
 		t.Fatal("Collected only configured metrics; got %+v", c.Metrics)
 	}
-	if c.Metrics[0].Name != prefix+"/threads_connected" {
-		t.Error("First metric is ", prefix+"/threads_connected; got", c.Metrics[0].Name)
+	if c.Metrics[0].Name != "threads_connected" {
+		t.Error("First metric is ", "threads_connected; got", c.Metrics[0].Name)
 	}
 	if c.Metrics[0].Number < 1 {
 		t.Error("threads_connected > 1; got", c.Metrics[0].Number)
 	}
-	if c.Metrics[1].Name != prefix+"/threads_running" {
-		t.Error("Second metric is ", prefix+"/threads_running got", c.Metrics[1].Name)
+	if c.Metrics[1].Name != "threads_running" {
+		t.Error("Second metric is ", "threads_running got", c.Metrics[1].Name)
 	}
 	if c.Metrics[1].Number < 1 {
 		t.Error("threads_running > 1; got", c.Metrics[0].Number)
@@ -127,70 +170,63 @@ func TestStartCollectStop(t *testing.T) {
 
 	m.Stop()
 
-	if ok := test.WaitStatus(5, m, "mysql", "Stopped"); !ok {
+	if ok := test.WaitStatus(5, m, s.name, "Stopped"); !ok {
 		t.Fatal("Monitor has stopped")
 	}
 }
 
-func TestCollectInnoDBStats(t *testing.T) {
-	if dsn == "" {
-		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
-	}
-
-	// Get our own connection to MySQL.
-	db, err := test.ConnectMySQL(dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-
+func (s *TestSuite) TestCollectInnoDBStats(t *C) {
+	go test.Debug(s.logChan)
 	/**
 	 * Disable and reset InnoDB metrics so we can test that the monitor enables and sets them.
 	 */
-	if _, err := db.Exec("set global innodb_monitor_disable = '%'"); err != nil {
+	if _, err := s.db.Exec("set global innodb_monitor_disable = '%'"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec("set global innodb_monitor_reset_all = '%'"); err != nil {
+	if _, err := s.db.Exec("set global innodb_monitor_reset_all = '%'"); err != nil {
 		t.Fatal(err)
 	}
 
-	db.Exec("drop database if exists test_pct")
-	db.Exec("create database test_pct")
-	db.Exec("create table test_pct.t (i int) engine=innodb")
-	defer db.Exec("drop database if exists test_pct")
+	s.db.Exec("drop database if exists test_pct")
+	s.db.Exec("create database test_pct")
+	s.db.Exec("create table test_pct.t (i int) engine=innodb")
+	defer s.db.Exec("drop database if exists test_pct")
+
+	config := &mysql.Config{
+		Config: mm.Config{
+			Config: instance.Config{
+				Service:    "mysql",
+				InstanceId: 1,
+			},
+			Collect: 1,
+			Report:  60,
+		},
+		Status: map[string]string{},
+		InnoDB: "dml_%", // same as above ^
+	}
 
 	// Start a monitor with InnoDB metrics.
 	// See TestStartCollectStop() for description of these steps.
-	m := mysql.NewMonitor(logger)
+	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn))
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
 	}
 
-	config := &mysql.Config{
-		DSN:    dsn,
-		Status: map[string]string{},
-		InnoDB: "dml_%", // same as above ^
-	}
-	data, err := json.Marshal(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = m.Start(data, tickChan, collectionChan)
+	err := m.Start(s.tickChan, s.collectionChan)
 	if err != nil {
 		t.Fatalf("Start monitor without error, got %s", err)
 	}
 
-	if ok := test.WaitStatus(5, m, "mysql", "Ready"); !ok {
+	if ok := test.WaitStatus(5, m, s.name, "Ready"); !ok {
 		t.Fatal("Monitor is ready")
 	}
 
 	// Do INSERT to increment dml_inserts before monitor collects.  If it enabled
 	// the InnoDB metrics and collects them, we should get dml_inserts=1 this later..
-	db.Exec("insert into test_pct.t (i) values (42)")
+	s.db.Exec("insert into test_pct.t (i) values (42)")
 
-	tickChan <- time.Now()
-	got := test.WaitCollection(collectionChan, 1)
+	s.tickChan <- time.Now()
+	got := test.WaitCollection(s.collectionChan, 1)
 	if len(got) == 0 {
 		t.Fatal("Got a collection after tick")
 	}
@@ -226,65 +262,55 @@ func TestCollectInnoDBStats(t *testing.T) {
 	m.Stop()
 }
 
-func TestCollectUserstats(t *testing.T) {
-	if dsn == "" {
-		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
-	}
-
-	// Get our own connection to MySQL.
-	db, err := test.ConnectMySQL(dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-
+func (s *TestSuite) TestCollectUserstats(t *C) {
 	/**
 	 * Disable and reset user stats.
 	 */
-	if _, err := db.Exec("set global userstat = off"); err != nil {
+	if _, err := s.db.Exec("set global userstat = off"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec("flush user_statistics"); err != nil {
+	if _, err := s.db.Exec("flush user_statistics"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec("flush index_statistics"); err != nil {
+	if _, err := s.db.Exec("flush index_statistics"); err != nil {
 		t.Fatal(err)
 	}
 
-	// Start a monitor with user stats.
-	// See TestStartCollectStop() for description of these steps.
-	m := mysql.NewMonitor(logger)
+	config := &mysql.Config{
+		Config: mm.Config{
+			Config: instance.Config{
+				Service:    "mysql",
+				InstanceId: 1,
+			},
+			Collect: 1,
+			Report:  60,
+		},
+		UserStats: true,
+	}
+
+	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn))
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
 	}
 
-	config := &mysql.Config{
-		DSN:       dsn,
-		UserStats: true,
-	}
-	data, err := json.Marshal(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = m.Start(data, tickChan, collectionChan)
+	err := m.Start(s.tickChan, s.collectionChan)
 	if err != nil {
 		t.Fatalf("Start monitor without error, got %s", err)
 	}
 
-	if ok := test.WaitStatus(5, m, "mysql", "Ready"); !ok {
+	if ok := test.WaitStatus(5, m, s.name, "Ready"); !ok {
 		t.Fatal("Monitor is ready")
 	}
 
 	// To get index stats, we need to use an index: mysq.user PK <host, user>
-	rows, err := db.Query("select * from mysql.user where host='%' and user='msandbox'")
+	rows, err := s.db.Query("select * from mysql.user where host='%' and user='msandbox'")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer rows.Close()
 
-	tickChan <- time.Now()
-	got := test.WaitCollection(collectionChan, 1)
+	s.tickChan <- time.Now()
+	got := test.WaitCollection(s.collectionChan, 1)
 	if len(got) == 0 {
 		t.Fatal("Got a collection after tick")
 	}
