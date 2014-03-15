@@ -455,7 +455,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 
 	// Starting a monitor is like starting the manager: it requires
 	// a "StartService" cmd and the monitor's config.  This is the
-	// config in configDir/db1-mysql-monitor.conf.
+	// config in test/mm/config/mm-mysql-1.conf.
 	mmConfig := &mysql.Config{
 		Config: mm.Config{
 			Config: instance.Config{
@@ -507,7 +507,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 	// After starting a monitor, mm should write its config to the dir
 	// it learned when mm.LoadConfig() was called.  Next time agent starts,
 	// it will have mm start the monitor with this config.
-	data, err := ioutil.ReadFile(s.configDir + "/db1-mysql-monitor.conf")
+	data, err := ioutil.ReadFile(s.configDir + "/mm-mysql-1.conf")
 	t.Check(err, IsNil)
 	gotConfig := &mysql.Config{}
 	err = json.Unmarshal(data, gotConfig)
@@ -545,7 +545,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 
 	// After stopping a monitor, mm should remove its config file so agent
 	// doesn't start it on restart.
-	file := s.configDir + "/db1-mysql-monitor.conf"
+	file := s.configDir + "/mm-mysql-1.conf"
 	if pct.FileExists(file) {
 		t.Error("Stopping monitor removes its config; ", file, " exists")
 	}
