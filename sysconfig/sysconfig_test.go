@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/data"
+	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/sysconfig"
 	"github.com/percona/cloud-tools/sysconfig/mysql"
@@ -50,6 +51,7 @@ type ManagerTestSuite struct {
 	dataChan    chan interface{}
 	spool       data.Spooler
 	configDir   string
+	im          *instance.Manager
 }
 
 var _ = Suite(&ManagerTestSuite{})
@@ -70,6 +72,8 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	t.Log(err)
 	t.Assert(err, IsNil)
 	s.configDir = tmpdir
+
+	s.im = instance.NewManager(pct.NewLogger(s.logChan, "im-test"), s.configDir)
 }
 
 func (s *ManagerTestSuite) SetUpTest(t *C) {
@@ -86,7 +90,7 @@ func (s *ManagerTestSuite) TearDownSuite(t *C) {
 
 func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 
-	m := sysconfig.NewManager(s.logger, s.factory, s.clock, s.spool)
+	m := sysconfig.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
 	if m == nil {
 		t.Fatal("Make new sysconfig.Manager")
 	}
@@ -98,9 +102,8 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 
 	// First the API marshals an sysconfig.Config.
 	config := &sysconfig.Config{
-		Name:    "mysql",
-		Type:    "mysql",
-		Collect: 3600,
+		Config: instance.Config{Service: "mysql", InstanceId: 1},
+		Report: 3600,
 		// No monitor-specific config
 	}
 	data, err := json.Marshal(config)
@@ -150,7 +153,7 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 
 func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 
-	m := sysconfig.NewManager(s.logger, s.factory, s.clock, s.spool)
+	m := sysconfig.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
 	if m == nil {
 		t.Fatal("Make new sysconfig.Manager")
 	}
@@ -167,13 +170,12 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 	// config in configDir/db1-mysql-monitor.conf.
 	sysconfigConfig := &mysql.Config{
 		Config: sysconfig.Config{
-			Name:    "db1",
-			Type:    "mysql",
-			Collect: 3600,
+			Config: instance.Config{
+				Service:    "mysql",
+				InstanceId: 1,
+			},
+			Report: 3600,
 		},
-		// Monitor-specific config:
-		DSN:          "user:host@tcp:(127.0.0.1:3306)",
-		InstanceName: "db1",
 	}
 	sysconfigConfigData, err := json.Marshal(sysconfigConfig)
 	if err != nil {
@@ -212,7 +214,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 	// After starting a monitor, sysconfig should write its config to the dir
 	// it learned when sysconfig.LoadConfig() was called.  Next time agent starts,
 	// it will have sysconfig start the monitor with this config.
-	data, err := ioutil.ReadFile(s.configDir + "/sysconfig-mysql-db1.conf")
+	data, err := ioutil.ReadFile(s.configDir + "/sysconfig-mysql-1.conf")
 	t.Check(err, IsNil)
 	gotConfig := &mysql.Config{}
 	err = json.Unmarshal(data, gotConfig)
@@ -250,7 +252,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 
 	// After stopping a monitor, sysconfig should remove its config file so agent
 	// doesn't start it on restart.
-	file := s.configDir + "/sysconfig-mysql-db1.conf"
+	file := s.configDir + "/sysconfig-mysql-1.conf"
 	if pct.FileExists(file) {
 		t.Error("Stopping monitor removes its config; ", file, " exists")
 	}

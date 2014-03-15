@@ -1,6 +1,7 @@
 package mock
 
 import (
+	"fmt"
 	"github.com/percona/cloud-tools/sysconfig"
 	"time"
 )
@@ -19,8 +20,8 @@ func NewSysconfigMonitorFactory(monitors []sysconfig.Monitor) *SysconfigMonitorF
 	return f
 }
 
-func (f *SysconfigMonitorFactory) Make(mtype, name string) (sysconfig.Monitor, error) {
-	f.Made = append(f.Made, mtype+"/"+name)
+func (f *SysconfigMonitorFactory) Make(service string, id uint, data []byte) (sysconfig.Monitor, error) {
+	f.Made = append(f.Made, fmt.Sprintf("%s-%d", service, id))
 	if f.monitorNo > len(f.monitors) {
 		return f.monitors[f.monitorNo-1], nil
 	}
