@@ -30,12 +30,14 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type Repo struct {
 	logger    *pct.Logger
 	configDir string
 	it        map[string]interface{}
+	mux       *sync.RWMutex
 }
 
 func NewRepo(logger *pct.Logger, configDir string) *Repo {
@@ -43,7 +45,8 @@ func NewRepo(logger *pct.Logger, configDir string) *Repo {
 		logger:    logger,
 		configDir: configDir,
 		// --
-		it: make(map[string]interface{}),
+		it:  make(map[string]interface{}),
+		mux: &sync.RWMutex{},
 	}
 	return m
 }
@@ -86,49 +89,52 @@ func (r *Repo) loadInstances(service string) error {
 			return err
 		}
 
-		var info interface{}
-		switch service {
-		case "server":
-			it := &proto.ServerInstance{}
-			if err := json.Unmarshal(data, it); err != nil {
-				return errors.New("it:Init:json.Unmarshal:" + file + ":" + err.Error())
-			}
-			info = it
-		case "mysql":
-			it := &proto.MySQLInstance{}
-			if err := json.Unmarshal(data, it); err != nil {
-				return errors.New("it:Init:json.Unmarshal:" + file + ":" + err.Error())
-			}
-			info = it
-		default:
-			return errors.New(fmt.Sprintf("Invalid service name: %s (%s)", service, file))
-		}
-
-		if err := r.Add(service, uint(id), info); err != nil {
+		if err := r.Add(service, uint(id), data, false); err != nil {
 			return err
 		}
+
 		r.logger.Info("Loaded " + file)
 	}
 	return nil
 }
 
-func (r *Repo) Add(service string, id uint, info interface{}) error {
-	if reflect.ValueOf(info).Kind() != reflect.Ptr {
-		log.Fatal("info arg is not a pointer; need &T{}")
-	}
-
+func (r *Repo) Add(service string, id uint, data []byte, writeToDisk bool) error {
 	if !valid(service, id) {
 		return pct.InvalidServiceInstanceError{Service: service, Id: id}
 	}
+
+	var info interface{}
+	switch service {
+	case "server":
+		it := &proto.ServerInstance{}
+		if err := json.Unmarshal(data, it); err != nil {
+			return errors.New("instance.Repo:json.Unmarshal:" + err.Error())
+		}
+		info = it
+	case "mysql":
+		it := &proto.MySQLInstance{}
+		if err := json.Unmarshal(data, it); err != nil {
+			return errors.New("instance.Repo:json.Unmarshal:" + err.Error())
+		}
+		info = it
+	default:
+		return errors.New(fmt.Sprintf("Invalid service name: %s", service))
+	}
+
+	r.mux.Lock()
+	defer r.mux.Unlock()
+
 	name := r.Name(service, id)
 	if _, ok := r.it[name]; ok {
 		return pct.DuplicateServiceInstanceError{Service: service, Id: id}
 	}
 
-	file := r.configDir + "/" + name + ".conf"
-	r.logger.Info("Writing", file)
-	if err := pct.WriteConfig(file, info); err != nil {
-		return err
+	if writeToDisk {
+		file := r.configDir + "/" + name + ".conf"
+		r.logger.Info("Writing", file)
+		if err := pct.WriteConfig(file, info); err != nil {
+			return err
+		}
 	}
 
 	r.it[name] = info
@@ -143,8 +149,11 @@ func (r *Repo) Get(service string, id uint, info interface{}) error {
 	if !valid(service, id) {
 		return pct.InvalidServiceInstanceError{Service: service, Id: id}
 	}
-	name := r.Name(service, id)
 
+	r.mux.Lock()
+	defer r.mux.Unlock()
+
+	name := r.Name(service, id)
 	it, ok := r.it[name]
 	if !ok {
 		return pct.UnknownServiceInstanceError{Service: service, Id: id}
@@ -172,6 +181,10 @@ func (r *Repo) Remove(service string, id uint) error {
 	if !valid(service, id) {
 		return pct.InvalidServiceInstanceError{Service: service, Id: id}
 	}
+
+	r.mux.Lock()
+	defer r.mux.Unlock()
+
 	name := r.Name(service, id)
 	if _, ok := r.it[name]; !ok {
 		return pct.UnknownServiceInstanceError{Service: service, Id: id}

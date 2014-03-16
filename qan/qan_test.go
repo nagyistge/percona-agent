@@ -166,8 +166,14 @@ func (s *ManagerTestSuite) SetUpSuite(c *gocheck.C) {
 	tmpdir, err := ioutil.TempDir("/tmp", "qan-manager-test")
 	c.Assert(err, gocheck.IsNil)
 	s.configDir = tmpdir
+
 	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im-test"), s.configDir)
-	s.im.Add("mysql", 1, &proto.MySQLInstance{Name: "db1", DSN: s.dsn})
+	data, err := json.Marshal(&proto.MySQLInstance{
+		Name: "db1",
+		DSN:  s.dsn,
+	})
+	c.Assert(err, gocheck.IsNil)
+	s.im.Add("mysql", 1, data, false)
 	s.mysqlInstance = instance.Config{Service: "mysql", InstanceId: 1}
 }
 

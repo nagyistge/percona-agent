@@ -107,7 +107,9 @@ func (s *RepoTestSuite) TestAddRemove(t *C) {
 		Distro:  "Percona Server",
 		Version: "5.6.16",
 	}
-	err := im.Add("mysql", 1, mysqlIt)
+	data, err := json.Marshal(mysqlIt)
+	t.Assert(err, IsNil)
+	err = im.Add("mysql", 1, data, true)
 	t.Assert(err, IsNil)
 
 	t.Check(test.FileExists(s.configDir+"/mysql-1.conf"), Equals, true)
@@ -119,7 +121,7 @@ func (s *RepoTestSuite) TestAddRemove(t *C) {
 		t.Error(diff)
 	}
 
-	data, err := ioutil.ReadFile(s.configDir + "/mysql-1.conf")
+	data, err = ioutil.ReadFile(s.configDir + "/mysql-1.conf")
 	t.Assert(err, IsNil)
 
 	got = &proto.MySQLInstance{}
@@ -144,12 +146,14 @@ func (s *RepoTestSuite) TestErrors(t *C) {
 		Distro:  "Percona Server",
 		Version: "5.6.16",
 	}
+	data, err := json.Marshal(mysqlIt)
+	t.Assert(err, IsNil)
 
 	// Instance ID must be > 0.
-	err := im.Add("mysql", 0, mysqlIt)
+	err = im.Add("mysql", 0, data, false)
 	t.Assert(err, NotNil)
 
 	// Service name must be one of proto.ExternalService.
-	err = im.Add("foo", 1, mysqlIt)
+	err = im.Add("foo", 1, data, false)
 	t.Assert(err, NotNil)
 }

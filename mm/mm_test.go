@@ -348,10 +348,13 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.configDir = tmpdir
 
 	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im"), s.configDir)
-	s.im.Add("mysql", 1, &proto.MySQLInstance{
+
+	data, err := json.Marshal(&proto.MySQLInstance{
 		Name: "db1",
 		DSN:  "user:host@tcp:(127.0.0.1:3306)",
 	})
+	t.Assert(err, IsNil)
+	s.im.Add("mysql", 1, data, false)
 }
 
 func (s *ManagerTestSuite) SetUpTest(t *C) {
