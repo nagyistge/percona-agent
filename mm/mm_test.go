@@ -348,7 +348,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.configDir = tmpdir
 
 	s.im = instance.NewManager(pct.NewLogger(s.logChan, "im"), s.configDir)
-	s.im.Add("mysql", 1, proto.MySQLInstance{
+	s.im.Add("mysql", 1, &proto.MySQLInstance{
 		Name: "db1",
 		DSN:  "user:host@tcp:(127.0.0.1:3306)",
 	})
