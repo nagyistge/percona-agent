@@ -18,7 +18,7 @@
 package qan
 
 import (
-	"github.com/percona/cloud-tools/instance"
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/mysql"
 )
 
@@ -27,7 +27,7 @@ const (
 )
 
 type Config struct {
-	instance.Config
+	proto.ServiceInstance
 	// Manager
 	Start             []mysql.Query
 	Stop              []mysql.Query

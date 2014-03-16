@@ -18,7 +18,7 @@
 package mm
 
 import (
-	"github.com/percona/cloud-tools/instance"
+	"github.com/percona/cloud-protocol/proto"
 )
 
 /**
@@ -28,7 +28,7 @@ import (
  */
 
 type Config struct {
-	instance.Config      // info about external service being monitored
-	Collect         uint // how often monitor collects metrics (seconds)
-	Report          uint // how often aggregator reports metrics (seconds)
+	proto.ServiceInstance      // info about external service being monitored
+	Collect               uint // how often monitor collects metrics (seconds)
+	Report                uint // how often aggregator reports metrics (seconds)
 }

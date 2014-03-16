@@ -73,10 +73,10 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 	switch cmd.Cmd {
 	case "Add":
-		err := m.repo.Add(it.Service, it.Id, it.Instance, true) // true = write to disk
+		err := m.repo.Add(it.Service, it.InstanceId, it.Instance, true) // true = write to disk
 		return cmd.Reply(nil, err)
 	case "Remove":
-		err := m.repo.Remove(it.Service, it.Id)
+		err := m.repo.Remove(it.Service, it.InstanceId)
 		return cmd.Reply(nil, err)
 	default:
 		// todo: dynamic config

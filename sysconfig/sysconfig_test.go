@@ -102,8 +102,8 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 
 	// First the API marshals an sysconfig.Config.
 	config := &sysconfig.Config{
-		Config: instance.Config{Service: "mysql", InstanceId: 1},
-		Report: 3600,
+		ServiceInstance: proto.ServiceInstance{Service: "mysql", InstanceId: 1},
+		Report:          3600,
 		// No monitor-specific config
 	}
 	data, err := json.Marshal(config)
@@ -170,7 +170,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 	// config in configDir/db1-mysql-monitor.conf.
 	sysconfigConfig := &mysql.Config{
 		Config: sysconfig.Config{
-			Config: instance.Config{
+			ServiceInstance: proto.ServiceInstance{
 				Service:    "mysql",
 				InstanceId: 1,
 			},

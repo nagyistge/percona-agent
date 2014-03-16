@@ -19,7 +19,6 @@ package mysql_test
 
 import (
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/cloud-tools/instance"
 	mysqlConn "github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/sysconfig"
@@ -68,7 +67,7 @@ func (s *TestSuite) TestStartCollectStop(t *C) {
 	// Create the monitor.
 	config := &mysql.Config{
 		Config: sysconfig.Config{
-			Config: instance.Config{
+			ServiceInstance: proto.ServiceInstance{
 				Service:    "mysql",
 				InstanceId: 1,
 			},
@@ -105,7 +104,7 @@ func (s *TestSuite) TestStartCollectStop(t *C) {
 	}
 
 	if len(c.Settings) < 100 {
-		t.Fatal("Collect > 100 vars; got %+v", c.Config)
+		t.Fatal("Collect > 100 vars; got %+v", c.Settings)
 	}
 
 	haveWaitTimeout := false

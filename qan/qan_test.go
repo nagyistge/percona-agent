@@ -129,7 +129,7 @@ type ManagerTestSuite struct {
 	clock         *mock.Clock
 	configDir     string
 	im            *instance.Repo
-	mysqlInstance instance.Config
+	mysqlInstance proto.ServiceInstance
 }
 
 var _ = gocheck.Suite(&ManagerTestSuite{})
@@ -174,7 +174,7 @@ func (s *ManagerTestSuite) SetUpSuite(c *gocheck.C) {
 	})
 	c.Assert(err, gocheck.IsNil)
 	s.im.Add("mysql", 1, data, false)
-	s.mysqlInstance = instance.Config{Service: "mysql", InstanceId: 1}
+	s.mysqlInstance = proto.ServiceInstance{Service: "mysql", InstanceId: 1}
 }
 
 func (s *ManagerTestSuite) SetUpTest(c *gocheck.C) {
@@ -216,7 +216,7 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	tmpFile := fmt.Sprintf("/tmp/qan_test.TestStartService.%d", os.Getpid())
 	defer func() { os.Remove(tmpFile) }()
 	config := &qan.Config{
-		Config: s.mysqlInstance,
+		ServiceInstance: s.mysqlInstance,
 		Start: []mysql.Query{
 			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
 			mysql.Query{Set: "SET GLOBAL long_query_time=0.123"},
@@ -389,7 +389,7 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {
 		c.Fatal("Create qan.Manager")
 	}
 	config := &qan.Config{
-		Config:            s.mysqlInstance,
+		ServiceInstance:   s.mysqlInstance,
 		Interval:          300,
 		MaxSlowLogSize:    1000, // <-- HERE
 		RemoveOldSlowLogs: true, // <-- HERE too
@@ -500,7 +500,7 @@ func (s *ManagerTestSuite) TestRotateSlowLog(c *gocheck.C) {
 		c.Fatal("Create qan.Manager")
 	}
 	config := &qan.Config{
-		Config:            s.mysqlInstance,
+		ServiceInstance:   s.mysqlInstance,
 		Interval:          300,
 		MaxSlowLogSize:    1000,
 		RemoveOldSlowLogs: false, // <-- HERE
@@ -641,7 +641,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
 		c.Fatal("Create qan.Manager")
 	}
 	config := &qan.Config{
-		Config: s.mysqlInstance,
+		ServiceInstance: s.mysqlInstance,
 		// very abbreviated qan.Config because we're mocking a lot
 		MaxSlowLogSize:    1000,
 		RemoveOldSlowLogs: true, // done after w2 and w1 done
@@ -864,7 +864,7 @@ func (s *ReportTestSuite) TestResult001(c *gocheck.C) {
 	start := time.Now().Add(-1 * time.Second)
 	stop := time.Now()
 
-	it := instance.Config{Service: "mysql", InstanceId: 1}
+	it := proto.ServiceInstance{Service: "mysql", InstanceId: 1}
 
 	interval := &qan.Interval{
 		Filename:    "slow.log",

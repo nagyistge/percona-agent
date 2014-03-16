@@ -253,7 +253,7 @@ func (m *Manager) run() {
 					return
 				}
 				result.RunTime = t1.Sub(t0).Seconds()
-				m.spool.Write("qan", MakeReport(m.config.Config, interval, result, m.config))
+				m.spool.Write("qan", MakeReport(m.config.ServiceInstance, interval, result, m.config))
 			}()
 		case worker := <-m.workerDoneChan:
 			m.status.Update("qan-log-parser", "Reaping worker")

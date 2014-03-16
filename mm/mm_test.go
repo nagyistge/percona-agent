@@ -389,7 +389,7 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 
 	// First the API marshals an mm.Config.
 	config := &mm.Config{
-		Config: instance.Config{
+		ServiceInstance: proto.ServiceInstance{
 			Service:    "mysql",
 			InstanceId: 1,
 		},
@@ -461,7 +461,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 	// config in test/mm/config/mm-mysql-1.conf.
 	mmConfig := &mysql.Config{
 		Config: mm.Config{
-			Config: instance.Config{
+			ServiceInstance: proto.ServiceInstance{
 				Service:    "mysql",
 				InstanceId: 1,
 			},

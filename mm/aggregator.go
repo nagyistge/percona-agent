@@ -18,8 +18,8 @@
 package mm
 
 import (
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/data"
-	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/pct"
 	"time"
 )
@@ -103,8 +103,8 @@ func (a *Aggregator) run() {
 			next := make([]*InstanceStats, len(cur))
 			for n := range cur {
 				i := &InstanceStats{
-					Config: cur[n].Config,
-					Stats:  make(map[string]*Stats),
+					ServiceInstance: cur[n].ServiceInstance,
+					Stats:           make(map[string]*Stats),
 				}
 				next[n] = i
 			}
@@ -127,7 +127,7 @@ func (a *Aggregator) run() {
 			if is == nil {
 				// New service instance, create stats for it.
 				is = &InstanceStats{
-					Config: instance.Config{
+					ServiceInstance: proto.ServiceInstance{
 						Service:    collection.Service,
 						InstanceId: collection.InstanceId,
 					},

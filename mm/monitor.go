@@ -18,7 +18,7 @@
 package mm
 
 import (
-	"github.com/percona/cloud-tools/instance"
+	"github.com/percona/cloud-protocol/proto"
 	"time"
 )
 
@@ -63,14 +63,14 @@ type Metric struct {
 // Collections can come from different instances.  For example,
 // one agent can monitor two different MySQL instances.
 type Collection struct {
-	instance.Config
+	proto.ServiceInstance
 	Ts      int64 // UTC Unix timestamp
 	Metrics []Metric
 }
 
 // Stats for each metric from a service instance, computed at each report interval.
 type InstanceStats struct {
-	instance.Config
+	proto.ServiceInstance
 	Stats map[string]*Stats // keyed on metric name
 }
 

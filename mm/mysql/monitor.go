@@ -21,7 +21,7 @@ import (
 	"database/sql"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/percona/cloud-tools/instance"
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/mm"
 	"github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
@@ -196,7 +196,7 @@ func (m *Monitor) run() {
 			m.status.Update(m.name, "Running")
 
 			c := &mm.Collection{
-				Config: instance.Config{
+				ServiceInstance: proto.ServiceInstance{
 					Service:    m.config.Service,
 					InstanceId: m.config.InstanceId,
 				},

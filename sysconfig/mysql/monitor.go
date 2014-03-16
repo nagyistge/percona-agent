@@ -20,7 +20,7 @@ package mysql
 import (
 	"database/sql"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/percona/cloud-tools/instance"
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/sysconfig"
@@ -131,7 +131,7 @@ func (m *Monitor) run() {
 			m.status.Update(m.name, "Running")
 
 			c := &sysconfig.Report{
-				Config: instance.Config{
+				ServiceInstance: proto.ServiceInstance{
 					Service:    m.config.Service,
 					InstanceId: m.config.InstanceId,
 				},

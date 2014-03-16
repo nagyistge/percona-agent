@@ -18,7 +18,7 @@
 package sysconfig
 
 import (
-	"github.com/percona/cloud-tools/instance"
+	"github.com/percona/cloud-protocol/proto"
 	"time"
 )
 
@@ -38,7 +38,7 @@ type MonitorFactory interface {
 type Setting [2]string
 
 type Report struct {
-	instance.Config
+	proto.ServiceInstance
 	Ts       int64 // UTC Unix timestamp
 	System   string
 	Settings []Setting

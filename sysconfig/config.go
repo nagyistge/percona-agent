@@ -18,10 +18,10 @@
 package sysconfig
 
 import (
-	"github.com/percona/cloud-tools/instance"
+	"github.com/percona/cloud-protocol/proto"
 )
 
 type Config struct {
-	instance.Config
+	proto.ServiceInstance
 	Report uint // how often to collect and send config (seconds)
 }

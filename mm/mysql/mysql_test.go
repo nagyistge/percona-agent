@@ -21,7 +21,6 @@ import (
 	"database/sql"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/mm"
 	"github.com/percona/cloud-tools/mm/mysql"
 	mysqlConn "github.com/percona/cloud-tools/mysql"
@@ -91,7 +90,7 @@ func (s *TestSuite) TestStartCollectStop(t *C) {
 	// embed a mm.Config which embed an instance.Config:
 	config := &mysql.Config{
 		Config: mm.Config{
-			Config: instance.Config{
+			ServiceInstance: proto.ServiceInstance{
 				Service:    "mysql",
 				InstanceId: 1,
 			},
@@ -193,7 +192,7 @@ func (s *TestSuite) TestCollectInnoDBStats(t *C) {
 
 	config := &mysql.Config{
 		Config: mm.Config{
-			Config: instance.Config{
+			ServiceInstance: proto.ServiceInstance{
 				Service:    "mysql",
 				InstanceId: 1,
 			},
@@ -277,7 +276,7 @@ func (s *TestSuite) TestCollectUserstats(t *C) {
 
 	config := &mysql.Config{
 		Config: mm.Config{
-			Config: instance.Config{
+			ServiceInstance: proto.ServiceInstance{
 				Service:    "mysql",
 				InstanceId: 1,
 			},
