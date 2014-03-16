@@ -53,7 +53,7 @@ type Manager struct {
 	factory MonitorFactory
 	clock   ticker.Manager
 	spool   data.Spooler
-	im      *instance.Manager
+	im      *instance.Repo
 	// --
 	monitors    map[string]Monitor
 	status      *pct.Status
@@ -61,7 +61,7 @@ type Manager struct {
 	configDir   string
 }
 
-func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager, spool data.Spooler, im *instance.Manager) *Manager {
+func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager, spool data.Spooler, im *instance.Repo) *Manager {
 	m := &Manager{
 		logger:  logger,
 		factory: factory,

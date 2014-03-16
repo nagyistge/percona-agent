@@ -13,10 +13,10 @@ import (
 
 type SysconfigFactory struct {
 	logChan chan *proto.LogEntry
-	im      *instance.Manager
+	im      *instance.Repo
 }
 
-func NewSysconfigFactory(logChan chan *proto.LogEntry, im *instance.Manager) *SysconfigFactory {
+func NewSysconfigFactory(logChan chan *proto.LogEntry, im *instance.Repo) *SysconfigFactory {
 	f := &SysconfigFactory{
 		logChan: logChan,
 		im:      im,

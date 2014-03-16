@@ -32,14 +32,14 @@ import (
 	"strings"
 )
 
-type Manager struct {
+type Repo struct {
 	logger    *pct.Logger
 	configDir string
 	it        map[string]interface{}
 }
 
-func NewManager(logger *pct.Logger, configDir string) *Manager {
-	m := &Manager{
+func NewRepo(logger *pct.Logger, configDir string) *Repo {
+	m := &Repo{
 		logger:    logger,
 		configDir: configDir,
 		// --
@@ -48,23 +48,23 @@ func NewManager(logger *pct.Logger, configDir string) *Manager {
 	return m
 }
 
-func (m *Manager) Init() error {
+func (r *Repo) Init() error {
 	for service, _ := range proto.ExternalService {
-		if err := m.loadInstances(service); err != nil {
+		if err := r.loadInstances(service); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (m *Manager) loadInstances(service string) error {
-	files, err := filepath.Glob(m.configDir + "/" + service + "-*.conf")
+func (r *Repo) loadInstances(service string) error {
+	files, err := filepath.Glob(r.configDir + "/" + service + "-*.conf")
 	if err != nil {
 		return err
 	}
 
 	for _, file := range files {
-		m.logger.Debug("Reading " + file)
+		r.logger.Debug("Reading " + file)
 
 		// 0       1
 		// service-id
@@ -104,15 +104,15 @@ func (m *Manager) loadInstances(service string) error {
 			return errors.New(fmt.Sprintf("Invalid service name: %s (%s)", service, file))
 		}
 
-		if err := m.Add(service, uint(id), info); err != nil {
+		if err := r.Add(service, uint(id), info); err != nil {
 			return err
 		}
-		m.logger.Info("Loaded " + file)
+		r.logger.Info("Loaded " + file)
 	}
 	return nil
 }
 
-func (m *Manager) Add(service string, id uint, info interface{}) error {
+func (r *Repo) Add(service string, id uint, info interface{}) error {
 	if reflect.ValueOf(info).Kind() != reflect.Ptr {
 		log.Fatal("info arg is not a pointer; need &T{}")
 	}
@@ -120,22 +120,22 @@ func (m *Manager) Add(service string, id uint, info interface{}) error {
 	if !valid(service, id) {
 		return pct.InvalidServiceInstanceError{Service: service, Id: id}
 	}
-	name := m.Name(service, id)
-	if _, ok := m.it[name]; ok {
+	name := r.Name(service, id)
+	if _, ok := r.it[name]; ok {
 		return pct.DuplicateServiceInstanceError{Service: service, Id: id}
 	}
 
-	file := m.configDir + "/" + name + ".conf"
-	m.logger.Info("Writing", file)
+	file := r.configDir + "/" + name + ".conf"
+	r.logger.Info("Writing", file)
 	if err := pct.WriteConfig(file, info); err != nil {
 		return err
 	}
 
-	m.it[name] = info
+	r.it[name] = info
 	return nil
 }
 
-func (m *Manager) Get(service string, id uint, info interface{}) error {
+func (r *Repo) Get(service string, id uint, info interface{}) error {
 	if reflect.ValueOf(info).Kind() != reflect.Ptr {
 		log.Fatal("info arg is not a pointer; need &T{}")
 	}
@@ -143,9 +143,9 @@ func (m *Manager) Get(service string, id uint, info interface{}) error {
 	if !valid(service, id) {
 		return pct.InvalidServiceInstanceError{Service: service, Id: id}
 	}
-	name := m.Name(service, id)
+	name := r.Name(service, id)
 
-	it, ok := m.it[name]
+	it, ok := r.it[name]
 	if !ok {
 		return pct.UnknownServiceInstanceError{Service: service, Id: id}
 	}
@@ -166,24 +166,24 @@ func (m *Manager) Get(service string, id uint, info interface{}) error {
 	return nil
 }
 
-func (m *Manager) Remove(service string, id uint) error {
+func (r *Repo) Remove(service string, id uint) error {
 	// todo: API --> agent --> side.Remove()
 	// Agent should stop all services using the instance before call this.
 	if !valid(service, id) {
 		return pct.InvalidServiceInstanceError{Service: service, Id: id}
 	}
-	name := m.Name(service, id)
-	if _, ok := m.it[name]; !ok {
+	name := r.Name(service, id)
+	if _, ok := r.it[name]; !ok {
 		return pct.UnknownServiceInstanceError{Service: service, Id: id}
 	}
 
-	file := m.configDir + "/" + name + ".conf"
-	m.logger.Info("Removing", file)
+	file := r.configDir + "/" + name + ".conf"
+	r.logger.Info("Removing", file)
 	if err := os.Remove(file); err != nil {
 		return err
 	}
 
-	delete(m.it, name)
+	delete(r.it, name)
 	return nil
 }
 
@@ -197,6 +197,6 @@ func valid(service string, id uint) bool {
 	return true
 }
 
-func (m *Manager) Name(service string, id uint) string {
+func (r *Repo) Name(service string, id uint) string {
 	return fmt.Sprintf("%s-%d", service, id)
 }

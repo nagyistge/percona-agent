@@ -128,7 +128,7 @@ type ManagerTestSuite struct {
 	workerFactory qan.WorkerFactory
 	clock         *mock.Clock
 	configDir     string
-	im            *instance.Manager
+	im            *instance.Repo
 	mysqlInstance instance.Config
 }
 
@@ -166,7 +166,7 @@ func (s *ManagerTestSuite) SetUpSuite(c *gocheck.C) {
 	tmpdir, err := ioutil.TempDir("/tmp", "qan-manager-test")
 	c.Assert(err, gocheck.IsNil)
 	s.configDir = tmpdir
-	s.im = instance.NewManager(pct.NewLogger(s.logChan, "im-test"), s.configDir)
+	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im-test"), s.configDir)
 	s.im.Add("mysql", 1, &proto.MySQLInstance{Name: "db1", DSN: s.dsn})
 	s.mysqlInstance = instance.Config{Service: "mysql", InstanceId: 1}
 }

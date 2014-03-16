@@ -37,7 +37,7 @@ type Manager struct {
 	iterFactory   IntervalIterFactory
 	workerFactory WorkerFactory
 	spool         data.Spooler
-	im            *instance.Manager
+	im            *instance.Repo
 	// --
 	config         *Config // nil if not running
 	configDir      string
@@ -51,7 +51,7 @@ type Manager struct {
 	oldSlowLogs    map[string]int
 }
 
-func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock ticker.Manager, iterFactory IntervalIterFactory, workerFactory WorkerFactory, spool data.Spooler, im *instance.Manager) *Manager {
+func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock ticker.Manager, iterFactory IntervalIterFactory, workerFactory WorkerFactory, spool data.Spooler, im *instance.Repo) *Manager {
 	m := &Manager{
 		logger:        logger,
 		mysqlFactory:  mysqlFactory,

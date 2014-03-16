@@ -33,15 +33,15 @@ import (
 // Hook up gocheck into the "go test" runner.
 func Test(t *testing.T) { TestingT(t) }
 
-type SidTestSuite struct {
+type RepoTestSuite struct {
 	logChan   chan *proto.LogEntry
 	logger    *pct.Logger
 	configDir string
 }
 
-var _ = Suite(&SidTestSuite{})
+var _ = Suite(&RepoTestSuite{})
 
-func (s *SidTestSuite) SetUpSuite(t *C) {
+func (s *RepoTestSuite) SetUpSuite(t *C) {
 	s.logChan = make(chan *proto.LogEntry, 10)
 	s.logger = pct.NewLogger(s.logChan, "pct-it-test")
 
@@ -49,7 +49,7 @@ func (s *SidTestSuite) SetUpSuite(t *C) {
 	s.configDir = dir
 }
 
-func (s *SidTestSuite) SetUpTest(t *C) {
+func (s *RepoTestSuite) SetUpTest(t *C) {
 	files, _ := filepath.Glob(s.configDir + "/*")
 	for _, file := range files {
 		if err := os.Remove(file); err != nil {
@@ -58,7 +58,7 @@ func (s *SidTestSuite) SetUpTest(t *C) {
 	}
 }
 
-func (s *SidTestSuite) TearDownSuite(t *C) {
+func (s *RepoTestSuite) TearDownSuite(t *C) {
 	if err := os.RemoveAll(s.configDir); err != nil {
 		t.Error(err)
 	}
@@ -66,8 +66,8 @@ func (s *SidTestSuite) TearDownSuite(t *C) {
 
 // --------------------------------------------------------------------------
 
-func (s *SidTestSuite) TestInit(t *C) {
-	im := instance.NewManager(s.logger, s.configDir)
+func (s *RepoTestSuite) TestInit(t *C) {
+	im := instance.NewRepo(s.logger, s.configDir)
 	t.Assert(im, NotNil)
 
 	err := im.Init()
@@ -94,8 +94,8 @@ func (s *SidTestSuite) TestInit(t *C) {
 	}
 }
 
-func (s *SidTestSuite) TestAddRemove(t *C) {
-	im := instance.NewManager(s.logger, s.configDir)
+func (s *RepoTestSuite) TestAddRemove(t *C) {
+	im := instance.NewRepo(s.logger, s.configDir)
 	t.Assert(im, NotNil)
 
 	t.Check(test.FileExists(s.configDir+"/mysql-1.conf"), Equals, false)
@@ -133,8 +133,8 @@ func (s *SidTestSuite) TestAddRemove(t *C) {
 	t.Check(test.FileExists(s.configDir+"/mysql-1.conf"), Equals, false)
 }
 
-func (s *SidTestSuite) TestErrors(t *C) {
-	im := instance.NewManager(s.logger, s.configDir)
+func (s *RepoTestSuite) TestErrors(t *C) {
+	im := instance.NewRepo(s.logger, s.configDir)
 	t.Assert(im, NotNil)
 
 	mysqlIt := &proto.MySQLInstance{

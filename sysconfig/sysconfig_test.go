@@ -51,7 +51,7 @@ type ManagerTestSuite struct {
 	dataChan    chan interface{}
 	spool       data.Spooler
 	configDir   string
-	im          *instance.Manager
+	im          *instance.Repo
 }
 
 var _ = Suite(&ManagerTestSuite{})
@@ -73,7 +73,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	t.Assert(err, IsNil)
 	s.configDir = tmpdir
 
-	s.im = instance.NewManager(pct.NewLogger(s.logChan, "im-test"), s.configDir)
+	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im-test"), s.configDir)
 }
 
 func (s *ManagerTestSuite) SetUpTest(t *C) {

@@ -14,7 +14,7 @@ type Factory struct {
 	logChan chan *proto.LogEntry
 }
 
-func NewFactory(logChan chan *proto.LogEntry, im *instance.Manager) *Factory {
+func NewFactory(logChan chan *proto.LogEntry, im *instance.Repo) *Factory {
 	f := &Factory{
 		logChan: logChan,
 		im:      im,

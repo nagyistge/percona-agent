@@ -39,7 +39,7 @@ type Manager struct {
 	factory MonitorFactory
 	clock   ticker.Manager
 	spool   data.Spooler
-	im      *instance.Manager
+	im      *instance.Repo
 	// --
 	reportChan     chan *Report // <- Report from monitor
 	monitors       map[string]Monitor
@@ -48,7 +48,7 @@ type Manager struct {
 	spoolerRunning bool
 }
 
-func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager, spool data.Spooler, im *instance.Manager) *Manager {
+func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager, spool data.Spooler, im *instance.Repo) *Manager {
 	m := &Manager{
 		logger:  logger,
 		factory: factory,
