@@ -18,10 +18,10 @@
 package instance_test
 
 import (
-	//"encoding/json"
+	"encoding/json"
 	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/pct"
-	"github.com/percona/cloud-tools/sid"
 	"github.com/percona/cloud-tools/test"
 	"io/ioutil"
 	. "launchpad.net/gocheck"
@@ -43,9 +43,9 @@ var _ = Suite(&SidTestSuite{})
 
 func (s *SidTestSuite) SetUpSuite(t *C) {
 	s.logChan = make(chan *proto.LogEntry, 10)
-	s.logger = pct.NewLogger(s.logChan, "sid_test")
+	s.logger = pct.NewLogger(s.logChan, "pct-it-test")
 
-	dir, _ := ioutil.TempDir("/tmp", "pct-sid-test")
+	dir, _ := ioutil.TempDir("/tmp", "pct-it-test")
 	s.configDir = dir
 }
 
@@ -66,5 +66,90 @@ func (s *SidTestSuite) TearDownSuite(t *C) {
 
 // --------------------------------------------------------------------------
 
-func (s *SidTestSuite) TestFoo(t *C) {
+func (s *SidTestSuite) TestInit(t *C) {
+	im := instance.NewManager(s.logger, s.configDir)
+	t.Assert(im, NotNil)
+
+	err := im.Init()
+	t.Check(err, IsNil)
+
+	err = test.CopyFile(test.RootDir+"/mm/config/mysql-1.conf", s.configDir)
+	t.Assert(err, IsNil)
+
+	err = im.Init()
+	t.Assert(err, IsNil)
+
+	mysqlIt := &proto.MySQLInstance{}
+	err = im.Get("mysql", 1, mysqlIt)
+	t.Assert(err, IsNil)
+	expect := &proto.MySQLInstance{
+		Id:      1,
+		Name:    "db1",
+		DSN:     "user:host@tcp:(127.0.0.1:3306)",
+		Distro:  "Percona Server",
+		Version: "5.6.16",
+	}
+	if same, diff := test.IsDeeply(mysqlIt, expect); !same {
+		t.Error(diff)
+	}
+}
+
+func (s *SidTestSuite) TestAddRemove(t *C) {
+	im := instance.NewManager(s.logger, s.configDir)
+	t.Assert(im, NotNil)
+
+	t.Check(test.FileExists(s.configDir+"/mysql-1.conf"), Equals, false)
+
+	mysqlIt := &proto.MySQLInstance{
+		Id:      1,
+		Name:    "db1",
+		DSN:     "user:host@tcp:(127.0.0.1:3306)",
+		Distro:  "Percona Server",
+		Version: "5.6.16",
+	}
+	err := im.Add("mysql", 1, mysqlIt)
+	t.Assert(err, IsNil)
+
+	t.Check(test.FileExists(s.configDir+"/mysql-1.conf"), Equals, true)
+
+	got := &proto.MySQLInstance{}
+	err = im.Get("mysql", 1, got)
+	t.Assert(err, IsNil)
+	if same, diff := test.IsDeeply(got, mysqlIt); !same {
+		t.Error(diff)
+	}
+
+	data, err := ioutil.ReadFile(s.configDir + "/mysql-1.conf")
+	t.Assert(err, IsNil)
+
+	got = &proto.MySQLInstance{}
+	err = json.Unmarshal(data, got)
+	t.Assert(err, IsNil)
+	if same, diff := test.IsDeeply(got, mysqlIt); !same {
+		t.Error(diff)
+	}
+
+	im.Remove("mysql", 1)
+	t.Check(test.FileExists(s.configDir+"/mysql-1.conf"), Equals, false)
+}
+
+func (s *SidTestSuite) TestErrors(t *C) {
+	im := instance.NewManager(s.logger, s.configDir)
+	t.Assert(im, NotNil)
+
+	mysqlIt := &proto.MySQLInstance{
+		Id:      0,
+		Name:    "db1",
+		DSN:     "user:host@tcp:(127.0.0.1:3306)",
+		Distro:  "Percona Server",
+		Version: "5.6.16",
+	}
+
+	// Instance ID must be > 0.
+	err := im.Add("mysql", 0, mysqlIt)
+	t.Assert(err, NotNil)
+
+	// Service name must be one of proto.ExternalService.
+	err = im.Add("foo", 1, mysqlIt)
+	t.Assert(err, NotNil)
 }

@@ -24,6 +24,8 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
 	"io/ioutil"
+	"log"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -64,14 +66,14 @@ func (m *Manager) loadInstances(service string) error {
 	for _, file := range files {
 		m.logger.Debug("Reading " + file)
 
-		// 0        1       2
-		// instance-service-id
-		part := strings.Split(filepath.Base(file), "-")
-		if len(part) != 3 {
+		// 0       1
+		// service-id
+		part := strings.Split(strings.TrimSuffix(filepath.Base(file), ".conf"), "-")
+		if len(part) != 2 {
 			return errors.New("Invalid instance file name: " + file)
 		}
-		service := part[1]
-		id, err := strconv.ParseUint(part[2], 10, 32)
+		service := part[0]
+		id, err := strconv.ParseUint(part[1], 10, 32)
 		if err != nil {
 			return err
 		}
@@ -111,6 +113,10 @@ func (m *Manager) loadInstances(service string) error {
 }
 
 func (m *Manager) Add(service string, id uint, info interface{}) error {
+	if reflect.ValueOf(info).Kind() != reflect.Ptr {
+		log.Fatal("info arg is not a pointer; need &T{}")
+	}
+
 	if !valid(service, id) {
 		return pct.InvalidServiceInstanceError{Service: service, Id: id}
 	}
@@ -130,6 +136,10 @@ func (m *Manager) Add(service string, id uint, info interface{}) error {
 }
 
 func (m *Manager) Get(service string, id uint, info interface{}) error {
+	if reflect.ValueOf(info).Kind() != reflect.Ptr {
+		log.Fatal("info arg is not a pointer; need &T{}")
+	}
+
 	if !valid(service, id) {
 		return pct.InvalidServiceInstanceError{Service: service, Id: id}
 	}
@@ -151,21 +161,29 @@ func (m *Manager) Get(service string, id uint, info interface{}) error {
 	 * you grok reflection; I leave that to you.
 	 */
 	infoVal := reflect.ValueOf(info).Elem()
-	infoVal.Set(reflect.ValueOf(it))
+	infoVal.Set(reflect.ValueOf(it).Elem())
 
 	return nil
 }
 
-func (m *Manager) Update(service string, id uint, info []byte) error {
-	// todo: API --> agent --> sid.Update()
-	// After successful update, agent should restart all services using
-	// the instance and reply ok only if all service restart ok.
-	return nil
-}
-
-func (m *Manager) Remove(id uint) error {
+func (m *Manager) Remove(service string, id uint) error {
 	// todo: API --> agent --> side.Remove()
 	// Agent should stop all services using the instance before call this.
+	if !valid(service, id) {
+		return pct.InvalidServiceInstanceError{Service: service, Id: id}
+	}
+	name := m.Name(service, id)
+	if _, ok := m.it[name]; !ok {
+		return pct.UnknownServiceInstanceError{Service: service, Id: id}
+	}
+
+	file := m.configDir + "/" + name + ".conf"
+	m.logger.Info("Removing", file)
+	if err := os.Remove(file); err != nil {
+		return err
+	}
+
+	delete(m.it, name)
 	return nil
 }
 
@@ -179,6 +197,6 @@ func valid(service string, id uint) bool {
 	return true
 }
 
-func (m * Manager) Name(service string, id uint) string {
+func (m *Manager) Name(service string, id uint) string {
 	return fmt.Sprintf("%s-%d", service, id)
 }

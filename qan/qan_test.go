@@ -167,7 +167,7 @@ func (s *ManagerTestSuite) SetUpSuite(c *gocheck.C) {
 	c.Assert(err, gocheck.IsNil)
 	s.configDir = tmpdir
 	s.im = instance.NewManager(pct.NewLogger(s.logChan, "im-test"), s.configDir)
-	s.im.Add("mysql", 1, proto.MySQLInstance{Name: "db1", DSN: s.dsn})
+	s.im.Add("mysql", 1, &proto.MySQLInstance{Name: "db1", DSN: s.dsn})
 	s.mysqlInstance = instance.Config{Service: "mysql", InstanceId: 1}
 }
 
