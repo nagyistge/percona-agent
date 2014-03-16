@@ -11,26 +11,26 @@ import (
 	"github.com/percona/cloud-tools/sysconfig/mysql"
 )
 
-type SysconfigFactory struct {
+type Factory struct {
 	logChan chan *proto.LogEntry
-	im      *instance.Repo
+	ir      *instance.Repo
 }
 
-func NewSysconfigFactory(logChan chan *proto.LogEntry, im *instance.Repo) *SysconfigFactory {
-	f := &SysconfigFactory{
+func NewFactory(logChan chan *proto.LogEntry, ir *instance.Repo) *Factory {
+	f := &Factory{
 		logChan: logChan,
-		im:      im,
+		ir:      ir,
 	}
 	return f
 }
 
-func (f *SysconfigFactory) Make(service string, instanceId uint, data []byte) (sysconfig.Monitor, error) {
+func (f *Factory) Make(service string, instanceId uint, data []byte) (sysconfig.Monitor, error) {
 	var monitor sysconfig.Monitor
 	switch service {
 	case "mysql":
 		// Load the MySQL instance info (DSN, name, etc.).
 		mysqlIt := &proto.MySQLInstance{}
-		if err := f.im.Get(service, instanceId, mysqlIt); err != nil {
+		if err := f.ir.Get(service, instanceId, mysqlIt); err != nil {
 			return nil, err
 		}
 

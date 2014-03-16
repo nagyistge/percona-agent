@@ -99,3 +99,7 @@ func (m *Manager) WriteConfig(config interface{}, name string) error {
 func (m *Manager) RemoveConfig(name string) error {
 	return nil
 }
+
+func (m *Manager) Repo() *Repo {
+	return m.repo
+}

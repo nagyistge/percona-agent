@@ -1,34 +1,37 @@
 package monitor
 
 import (
+	"encoding/json"
 	"errors"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/mm"
 	"github.com/percona/cloud-tools/mm/mysql"
 	"github.com/percona/cloud-tools/mm/system"
+	mysqlConn "github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
 )
 
 type Factory struct {
 	logChan chan *proto.LogEntry
+	ir      *instance.Repo
 }
 
-func NewFactory(logChan chan *proto.LogEntry, im *instance.Repo) *Factory {
+func NewFactory(logChan chan *proto.LogEntry, ir *instance.Repo) *Factory {
 	f := &Factory{
 		logChan: logChan,
-		im:      im,
+		ir:      ir,
 	}
 	return f
 }
 
-func Make(service string, instanceId uint, data []byte) (Monitor, error) {
+func (f *Factory) Make(service string, instanceId uint, data []byte) (mm.Monitor, error) {
 	var monitor mm.Monitor
 	switch service {
 	case "mysql":
 		// Load the MySQL instance info (DSN, name, etc.).
 		mysqlIt := &proto.MySQLInstance{}
-		if err := f.im.Get(service, instanceId, mysqlIt); err != nil {
+		if err := f.ir.Get(service, instanceId, mysqlIt); err != nil {
 			return nil, err
 		}
 
@@ -59,12 +62,11 @@ func Make(service string, instanceId uint, data []byte) (Monitor, error) {
 		alias := "mm-system"
 
 		// Make a MySQL metrics monitor.
-		monitor = mysql.NewMonitor(
+		monitor = system.NewMonitor(
 			alias,
 			config,
 			pct.NewLogger(f.logChan, alias),
 		)
-		monitor = system.NewMonitor(pct.NewLogger(f.logChan, name))
 	default:
 		return nil, errors.New("Unknown metrics monitor type: " + service)
 	}
