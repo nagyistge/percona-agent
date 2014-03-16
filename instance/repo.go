@@ -86,11 +86,11 @@ func (r *Repo) loadInstances(service string) error {
 
 		data, err := ioutil.ReadFile(file)
 		if err != nil {
-			return err
+			return errors.New(file + ":" + err.Error())
 		}
 
 		if err := r.Add(service, uint(id), data, false); err != nil {
-			return err
+			return errors.New(file + ":" + err.Error())
 		}
 
 		r.logger.Info("Loaded " + file)
