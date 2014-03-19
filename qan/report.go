@@ -18,12 +18,14 @@
 package qan
 
 import (
+	"github.com/percona/cloud-protocol/proto"
 	mysqlLog "github.com/percona/percona-go-mysql/log"
 	"sort"
 	"time"
 )
 
 type Report struct {
+	proto.ServiceInstance
 	StartTs     time.Time // UTC
 	EndTs       time.Time // UTC
 	SlowLogFile string    // not slow_query_log_file if rotated
@@ -44,20 +46,21 @@ func (a ByQueryTime) Less(i, j int) bool {
 	return a[i].Metrics.TimeMetrics["Query_time"].Sum > a[j].Metrics.TimeMetrics["Query_time"].Sum
 }
 
-func MakeReport(interval *Interval, result *Result, config *Config) *Report {
+func MakeReport(it proto.ServiceInstance, interval *Interval, result *Result, config *Config) *Report {
 
 	sort.Sort(ByQueryTime(result.Classes))
 
 	report := &Report{
-		StartTs:     interval.StartTime,
-		EndTs:       interval.StopTime,
-		SlowLogFile: interval.Filename,
-		StartOffset: interval.StartOffset,
-		EndOffset:   interval.EndOffset,
-		StopOffset:  result.StopOffset,
-		RunTime:     result.RunTime,
-		Global:      result.Global,
-		Class:       result.Classes,
+		ServiceInstance: it,
+		StartTs:         interval.StartTime,
+		EndTs:           interval.StopTime,
+		SlowLogFile:     interval.Filename,
+		StartOffset:     interval.StartOffset,
+		EndOffset:       interval.EndOffset,
+		StopOffset:      result.StopOffset,
+		RunTime:         result.RunTime,
+		Global:          result.Global,
+		Class:           result.Classes,
 	}
 
 	if config.ReportLimit == 0 {

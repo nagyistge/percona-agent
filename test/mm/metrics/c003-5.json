@@ -1,4 +1,6 @@
 {
+  "Service":"mysql",
+  "InstanceId":1,
   "Ts":1257894004,
   "Metrics":[
     {"Name":"bytes_sent","Type":"counter","Number":1600}

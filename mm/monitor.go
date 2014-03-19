@@ -18,6 +18,7 @@
 package mm
 
 import (
+	"github.com/percona/cloud-protocol/proto"
 	"time"
 )
 
@@ -26,14 +27,14 @@ import (
  * (mysql/monitor.go) collects most SHOW STATUS variables, each as its own
  * Metric.  Each Metric collected during a single period are sent as a
  * Collection to an Aggregator (aggregator.go).  The Aggregator keeps Stats
- * for each unique Metric in a Metrics map/hash table.  When it's time to
- * report, the Stats are summarized and the Metrics are encoded in a Report
- * and sent to a Spooler (data/spooler.go).
+ * for each unique Metric, for each service instance.  When it's time to
+ * report, the per-instance stats are summarized and the stats are encoded
+ * in a Report and sent to the Spooler (data/spooler.go).
  */
 
-// Using given config, collect metrics when tickChan ticks, and send to collecitonChan.
+// Collect metrics when tickChan ticks, send to collecitonChan.
 type Monitor interface {
-	Start(config []byte, tickChan chan time.Time, collectionChan chan *Collection) error
+	Start(tickChan chan time.Time, collectionChan chan *Collection) error
 	Stop() error
 	Status() map[string]string
 	TickChan() chan time.Time
@@ -41,7 +42,7 @@ type Monitor interface {
 }
 
 type MonitorFactory interface {
-	Make(mtype, name string) (Monitor, error)
+	Make(service string, instanceId uint, data []byte) (Monitor, error)
 }
 
 var MetricTypes map[string]bool = map[string]bool{
@@ -49,6 +50,8 @@ var MetricTypes map[string]bool = map[string]bool{
 	"counter": true,
 }
 
+// A single metric and its value at any time.  Monitors are responsible for
+// getting these and sending them as a Collection to an aggregator.
 type Metric struct {
 	Name   string // mysql/status/Threads_running
 	Type   string // gauge, counter, string
@@ -56,15 +59,23 @@ type Metric struct {
 	String string
 }
 
+// All metrics from a service instance collected at the same time.
+// Collections can come from different instances.  For example,
+// one agent can monitor two different MySQL instances.
 type Collection struct {
+	proto.ServiceInstance
 	Ts      int64 // UTC Unix timestamp
 	Metrics []Metric
 }
 
-type Metrics map[string]*Stats
+// Stats for each metric from a service instance, computed at each report interval.
+type InstanceStats struct {
+	proto.ServiceInstance
+	Stats map[string]*Stats // keyed on metric name
+}
 
 type Report struct {
 	Ts       time.Time // start, UTC
 	Duration uint      // seconds
-	Metrics  Metrics
+	Stats    []*InstanceStats
 }

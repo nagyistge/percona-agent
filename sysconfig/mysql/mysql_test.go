@@ -18,12 +18,13 @@
 package mysql_test
 
 import (
-	"encoding/json"
 	"github.com/percona/cloud-protocol/proto"
+	mysqlConn "github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/sysconfig"
 	"github.com/percona/cloud-tools/sysconfig/mysql"
 	"github.com/percona/cloud-tools/test"
+	. "launchpad.net/gocheck"
 	"os"
 	"testing"
 	"time"
@@ -34,65 +35,82 @@ import (
  */
 var dsn = os.Getenv("PCT_TEST_MYSQL_DSN")
 
-var logChan = make(chan *proto.LogEntry, 10)
-var logger = pct.NewLogger(logChan, "sysconfig-manager-test")
-var tickChan = make(chan time.Time)
-var sysconfigChan = make(chan *sysconfig.SystemConfig, 1)
+// Hook up gocheck into the "go test" runner.
+func Test(t *testing.T) { TestingT(t) }
 
-func TestStartCollectStop(t *testing.T) {
+type TestSuite struct {
+	logChan    chan *proto.LogEntry
+	logger     *pct.Logger
+	tickChan   chan time.Time
+	reportChan chan *sysconfig.Report
+	name       string
+}
+
+var _ = Suite(&TestSuite{})
+
+func (s *TestSuite) SetUpSuite(t *C) {
 	if dsn == "" {
 		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
 	}
 
-	m := mysql.NewMonitor(logger)
+	s.logChan = make(chan *proto.LogEntry, 10)
+	s.logger = pct.NewLogger(s.logChan, "mm-manager-test")
+	s.tickChan = make(chan time.Time)
+	s.reportChan = make(chan *sysconfig.Report, 1)
+	s.reportChan = make(chan *sysconfig.Report, 1)
+	s.name = "sysconfig-mysql-db1"
+}
+
+// --------------------------------------------------------------------------
+
+func (s *TestSuite) TestStartCollectStop(t *C) {
+	// Create the monitor.
+	config := &mysql.Config{
+		Config: sysconfig.Config{
+			ServiceInstance: proto.ServiceInstance{
+				Service:    "mysql",
+				InstanceId: 1,
+			},
+		},
+	}
+	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn))
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
 	}
 
-	// First think we need is a mysql.Config.
-	instance := "test1"
-	config := &mysql.Config{
-		DSN:          dsn,
-		InstanceName: instance,
-	}
-	data, err := json.Marshal(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Start the monitor.
-	err = m.Start(data, tickChan, sysconfigChan)
+	err := m.Start(s.tickChan, s.reportChan)
 	if err != nil {
 		t.Fatalf("Start monitor without error, got %s", err)
 	}
 
 	// monitor=Ready once it has successfully connected to MySQL.  This may
 	// take a few seconds (hopefully < 5) on a slow test machine.
-	if ok := test.WaitStatus(5, m, "mysql-sysconfig", "Ready"); !ok {
+	if ok := test.WaitStatus(5, m, s.name, "Ready"); !ok {
 		t.Fatal("Monitor is ready")
 	}
 
 	// Send tick to make the monitor collect.
 	now := time.Now().UTC()
-	tickChan <- now
-	got := test.WaitSystemConfig(sysconfigChan, 1)
+	s.tickChan <- now
+	got := test.WaitSystemConfig(s.reportChan, 1)
 	if len(got) == 0 {
 		t.Fatal("Got a sysconfig after tick")
 	}
 	c := got[0]
 
 	if c.Ts != now.Unix() {
-		t.Error("SystemConfig.Ts set to %s; got %s", now.Unix(), c.Ts)
+		t.Error("Report.Ts set to %s; got %s", now.Unix(), c.Ts)
 	}
 
-	if len(c.Config) < 100 {
-		t.Fatal("Collect > 100 vars; got %+v", c.Config)
+	if len(c.Settings) < 100 {
+		t.Fatal("Collect > 100 vars; got %+v", c.Settings)
 	}
 
 	haveWaitTimeout := false
 	val := ""
-	for _, s := range c.Config {
-		if s[0] == instance+"/wait_timeout" {
+	for _, s := range c.Settings {
+		if s[0] == "wait_timeout" {
 			haveWaitTimeout = true
 			val = s[1]
 		}
@@ -111,7 +129,7 @@ func TestStartCollectStop(t *testing.T) {
 
 	m.Stop()
 
-	if ok := test.WaitStatus(5, m, "mysql-sysconfig", "Stopped"); !ok {
+	if ok := test.WaitStatus(5, m, s.name, "Stopped"); !ok {
 		t.Fatal("Monitor has stopped")
 	}
 }

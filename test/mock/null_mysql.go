@@ -1,11 +1,11 @@
 package mock
 
 import (
+	"database/sql"
 	"github.com/percona/cloud-tools/mysql"
 )
 
 type NullMySQL struct {
-	dsn string
 	set []mysql.Query
 }
 
@@ -16,9 +16,20 @@ func NewNullMySQL() *NullMySQL {
 	return n
 }
 
-func (n *NullMySQL) Connect(dsn string) error {
-	n.dsn = dsn
+func (n *NullMySQL) DB() *sql.DB {
 	return nil
+}
+
+func (n *NullMySQL) DSN() string {
+	return "dsn"
+}
+
+func (n *NullMySQL) Connect(tries uint) error {
+	return nil
+}
+
+func (n *NullMySQL) Close() {
+	return
 }
 
 func (n *NullMySQL) Set(queries []mysql.Query) error {
@@ -33,7 +44,6 @@ func (n *NullMySQL) GetSet() []mysql.Query {
 }
 
 func (n *NullMySQL) Reset() {
-	n.dsn = ""
 	n.set = []mysql.Query{}
 }
 

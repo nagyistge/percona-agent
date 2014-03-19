@@ -17,8 +17,11 @@
 
 package sysconfig
 
+import (
+	"github.com/percona/cloud-protocol/proto"
+)
+
 type Config struct {
-	Name    string
-	Type    string // cloud-tools/sysconfig/<type>/collector.go
-	Collect uint   // how often to collect config (seconds)
+	proto.ServiceInstance
+	Report uint // how often to collect and send config (seconds)
 }

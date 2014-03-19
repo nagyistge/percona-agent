@@ -1,0 +1,28 @@
+{
+  "Stats":[
+    {
+      "Service":"mysql",
+      "InstanceId":1,
+      "Stats":{
+        "host1/Foo":{
+          "Cnt":5,
+           "Min":1,
+          "Pct5":1,
+          "Avg":2.8,
+          "Med":3,
+          "Pct95":5,
+          "Max":5
+        },
+         "host1/Bar":{
+          "Cnt":5,
+          "Min":0,
+          "Pct5":0,
+          "Avg":4.2182,
+          "Med":3.3,
+          "Pct95":8.991,
+          "Max":8.991
+        }
+      }
+    }
+  ]
+}

@@ -18,7 +18,6 @@
 package system_test
 
 import (
-	"encoding/json"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/mm"
 	"github.com/percona/cloud-tools/mm/system"
@@ -59,7 +58,7 @@ func (s *ProcStatTestSuite) TestProcStat001(t *C) {
 		t.Fatal(err)
 	}
 
-	m := system.NewMonitor(s.logger)
+	m := system.NewMonitor("", &system.Config{}, s.logger)
 
 	metrics := []mm.Metric{}
 
@@ -193,7 +192,7 @@ func (s *ProcMeminfoTestSuite) SetUpSuite(t *C) {
 // --------------------------------------------------------------------------
 
 func (s *ProcMeminfoTestSuite) TestProcMeminfo001(t *C) {
-	m := system.NewMonitor(s.logger)
+	m := system.NewMonitor("", &system.Config{}, s.logger)
 	content, err := ioutil.ReadFile(sample + "/proc/meminfo001.txt")
 	if err != nil {
 		t.Fatal(err)
@@ -241,7 +240,7 @@ func (s *ProcVmstatTestSuite) SetUpSuite(t *C) {
 // --------------------------------------------------------------------------
 
 func (s *ProcVmstatTestSuite) TestProcVmstat001(t *C) {
-	m := system.NewMonitor(s.logger)
+	m := system.NewMonitor("", &system.Config{}, s.logger)
 	content, err := ioutil.ReadFile(sample + "/proc/vmstat001.txt")
 	if err != nil {
 		t.Fatal(err)
@@ -289,7 +288,7 @@ func (s *ProcLoadavgTestSuite) SetUpSuite(t *C) {
 // --------------------------------------------------------------------------
 
 func (s *ProcLoadavgTestSuite) TestProcLoadavg001(t *C) {
-	m := system.NewMonitor(s.logger)
+	m := system.NewMonitor("", &system.Config{}, s.logger)
 	content, err := ioutil.ReadFile(sample + "/proc/loadavg001.txt")
 	if err != nil {
 		t.Fatal(err)
@@ -332,7 +331,7 @@ func (s *ProcDiskstatsTestSuite) SetUpSuite(t *C) {
 // --------------------------------------------------------------------------
 
 func (s *ProcDiskstatsTestSuite) TestProcDiskstats001(t *C) {
-	m := system.NewMonitor(s.logger)
+	m := system.NewMonitor("", &system.Config{}, s.logger)
 	content, err := ioutil.ReadFile(sample + "/proc/diskstats001.txt")
 	if err != nil {
 		t.Fatal(err)
@@ -455,6 +454,7 @@ type ManagerTestSuite struct {
 	logger         *pct.Logger
 	tickChan       chan time.Time
 	collectionChan chan *mm.Collection
+	name           string
 }
 
 var _ = Suite(&ManagerTestSuite{})
@@ -465,6 +465,8 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 
 	s.tickChan = make(chan time.Time)
 	s.collectionChan = make(chan *mm.Collection, 1)
+
+	s.name = "localhost"
 }
 
 func haveMetric(name string, metrics []mm.Metric) (bool, float64) {
@@ -490,27 +492,21 @@ func (s *ManagerTestSuite) TestStartCollectStop(t *C) {
 		}
 	}
 
-	m := system.NewMonitor(s.logger)
+	// Create the monitor.
+	m := system.NewMonitor(s.name, &system.Config{}, s.logger)
 	if m == nil {
 		t.Fatal("Make new system.Monitor")
 	}
 
-	// First think we need is a system.Config.
-	config := &system.Config{}
-	data, err := json.Marshal(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Start the monitor.
-	err = m.Start(data, s.tickChan, s.collectionChan)
+	err := m.Start(s.tickChan, s.collectionChan)
 	if err != nil {
 		t.Fatalf("Start monitor without error, got %s", err)
 	}
 
 	// system-monitor=Idle once it has started its internals,
 	// should be very fast.
-	if ok := test.WaitStatus(3, m, "system-monitor", "Idle"); !ok {
+	if ok := test.WaitStatus(3, m, s.name, "Idle"); !ok {
 		t.Fatal("Monitor is ready")
 	}
 
@@ -575,7 +571,7 @@ func (s *ManagerTestSuite) TestStartCollectStop(t *C) {
 
 	m.Stop()
 
-	if ok := test.WaitStatus(5, m, "system-monitor", "Stopped"); !ok {
+	if ok := test.WaitStatus(5, m, s.name, "Stopped"); !ok {
 		t.Fatal("Monitor has stopped")
 	}
 }

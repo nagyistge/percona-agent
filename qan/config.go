@@ -18,6 +18,7 @@
 package qan
 
 import (
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/mysql"
 )
 
@@ -26,8 +27,8 @@ const (
 )
 
 type Config struct {
+	proto.ServiceInstance
 	// Manager
-	DSN               string
 	Start             []mysql.Query
 	Stop              []mysql.Query
 	MaxWorkers        int

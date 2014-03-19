@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"time"
@@ -38,7 +39,10 @@ func FileExists(file string) bool {
 	if err == nil {
 		return true
 	}
-	return os.IsNotExist(err)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return true
 }
 
 func GetStatus(sendChan chan *proto.Cmd, recvChan chan *proto.Reply) map[string]string {
@@ -141,4 +145,9 @@ func Debug(logChan chan *proto.LogEntry) {
 	for l := range logChan {
 		log.Println(l)
 	}
+}
+
+func CopyFile(src, dst string) error {
+	cmd := exec.Command("cp", src, dst)
+	return cmd.Run()
 }

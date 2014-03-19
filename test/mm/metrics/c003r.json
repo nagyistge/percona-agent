@@ -1,0 +1,19 @@
+{
+  "Stats":[
+    {
+      "Service":"mysql",
+      "InstanceId":1,
+      "Stats":{
+        "bytes_sent":{
+          "Cnt":4,
+          "Min":100,
+          "Pct5":100,
+          "Avg":375.0,
+          "Med":400,
+          "Pct95":800,
+          "Max":800
+        }
+      }
+    }
+  ]
+}

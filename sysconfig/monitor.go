@@ -18,11 +18,12 @@
 package sysconfig
 
 import (
+	"github.com/percona/cloud-protocol/proto"
 	"time"
 )
 
 type Monitor interface {
-	Start(config []byte, tickChan chan time.Time, sysconfigChan chan *SystemConfig) error
+	Start(tickChan chan time.Time, reportChan chan *Report) error
 	Stop() error
 	Status() map[string]string
 	TickChan() chan time.Time
@@ -30,14 +31,15 @@ type Monitor interface {
 }
 
 type MonitorFactory interface {
-	Make(mtype, name string) (Monitor, error)
+	Make(service string, instanceId uint, data []byte) (Monitor, error)
 }
 
 // ["variable", "value"]
 type Setting [2]string
 
-type SystemConfig struct {
-	Ts     int64 // UTC Unix timestamp
-	System string
-	Config []Setting
+type Report struct {
+	proto.ServiceInstance
+	Ts       int64 // UTC Unix timestamp
+	System   string
+	Settings []Setting
 }

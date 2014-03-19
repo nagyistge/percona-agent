@@ -18,7 +18,7 @@
 package system
 
 import (
-	"encoding/json"
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/mm"
 	"github.com/percona/cloud-tools/pct"
 	"io/ioutil"
@@ -33,9 +33,10 @@ var CPUStates []string = []string{"user", "nice", "system", "idle", "iowait", "i
 const nCPUStates = 10
 
 type Monitor struct {
+	name   string
 	logger *pct.Logger
+	config *Config
 	// --
-	config         *Config
 	tickChan       chan time.Time
 	collectionChan chan *mm.Collection
 	// --
@@ -43,15 +44,18 @@ type Monitor struct {
 	prevCPUsum map[string]float64   // [cpu0] => user + nice + ...
 	sync       *pct.SyncChan
 	status     *pct.Status
+	running    bool
 }
 
-func NewMonitor(logger *pct.Logger) *Monitor {
+func NewMonitor(name string, config *Config, logger *pct.Logger) *Monitor {
 	m := &Monitor{
+		name:   name,
+		config: config,
 		logger: logger,
 		// --
 		prevCPUval: make(map[string][]float64),
 		prevCPUsum: make(map[string]float64),
-		status:     pct.NewStatus([]string{"system-monitor"}),
+		status:     pct.NewStatus([]string{name}),
 		sync:       pct.NewSyncChan(),
 	}
 	return m
@@ -62,37 +66,39 @@ func NewMonitor(logger *pct.Logger) *Monitor {
 /////////////////////////////////////////////////////////////////////////////
 
 // @goroutine[0]
-func (m *Monitor) Start(config []byte, tickChan chan time.Time, collectionChan chan *mm.Collection) error {
-	if m.config != nil {
-		return pct.ServiceIsRunningError{"system-monitor"}
+func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collection) error {
+	m.logger.Debug("Start:call")
+	defer m.logger.Debug("Start:return")
+
+	if m.running {
+		return pct.ServiceIsRunningError{m.name}
 	}
 
-	c := &Config{}
-	if err := json.Unmarshal(config, c); err != nil {
-		return err
-	}
-
-	m.config = c
 	m.tickChan = tickChan
 	m.collectionChan = collectionChan
 
 	go m.run()
+	m.running = true
 
 	return nil
 }
 
 // @goroutine[0]
 func (m *Monitor) Stop() error {
+	m.logger.Debug("Stop:call")
+	defer m.logger.Debug("Stop:return")
+
 	if m.config == nil {
 		return nil // already stopped
 	}
 
 	// Stop run().  When it returns, it updates status to "Stopped".
-	m.status.Update("system-monitor", "Stopping")
+	m.status.Update(m.name, "Stopping")
 	m.sync.Stop()
 	m.sync.Wait()
 
 	m.config = nil // no config if not running
+	m.running = false
 
 	// Do not update status to "Stopped" here; run() does that on return.
 	return nil
@@ -126,19 +132,26 @@ func StrToFloat(s string) float64 {
 }
 
 func (m *Monitor) run() {
+	m.logger.Debug("run:call")
 	defer func() {
-		m.status.Update("system-monitor", "Stopped")
+		m.status.Update(m.name, "Stopped")
 		m.sync.Done()
+		m.logger.Debug("run:return")
 	}()
 
 	for {
-		m.status.Update("system-monitor", "Idle")
+		m.status.Update(m.name, "Idle")
 
 		select {
 		case now := <-m.tickChan:
-			m.status.Update("system-monitor", "Running")
+			m.logger.Debug("run:collect:start")
+			m.status.Update(m.name, "Running")
 
 			c := &mm.Collection{
+				ServiceInstance: proto.ServiceInstance{
+					Service:    m.config.Service,
+					InstanceId: m.config.InstanceId,
+				},
 				Ts:      now.UTC().Unix(),
 				Metrics: []mm.Metric{},
 			}
@@ -197,19 +210,23 @@ func (m *Monitor) run() {
 					m.logger.Debug("Lost system metrics; timeout spooling after 500ms")
 				}
 			} else {
-				m.logger.Debug("No metrics") // shouldn't happen
+				m.logger.Debug("run:no metrics") // shouldn't happen
 			}
 
-			m.status.Update("system-monitor", "Ready")
+			m.logger.Debug("run:collect:stop")
+			m.status.Update(m.name, "Ready")
 		case <-m.sync.StopChan:
+			m.logger.Debug("run:stop")
 			return
 		}
 	}
 }
 
 func (m *Monitor) ProcStat(content []byte) ([]mm.Metric, error) {
-	metrics := []mm.Metric{}
+	m.logger.Debug("ProcStat:call")
+	defer m.logger.Debug("ProcStat:return")
 
+	metrics := []mm.Metric{}
 	currCPUval := make(map[string][]float64)
 	currCPUsum := make(map[string]float64)
 
@@ -322,6 +339,9 @@ func (m *Monitor) ProcStat(content []byte) ([]mm.Metric, error) {
 }
 
 func (m *Monitor) ProcMeminfo(content []byte) ([]mm.Metric, error) {
+	m.logger.Debug("ProcMeminfo:call")
+	defer m.logger.Debug("ProcMeminfo:return")
+
 	/**
 	 * MemTotal:        8046892 kB
 	 * MemFree:         5273644 kB
@@ -350,6 +370,9 @@ func (m *Monitor) ProcMeminfo(content []byte) ([]mm.Metric, error) {
 }
 
 func (m *Monitor) ProcVmstat(content []byte) ([]mm.Metric, error) {
+	m.logger.Debug("ProcVmstat:call")
+	defer m.logger.Debug("ProcVmstat:return")
+
 	/**
 	 * nr_free_pages 1318376
 	 * nr_inactive_anon 1875
@@ -379,6 +402,9 @@ func (m *Monitor) ProcVmstat(content []byte) ([]mm.Metric, error) {
 }
 
 func (m *Monitor) ProcLoadavg(content []byte) ([]mm.Metric, error) {
+	m.logger.Debug("ProcLoadavg:call")
+	defer m.logger.Debug("ProcLoadavg:return")
+
 	/**
 	 * Should be just one line:
 	 * 0.00 0.01 0.05 1/201 16038
@@ -421,6 +447,9 @@ func (m *Monitor) ProcLoadavg(content []byte) ([]mm.Metric, error) {
 }
 
 func (m *Monitor) ProcDiskstats(content []byte) ([]mm.Metric, error) {
+	m.logger.Debug("ProcDiskstats:call")
+	defer m.logger.Debug("ProcDiskstats:return")
+
 	/**
 	 *   1       0 ram0 0 0 0 0 0 0 0 0 0 0 0
 	 *   1       1 ram1 0 0 0 0 0 0 0 0 0 0 0

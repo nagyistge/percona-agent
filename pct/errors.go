@@ -93,3 +93,36 @@ type CmdRejectedError struct {
 func (e CmdRejectedError) Error() string {
 	return fmt.Sprintf("%s command rejected because %s", e.Cmd, e.Reason)
 }
+
+/////////////////////////////////////////////////////////////////////////////
+
+type UnknownServiceInstanceError struct {
+	Service string
+	Id      uint
+}
+
+func (e UnknownServiceInstanceError) Error() string {
+	return fmt.Sprintf("Unknown %s instance: %d", e.Service, e.Id)
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+type InvalidServiceInstanceError struct {
+	Service string
+	Id      uint
+}
+
+func (e InvalidServiceInstanceError) Error() string {
+	return fmt.Sprintf("Invalid %s instance: %d", e.Service, e.Id)
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+type DuplicateServiceInstanceError struct {
+	Service string
+	Id      uint
+}
+
+func (e DuplicateServiceInstanceError) Error() string {
+	return fmt.Sprintf("Duplicate %s instance: %d", e.Service, e.Id)
+}

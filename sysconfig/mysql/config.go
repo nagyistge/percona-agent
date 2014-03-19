@@ -23,6 +23,4 @@ import (
 
 type Config struct {
 	sysconfig.Config
-	DSN          string // [username[:password]@][protocol[(address)]]/dbname[?param1=value1&...&paramN=valueN]
-	InstanceName string // optional name of MySQL instance
 }

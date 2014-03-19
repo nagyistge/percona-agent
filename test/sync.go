@@ -300,8 +300,8 @@ func WaitState(c chan bool) bool {
 	}
 }
 
-func WaitSystemConfig(cChan chan *sysconfig.SystemConfig, n int) []*sysconfig.SystemConfig {
-	var buf []*sysconfig.SystemConfig
+func WaitSystemConfig(cChan chan *sysconfig.Report, n int) []*sysconfig.Report {
+	var buf []*sysconfig.Report
 	var cnt int = 0
 	timeout := time.After(300 * time.Millisecond)
 FIRST_LOOP:

@@ -25,6 +25,7 @@ import (
 	"github.com/percona/cloud-tools/agent"
 	"github.com/percona/cloud-tools/client"
 	"github.com/percona/cloud-tools/data"
+	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/log"
 	"github.com/percona/cloud-tools/mm"
 	mmMonitor "github.com/percona/cloud-tools/mm/monitor"
@@ -158,6 +159,18 @@ func main() {
 	}
 
 	/**
+	 * Service instance manager
+	 */
+
+	itManager := instance.NewManager(
+		pct.NewLogger(logChan, "instance-manager"),
+		configDir,
+	)
+	if err := itManager.Start(nil, nil); err != nil {
+		golog.Panicf("Error starting instance manager: ", err)
+	}
+
+	/**
 	 * Data spooler and sender
 	 */
 
@@ -188,21 +201,23 @@ func main() {
 
 	mmManager := mm.NewManager(
 		pct.NewLogger(logChan, "mm"),
-		mmMonitor.NewFactory(logChan),
+		mmMonitor.NewFactory(logChan, itManager.Repo()),
 		clock,
 		dataManager.Spooler(),
+		itManager.Repo(),
 	)
 	mmConfig, err := mmManager.LoadConfig(configDir)
 	if err := mmManager.Start(&proto.Cmd{}, mmConfig); err != nil {
 		golog.Panicf("Error starting mm service: ", err)
 	}
-	StartMonitors("mm", configDir, configDir+"/*-monitor.conf", mmManager)
+	StartMonitors("mm", configDir, configDir+"/mm-*.conf", mmManager)
 
 	sysconfigManager := sysconfig.NewManager(
 		pct.NewLogger(logChan, "sysconfig"),
-		sysconfigMonitor.NewFactory(logChan),
+		sysconfigMonitor.NewFactory(logChan, itManager.Repo()),
 		clock,
 		dataManager.Spooler(),
+		itManager.Repo(),
 	)
 	sysconfigConfig, err := sysconfigManager.LoadConfig(configDir)
 	if err := sysconfigManager.Start(&proto.Cmd{}, sysconfigConfig); err != nil {
@@ -216,11 +231,12 @@ func main() {
 
 	qanManager := qan.NewManager(
 		pct.NewLogger(logChan, "qan"),
-		&mysql.Connection{},
+		&mysql.RealConnectionFactory{},
 		clock,
 		&qan.FileIntervalIterFactory{},
 		&qan.SlowLogWorkerFactory{},
 		dataManager.Spooler(),
+		itManager.Repo(),
 	)
 	qanConfig, err := qanManager.LoadConfig(configDir)
 	if qanConfig != nil {
@@ -243,6 +259,7 @@ func main() {
 		"data": dataManager,
 		"qan":  qanManager,
 		"mm":   mmManager,
+		"it":   itManager,
 	}
 
 	agent := agent.NewAgent(
