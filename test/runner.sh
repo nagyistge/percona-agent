@@ -2,8 +2,8 @@
 
 export PCT_TEST_MYSQL_DSN=${PCT_TEST_MYSQL_DSN:-"percona:percona@tcp(127.0.0.1:3306)/?parseTime=true"}
 export PATH="$PATH:/usr/local/go/bin"
-export GOROOT="/usr/local/go"
-export GOPATH="/home/jenkinstools/go"
+export GOROOT=${GOROOT:-"/usr/local/go"}
+export GOPATH=${GOPATH:-"/home/jenkinstools/go"}
 
 if [ ! -d ".git" ]; then
    echo "./.git directory not found.  Run this script from the root dir of the repo." >&2
@@ -24,8 +24,8 @@ do
 done
 
 # Update dependencies (Yeah, no comments about this code)
+thisPkg=$(go list -e)
 if [ "$UPDATE_DEPENDENCIES" == "yes" ]; then
-    thisPkg=$(go list -e)
     nonStdDeps=$(go list -f '{{join .Deps "\n"}}{{"\n"}}{{join .XTestImports "\n"}}' ./... | xargs go list -e -f '{{if not .Standard}}{{.ImportPath}}{{end}}' | sort | uniq)
     extDeps=$(echo -e "$nonStdDeps" | grep -v "$thisPkg") # extDeps = nonStdDeps - thisPkg*
     # Run `go get -u` only if there are any dependencies
@@ -38,20 +38,23 @@ failures="/tmp/go-test-failures.$$"
 coverreport="/tmp/go-test-coverreport.$$"
 
 touch "$coverreport"
+echo >> "$coverreport"
 # Find test files ending with _test.go but ignore those starting with _
-for t in $(find . -regex '.*/[^_][^\/]*_test.go' -print); do
-   echo "$t"
-   dir=$(dirname "$t")
+# also ignore hidden files and directories
+for dir in $(find . \( ! -path '*/\.*' \) -type f \( -name '*_test.go' ! -name '_*' \) -print | xargs -n1 dirname | sort | uniq); do
+   header="Package ${thisPkg}/${dir#./}"
+   echo "$header"
    (
-      cd $dir
+      cd ${dir}
       # Run tests
       go test -coverprofile=c.out -timeout 1m
    )
    if [ $? -ne 0 ]; then
-      echo "$t" >> "$failures"
+      echo "$header" >> "$failures"
    elif [ -f "$dir/c.out" ]; then
-      echo "$t" >> "$coverreport"
+      echo "$header" >> "$coverreport"
       go tool cover -func="$dir/c.out" >> "$coverreport"
+      echo >> "$coverreport"
       rm "$dir/c.out"
    fi
 done
