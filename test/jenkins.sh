@@ -8,5 +8,5 @@ git config --global url.git@github.com:percona/.insteadOf https://github.com/per
 cd "$WORKSPACE/go/src/github.com/percona/cloud-tools"
 
 # Run tests
-tests/runner.sh -u
+test/runner.sh -u
 exit $?
