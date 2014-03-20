@@ -150,17 +150,17 @@ func (s *TestSuite) TestStartCollectStop(t *C) {
 	if len(c.Metrics) != 2 {
 		t.Fatal("Collected only configured metrics; got %+v", c.Metrics)
 	}
-	if c.Metrics[0].Name != "threads_connected" {
-		t.Error("First metric is ", "threads_connected; got", c.Metrics[0].Name)
+	if c.Metrics[0].Name != "mysql/threads_connected" {
+		t.Error("First metric is ", "mysql/threads_connected; got", c.Metrics[0].Name)
 	}
 	if c.Metrics[0].Number < 1 {
-		t.Error("threads_connected > 1; got", c.Metrics[0].Number)
+		t.Error("mysql/threads_connected > 1; got", c.Metrics[0].Number)
 	}
-	if c.Metrics[1].Name != "threads_running" {
-		t.Error("Second metric is ", "threads_running got", c.Metrics[1].Name)
+	if c.Metrics[1].Name != "mysql/threads_running" {
+		t.Error("Second metric is ", "mysql/threads_running got", c.Metrics[1].Name)
 	}
 	if c.Metrics[1].Number < 1 {
-		t.Error("threads_running > 1; got", c.Metrics[0].Number)
+		t.Error("mysql/threads_running > 1; got", c.Metrics[0].Number)
 	}
 
 	/**

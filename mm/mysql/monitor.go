@@ -291,7 +291,7 @@ func (m *Monitor) GetShowStatusMetrics(conn *sql.DB, c *mm.Collection) error {
 			metricValue = 0.0
 		}
 
-		c.Metrics = append(c.Metrics, mm.Metric{metricName, metricType, metricValue, ""})
+		c.Metrics = append(c.Metrics, mm.Metric{"mysql/" + metricName, metricType, metricValue, ""})
 	}
 	err = rows.Err()
 	if err != nil {
