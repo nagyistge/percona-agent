@@ -300,8 +300,14 @@ func (s *TestSuite) TestCollectUserstats(t *C) {
 		t.Fatal("Monitor is ready")
 	}
 
+	var user, host string
+	err = s.db.QueryRow("SELECT SUBSTRING_INDEX(CURRENT_USER(),'@',1) AS 'user', SUBSTRING_INDEX(CURRENT_USER(),'@',-1) AS host").Scan(&user, &host)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// To get index stats, we need to use an index: mysq.user PK <host, user>
-	rows, err := s.db.Query("select * from mysql.user where host='%' and user='msandbox'")
+	rows, err := s.db.Query("select * from mysql.user where host=? and user=?", host, user)
 	if err != nil {
 		t.Fatal(err)
 	}
