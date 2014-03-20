@@ -39,7 +39,7 @@ import (
 // Hook up gocheck into the "go test" runner.
 func Test(t *testing.T) { TestingT(t) }
 
-var sample = os.Getenv("GOPATH") + "/src/github.com/percona/cloud-tools/test/qan/"
+var sample = test.RootDir + "/qan/"
 
 func debug(logChan chan *proto.LogEntry) {
 	for logEntry := range logChan {
