@@ -51,7 +51,7 @@ func (f *Factory) Make(service string, instanceId uint, data []byte) (mm.Monitor
 			pct.NewLogger(f.logChan, alias),
 			mysqlConn.NewConnection(mysqlIt.DSN),
 		)
-	case "system":
+	case "server":
 		// Parse the system mm config.
 		config := &system.Config{}
 		if err := json.Unmarshal(data, config); err != nil {
