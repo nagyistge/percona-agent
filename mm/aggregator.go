@@ -90,6 +90,7 @@ func (a *Aggregator) run() {
 			if curInterval == 0 {
 				curInterval = interval
 				startTs = GoTime(a.interval, interval)
+				a.logger.Debug("Start first interval", startTs)
 			}
 			if interval > curInterval {
 				// Metrics for next interval have arrived.  Process and spool
@@ -109,8 +110,10 @@ func (a *Aggregator) run() {
 				cur = next
 				curInterval = interval
 				startTs = GoTime(a.interval, interval)
+				a.logger.Debug("Start interval", startTs)
 			} else if interval < curInterval {
-				// collection arrived late
+				t := GoTime(a.interval, interval)
+				a.logger.Info("Lost collection for interval", t, "; current interval is", startTs)
 			}
 
 			// Each collection is from a specific service instance ("it").
