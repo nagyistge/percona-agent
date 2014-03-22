@@ -28,7 +28,6 @@ type Manager interface {
 	Remove(c chan time.Time)
 }
 
-// Solid gold
 type Clock struct {
 	tickerFactory TickerFactory
 	syncTicker    map[uint]Ticker

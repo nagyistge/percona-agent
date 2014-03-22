@@ -53,8 +53,8 @@ func NewAggregator(logger *pct.Logger, interval int64, collectionChan chan *Coll
 
 // @goroutine[0]
 func (a *Aggregator) Start() {
-	a.running = true // XXX: not guarded
 	go a.run()
+	a.running = true // XXX: not guarded
 }
 
 // @goroutine[0]
