@@ -157,7 +157,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 			tickChan := make(chan time.Time)
 			m.clock.Add(tickChan, mm.Report, true)
 			collectionChan := make(chan *Collection, 2*len(m.monitors)+1)
-			aggregator := NewAggregator(logger, tickChan, collectionChan, m.spool)
+			aggregator := NewAggregator(logger, 500, collectionChan, m.spool)
 			aggregator.Start()
 
 			// Save aggregator for other monitors with same report interval.

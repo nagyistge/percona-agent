@@ -21,12 +21,13 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/data"
 	"github.com/percona/cloud-tools/pct"
+	"math"
 	"time"
 )
 
 type Aggregator struct {
 	logger         *pct.Logger
-	tickChan       chan time.Time
+	interval       int64
 	collectionChan chan *Collection
 	spool          data.Spooler
 	// --
@@ -34,10 +35,10 @@ type Aggregator struct {
 	running bool
 }
 
-func NewAggregator(logger *pct.Logger, tickChan chan time.Time, collectionChan chan *Collection, spool data.Spooler) *Aggregator {
+func NewAggregator(logger *pct.Logger, interval int64, collectionChan chan *Collection, spool data.Spooler) *Aggregator {
 	a := &Aggregator{
 		logger:         logger,
-		tickChan:       tickChan,
+		interval:       interval,
 		collectionChan: collectionChan,
 		spool:          spool,
 		// --
@@ -78,41 +79,39 @@ func (a *Aggregator) run() {
 		a.sync.Done()
 	}()
 
-	/**
-	 * We aggregate on clock ticks.  The first tick becomes the first
-	 * interval's start ts.  Before that, we receive but ultimately throw
-	 * away any metrics.  This is ok because we shouldn't wait long for
-	 * the first tick, and it decouples starting/running monitors and
-	 * aggregators, i.e. neither should have to wait for the other.
-	 */
+	var curInterval int64
 	var startTs time.Time
 	cur := []*InstanceStats{}
 
 	for {
 		select {
-		case now := <-a.tickChan:
-			// Even clock tick, e.g. 00:01:00.000, 00:02:00.000, etc.
-			if !startTs.IsZero() {
-				a.report(startTs, now, cur)
-			}
-			// Next interval starts now.
-			startTs = now
-
-			// Init next stats based on current ones to avoid re-creating them.
-			// todo: what if metrics from an instance aren't collected?
-			next := make([]*InstanceStats, len(cur))
-			for n := range cur {
-				i := &InstanceStats{
-					ServiceInstance: cur[n].ServiceInstance,
-					Stats:           make(map[string]*Stats),
-				}
-				next[n] = i
-			}
-			cur = next
-
-			a.logger.Debug("Start report interval")
 		case collection := <-a.collectionChan:
-			// todo: if colllect.Ts < lastNow, then discard: it missed its period
+			interval := (collection.Ts / a.interval) * a.interval
+			if curInterval == 0 {
+				curInterval = interval
+				startTs = GoTime(a.interval, interval)
+			}
+			if interval > curInterval {
+				// Metrics for next interval have arrived.  Process and spool
+				// the current interval, then advance to this interval.
+				a.report(startTs, cur)
+
+				// Init next stats based on current ones to avoid re-creating them.
+				// todo: what if metrics from an instance aren't collected?
+				next := make([]*InstanceStats, len(cur))
+				for n := range cur {
+					i := &InstanceStats{
+						ServiceInstance: cur[n].ServiceInstance,
+						Stats:           make(map[string]*Stats),
+					}
+					next[n] = i
+				}
+				cur = next
+				curInterval = interval
+				startTs = GoTime(a.interval, interval)
+			} else if interval < curInterval {
+				// collection arrived late
+			}
 
 			// Each collection is from a specific service instance ("it").
 			// Find the stats for this instance, create if they don't exist.
@@ -158,9 +157,8 @@ func (a *Aggregator) run() {
 }
 
 // @goroutine[1]
-func (a *Aggregator) report(startTs, endTs time.Time, is []*InstanceStats) {
-	d := uint(endTs.Unix() - startTs.Unix())
-	a.logger.Info("Summarize metrics from", startTs, "to", endTs, "in", d)
+func (a *Aggregator) report(startTs time.Time, is []*InstanceStats) {
+	a.logger.Info("Summarize metrics for", startTs)
 	for _, i := range is {
 		for _, s := range i.Stats {
 			s.Summarize()
@@ -168,8 +166,27 @@ func (a *Aggregator) report(startTs, endTs time.Time, is []*InstanceStats) {
 	}
 	report := &Report{
 		Ts:       startTs,
-		Duration: d,
+		Duration: uint(a.interval),
 		Stats:    is,
 	}
 	a.spool.Write("mm", report)
+}
+
+func GoTime(interval, unixTs int64) time.Time {
+	// Calculate seconds (d) from begin to next interval.
+	i := float64(interval)
+	t := float64(unixTs)
+	d := int64(i - math.Mod(t, i))
+	if d != interval {
+		/**
+		 * unixTs is not an interval, so it's after the interval's start ts.
+		 * E.g. if i=60 and unxiTs (t)=130, then t falls between intervals:
+		 *   120
+		 *   130  =t
+		 *   180  d=50
+		 * Real begin is 120, so decrease t by 10: i - d.
+		 */
+		unixTs = unixTs - (interval - d)
+	}
+	return time.Unix(int64(unixTs), 0).UTC()
 }
