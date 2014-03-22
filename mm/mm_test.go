@@ -512,9 +512,8 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 		t.Error("Monitor running")
 	}
 
-	// There should be a 60s report ticker for the aggregator and a 1s collect ticker
-	// for the monitor.
-	if ok, diff := test.IsDeeply(s.clock.Added, []uint{1, 60}); !ok {
+	// There should be a 1s collect ticker for the monitor.
+	if ok, diff := test.IsDeeply(s.clock.Added, []uint{1}); !ok {
 		t.Errorf("Make 1s ticker for collect interval\n%s", diff)
 	}
 
