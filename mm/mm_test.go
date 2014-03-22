@@ -79,44 +79,45 @@ func sendCollection(file string, collectionChan chan *mm.Collection) error {
 
 // --------------------------------------------------------------------------
 
+func (s *AggregatorTestSuite) TestGoTime(t *C) {
+	t0, _ := time.Parse("2006-01-02T15:04:05", "2014-01-01T12:00:00")
+	t.Check(mm.GoTime(120, 1388577600), Equals, t0) // 12:00:00
+	t.Check(mm.GoTime(120, 1388577601), Equals, t0) // 12:00:01
+	t.Check(mm.GoTime(120, 1388577660), Equals, t0) // 12:01:00
+	t.Check(mm.GoTime(120, 1388577719), Equals, t0) // 12:01:59
+
+	t1, _ := time.Parse("2006-01-02T15:04:05", "2014-01-01T12:02:00")
+	t.Check(mm.GoTime(120, 1388577720), Equals, t1) // 12:02:00
+}
+
 func (s *AggregatorTestSuite) TestC001(t *C) {
-	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
+	interval := int64(300)
+	a := mm.NewAggregator(s.logger, interval, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
 
 	// Load collection from file and send to aggregator.
-	if err := sendCollection(sample+"/c001.json", s.collectionChan); err != nil {
+	if err := sendCollection(sample+"/c001-1.json", s.collectionChan); err != nil {
 		t.Fatal(err)
 	}
 
-	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
-	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
+	// Ts in c001 is 2009-11-10 23:00:00.
+	t1, _ := time.Parse("2006-01-02 15:04:05", "2009-11-10 23:00:00")
 
 	got := test.WaitMmReport(s.dataChan)
 	if got != nil {
-		t.Error("No report before tick, got: %+v", got)
+		t.Error("No report before 2nd interval, got: %+v", got)
 	}
 
-	s.tickChan <- t1
-
-	got = test.WaitMmReport(s.dataChan)
-	if got != nil {
-		t.Error("No report after 1st tick, got: %+v", got)
-	}
-
-	if err := sendCollection(sample+"/c001.json", s.collectionChan); err != nil {
+	// Ts in c001 is 2009-11-10 23:05:01, 1s into the next interval.
+	if err := sendCollection(sample+"/c001-2.json", s.collectionChan); err != nil {
 		t.Fatal(err)
 	}
 
-	s.tickChan <- t2
-
 	got = test.WaitMmReport(s.dataChan)
-	if got == nil {
-		t.Fatal("Report after 2nd tick, got: %+v", got)
-	}
-	if got.Ts != t1 {
-		t.Error("Report.Ts is first Unix ts, got %s", got.Ts)
-	}
+	t.Assert(got, NotNil)
+	t.Check(got.Ts, Equals, t1)
+	t.Check(uint64(got.Duration), Equals, uint64(interval))
 
 	expect := &mm.Report{}
 	if err := test.LoadMmReport(sample+"/c001r.json", expect); err != nil {
@@ -129,20 +130,16 @@ func (s *AggregatorTestSuite) TestC001(t *C) {
 		t.Fatal(diff)
 	}
 
-	// Duration should be t2 - t1.
-	d := uint(t2.Unix() - t1.Unix())
-	if got.Duration != d {
-		t.Errorf("Duration is t2 - t1 = %d, got %s", d, got.Duration)
-	}
 }
 
 func (s *AggregatorTestSuite) TestC002(t *C) {
-	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
+	interval := int64(300)
+	a := mm.NewAggregator(s.logger, interval, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
 
-	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
-	s.tickChan <- t1
+	// Ts in c002-1 is 2009-11-10 23:00:00.
+	t1, _ := time.Parse("2006-01-02 15:04:05", "2009-11-10 23:00:00")
 
 	for i := 1; i <= 5; i++ {
 		file := fmt.Sprintf("%s/c002-%d.json", sample, i)
@@ -150,17 +147,21 @@ func (s *AggregatorTestSuite) TestC002(t *C) {
 			t.Fatal(file, err)
 		}
 	}
-
-	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
-	s.tickChan <- t2
+	// Next interval causes 1st to be reported.
+	file := fmt.Sprintf("%s/c002-n.json", sample)
+	if err := sendCollection(file, s.collectionChan); err != nil {
+		t.Fatal(file, err)
+	}
 
 	got := test.WaitMmReport(s.dataChan)
+	t.Assert(got, NotNil)
+	t.Check(got.Ts, Equals, t1)
+	t.Check(uint64(got.Duration), Equals, uint64(interval))
+
 	expect := &mm.Report{}
 	if err := test.LoadMmReport(sample+"/c002r.json", expect); err != nil {
 		t.Fatal("c002r.json ", err)
 	}
-	t.Check(got.Ts, Equals, t1)
-	t.Check(got.Duration, Equals, uint(300))
 	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
 		t.Fatal(diff)
 	}
@@ -168,28 +169,32 @@ func (s *AggregatorTestSuite) TestC002(t *C) {
 
 // All zero values
 func (s *AggregatorTestSuite) TestC000(t *C) {
-	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
+	interval := int64(60)
+	a := mm.NewAggregator(s.logger, interval, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
 
-	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
-	s.tickChan <- t1
+	// Ts in c000 is 2009-11-10 23:00:00.
+	t1, _ := time.Parse("2006-01-02 15:04:05", "2009-11-10 23:00:00")
 
 	file := sample + "/c000.json"
 	if err := sendCollection(file, s.collectionChan); err != nil {
 		t.Fatal(file, err)
 	}
-
-	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
-	s.tickChan <- t2
+	file = sample + "/c000-n.json"
+	if err := sendCollection(file, s.collectionChan); err != nil {
+		t.Fatal(file, err)
+	}
 
 	got := test.WaitMmReport(s.dataChan)
+	t.Assert(got, NotNil)
+	t.Check(got.Ts, Equals, t1)
+	t.Check(uint64(got.Duration), Equals, uint64(interval))
+
 	expect := &mm.Report{}
 	if err := test.LoadMmReport(sample+"/c000r.json", expect); err != nil {
 		t.Fatal("c000r.json ", err)
 	}
-	t.Check(got.Ts, Equals, t1)
-	t.Check(got.Duration, Equals, uint(300))
 	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
 		t.Fatal(diff)
 	}
@@ -197,12 +202,13 @@ func (s *AggregatorTestSuite) TestC000(t *C) {
 
 // COUNTER
 func (s *AggregatorTestSuite) TestC003(t *C) {
-	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
+	interval := int64(5)
+	a := mm.NewAggregator(s.logger, interval, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
 
-	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
-	s.tickChan <- t1
+	// Ts in c003 is 2009-11-10 23:00:00.
+	t1, _ := time.Parse("2006-01-02 15:04:05", "2009-11-10 23:00:00")
 
 	for i := 1; i <= 5; i++ {
 		file := fmt.Sprintf("%s/c003-%d.json", sample, i)
@@ -210,9 +216,11 @@ func (s *AggregatorTestSuite) TestC003(t *C) {
 			t.Fatal(file, err)
 		}
 	}
-
-	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
-	s.tickChan <- t2
+	// Next interval causes 1st to be reported.
+	file := fmt.Sprintf("%s/c003-n.json", sample)
+	if err := sendCollection(file, s.collectionChan); err != nil {
+		t.Fatal(file, err)
+	}
 
 	/**
 	 * Pretend we're monitoring Bytes_sents every second:
@@ -227,24 +235,26 @@ func (s *AggregatorTestSuite) TestC003(t *C) {
 	 * the values in c003r.json.
 	 */
 	got := test.WaitMmReport(s.dataChan)
+	t.Assert(got, NotNil)
+	t.Check(got.Ts, Equals, t1)
+	t.Check(uint64(got.Duration), Equals, uint64(interval))
 	expect := &mm.Report{}
 	if err := test.LoadMmReport(sample+"/c003r.json", expect); err != nil {
 		t.Fatal("c003r.json ", err)
 	}
-	t.Check(got.Ts, Equals, t1)
-	t.Check(got.Duration, Equals, uint(300))
 	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
 		t.Fatal(diff)
 	}
 }
 
 func (s *AggregatorTestSuite) TestC003Lost(t *C) {
-	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
+	interval := int64(5)
+	a := mm.NewAggregator(s.logger, interval, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
 
-	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
-	s.tickChan <- t1
+	// Ts in c003 is 2009-11-10 23:00:00.
+	t1, _ := time.Parse("2006-01-02 15:04:05", "2009-11-10 23:00:00")
 
 	// The full sequence is files 1-5, but we send only 1 and 5,
 	// simulating monitor failure during 2-4.  More below...
@@ -256,9 +266,11 @@ func (s *AggregatorTestSuite) TestC003Lost(t *C) {
 	if err := sendCollection(file, s.collectionChan); err != nil {
 		t.Fatal(file, err)
 	}
-
-	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
-	s.tickChan <- t2
+	// Next interval causes 1st to be reported.
+	file = fmt.Sprintf("%s/c003-n.json", sample)
+	if err := sendCollection(file, s.collectionChan); err != nil {
+		t.Fatal(file, err)
+	}
 
 	/**
 	 * Values we did get are 100 and 1600 and ts 00 to 04.  So that looks like
@@ -266,12 +278,13 @@ func (s *AggregatorTestSuite) TestC003Lost(t *C) {
 	 * 375 for all stat values.
 	 */
 	got := test.WaitMmReport(s.dataChan)
+	t.Assert(got, NotNil)
+	t.Check(got.Ts, Equals, t1)
+	t.Check(uint64(got.Duration), Equals, uint64(interval))
 	expect := &mm.Report{}
 	if err := test.LoadMmReport(sample+"/c003rlost.json", expect); err != nil {
 		t.Fatal("c003r.json ", err)
 	}
-	t.Check(got.Ts, Equals, t1)
-	t.Check(got.Duration, Equals, uint(300))
 	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
 		test.Dump(got.Stats)
 		test.Dump(expect.Stats)
@@ -287,20 +300,18 @@ func (s *AggregatorTestSuite) TestBadMetric(t *C) {
 	 * its type is "guage" instead of "gauge", and it's the only metric so the
 	 * result should be zero metrics.
 	 */
-	a := mm.NewAggregator(s.logger, s.tickChan, s.collectionChan, s.spool)
+	a := mm.NewAggregator(s.logger, 60, s.collectionChan, s.spool)
 	go a.Start()
 	defer a.Stop()
-
-	t1, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:00:00 -0700 MST 2014")
-	s.tickChan <- t1
 
 	file := fmt.Sprintf("%s/bad_metric.json", sample)
 	if err := sendCollection(file, s.collectionChan); err != nil {
 		t.Fatal(file, err)
 	}
-
-	t2, _ := time.Parse("Jan 2 15:04:05 -0700 MST 2006", "Jan 1 12:05:00 -0700 MST 2014")
-	s.tickChan <- t2
+	file = fmt.Sprintf("%s/bad_metric-n.json", sample)
+	if err := sendCollection(file, s.collectionChan); err != nil {
+		t.Fatal(file, err)
+	}
 
 	got := test.WaitMmReport(s.dataChan)
 	t.Check(len(got.Stats), Equals, 1)          // instance
@@ -501,9 +512,8 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 		t.Error("Monitor running")
 	}
 
-	// There should be a 60s report ticker for the aggregator and a 1s collect ticker
-	// for the monitor.
-	if ok, diff := test.IsDeeply(s.clock.Added, []uint{1, 60}); !ok {
+	// There should be a 1s collect ticker for the monitor.
+	if ok, diff := test.IsDeeply(s.clock.Added, []uint{1}); !ok {
 		t.Errorf("Make 1s ticker for collect interval\n%s", diff)
 	}
 

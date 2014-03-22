@@ -35,14 +35,13 @@ import (
 	"time"
 )
 
-// We use one binding per unique Interval.Report.  For example, if some monitors
+// We use one binding per unique mm.Report interval.  For example, if some monitors
 // report every 60s and others every 10s, then there are two bindings.  All monitors
 // with the same report interval share the same binding: collectionChan to send
-// metrics and aggregator summarizing and reporting those metrics when tickChan ticks.
+// metrics and aggregator summarizing and reporting those metrics.
 type Binding struct {
 	aggregator     *Aggregator
 	collectionChan chan *Collection // <- metrics from monitors
-	tickChan       chan time.Time   // -> aggregator reports
 }
 
 // todo: remember originating cmd for start service and start monitor,
@@ -154,14 +153,12 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		if !ok {
 			// Make new aggregator for this report interval.
 			logger := pct.NewLogger(m.logger.LogChan(), fmt.Sprintf("mm-ag-%d", mm.Report))
-			tickChan := make(chan time.Time)
-			m.clock.Add(tickChan, mm.Report, true)
 			collectionChan := make(chan *Collection, 2*len(m.monitors)+1)
-			aggregator := NewAggregator(logger, tickChan, collectionChan, m.spool)
+			aggregator := NewAggregator(logger, int64(mm.Report), collectionChan, m.spool)
 			aggregator.Start()
 
 			// Save aggregator for other monitors with same report interval.
-			a = &Binding{aggregator, collectionChan, tickChan}
+			a = &Binding{aggregator, collectionChan}
 			m.aggregators[mm.Report] = a
 			m.logger.Info("Created", mm.Report, "second aggregator")
 		}
