@@ -161,7 +161,7 @@ func (a *Aggregator) run() {
 
 // @goroutine[1]
 func (a *Aggregator) report(startTs time.Time, is []*InstanceStats) {
-	a.logger.Info("Summarize metrics for", startTs)
+	a.logger.Debug("Summarize metrics for", startTs)
 	for _, i := range is {
 		for _, s := range i.Stats {
 			s.Summarize()
