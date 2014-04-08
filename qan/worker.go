@@ -79,7 +79,13 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 
 	// Create a slow log parser and run it.  It sends events log events
 	// via its channel.
-	p := parser.NewSlowLogParser(file, false) // false=debug off
+	opts := parser.Options{
+		FilterAdminCommand: map[string]bool{
+			"Binlog Dump":      true,
+			"Binlog Dump GTID": true,
+		},
+	}
+	p := parser.NewSlowLogParser(file, opts)
 	if err != nil {
 		return nil, err
 	}
