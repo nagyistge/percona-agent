@@ -880,14 +880,14 @@ func (s *ReportTestSuite) TestResult001(c *gocheck.C) {
 
 	// 1st: 2.9
 	c.Check(report.Class[0].Id, gocheck.Equals, "3000000000000003")
-	c.Check(report.Class[0].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(2.9))
+	c.Check(report.Class[0].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float64(2.9))
 	// 2nd: 2
 	c.Check(report.Class[1].Id, gocheck.Equals, "2000000000000002")
-	c.Check(report.Class[1].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(2))
+	c.Check(report.Class[1].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float64(2))
 	// ...
 	// 5th: 0.101001
 	c.Check(report.Class[4].Id, gocheck.Equals, "5000000000000005")
-	c.Check(report.Class[4].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(0.101001))
+	c.Check(report.Class[4].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float64(0.101001))
 
 	// Limit=2 results in top 2 queries and the rest in 1 LRQ "query".
 	config.ReportLimit = 2
@@ -895,15 +895,15 @@ func (s *ReportTestSuite) TestResult001(c *gocheck.C) {
 	c.Check(len(report.Class), gocheck.Equals, 3)
 
 	c.Check(report.Class[0].Id, gocheck.Equals, "3000000000000003")
-	c.Check(report.Class[0].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(2.9))
+	c.Check(report.Class[0].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float64(2.9))
 
 	c.Check(report.Class[1].Id, gocheck.Equals, "2000000000000002")
-	c.Check(report.Class[1].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(2))
+	c.Check(report.Class[1].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float64(2))
 
 	c.Check(int(report.Class[2].TotalQueries), gocheck.Equals, 3)
 	c.Check(report.Class[2].Id, gocheck.Equals, "0")
-	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(1+1+0.101001))
-	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Min, gocheck.Equals, float32(0.000100))
-	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Max, gocheck.Equals, float32(1.12))
-	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Avg, gocheck.Equals, float32(0.505))
+	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float64(1+1+0.101001))
+	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Min, gocheck.Equals, float64(0.000100))
+	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Max, gocheck.Equals, float64(1.12))
+	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Avg, gocheck.Equals, float64(0.505))
 }
