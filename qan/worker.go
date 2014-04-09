@@ -30,11 +30,14 @@ type Job struct {
 	StartOffset    int64
 	EndOffset      int64
 	ExampleQueries bool
+	// --
+	ZeroRunTime bool // testing
 }
 
 type Result struct {
 	StopOffset int64
 	RunTime    float64
+	Error      string `json:",omitempty"`
 	Global     *mysqlLog.GlobalClass
 	Classes    []*mysqlLog.QueryClass
 }
@@ -79,16 +82,14 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 
 	// Create a slow log parser and run it.  It sends events log events
 	// via its channel.
+	stopChan := make(chan bool, 1)
 	opts := parser.Options{
 		FilterAdminCommand: map[string]bool{
 			"Binlog Dump":      true,
 			"Binlog Dump GTID": true,
 		},
 	}
-	p := parser.NewSlowLogParser(file, opts)
-	if err != nil {
-		return nil, err
-	}
+	p := parser.NewSlowLogParser(file, stopChan, opts)
 	go p.Run()
 
 	// The global class has info and stats for all events.
@@ -96,6 +97,8 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 	result := &Result{}
 	global := mysqlLog.NewGlobalClass()
 	queries := make(map[string]*mysqlLog.QueryClass)
+	t0 := time.Now()
+EVENT_LOOP:
 	for event := range p.EventChan {
 		if int64(event.Offset) >= job.EndOffset {
 			result.StopOffset = int64(event.Offset)
@@ -103,7 +106,13 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 		}
 
 		// Add the event to the global class.
-		global.AddEvent(event)
+		err := global.AddEvent(event)
+		switch err.(type) {
+		case mysqlLog.MixedRateLimitsError:
+			result.Error = err.Error()
+			stopChan <- true
+			break EVENT_LOOP
+		}
 
 		// Get the query class to which the event belongs.
 		fingerprint := mysqlLog.Fingerprint(event.Query)
@@ -116,6 +125,13 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 
 		// Add the event to its query class.
 		class.AddEvent(event)
+
+		// Check run time, stop if exceeded.
+		if time.Now().Sub(t0) >= job.RunTime {
+			result.Error = "Run-time timeout: " + job.RunTime.String()
+			stopChan <- true
+			break EVENT_LOOP
+		}
 	}
 
 	if result.StopOffset == 0 {
@@ -139,6 +155,10 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 
 	result.Global = global
 	result.Classes = classes
+
+	if !job.ZeroRunTime {
+		result.RunTime = time.Now().Sub(t0).Seconds()
+	}
 
 	return result, nil
 }

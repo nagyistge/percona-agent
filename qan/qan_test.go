@@ -67,6 +67,7 @@ func (s *WorkerTestSuite) TestWorkerSlow001(c *gocheck.C) {
 		StartOffset:    0,
 		EndOffset:      524,
 		RunTime:        time.Duration(3 * time.Second),
+		ZeroRunTime:    true,
 		ExampleQueries: true,
 	}
 	tmpFilename := RunWorker(job)
@@ -86,6 +87,7 @@ func (s *WorkerTestSuite) TestWorkerSlow001Half(c *gocheck.C) {
 		StartOffset:    0,
 		EndOffset:      358,
 		RunTime:        time.Duration(3 * time.Second),
+		ZeroRunTime:    true,
 		ExampleQueries: true,
 	}
 	tmpFilename := RunWorker(job)
@@ -102,6 +104,7 @@ func (s *WorkerTestSuite) TestWorkerSlow001Resume(c *gocheck.C) {
 		StartOffset:    359,
 		EndOffset:      524,
 		RunTime:        time.Duration(3 * time.Second),
+		ZeroRunTime:    true,
 		ExampleQueries: true,
 	}
 	tmpFilename := RunWorker(job)
