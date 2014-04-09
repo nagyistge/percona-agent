@@ -344,7 +344,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.logger = pct.NewLogger(s.logChan, "mm-manager-test")
 
 	s.mockMonitor = mock.NewMmMonitor()
-	s.factory = mock.NewMmMonitorFactory([]mm.Monitor{s.mockMonitor})
+	s.factory = mock.NewMmMonitorFactory(map[string]mm.Monitor{"mysql-1": s.mockMonitor})
 
 	s.tickChan = make(chan time.Time)
 

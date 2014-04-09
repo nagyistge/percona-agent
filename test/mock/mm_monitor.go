@@ -7,12 +7,12 @@ import (
 )
 
 type MmMonitorFactory struct {
-	monitors  []mm.Monitor
+	monitors  map[string]mm.Monitor
 	monitorNo int
 	Made      []string
 }
 
-func NewMmMonitorFactory(monitors []mm.Monitor) *MmMonitorFactory {
+func NewMmMonitorFactory(monitors map[string]mm.Monitor) *MmMonitorFactory {
 	f := &MmMonitorFactory{
 		monitors: monitors,
 		Made:     []string{},
@@ -21,19 +21,12 @@ func NewMmMonitorFactory(monitors []mm.Monitor) *MmMonitorFactory {
 }
 
 func (f *MmMonitorFactory) Make(service string, id uint, data []byte) (mm.Monitor, error) {
-	f.Made = append(f.Made, fmt.Sprintf("%s-%d", service, id))
-	if f.monitorNo > len(f.monitors) {
-		return f.monitors[f.monitorNo-1], nil
+	name := fmt.Sprintf("%s-%d", service, id)
+	if monitor, ok := f.monitors[name]; ok {
+		return monitor, nil
 	}
-	nextMonitor := f.monitors[f.monitorNo]
-	f.monitorNo++
-	return nextMonitor, nil
-}
 
-func (f *MmMonitorFactory) Set(monitors []mm.Monitor) {
-	f.monitorNo = 0
-	f.monitors = monitors
-	f.Made = []string{}
+	panic(fmt.Sprintf("Mock factory doesn't have monitor %s. Provide it via NewMmMonitorFactory(...) or Set(...).", name))
 }
 
 // --------------------------------------------------------------------------
