@@ -119,7 +119,7 @@ EVENT_LOOP:
 		classId := mysqlLog.Checksum(fingerprint)
 		class, haveClass := queries[classId]
 		if !haveClass {
-			class = mysqlLog.NewQueryClass(classId, fingerprint)
+			class = mysqlLog.NewQueryClass(classId, fingerprint, job.ExampleQueries)
 			queries[classId] = class
 		}
 

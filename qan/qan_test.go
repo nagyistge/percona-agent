@@ -112,6 +112,30 @@ func (s *WorkerTestSuite) TestWorkerSlow001Resume(c *gocheck.C) {
 	c.Assert(tmpFilename, testlog.FileEquals, sample+"slow001-resume.json")
 }
 
+func (s *WorkerTestSuite) TestWorkerSlow011(c *gocheck.C) {
+	// Percona Server rate limit
+	job := &qan.Job{
+		SlowLogFile:    testlog.Sample + "slow011.log",
+		StartOffset:    0,
+		EndOffset:      3000,
+		RunTime:        time.Duration(3 * time.Second),
+		ZeroRunTime:    true,
+		ExampleQueries: true,
+	}
+	w := qan.NewSlowLogWorker()
+	got, _ := w.Run(job)
+
+	expect := &qan.Result{}
+	if err := test.LoadMmReport(sample+"slow011.json", expect); err != nil {
+		c.Fatal(err)
+	}
+
+	if same, diff := test.IsDeeply(got, expect); !same {
+		test.Dump(got)
+		c.Error(diff)
+	}
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // Manager test suite
 /////////////////////////////////////////////////////////////////////////////
