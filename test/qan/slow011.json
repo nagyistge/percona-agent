@@ -427,8 +427,8 @@
    },
    "TotalQueries": 1,
    "Example": {
-    "QueryTime": 0,
-    "Query": ""
+    "QueryTime": 0.000165,
+    "Query": "INSERT INTO foo VALUES (NULL, 3)"
    }
   },
   {
@@ -643,9 +643,9 @@
    },
    "TotalQueries": 2,
    "Example": {
-    "QueryTime": 0,
-    "Query": ""
+     "QueryTime": 0.000237,
+     "Query": "SELECT foo FROM bar WHERE id=2"
+    }
    }
-  }
  ]
 }

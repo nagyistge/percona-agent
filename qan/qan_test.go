@@ -78,6 +78,29 @@ func (s *WorkerTestSuite) TestWorkerSlow001(c *gocheck.C) {
 	c.Assert(tmpFilename, testlog.FileEquals, sample+"slow001.json")
 }
 
+func (s *WorkerTestSuite) TestWorkerSlow001NoExamples(c *gocheck.C) {
+	job := &qan.Job{
+		SlowLogFile:    testlog.Sample + "slow001.log",
+		StartOffset:    0,
+		EndOffset:      524,
+		RunTime:        time.Duration(3 * time.Second),
+		ZeroRunTime:    true,
+		ExampleQueries: false,
+	}
+	w := qan.NewSlowLogWorker()
+	got, _ := w.Run(job)
+
+	expect := &qan.Result{}
+	if err := test.LoadMmReport(sample+"slow001-no-examples.json", expect); err != nil {
+		c.Fatal(err)
+	}
+
+	if same, diff := test.IsDeeply(got, expect); !same {
+		test.Dump(got)
+		c.Error(diff)
+	}
+}
+
 func (s *WorkerTestSuite) TestWorkerSlow001Half(c *gocheck.C) {
 	// This tests that the worker will stop processing events before
 	// the end of the slow log file.  358 is the last byte of the first
