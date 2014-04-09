@@ -600,7 +600,8 @@ func (s *ManagerTestSuite) TestStartStopStartMonitor(t *C) {
 	}
 
 	// There should be a 1s collect ticker for the monitor.
-	if ok, diff := test.IsDeeply(s.clock.Added, []uint{1}); !ok {
+	// (Actually two in s.clock.Added, as this is mock and we started monitor twice)
+	if ok, diff := test.IsDeeply(s.clock.Added, []uint{1, 1}); !ok {
 		t.Errorf("Make 1s ticker for collect interval\n%s", diff)
 	}
 
