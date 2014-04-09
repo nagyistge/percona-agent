@@ -453,7 +453,14 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 	t.Check(status["mm"], Equals, "Ready")
 }
 
-func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
+/**
+ * Tests:
+ * - starting monitor
+ * - stopping monitor
+ * - starting monitor again (restarting monitor)
+ * - sneaked in:) unknown cmd test
+ */
+func (s *ManagerTestSuite) TestStartStopStartMonitor(t *C) {
 
 	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
 	if m == nil {
@@ -489,6 +496,9 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 		t.Fatal(err)
 	}
 
+	/**
+	 * Start the monitor.
+	 */
 	cmd := &proto.Cmd{
 		User:    "daniel",
 		Service: "mm",
@@ -561,6 +571,50 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 	file := s.configDir + "/mm-mysql-1.conf"
 	if pct.FileExists(file) {
 		t.Error("Stopping monitor removes its config; ", file, " exists")
+	}
+
+	/**
+	 * Start the monitor again (restarting monitor).
+	 */
+	cmd = &proto.Cmd{
+		User:    "daniel",
+		Service: "mm",
+		Cmd:     "StartService",
+		Data:    mmConfigData,
+	}
+
+	// If this were a real monitor, it would decode and set its own config.
+	// The mock monitor doesn't have any real config type, so we set it manually.
+	s.mockMonitor.SetConfig(mmConfig)
+
+	// The agent calls mm.Handle() with the cmd (for logging and status) and the config data.
+	reply = m.Handle(cmd)
+	t.Assert(reply, NotNil)
+	t.Check(reply.Error, Equals, "")
+
+	// The monitor should be running.  The mock monitor returns "Running" if
+	// Start() has been called; else it returns "Stopped".
+	status = s.mockMonitor.Status()
+	if status["monitor"] != "Running" {
+		t.Error("Monitor running")
+	}
+
+	// There should be a 1s collect ticker for the monitor.
+	if ok, diff := test.IsDeeply(s.clock.Added, []uint{1}); !ok {
+		t.Errorf("Make 1s ticker for collect interval\n%s", diff)
+	}
+
+	// After starting a monitor, mm should write its config to the dir
+	// it learned when mm.LoadConfig() was called.  Next time agent starts,
+	// it will have mm start the monitor with this config.
+	data, err = ioutil.ReadFile(s.configDir + "/mm-mysql-1.conf")
+	t.Check(err, IsNil)
+	gotConfig = &mysql.Config{}
+	err = json.Unmarshal(data, gotConfig)
+	t.Check(err, IsNil)
+	if same, diff := test.IsDeeply(gotConfig, mmConfig); !same {
+		t.Logf("%+v", gotConfig)
+		t.Error(diff)
 	}
 
 	/**
