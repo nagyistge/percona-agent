@@ -279,7 +279,7 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 		Interval:          300,        // 5 min
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
-		ExampleQueries:    false,
+		ExampleQueries:    true,
 		MaxWorkers:        2,
 		WorkerRunTime:     600, // 10 min
 	}
