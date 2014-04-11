@@ -67,6 +67,7 @@ func (s *WorkerTestSuite) TestWorkerSlow001(c *gocheck.C) {
 		StartOffset:    0,
 		EndOffset:      524,
 		RunTime:        time.Duration(3 * time.Second),
+		ZeroRunTime:    true,
 		ExampleQueries: true,
 	}
 	tmpFilename := RunWorker(job)
@@ -75,6 +76,29 @@ func (s *WorkerTestSuite) TestWorkerSlow001(c *gocheck.C) {
 	// ...then diff <result file> <expected result file>
 	// @todo need a generic testlog.DeeplEquals
 	c.Assert(tmpFilename, testlog.FileEquals, sample+"slow001.json")
+}
+
+func (s *WorkerTestSuite) TestWorkerSlow001NoExamples(c *gocheck.C) {
+	job := &qan.Job{
+		SlowLogFile:    testlog.Sample + "slow001.log",
+		StartOffset:    0,
+		EndOffset:      524,
+		RunTime:        time.Duration(3 * time.Second),
+		ZeroRunTime:    true,
+		ExampleQueries: false,
+	}
+	w := qan.NewSlowLogWorker()
+	got, _ := w.Run(job)
+
+	expect := &qan.Result{}
+	if err := test.LoadMmReport(sample+"slow001-no-examples.json", expect); err != nil {
+		c.Fatal(err)
+	}
+
+	if same, diff := test.IsDeeply(got, expect); !same {
+		test.Dump(got)
+		c.Error(diff)
+	}
 }
 
 func (s *WorkerTestSuite) TestWorkerSlow001Half(c *gocheck.C) {
@@ -86,6 +110,7 @@ func (s *WorkerTestSuite) TestWorkerSlow001Half(c *gocheck.C) {
 		StartOffset:    0,
 		EndOffset:      358,
 		RunTime:        time.Duration(3 * time.Second),
+		ZeroRunTime:    true,
 		ExampleQueries: true,
 	}
 	tmpFilename := RunWorker(job)
@@ -102,11 +127,36 @@ func (s *WorkerTestSuite) TestWorkerSlow001Resume(c *gocheck.C) {
 		StartOffset:    359,
 		EndOffset:      524,
 		RunTime:        time.Duration(3 * time.Second),
+		ZeroRunTime:    true,
 		ExampleQueries: true,
 	}
 	tmpFilename := RunWorker(job)
 	defer os.Remove(tmpFilename)
 	c.Assert(tmpFilename, testlog.FileEquals, sample+"slow001-resume.json")
+}
+
+func (s *WorkerTestSuite) TestWorkerSlow011(c *gocheck.C) {
+	// Percona Server rate limit
+	job := &qan.Job{
+		SlowLogFile:    testlog.Sample + "slow011.log",
+		StartOffset:    0,
+		EndOffset:      3000,
+		RunTime:        time.Duration(3 * time.Second),
+		ZeroRunTime:    true,
+		ExampleQueries: true,
+	}
+	w := qan.NewSlowLogWorker()
+	got, _ := w.Run(job)
+
+	expect := &qan.Result{}
+	if err := test.LoadMmReport(sample+"slow011.json", expect); err != nil {
+		c.Fatal(err)
+	}
+
+	if same, diff := test.IsDeeply(got, expect); !same {
+		test.Dump(got)
+		c.Error(diff)
+	}
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -229,7 +279,7 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 		Interval:          300,        // 5 min
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
-		ExampleQueries:    false,
+		ExampleQueries:    true,
 		MaxWorkers:        2,
 		WorkerRunTime:     600, // 10 min
 	}
@@ -880,14 +930,14 @@ func (s *ReportTestSuite) TestResult001(c *gocheck.C) {
 
 	// 1st: 2.9
 	c.Check(report.Class[0].Id, gocheck.Equals, "3000000000000003")
-	c.Check(report.Class[0].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(2.9))
+	c.Check(report.Class[0].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float64(2.9))
 	// 2nd: 2
 	c.Check(report.Class[1].Id, gocheck.Equals, "2000000000000002")
-	c.Check(report.Class[1].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(2))
+	c.Check(report.Class[1].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float64(2))
 	// ...
 	// 5th: 0.101001
 	c.Check(report.Class[4].Id, gocheck.Equals, "5000000000000005")
-	c.Check(report.Class[4].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(0.101001))
+	c.Check(report.Class[4].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float64(0.101001))
 
 	// Limit=2 results in top 2 queries and the rest in 1 LRQ "query".
 	config.ReportLimit = 2
@@ -895,15 +945,15 @@ func (s *ReportTestSuite) TestResult001(c *gocheck.C) {
 	c.Check(len(report.Class), gocheck.Equals, 3)
 
 	c.Check(report.Class[0].Id, gocheck.Equals, "3000000000000003")
-	c.Check(report.Class[0].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(2.9))
+	c.Check(report.Class[0].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float64(2.9))
 
 	c.Check(report.Class[1].Id, gocheck.Equals, "2000000000000002")
-	c.Check(report.Class[1].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(2))
+	c.Check(report.Class[1].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float64(2))
 
 	c.Check(int(report.Class[2].TotalQueries), gocheck.Equals, 3)
 	c.Check(report.Class[2].Id, gocheck.Equals, "0")
-	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float32(1+1+0.101001))
-	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Min, gocheck.Equals, float32(0.000100))
-	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Max, gocheck.Equals, float32(1.12))
-	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Avg, gocheck.Equals, float32(0.505))
+	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Sum, gocheck.Equals, float64(1+1+0.101001))
+	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Min, gocheck.Equals, float64(0.000100))
+	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Max, gocheck.Equals, float64(1.12))
+	c.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Avg, gocheck.Equals, float64(0.505))
 }

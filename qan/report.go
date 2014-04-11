@@ -76,7 +76,7 @@ func MakeReport(it proto.ServiceInstance, interval *Interval, result *Result, co
 	report.Class = result.Classes[0:config.ReportLimit]
 
 	// Low-ranking Queries
-	lrq := mysqlLog.NewQueryClass("0", "")
+	lrq := mysqlLog.NewQueryClass("0", "", false)
 	for _, query := range result.Classes[config.ReportLimit:n] {
 		addQuery(lrq, query)
 	}
