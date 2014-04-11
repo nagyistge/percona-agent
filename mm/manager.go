@@ -185,6 +185,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 			if err := m.RemoveConfig(name); err != nil {
 				return cmd.Reply(nil, errors.New("Remove "+name+": "+err.Error()))
 			}
+			delete(m.monitors, name)
 		} else {
 			return cmd.Reply(nil, errors.New("Unknown monitor: "+name))
 		}
