@@ -34,7 +34,7 @@ const (
 )
 
 type Spooler interface {
-	Start() error
+	Start(Serializer) error
 	Stop() error
 	Status() map[string]string
 	Write(service string, data interface{}) error
@@ -47,20 +47,19 @@ type Spooler interface {
 type DiskvSpooler struct {
 	logger   *pct.Logger
 	dataDir  string
-	sz       Serializer
 	hostname string
 	// --
+	sz       Serializer
 	dataChan chan *proto.Data
 	sync     *pct.SyncChan
 	cache    *diskv.Diskv
 	status   *pct.Status
 }
 
-func NewDiskvSpooler(logger *pct.Logger, dataDir string, sz Serializer, hostname string) *DiskvSpooler {
+func NewDiskvSpooler(logger *pct.Logger, dataDir string, hostname string) *DiskvSpooler {
 	s := &DiskvSpooler{
 		logger:   logger,
 		dataDir:  dataDir,
-		sz:       sz,
 		hostname: hostname,
 		// --
 		dataChan: make(chan *proto.Data, WRITE_BUFFER),
@@ -74,13 +73,16 @@ func NewDiskvSpooler(logger *pct.Logger, dataDir string, sz Serializer, hostname
 // Interface
 /////////////////////////////////////////////////////////////////////////////
 
-func (s *DiskvSpooler) Start() error {
+func (s *DiskvSpooler) Start(sz Serializer) error {
 	// Create the data dir if necessary.
 	if err := os.Mkdir(s.dataDir, 0775); err != nil {
 		if !os.IsExist(err) {
 			return err
 		}
 	}
+
+	// T{} -> []byte
+	s.sz = sz
 
 	// diskv reads all files in BasePath on startup.
 	s.cache = diskv.New(diskv.Options{
@@ -98,6 +100,8 @@ func (s *DiskvSpooler) Start() error {
 func (s *DiskvSpooler) Stop() error {
 	s.sync.Stop()
 	s.sync.Wait()
+	s.sz = nil
+	s.cache = nil
 	return nil
 }
 
@@ -106,7 +110,7 @@ func (s *DiskvSpooler) Status() map[string]string {
 }
 
 func (s *DiskvSpooler) Write(service string, data interface{}) error {
-	// Compress the data (probably, depends on serializer).
+	// Serialize the data: T{} -> []byte
 	encodedData, err := s.sz.ToBytes(data)
 	if err != nil {
 		return err

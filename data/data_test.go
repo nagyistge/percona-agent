@@ -88,12 +88,12 @@ func (s *DiskvSpoolerTestSuite) TestSpoolData(t *C) {
 	sz := data.NewJsonSerializer()
 
 	// Create and start the spooler.
-	spool := data.NewDiskvSpooler(s.logger, s.dataDir, sz, "localhost")
+	spool := data.NewDiskvSpooler(s.logger, s.dataDir, "localhost")
 	if spool == nil {
 		t.Fatal("NewDiskvSpooler")
 	}
 
-	err := spool.Start()
+	err := spool.Start(sz)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,12 +169,12 @@ func (s *DiskvSpoolerTestSuite) TestSpoolGzipData(t *C) {
 	sz := data.NewJsonGzipSerializer()
 
 	// See TestSpoolData() for description of these tasks.
-	spool := data.NewDiskvSpooler(s.logger, s.dataDir, sz, "localhost")
+	spool := data.NewDiskvSpooler(s.logger, s.dataDir, "localhost")
 	if spool == nil {
 		t.Fatal("NewDiskvSpooler")
 	}
 
-	err := spool.Start()
+	err := spool.Start(sz)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,9 +329,9 @@ func (s *SenderTestSuite) TestSendData(t *C) {
 	spool.FilesOut = []string{"slow001.json"}
 	spool.DataOut = map[string][]byte{"slow001.json": slow001}
 
-	sender := data.NewSender(s.logger, s.client, spool, s.tickerChan)
+	sender := data.NewSender(s.logger, s.client)
 
-	err = sender.Start()
+	err = sender.Start(spool, s.tickerChan)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -355,6 +355,11 @@ func (s *SenderTestSuite) TestSendData(t *C) {
 	case <-time.After(500 * time.Millisecond):
 		t.Error("Sender receives prot.Response after sending data")
 	}
+
+	// Sender should include its websocket client status.  We're using a mock ws client
+	// which reports itself as "data-client: ok".
+	status := sender.Status()
+	t.Check(status["data-client"], Equals, "ok")
 
 	err = sender.Stop()
 	t.Assert(err, IsNil)
@@ -395,7 +400,7 @@ func (s *ManagerTestSuite) TearDownSuite(t *C) {
 
 // --------------------------------------------------------------------------
 
-func (s *ManagerTestSuite) TestDataService(t *C) {
+func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	m := data.NewManager(s.logger, "localhost", s.client)
 	t.Assert(m, NotNil)
 
@@ -419,7 +424,7 @@ func (s *ManagerTestSuite) TestDataService(t *C) {
 
 	cmd := &proto.Cmd{
 		User:    "daniel",
-		Service: "log",
+		Service: "data",
 		Cmd:     "GetConfig",
 	}
 
@@ -429,4 +434,161 @@ func (s *ManagerTestSuite) TestDataService(t *C) {
 		t.Logf("%+v", gotReply)
 		t.Error(diff)
 	}
+
+	cmd.Cmd = "StopService"
+	err = m.Stop(cmd)
+	t.Assert(err, IsNil)
+	if !test.WaitStatus(5, m, "data", "Stopped") {
+		t.Fatal("test.WaitStatus() timeout")
+	}
+	status := m.Status()
+	t.Check(status["data-spooler"], Equals, "Stopped")
+	t.Check(status["data-sender"], Equals, "Stopped")
+}
+
+func (s *ManagerTestSuite) TestSetConfig(t *C) {
+	m := data.NewManager(s.logger, "localhost", s.client)
+	t.Assert(m, NotNil)
+
+	// Doesn't load any config, just sets configDir internally.
+	m.LoadConfig(s.dataDir)
+
+	config := &data.Config{
+		Dir:          s.dataDir,
+		Encoding:     "",
+		SendInterval: 1,
+	}
+	configData, err := json.Marshal(config)
+	t.Assert(err, IsNil)
+
+	err = m.Start(&proto.Cmd{}, configData)
+	t.Assert(err, IsNil)
+
+	sender := m.Sender()
+	t.Check(sender, NotNil)
+
+	/**
+	 * Change SendInterval
+	 */
+	config.SendInterval = 5
+	configData, err = json.Marshal(config)
+	t.Assert(err, IsNil)
+	cmd := &proto.Cmd{
+		User:    "daniel",
+		Service: "data",
+		Cmd:     "SetConfig",
+		Data:    configData,
+	}
+
+	gotReply := m.Handle(cmd)
+	t.Assert(gotReply.Error, Equals, "")
+
+	cmd = &proto.Cmd{
+		User:    "daniel",
+		Service: "data",
+		Cmd:     "GetConfig",
+	}
+	gotReply = m.Handle(cmd)
+	gotNewConfig := &data.Config{}
+	err = json.Unmarshal(gotReply.Data, gotNewConfig)
+	t.Assert(err, IsNil)
+	t.Check(gotNewConfig.SendInterval, Equals, 5)
+	if same, diff := test.IsDeeply(gotNewConfig, config); !same {
+		test.Dump(gotNewConfig)
+		t.Error(diff)
+	}
+
+	// Verify new config on disk.
+	content, err := ioutil.ReadFile(s.dataDir + "/data.conf")
+	t.Assert(err, IsNil)
+	gotConfig := &data.Config{}
+	if err := json.Unmarshal(content, gotConfig); err != nil {
+		t.Fatal(err)
+	}
+	if same, diff := test.IsDeeply(gotConfig, config); !same {
+		test.Dump(gotConfig)
+		t.Error(diff)
+	}
+
+	/**
+	 * Change Encoding
+	 */
+	config.Encoding = "gzip"
+	configData, err = json.Marshal(config)
+	t.Assert(err, IsNil)
+	cmd = &proto.Cmd{
+		User:    "daniel",
+		Service: "data",
+		Cmd:     "SetConfig",
+		Data:    configData,
+	}
+
+	gotReply = m.Handle(cmd)
+	t.Assert(gotReply.Error, Equals, "")
+
+	cmd = &proto.Cmd{
+		User:    "daniel",
+		Service: "data",
+		Cmd:     "GetConfig",
+	}
+	gotReply = m.Handle(cmd)
+	gotNewConfig = &data.Config{}
+	err = json.Unmarshal(gotReply.Data, gotNewConfig)
+	t.Assert(err, IsNil)
+	t.Check(gotNewConfig.Encoding, Equals, "gzip")
+	if same, diff := test.IsDeeply(gotNewConfig, config); !same {
+		test.Dump(gotNewConfig)
+		t.Error(diff)
+	}
+
+	// Verify new config on disk.
+	content, err = ioutil.ReadFile(s.dataDir + "/data.conf")
+	t.Assert(err, IsNil)
+	gotConfig = &data.Config{}
+	if err := json.Unmarshal(content, gotConfig); err != nil {
+		t.Fatal(err)
+	}
+	if same, diff := test.IsDeeply(gotConfig, config); !same {
+		test.Dump(gotConfig)
+		t.Error(diff)
+	}
+}
+
+func (s *ManagerTestSuite) TestStatus(t *C) {
+	// Start a data manager.
+	m := data.NewManager(s.logger, "localhost", s.client)
+	t.Assert(m, NotNil)
+	config := &data.Config{
+		Dir:          s.dataDir,
+		Encoding:     "gzip",
+		SendInterval: 1,
+	}
+	configData, err := json.Marshal(config)
+	t.Assert(err, IsNil)
+	err = m.Start(&proto.Cmd{}, configData)
+	t.Assert(err, IsNil)
+
+	// Get its status directly.
+	if !test.WaitStatus(5, m, "data", "Ready") {
+		t.Fatal("test.WaitStatus() timeout")
+	}
+	status := m.Status()
+	t.Check(status["data"], Equals, "Ready")
+	t.Check(status["data-spooler"], Equals, "Idle")
+	t.Check(status["data-sender"], Equals, "Idle")
+
+	// Get its status via cmd.
+	cmd := &proto.Cmd{
+		User:    "daniel",
+		Service: "data",
+		Cmd:     "Status",
+	}
+	gotReply := m.Handle(cmd)
+	gotStatus := make(map[string]string)
+	if err := json.Unmarshal(gotReply.Data, &gotStatus); err != nil {
+		t.Fatal(err)
+	}
+	t.Check(gotStatus["data"], Equals, "Ready")
+	t.Check(gotStatus["data-spooler"], Equals, "Idle")
+	t.Check(gotStatus["data-sender"], Equals, "Idle")
 }

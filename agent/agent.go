@@ -461,9 +461,7 @@ func (agent *Agent) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 		return nil, []error{err}
 	}
 
-	// Copy the current config.
-	finalConfig := *agent.config
-
+	finalConfig := *agent.config // copy current config
 	errs := []error{}
 
 	// Change the API key.
@@ -496,10 +494,9 @@ func (agent *Agent) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 		}
 	}
 
-	// Write the new, updated agent config.
+	// Write the new, updated config.  If this fails, agent will use old config if restarted.
 	if err := agent.WriteConfig(finalConfig, "agent"); err != nil {
 		errs = append(errs, errors.New("agent.WriteConfig:"+err.Error()))
-		return nil, errs
 	}
 
 	// Lock agent config and re-point the pointer.

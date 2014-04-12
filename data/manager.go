@@ -71,23 +71,17 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 		return err
 	}
 
-	var sz Serializer
-	switch c.Encoding {
-	case "":
-		sz = NewJsonSerializer()
-	case "gzip":
-		sz = NewJsonGzipSerializer()
-	default:
-		return errors.New("Unknown encoding: " + c.Encoding)
+	sz, err := makeSerializer(c.Encoding)
+	if err != nil {
+		return err
 	}
 
 	spooler := NewDiskvSpooler(
 		pct.NewLogger(m.logger.LogChan(), "data-spooler"),
 		c.Dir,
-		sz,
 		m.hostname,
 	)
-	if err := spooler.Start(); err != nil {
+	if err := spooler.Start(sz); err != nil {
 		return err
 	}
 	m.spooler = spooler
@@ -96,10 +90,8 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 	sender := NewSender(
 		pct.NewLogger(m.logger.LogChan(), "data-sender"),
 		m.client,
-		m.spooler,
-		time.Tick(time.Duration(c.SendInterval)*time.Second),
 	)
-	if err := sender.Start(); err != nil {
+	if err := sender.Start(m.spooler, time.Tick(time.Duration(c.SendInterval)*time.Second)); err != nil {
 		return err
 	}
 	m.sender = sender
@@ -114,7 +106,9 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 
 // @goroutine[0]
 func (m *Manager) Stop(cmd *proto.Cmd) error {
-	// Can't stop data yet.
+	m.sender.Stop()
+	m.spooler.Stop()
+	m.status.Update("data", "Stopped")
 	return nil
 }
 
@@ -125,19 +119,21 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	case "GetConfig":
 		// proto.Cmd[Service:data, Cmd:GetConfig]
 		return cmd.Reply(m.config)
+	case "SetConfig":
+		newConfig, errs := m.handleSetConfig(cmd)
+		return cmd.Reply(newConfig, errs...)
 	case "Status":
 		// proto.Cmd[Service:data, Cmd:Status]
 		status := m.Status()
 		return cmd.Reply(status)
 	default:
-		// todo: dynamic config
 		return cmd.Reply(pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
 }
 
 // @goroutine[0:1]
 func (m *Manager) Status() map[string]string {
-	return m.status.Merge(m.spooler.Status(), m.sender.Status())
+	return m.status.Merge(m.client.Status(), m.spooler.Status(), m.sender.Status())
 }
 
 func (m *Manager) Spooler() Spooler {
@@ -185,4 +181,64 @@ func (m *Manager) RemoveConfig(name string) error {
 	file := m.configDir + "/" + CONFIG_FILE
 	m.logger.Info("Removing", file)
 	return pct.RemoveFile(file)
+}
+
+func (m *Manager) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
+	newConfig := &Config{}
+	if err := json.Unmarshal(cmd.Data, newConfig); err != nil {
+		return nil, []error{err}
+	}
+
+	finalConfig := *m.config // copy current config
+	errs := []error{}
+
+	/**
+	 * Data sender
+	 */
+
+	if newConfig.SendInterval != finalConfig.SendInterval {
+		m.sender.Stop()
+		if err := m.sender.Start(m.spooler, time.Tick(time.Duration(newConfig.SendInterval)*time.Second)); err != nil {
+			errs = append(errs, err)
+		} else {
+			finalConfig.SendInterval = newConfig.SendInterval
+		}
+	}
+
+	/**
+	 * Data spooler
+	 */
+
+	if newConfig.Encoding != finalConfig.Encoding {
+		sz, err := makeSerializer(newConfig.Encoding)
+		if err != nil {
+			errs = append(errs, err)
+		} else {
+			m.spooler.Stop()
+			if err := m.spooler.Start(sz); err != nil {
+				errs = append(errs, err)
+			} else {
+				finalConfig.Encoding = newConfig.Encoding
+			}
+		}
+	}
+
+	// Write the new, updated config.  If this fails, agent will use old config if restarted.
+	if err := m.WriteConfig(finalConfig, "data"); err != nil {
+		errs = append(errs, errors.New("data.WriteConfig:"+err.Error()))
+	}
+
+	m.config = &finalConfig
+	return m.config, errs
+}
+
+func makeSerializer(encoding string) (Serializer, error) {
+	switch encoding {
+	case "":
+		return NewJsonSerializer(), nil
+	case "gzip":
+		return NewJsonGzipSerializer(), nil
+	default:
+		return nil, errors.New("Unknown encoding: " + encoding)
+	}
 }
