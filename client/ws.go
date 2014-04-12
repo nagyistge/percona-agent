@@ -47,9 +47,12 @@ type WebsocketClient struct {
 	sendSync    *pct.SyncChan
 	recvSync    *pct.SyncChan
 	mux         *sync.Mutex
+	name        string
+	status      *pct.Status
 }
 
 func NewWebsocketClient(logger *pct.Logger, api pct.APIConnector, link string) (*WebsocketClient, error) {
+	name := logger.Service()
 	c := &WebsocketClient{
 		logger: logger,
 		api:    api,
@@ -64,6 +67,8 @@ func NewWebsocketClient(logger *pct.Logger, api pct.APIConnector, link string) (
 		sendSync:    pct.NewSyncChan(),
 		recvSync:    pct.NewSyncChan(),
 		mux:         new(sync.Mutex),
+		name:        name,
+		status:      pct.NewStatus([]string{name, name + "-link"}),
 	}
 	return c, nil
 }
@@ -95,6 +100,7 @@ func (c *WebsocketClient) Connect() {
 		// Wait before attempt to avoid DDoS'ing the API
 		// (there are many other agents in the world).
 		c.logger.Debug("Connect:backoff.Wait")
+		c.status.Update(c.name, "Connect wait")
 		time.Sleep(c.backoff.Wait())
 
 		if err := c.ConnectOnce(); err != nil {
@@ -129,6 +135,7 @@ func (c *WebsocketClient) ConnectOnce() error {
 	config.Header.Add("X-Percona-API-Key", c.api.ApiKey())
 
 	c.logger.Debug("ConnectOnce:websocket.DialConfig")
+	c.status.Update(c.name, "Connecting "+link)
 	conn, err := websocket.DialConfig(config)
 	if err != nil {
 		return err
@@ -137,6 +144,7 @@ func (c *WebsocketClient) ConnectOnce() error {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 	c.conn = conn
+	c.status.Update(c.name, "Connected "+link)
 
 	return nil
 }
@@ -163,6 +171,7 @@ func (c *WebsocketClient) Disconnect() error {
 			return err
 		}
 		c.conn = nil
+		c.status.Update(c.name, "Disconnected")
 		c.notifyConnect(false)
 	}
 
@@ -329,6 +338,11 @@ func (c *WebsocketClient) ErrorChan() chan error {
 
 func (c *WebsocketClient) Conn() *websocket.Conn {
 	return c.conn
+}
+
+func (c *WebsocketClient) Status() map[string]string {
+	c.status.Update(c.name+"-link", c.api.AgentLink(c.link))
+	return c.status.All()
 }
 
 func (c *WebsocketClient) notifyConnect(state bool) {

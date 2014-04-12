@@ -109,17 +109,31 @@ func (s *TestSuite) TestSend(t *C) {
 
 	// We're dealing with generic data.
 	m := got[0].(map[string]interface{})
-	t.Assert(m["Level"], Equals, float64(2))
-	t.Assert(m["Service"], Equals, "qan")
-	t.Assert(m["Msg"], Equals, "Hello")
+	t.Check(m["Level"], Equals, float64(2))
+	t.Check(m["Service"], Equals, "qan")
+	t.Check(m["Msg"], Equals, "Hello")
 
 	// Quick check that Conn() works.
 	conn := ws.Conn()
 	t.Check(conn, NotNil)
 
+	// Status should report connected to the proper link.
+	status := ws.Status()
+	t.Check(status, DeepEquals, map[string]string{
+		"ws":      "Connected " + URL,
+		"ws-link": URL,
+	})
+
 	// Disconnect should not return an error.
 	err = ws.Disconnect()
 	t.Assert(err, IsNil)
+
+	// Status should report disconnected and still the proper link.
+	status = ws.Status()
+	t.Check(status, DeepEquals, map[string]string{
+		"ws":      "Disconnected",
+		"ws-link": URL,
+	})
 }
 
 func (s *TestSuite) TestChannels(t *C) {
