@@ -99,6 +99,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		if err := json.Unmarshal(cmd.Data, c); err != nil {
 			return cmd.Reply(nil, err)
 		}
+
 		errs := []error{}
 		if m.config.File != c.File {
 			select {
@@ -120,6 +121,12 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 				errs = append(errs, errors.New("Timeout setting new log level"))
 			}
 		}
+
+		// Write the new, updated config.  If this fails, agent will use old config if restarted.
+		if err := m.WriteConfig(m.config, "log"); err != nil {
+			errs = append(errs, errors.New("log.WriteConfig:"+err.Error()))
+		}
+
 		return cmd.Reply(m.config, errs...)
 	case "GetConfig":
 		// proto.Cmd[Service:log, Cmd:GetConfig]
@@ -128,6 +135,9 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		// proto.Cmd[Service:log, Cmd:Status]
 		status := m.Status()
 		return cmd.Reply(status)
+	case "Reconnect":
+		err := m.client.Disconnect()
+		return cmd.Reply(nil, err)
 	default:
 		return cmd.Reply(pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
@@ -135,7 +145,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 // @goroutine[0]
 func (m *Manager) Status() map[string]string {
-	return m.status.Merge(m.relay.Status())
+	return m.status.Merge(m.client.Status(), m.relay.Status())
 }
 
 // @goroutine[0]
