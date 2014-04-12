@@ -35,8 +35,8 @@ func Test(t *testing.T) { TestingT(t) }
 type TestSuite struct {
 	logChan chan *proto.LogEntry
 	logger  *pct.Logger
-	origin  string
 	server  *mock.WebsocketServer
+	api     *mock.API
 }
 
 var _ = Suite(&TestSuite{})
@@ -51,12 +51,14 @@ func (s *TestSuite) SetUpSuite(t *C) {
 	s.logChan = make(chan *proto.LogEntry, 10)
 	s.logger = pct.NewLogger(s.logChan, "ws")
 
-	s.origin = "http://localhost"
 	mock.SendChan = make(chan interface{}, 5)
 	mock.RecvChan = make(chan interface{}, 5)
 	s.server = new(mock.WebsocketServer)
 	go s.server.Run(ADDR, ENDPOINT)
 	time.Sleep(100 * time.Millisecond)
+
+	links := map[string]string{"agent": URL}
+	s.api = mock.NewAPI("http://localhost", ADDR, "apikey", "uuid", links)
 }
 
 func (s *TestSuite) TearDownTest(t *C) {
@@ -73,7 +75,7 @@ func (s *TestSuite) TestSend(t *C) {
 	 * LogRelay (logrelay/) uses "direct" interface, not send/recv chans.
 	 */
 
-	ws, err := client.NewWebsocketClient(s.logger, URL+ENDPOINT, s.origin, "apikey")
+	ws, err := client.NewWebsocketClient(s.logger, s.api, "agent")
 	t.Assert(err, IsNil)
 
 	// Client sends state of connection (true=connected, false=disconnected)
@@ -125,7 +127,7 @@ func (s *TestSuite) TestChannels(t *C) {
 	 * Agent uses send/recv channels instead of "direct" interface.
 	 */
 
-	ws, err := client.NewWebsocketClient(s.logger, URL+ENDPOINT, s.origin, "apikey")
+	ws, err := client.NewWebsocketClient(s.logger, s.api, "agent")
 	t.Assert(err, IsNil)
 
 	// Start send/recv chans, but idle until successful Connect.
@@ -171,7 +173,7 @@ func (s *TestSuite) TestApiDisconnect(t *C) {
 	 * If using direct interface, Recv() should return error if API disconnects.
 	 */
 
-	ws, err := client.NewWebsocketClient(s.logger, URL+ENDPOINT, s.origin, "apikey")
+	ws, err := client.NewWebsocketClient(s.logger, s.api, "agent")
 	t.Assert(err, IsNil)
 
 	ws.Connect()
@@ -201,7 +203,7 @@ func (s *TestSuite) TestChannelsApiDisconnect(t *C) {
 	 * If using chnanel interface, ErrorChan() should return error if API disconnects.
 	 */
 
-	ws, err := client.NewWebsocketClient(s.logger, URL+ENDPOINT, s.origin, "apikey")
+	ws, err := client.NewWebsocketClient(s.logger, s.api, "agent")
 	t.Assert(err, IsNil)
 
 	var gotErr error
@@ -243,7 +245,7 @@ func (s *TestSuite) TestErrorChan(t *C) {
 	 * it should send the error on its ErrorChan().
 	 */
 
-	ws, err := client.NewWebsocketClient(s.logger, URL+ENDPOINT, s.origin, "apikey")
+	ws, err := client.NewWebsocketClient(s.logger, s.api, "agent")
 	t.Assert(err, IsNil)
 
 	ws.Start()
@@ -286,7 +288,7 @@ func (s *TestSuite) TestConnectBackoff(t *C) {
 	 * Connect() should wait between attempts, using pct.Backoff (pct/backoff.go).
 	 */
 
-	ws, err := client.NewWebsocketClient(s.logger, URL+ENDPOINT, s.origin, "apikey")
+	ws, err := client.NewWebsocketClient(s.logger, s.api, "agent")
 	t.Assert(err, IsNil)
 
 	ws.Connect()
@@ -315,7 +317,7 @@ func (s *TestSuite) TestChannelsAfterReconnect(t *C) {
 	 * Client send/recv chans should work after disconnect and reconnect.
 	 */
 
-	ws, err := client.NewWebsocketClient(s.logger, URL+ENDPOINT, s.origin, "apikey")
+	ws, err := client.NewWebsocketClient(s.logger, s.api, "agent")
 	t.Assert(err, IsNil)
 
 	ws.Start()

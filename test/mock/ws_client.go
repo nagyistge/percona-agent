@@ -19,6 +19,7 @@ type WebsocketClient struct {
 	testConnectChan  chan bool
 	started          bool
 	RecvBytes        chan []byte
+	TraceChan        chan string
 }
 
 func NewWebsocketClient(sendChan chan *proto.Cmd, recvChan chan *proto.Reply, sendDataChan chan interface{}, recvDataChan chan interface{}) *WebsocketClient {
@@ -33,11 +34,14 @@ func NewWebsocketClient(sendChan chan *proto.Cmd, recvChan chan *proto.Reply, se
 		RecvError:        make(chan error),
 		connectChan:      make(chan bool, 1),
 		RecvBytes:        make(chan []byte, 1),
+		TraceChan:        make(chan string, 100),
 	}
 	return c
 }
 
 func (c *WebsocketClient) Connect() {
+	c.TraceChan <- "Connect"
+
 	if c.testConnectChan != nil {
 		// Wait for test to let user/agent connect.
 		select {
@@ -50,15 +54,18 @@ func (c *WebsocketClient) Connect() {
 }
 
 func (c *WebsocketClient) ConnectOnce() error {
+	c.TraceChan <- "ConnectOnce"
 	return nil
 }
 
 func (c *WebsocketClient) Disconnect() error {
+	c.TraceChan <- "Disconnect"
 	c.connectChan <- false
 	return nil
 }
 
 func (c *WebsocketClient) Start() {
+	c.TraceChan <- "Start"
 	if c.started {
 		return
 	}
