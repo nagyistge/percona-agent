@@ -168,9 +168,51 @@ func (s *AgentTestSuite) TestStatus(t *C) {
 		"agent": "Ready",
 	}
 	if ok, diff := test.IsDeeply(got, expectStatus); !ok {
-		t.Logf("%+v", got)
+		test.Dump(got)
 		t.Error(diff)
 	}
+
+	// We asked for all status, so we should get mm too.
+	_, ok := got["mm"]
+	t.Check(ok, Equals, true)
+
+	/**
+	 * Get only agent's status
+	 */
+	statusCmd = &proto.Cmd{
+		Ts:      time.Now(),
+		User:    "daniel",
+		Cmd:     "Status",
+		Service: "agent",
+	}
+	s.sendChan <- statusCmd
+	got = test.WaitStatusReply(s.recvChan)
+	t.Assert(got, NotNil)
+
+	// Only asked for agent, so we shouldn't get mm.
+	_, ok = got["mm"]
+	t.Check(ok, Equals, false)
+
+	/**
+	 * Get only sub-service status.
+	 */
+	statusCmd = &proto.Cmd{
+		Ts:      time.Now(),
+		User:    "daniel",
+		Cmd:     "Status",
+		Service: "mm",
+	}
+	s.sendChan <- statusCmd
+	got = test.WaitStatusReply(s.recvChan)
+	t.Assert(got, NotNil)
+
+	// Asked for mm, so we get it.
+	_, ok = got["mm"]
+	t.Check(ok, Equals, true)
+
+	// Didn't ask for all or agent, so we don't get it.
+	_, ok = got["agent"]
+	t.Check(ok, Equals, false)
 }
 
 func (s *AgentTestSuite) TestStatusAfterConnFail(t *C) {
@@ -362,6 +404,42 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
 	t.Check(reply.Error, Equals, "")
 }
 
+func (s *AgentTestSuite) TestStartStopUnknownService(t *C) {
+	// Starting an unknown service should return an error.
+	serviceCmd := &proto.ServiceData{
+		Name: "foo",
+	}
+	serviceData, _ := json.Marshal(serviceCmd)
+	cmd := &proto.Cmd{
+		Ts:      time.Now(),
+		User:    "daniel",
+		Service: "agent",
+		Cmd:     "StartService",
+		Data:    serviceData,
+	}
+
+	s.sendChan <- cmd
+	gotReplies := test.WaitReply(s.recvChan)
+	t.Assert(len(gotReplies), Equals, 1)
+	t.Check(gotReplies[0].Cmd, Equals, "StartService")
+	t.Check(gotReplies[0].Error, Not(Equals), "")
+
+	// Stopp an unknown service should return an error.
+	cmd = &proto.Cmd{
+		Ts:      time.Now(),
+		User:    "daniel",
+		Service: "agent",
+		Cmd:     "StopService",
+		Data:    serviceData,
+	}
+
+	s.sendChan <- cmd
+	gotReplies = test.WaitReply(s.recvChan)
+	t.Assert(len(gotReplies), Equals, 1)
+	t.Check(gotReplies[0].Cmd, Equals, "StopService")
+	t.Check(gotReplies[0].Error, Not(Equals), "")
+}
+
 func (s *AgentTestSuite) TestLoadConfig(t *C) {
 	// Load a partial config to make sure LoadConfig() works in general but also
 	// when the config has missing options (which is normal).
@@ -476,9 +554,11 @@ func (s *AgentTestSuite) TestSetConfigApiKey(t *C) {
 		t.Error(diff)
 	}
 
-	// After changing the API key, the agent ws should reconnect.
+	// After changing the API key, the agent's ws should NOT reconnect yet,
+	// but status should show that its link has changed, so sending a Reconnect
+	// cmd will cause agent to reconnect its ws.
 	gotCalled := test.WaitTrace(s.client.TraceChan)
-	expectCalled := []string{"Start", "Connect", "Disconnect", "Connect"}
+	expectCalled := []string{"Start", "Connect"}
 	t.Check(gotCalled, DeepEquals, expectCalled)
 }
 
@@ -537,9 +617,37 @@ func (s *AgentTestSuite) TestSetConfigApiHostname(t *C) {
 		t.Error(diff)
 	}
 
-	// After changing the API host, the agent ws should reconnect.
+	// After changing the API host, the agent's ws should NOT reconnect yet,
+	// but status should show that its link has changed, so sending a Reconnect
+	// cmd will cause agent to reconnect its ws.
 	gotCalled := test.WaitTrace(s.client.TraceChan)
-	expectCalled := []string{"Start", "Connect", "Disconnect", "Connect"}
+	expectCalled := []string{"Start", "Connect"}
+	t.Check(gotCalled, DeepEquals, expectCalled)
+
+	/**
+	 * Test Reconnect here since it's usually done after changing ApiHostname/
+	 */
+
+	// There is NO reply after reconnect because we can't recv cmd on one connection
+	// and reply on another.  Instead, we should see agent try to reconnect:
+	connectChan := make(chan bool)
+	s.client.SetConnectChan(connectChan)
+	defer s.client.SetConnectChan(nil)
+
+	cmd = &proto.Cmd{
+		Ts:      time.Now(),
+		User:    "daniel",
+		Cmd:     "Reconnect",
+		Service: "agent",
+	}
+	s.sendChan <- cmd
+
+	// Wait for agent to reconnect.
+	<-connectChan
+	connectChan <- true
+
+	gotCalled = test.WaitTrace(s.client.TraceChan)
+	expectCalled = []string{"Disconnect", "Connect"}
 	t.Check(gotCalled, DeepEquals, expectCalled)
 }
 

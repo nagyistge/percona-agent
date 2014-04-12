@@ -54,7 +54,6 @@ type Agent struct {
 	stopping   bool
 	stopReason string
 	update     bool
-	reconnect  bool
 	//
 	cmdHandlerSync    *pct.SyncChan
 	statusHandlerSync *pct.SyncChan
@@ -290,7 +289,6 @@ func (agent *Agent) cmdHandler() {
 	replyChan := agent.client.SendChan()
 	cmdReply := make(chan *proto.Reply, 1)
 
-	// defer is LIFO, so send done signal last.
 	defer func() {
 		agent.status.Update("agent-cmd-handler", "Stopped")
 		agent.cmdHandlerSync.Done()
@@ -302,6 +300,20 @@ func (agent *Agent) cmdHandler() {
 		select {
 		case cmd := <-agent.cmdChan:
 			agent.status.UpdateRe("agent-cmd-handler", "Running", cmd)
+
+			if cmd.Cmd == "Reconnect" && cmd.Service == "agent" {
+				/**
+				 * Reconnect is a special case: there's no reply because we can't
+				 * recv cmd on connection 1 and send reply on connection 2.  The
+				 * "reply" in a sense is making a successful connection again.
+				 * If that doesn't happen, then user/API knows reconnect failed.
+				 */
+
+				// Do NOT call connect() here because Disconnect() causes Run() to receive
+				// false on client.ConnectChan() which causes it to call connect().
+				agent.client.Disconnect()
+				continue
+			}
 
 			// Handle the cmd in a separate goroutine so if it gets stuck it won't affect us.
 			go func() {
@@ -327,21 +339,11 @@ func (agent *Agent) cmdHandler() {
 				reply = cmd.Reply(nil, pct.CmdTimeoutError{Cmd: cmd.Cmd})
 			}
 
+			// Reply to cmd.
 			select {
 			case replyChan <- reply:
 			case <-time.After(20 * time.Second):
 				agent.logger.Warn("Failed to send reply:", reply)
-			}
-
-			/**
-			 * Reconnect AFTER sending reply to command that caused reconnect.
-			 */
-			// XXX: reconnect is not guarded but access should be synchronized.
-			if agent.reconnect {
-				agent.reconnect = false
-				// Do NOT call connect() here because Disconnect() causes Run() to receive
-				// false on client.ConnectChan() which causes it to call connect().
-				agent.client.Disconnect()
 			}
 		case <-agent.cmdHandlerSync.StopChan: // from stop()
 			agent.cmdHandlerSync.Graceful()
@@ -471,8 +473,6 @@ func (agent *Agent) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 			errs = append(errs, errors.New("agent.api.Connect:ApiKey:"+err.Error()))
 		} else {
 			finalConfig.ApiKey = newConfig.ApiKey
-			// XXX: reconnect is not guarded but access should be synchronized.
-			agent.reconnect = true
 		}
 	}
 
@@ -483,8 +483,6 @@ func (agent *Agent) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 			errs = append(errs, errors.New("agent.api.Connect:ApiHostname:"+err.Error()))
 		} else {
 			finalConfig.ApiHostname = newConfig.ApiHostname
-			// XXX: reconnect is not guarded but access should be synchronized.
-			agent.reconnect = true
 		}
 	}
 
@@ -535,7 +533,7 @@ func (agent *Agent) statusHandler() {
 				replyChan <- cmd.Reply(agent.Status())
 			default:
 				if manager, ok := agent.services[cmd.Service]; ok {
-					replyChan <- manager.Handle(cmd)
+					replyChan <- cmd.Reply(manager.Status())
 				} else {
 					replyChan <- cmd.Reply(nil, pct.UnknownServiceError{Service: cmd.Service})
 				}
@@ -549,12 +547,12 @@ func (agent *Agent) statusHandler() {
 
 // statusHandler:@goroutine[2]
 func (agent *Agent) Status() map[string]string {
-	return agent.status.All()
+	return agent.status.Merge(agent.client.Status())
 }
 
 // statusHandler:@goroutine[2]
 func (agent *Agent) AllStatus() map[string]string {
-	status := agent.status.All()
+	status := agent.Status()
 	for service, manager := range agent.services {
 		if manager == nil { // should not happen
 			status[service] = fmt.Sprintf("ERROR: %s service manager is nil", service)

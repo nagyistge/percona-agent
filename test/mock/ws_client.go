@@ -132,3 +132,10 @@ func (c *WebsocketClient) Conn() *websocket.Conn {
 func (c *WebsocketClient) SetConnectChan(connectChan chan bool) {
 	c.testConnectChan = connectChan
 }
+
+func (c *WebsocketClient) Status() map[string]string {
+	return map[string]string{
+		"ws":      "Connected",
+		"ws-link": "http://localhost",
+	}
+}
