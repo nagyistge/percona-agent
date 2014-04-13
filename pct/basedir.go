@@ -20,6 +20,7 @@ package pct
 import (
 	"encoding/json"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 )
@@ -71,7 +72,15 @@ func (b *basedir) Path() string {
 }
 
 func (b *basedir) Dir(service string) string {
-	return filepath.Join(b.configDir, service)
+	switch service {
+	case "config":
+		return b.configDir
+	case "data":
+		return b.dataDir
+	default:
+		log.Panic("Invalid service: " + service)
+	}
+	return ""
 }
 
 func (b *basedir) ConfigFile(service string) string {

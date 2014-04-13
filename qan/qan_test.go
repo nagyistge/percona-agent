@@ -177,6 +177,7 @@ type ManagerTestSuite struct {
 	spool         *mock.Spooler
 	workerFactory qan.WorkerFactory
 	clock         *mock.Clock
+	tmpDir        string
 	configDir     string
 	im            *instance.Repo
 	mysqlInstance proto.ServiceInstance
@@ -213,9 +214,14 @@ func (s *ManagerTestSuite) SetUpSuite(c *gocheck.C) {
 	s.spool = mock.NewSpooler(s.dataChan)
 	s.workerFactory = &qan.SlowLogWorkerFactory{}
 
-	tmpdir, err := ioutil.TempDir("/tmp", "qan-manager-test")
+	var err error
+	s.tmpDir, err = ioutil.TempDir("/tmp", "agent-test")
 	c.Assert(err, gocheck.IsNil)
-	s.configDir = tmpdir
+
+	if err := pct.Basedir.Init(s.tmpDir); err != nil {
+		c.Fatal(err)
+	}
+	s.configDir = pct.Basedir.Dir("config")
 
 	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im-test"), s.configDir)
 	data, err := json.Marshal(&proto.MySQLInstance{
@@ -244,7 +250,7 @@ func (s *ManagerTestSuite) TearDownTest(c *gocheck.C) {
 }
 
 func (s *ManagerTestSuite) TearDownSuite(c *gocheck.C) {
-	if err := os.RemoveAll(s.configDir); err != nil {
+	if err := os.RemoveAll(s.tmpDir); err != nil {
 		c.Error(err)
 	}
 }
@@ -259,9 +265,6 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 
 	m := qan.NewManager(s.logger, &mysql.RealConnectionFactory{}, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im)
 	c.Assert(m, gocheck.NotNil)
-
-	// Just sets internal configDir.
-	m.LoadConfig(s.configDir)
 
 	// Create the qan config.
 	tmpFile := fmt.Sprintf("/tmp/qan_test.TestStartService.%d", os.Getpid())
@@ -309,7 +312,7 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	}
 
 	// It should the config to disk.
-	data, err := ioutil.ReadFile(s.configDir + "/qan.conf")
+	data, err := ioutil.ReadFile(pct.Basedir.ConfigFile("qan"))
 	c.Check(err, gocheck.IsNil)
 	gotConfig := &qan.Config{}
 	err = json.Unmarshal(data, gotConfig)

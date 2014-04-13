@@ -19,7 +19,6 @@ package agent_test
 
 import (
 	"encoding/json"
-	//"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/agent"
 	"github.com/percona/cloud-tools/pct"
@@ -69,7 +68,6 @@ type AgentTestSuite struct {
 var _ = Suite(&AgentTestSuite{})
 
 func (s *AgentTestSuite) SetUpSuite(t *C) {
-	// Tmp dir
 	var err error
 	s.tmpDir, err = ioutil.TempDir("/tmp", "agent-test")
 	t.Assert(err, IsNil)
@@ -146,11 +144,9 @@ func (s *AgentTestSuite) TearDownTest(t *C) {
 }
 
 func (s *AgentTestSuite) TearDownSuite(t *C) {
-	/*
-		if err := os.RemoveAll(s.tmpDir); err != nil {
-			fmt.Println(err)
-		}
-	*/
+	if err := os.RemoveAll(s.tmpDir); err != nil {
+		t.Error(err)
+	}
 }
 
 /////////////////////////////////////////////////////////////////////////////
