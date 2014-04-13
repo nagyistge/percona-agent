@@ -77,6 +77,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 }
 
 func (s *ManagerTestSuite) SetUpTest(t *C) {
+	s.factory.Set([]sysconfig.Monitor{s.mockMonitor})
 	s.clock = mock.NewClock()
 }
 
@@ -89,11 +90,8 @@ func (s *ManagerTestSuite) TearDownSuite(t *C) {
 // --------------------------------------------------------------------------
 
 func (s *ManagerTestSuite) TestStartStopManager(t *C) {
-
 	m := sysconfig.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
-	if m == nil {
-		t.Fatal("Make new sysconfig.Manager")
-	}
+	t.Assert(m, NotNil)
 
 	// It shouldn't have added a tickChan yet.
 	if len(s.clock.Added) != 0 {
@@ -152,11 +150,8 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 }
 
 func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
-
 	m := sysconfig.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
-	if m == nil {
-		t.Fatal("Make new sysconfig.Manager")
-	}
+	t.Assert(m, NotNil)
 
 	// sysconfig is a proxy manager so it doesn't have its own config file,
 	// but agent still calls LoadConfig() because this also tells
@@ -279,4 +274,60 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 	 * Clean up
 	 */
 	m.Stop(cmd)
+}
+
+func (s *ManagerTestSuite) TestGetConfig(t *C) {
+	m := sysconfig.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
+	t.Assert(m, NotNil)
+
+	v, err := m.LoadConfig(s.configDir)
+	t.Check(v, IsNil)
+	t.Check(err, IsNil)
+
+	// Start a sysconfig monitor.
+	sysconfigConfig := &mysql.Config{
+		Config: sysconfig.Config{
+			ServiceInstance: proto.ServiceInstance{
+				Service:    "mysql",
+				InstanceId: 1,
+			},
+			Report: 3600,
+		},
+	}
+	sysconfigConfigData, err := json.Marshal(sysconfigConfig)
+	t.Assert(err, IsNil)
+
+	cmd := &proto.Cmd{
+		User:    "daniel",
+		Service: "sysconfig",
+		Cmd:     "StartService",
+		Data:    sysconfigConfigData,
+	}
+	reply := m.Handle(cmd)
+	t.Assert(reply, NotNil)
+	t.Check(reply.Error, Equals, "")
+	s.mockMonitor.SetConfig(sysconfigConfig)
+
+	/**
+	 * GetConfig from sysconfig which should return all monitors' configs.
+	 */
+	cmd = &proto.Cmd{
+		Cmd:     "GetConfig",
+		Service: "sysconfig",
+	}
+	reply = m.Handle(cmd)
+	t.Assert(reply, NotNil)
+	t.Assert(reply.Error, Equals, "")
+
+	configs := make(map[string]string)
+	if err := json.Unmarshal(reply.Data, &configs); err != nil {
+		t.Fatal(err)
+	}
+	expect := map[string]string{
+		"sysconfig-mysql-1": string(sysconfigConfigData),
+	}
+	if same, diff := test.IsDeeply(configs, expect); !same {
+		test.Dump(configs)
+		t.Error(diff)
+	}
 }

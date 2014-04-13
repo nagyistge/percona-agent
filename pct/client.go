@@ -26,6 +26,7 @@ type WebsocketClient interface {
 	Connect()
 	ConnectOnce() error
 	Disconnect() error
+	Status() map[string]string
 
 	// Channel interface:
 	Start()

@@ -99,3 +99,9 @@ func (c *DataClient) Conn() *websocket.Conn {
 func (c *DataClient) SetConnectChan(connectChan chan bool) {
 	c.testConnectChan = connectChan
 }
+
+func (c *DataClient) Status() map[string]string {
+	return map[string]string{
+		"data-client": "ok",
+	}
+}

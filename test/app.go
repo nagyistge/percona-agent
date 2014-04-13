@@ -117,6 +117,17 @@ DRAIN:
 	}
 }
 
+func DrainBoolChan(c chan bool) {
+DRAIN:
+	for {
+		select {
+		case _ = <-c:
+		default:
+			break DRAIN
+		}
+	}
+}
+
 func FileSize(fileName string) (int64, error) {
 	stat, err := os.Stat(fileName)
 	if err != nil {

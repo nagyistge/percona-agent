@@ -37,7 +37,6 @@ import (
 	"github.com/percona/cloud-tools/ticker"
 	"io/ioutil"
 	golog "log"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -85,19 +84,15 @@ func main() {
 	// All service config files should be in same dir as agent config file.
 	configDir := filepath.Dir(configFile)
 
-	golog.Printf("AgentUuid: %s\n", agentConfig.AgentUuid)
+	golog.Println("AgentUuid: " + agentConfig.AgentUuid)
 
 	/**
 	 * Ping and exit, maybe.
 	 */
 
 	if cmd == "ping" {
-		if arg == "" {
-			arg = agentConfig.ApiHostname
-		}
-		golog.Println("Ping " + arg + "...")
 		t0 := time.Now()
-		ok, resp := Ping(agentConfig.ApiKey, arg)
+		ok, resp := pct.PingAPI(agentConfig.ApiHostname, agentConfig.ApiKey)
 		d := time.Now().Sub(t0)
 		golog.Printf("%+v\n", resp)
 		if !ok {
@@ -113,33 +108,21 @@ func main() {
 	 * PID file
 	 */
 
-	if agentConfig.PidFile != "" {
-		if err := WritePidFile(agentConfig.PidFile); err != nil {
-			golog.Fatalln(err)
-		}
-		defer pct.RemoveFile(agentConfig.PidFile)
+	pidFile := pct.NewPidFile()
+	if err := pidFile.Set(agentConfig.PidFile); err != nil {
+		golog.Fatalln(err)
 	}
+	defer pidFile.Remove()
 	golog.Println("PidFile: " + agentConfig.PidFile)
 
 	/**
-	 * RESTful entry links
+	 * REST API
 	 */
 
-	var links map[string]string
-	if len(agentConfig.Links) == 0 {
-		var err error
-		schema := "https://"
-		if strings.HasPrefix(agentConfig.ApiHostname, "localhost") || strings.HasPrefix(agentConfig.ApiHostname, "127.0.0.1") {
-			schema = "http://"
-		}
-		if links, err = GetAgentLinks(agentConfig.ApiKey, agentConfig.AgentUuid, schema+agentConfig.ApiHostname); err != nil {
-			golog.Fatalln(err)
-		}
-		golog.Printf("Agent links: %+v\n", links)
+	api, err := ConnectAPI(agentConfig)
+	if err != nil {
+		golog.Fatal(err)
 	}
-
-	hostname, _ := os.Hostname()
-	origin := "http://" + hostname
 
 	/**
 	 * Log relay
@@ -148,7 +131,7 @@ func main() {
 	logChan := make(chan *proto.LogEntry, log.BUFFER_SIZE*3)
 
 	// Log websocket client, possibly disabled later.
-	logClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "log-ws"), links["log"], origin, agentConfig.ApiKey)
+	logClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "log-ws"), api, "log")
 	if err != nil {
 		golog.Fatalln(err)
 	}
@@ -174,7 +157,9 @@ func main() {
 	 * Data spooler and sender
 	 */
 
-	dataClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "data-ws"), links["data"], origin, agentConfig.ApiKey)
+	hostname, _ := os.Hostname()
+
+	dataClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "data-ws"), api, "data")
 	if err != nil {
 		golog.Fatalln(err)
 	}
@@ -249,7 +234,7 @@ func main() {
 	 * Agent
 	 */
 
-	cmdClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "agent-ws"), links["cmd"], origin, agentConfig.ApiKey)
+	cmdClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "agent-ws"), api, "cmd")
 	if err != nil {
 		golog.Fatal(err)
 	}
@@ -264,7 +249,9 @@ func main() {
 
 	agent := agent.NewAgent(
 		agentConfig,
+		pidFile,
 		pct.NewLogger(logChan, "agent"),
+		api,
 		cmdClient,
 		services,
 	)
@@ -334,98 +321,25 @@ func CheckConfig(config *agent.Config, configFile string) (bool, []string) {
 	return isValid, missing
 }
 
-func GetAgentLinks(apiKey, uuid, url string) (map[string]string, error) {
-	golog.Println("Getting entry links from", url)
+func ConnectAPI(agentConfig *agent.Config) (*pct.API, error) {
+	golog.Println("ApiHostname: " + agentConfig.ApiHostname)
+	golog.Println("ApiKey: " + agentConfig.ApiKey)
+
+	api := pct.NewAPI()
 	backoff := pct.NewBackoff(5 * time.Minute)
-	agentLink := ""
-	for {
+	t0 := time.Now()
+	for time.Now().Sub(t0) < time.Hour*24*7 {
 		time.Sleep(backoff.Wait())
-
-		if agentLink == "" {
-			if entryLinks, err := GetLinks(apiKey, url); err != nil {
-				golog.Println(err)
-				continue
-			} else {
-				var ok bool
-				agentLink, ok = entryLinks["agents"]
-				if !ok {
-					golog.Println("No agents link")
-					continue
-				}
-			}
-		}
-
-		agentLinks, err := GetLinks(apiKey, agentLink+"/"+uuid)
-		if err != nil {
+		golog.Println("Connecting to API")
+		if err := api.Connect(agentConfig.ApiHostname, agentConfig.ApiKey, agentConfig.AgentUuid); err != nil {
 			golog.Println(err)
 			continue
 		}
-
-		if err := CheckLinks(agentLinks); err != nil {
-			golog.Println(err)
-			continue
-		}
-
-		return agentLinks, nil // success
-	}
-}
-
-func GetLinks(apiKey, url string) (map[string]string, error) {
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Add("X-Percona-API-Key", apiKey)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("GET %s error: client.Do: %s", url, err)
+		golog.Println("Connected to API")
+		return api, nil // success
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	if err != nil {
-		return nil, fmt.Errorf("GET %s error: ioutil.ReadAll: %s", url, err)
-	}
-
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("Error %d from %s\n", resp.StatusCode, url)
-	} else if len(body) == 0 {
-		return nil, fmt.Errorf("OK response from ", url, "but no content")
-	}
-
-	links := &proto.Links{}
-	if err := json.Unmarshal(body, links); err != nil {
-		return nil, fmt.Errorf("GET %s error: json.Unmarshal: %s: %s", url, err, string(body))
-	}
-
-	return links.Links, nil
-}
-
-func CheckLinks(links map[string]string) error {
-	requiredLinks := []string{"cmd", "log", "data"}
-	for _, link := range requiredLinks {
-		logLink, exist := links[link]
-		if !exist || logLink == "" {
-			return errors.New("Missing " + link + " link")
-		}
-	}
-	return nil
-}
-
-func WritePidFile(pidFile string) error {
-	flags := os.O_CREATE | os.O_EXCL | os.O_WRONLY
-	file, err := os.OpenFile(pidFile, flags, 0644)
-	if err != nil {
-		return err
-	}
-	_, err = file.WriteString(fmt.Sprintf("%d\n", os.Getpid()))
-	if err != nil {
-		return err
-	}
-	err = file.Close()
-	return err
+	return nil, errors.New("Timeout connecting to " + agentConfig.ApiHostname)
 }
 
 func StartMonitors(service, configDir, glob string, manager pct.ServiceManager) error {
@@ -456,32 +370,4 @@ func StartMonitors(service, configDir, glob string, manager pct.ServiceManager) 
 		}
 	}
 	return nil
-}
-
-func Ping(apiKey, url string) (bool, *http.Response) {
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		golog.Printf("Ping %s error: http.NewRequest: %s", url, err)
-		return false, nil
-	}
-	req.Header.Add("X-Percona-API-Key", apiKey)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		golog.Printf("Ping %s error: client.Do: %s", url, err)
-		return false, resp
-	}
-	_, err = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	if err != nil {
-		golog.Printf("Ping %s error: ioutil.ReadAll: %s", url, err)
-		return false, resp
-	}
-
-	if resp.StatusCode == 200 {
-		return true, resp
-	}
-
-	return false, resp
 }

@@ -26,29 +26,28 @@ import (
 )
 
 type Sender struct {
-	logger     *pct.Logger
-	client     pct.WebsocketClient
+	logger *pct.Logger
+	client pct.WebsocketClient
+	// --
 	spool      Spooler
 	tickerChan <-chan time.Time
-	// --
-	sync      *pct.SyncChan
-	status    *pct.Status
-	connected bool
+	sync       *pct.SyncChan
+	status     *pct.Status
 }
 
-func NewSender(logger *pct.Logger, client pct.WebsocketClient, spool Spooler, tickerChan <-chan time.Time) *Sender {
+func NewSender(logger *pct.Logger, client pct.WebsocketClient) *Sender {
 	s := &Sender{
-		logger:     logger,
-		client:     client,
-		spool:      spool,
-		tickerChan: tickerChan,
-		sync:       pct.NewSyncChan(),
-		status:     pct.NewStatus([]string{"data-sender", "data-api"}),
+		logger: logger,
+		client: client,
+		sync:   pct.NewSyncChan(),
+		status: pct.NewStatus([]string{"data-sender", "data-api"}),
 	}
 	return s
 }
 
-func (s *Sender) Start() error {
+func (s *Sender) Start(spool Spooler, tickerChan <-chan time.Time) error {
+	s.spool = spool
+	s.tickerChan = tickerChan
 	go s.run()
 	return nil
 }
@@ -56,11 +55,13 @@ func (s *Sender) Start() error {
 func (s *Sender) Stop() error {
 	s.sync.Stop()
 	s.sync.Wait()
+	s.spool = nil
+	s.tickerChan = nil
 	return nil
 }
 
 func (s *Sender) Status() map[string]string {
-	return s.status.All()
+	return s.status.Merge(s.client.Status())
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -82,6 +83,7 @@ func (s *Sender) run() {
 
 	s.logger.Info("Start")
 	for {
+		s.status.Update("data-sender", "Idle")
 		select {
 		case <-s.tickerChan:
 			s.send()
@@ -97,6 +99,7 @@ func (s *Sender) send() {
 	connected := false
 	var apiErr error
 	s.logger.Debug("Connecting to API")
+	s.status.Update("data-sender", "Running")
 	for i := 1; i <= 3; i++ {
 		if apiErr = s.client.ConnectOnce(); apiErr != nil {
 			s.logger.Warn("Connect API failed:", apiErr)
@@ -166,6 +169,7 @@ func (s *Sender) send() {
 			}
 			n500Err++
 		} else {
+			s.status.Update("data-sender", "Removing "+file)
 			s.spool.Remove(file)
 			s.logger.Info("Sent and removed", file)
 		}

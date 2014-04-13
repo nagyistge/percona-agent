@@ -1,5 +1,9 @@
 package mock
 
+import (
+	"github.com/percona/cloud-tools/data"
+)
+
 type Spooler struct {
 	FilesOut []string          // test provides
 	DataOut  map[string][]byte // test provides
@@ -15,7 +19,7 @@ func NewSpooler(dataChan chan interface{}) *Spooler {
 	return s
 }
 
-func (s *Spooler) Start() error {
+func (s *Spooler) Start(sz data.Serializer) error {
 	return nil
 }
 

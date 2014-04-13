@@ -37,6 +37,10 @@ func NewLogger(logChan chan *proto.LogEntry, service string) *Logger {
 	return l
 }
 
+func (l *Logger) Service() string {
+	return l.service
+}
+
 func (l *Logger) LogChan() chan *proto.LogEntry {
 	return l.logChan
 }

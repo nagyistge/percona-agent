@@ -190,7 +190,14 @@ func (m *Manager) IsRunning() bool {
 }
 
 func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
-	return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
+	switch cmd.Cmd {
+	case "GetConfig":
+		return cmd.Reply(m.config)
+	default:
+		// SetConfig does not work by design.  To re-configure QAN,
+		// stop it then start it again with the new config.
+		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
+	}
 }
 
 /////////////////////////////////////////////////////////////////////////////

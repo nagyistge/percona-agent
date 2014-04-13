@@ -258,9 +258,10 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	 */
 
 	m := qan.NewManager(s.logger, &mysql.RealConnectionFactory{}, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im)
-	if m == nil {
-		c.Fatal("Create qan.Manager")
-	}
+	c.Assert(m, gocheck.NotNil)
+
+	// Just sets internal configDir.
+	m.LoadConfig(s.configDir)
 
 	// Create the qan config.
 	tmpFile := fmt.Sprintf("/tmp/qan_test.TestStartService.%d", os.Getpid())
@@ -305,6 +306,17 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	// It should report itself as running
 	if !m.IsRunning() {
 		c.Error("Manager.IsRunning() is false after Start()")
+	}
+
+	// It should the config to disk.
+	data, err := ioutil.ReadFile(s.configDir + "/qan.conf")
+	c.Check(err, gocheck.IsNil)
+	gotConfig := &qan.Config{}
+	err = json.Unmarshal(data, gotConfig)
+	c.Check(err, gocheck.IsNil)
+	if same, diff := test.IsDeeply(gotConfig, config); !same {
+		test.Dump(gotConfig)
+		c.Error(diff)
 	}
 
 	// And status should be "Running" and "Ready".
@@ -792,7 +804,61 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
 	// Stop manager
 	err = m.Stop(&proto.Cmd{Cmd: "StopService"})
 	c.Assert(err, gocheck.IsNil)
+}
 
+func (s *ManagerTestSuite) TestGetConfig(c *gocheck.C) {
+	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
+	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im)
+	c.Assert(m, gocheck.NotNil)
+
+	config := &qan.Config{
+		ServiceInstance: s.mysqlInstance,
+		Interval:        300,
+		MaxSlowLogSize:  1000,
+		MaxWorkers:      3,
+		WorkerRunTime:   300,
+		Start: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=0.456"},
+			mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+		},
+		Stop: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
+		},
+	}
+	qanConfig, _ := json.Marshal(config)
+	cmd := &proto.Cmd{
+		Ts:   time.Now(),
+		Cmd:  "StartService",
+		Data: qanConfig,
+	}
+	err := m.Start(cmd, cmd.Data)
+	c.Assert(err, gocheck.IsNil)
+	test.WaitStatus(1, m, "qan-log-parser", "Ready")
+
+	s.nullmysql.Reset()
+
+	cmd = &proto.Cmd{
+		Cmd:     "GetConfig",
+		Service: "qan",
+	}
+	reply := m.Handle(cmd)
+	c.Assert(reply, gocheck.NotNil)
+	c.Assert(reply.Error, gocheck.Equals, "")
+
+	gotConfig := &qan.Config{}
+	if err := json.Unmarshal(reply.Data, gotConfig); err != nil {
+		c.Fatal(err)
+	}
+	if same, diff := test.IsDeeply(gotConfig, config); !same {
+		test.Dump(gotConfig)
+		c.Error(diff)
+	}
+
+	// Stop manager
+	err = m.Stop(&proto.Cmd{Cmd: "StopService"})
+	c.Assert(err, gocheck.IsNil)
 }
 
 /////////////////////////////////////////////////////////////////////////////

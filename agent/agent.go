@@ -19,6 +19,7 @@ package agent
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
@@ -39,6 +40,8 @@ type Agent struct {
 	configDir string
 	logger    *pct.Logger
 	client    pct.WebsocketClient
+	api       pct.APIConnector
+	pidFile   *pct.PidFile
 	services  map[string]pct.ServiceManager
 	// --
 	cmdSync *pct.SyncChan
@@ -57,9 +60,11 @@ type Agent struct {
 	stopChan          chan bool
 }
 
-func NewAgent(config *Config, logger *pct.Logger, client pct.WebsocketClient, services map[string]pct.ServiceManager) *Agent {
+func NewAgent(config *Config, pidFile *pct.PidFile, logger *pct.Logger, api pct.APIConnector, client pct.WebsocketClient, services map[string]pct.ServiceManager) *Agent {
 	agent := &Agent{
 		config:    config,
+		api:       api,
+		pidFile:   pidFile,
 		configMux: &sync.RWMutex{},
 		logger:    logger,
 		client:    client,
@@ -284,7 +289,6 @@ func (agent *Agent) cmdHandler() {
 	replyChan := agent.client.SendChan()
 	cmdReply := make(chan *proto.Reply, 1)
 
-	// defer is LIFO, so send done signal last.
 	defer func() {
 		agent.status.Update("agent-cmd-handler", "Stopped")
 		agent.cmdHandlerSync.Done()
@@ -296,6 +300,20 @@ func (agent *Agent) cmdHandler() {
 		select {
 		case cmd := <-agent.cmdChan:
 			agent.status.UpdateRe("agent-cmd-handler", "Running", cmd)
+
+			if cmd.Cmd == "Reconnect" && cmd.Service == "agent" {
+				/**
+				 * Reconnect is a special case: there's no reply because we can't
+				 * recv cmd on connection 1 and send reply on connection 2.  The
+				 * "reply" in a sense is making a successful connection again.
+				 * If that doesn't happen, then user/API knows reconnect failed.
+				 */
+
+				// Do NOT call connect() here because Disconnect() causes Run() to receive
+				// false on client.ConnectChan() which causes it to call connect().
+				agent.client.Disconnect()
+				continue
+			}
 
 			// Handle the cmd in a separate goroutine so if it gets stuck it won't affect us.
 			go func() {
@@ -321,6 +339,7 @@ func (agent *Agent) cmdHandler() {
 				reply = cmd.Reply(nil, pct.CmdTimeoutError{Cmd: cmd.Cmd})
 			}
 
+			// Reply to cmd.
 			select {
 			case replyChan <- reply:
 			case <-time.After(20 * time.Second):
@@ -344,6 +363,7 @@ func (agent *Agent) Handle(cmd *proto.Cmd) *proto.Reply {
 
 	var data interface{}
 	var err error
+	var errs []error
 	switch cmd.Cmd {
 	case "StartService":
 		data, err = agent.handleStartService(cmd)
@@ -352,16 +372,21 @@ func (agent *Agent) Handle(cmd *proto.Cmd) *proto.Reply {
 	case "GetConfig":
 		data, err = agent.handleGetConfig(cmd)
 	case "SetConfig":
-		data, err = agent.handleSetConfig(cmd)
+		data, errs = agent.handleSetConfig(cmd)
 	default:
-		err = pct.UnknownCmdError{Cmd: cmd.Cmd}
+		errs = append(errs, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
 
 	if err != nil {
-		agent.logger.Error(err)
+		errs = append(errs, err)
+	}
+	if len(errs) > 0 {
+		for err := range errs {
+			agent.logger.Error(err)
+		}
 	}
 
-	return cmd.Reply(data, err)
+	return cmd.Reply(data, errs...)
 }
 
 // Handle:@goroutine[3]
@@ -427,35 +452,59 @@ func (agent *Agent) handleGetConfig(cmd *proto.Cmd) (interface{}, error) {
 }
 
 // Handle:@goroutine[3]
-func (agent *Agent) handleSetConfig(cmd *proto.Cmd) (interface{}, error) {
+func (agent *Agent) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 	agent.status.UpdateRe("agent-cmd-handler", "SetConfig", cmd)
 	agent.logger.Info(cmd)
 
 	newConfig := &Config{}
 	if err := json.Unmarshal(cmd.Data, newConfig); err != nil {
-		return nil, err
+		return nil, []error{err}
 	}
 
+	finalConfig := *agent.config // copy current config
+	errs := []error{}
+
+	// Change the API key.
+	if newConfig.ApiKey != "" && newConfig.ApiKey != finalConfig.ApiKey {
+		agent.logger.Warn("Changing API key from", finalConfig.ApiKey, "to", newConfig.ApiKey)
+		if err := agent.api.Connect(agent.api.Hostname(), newConfig.ApiKey, agent.api.AgentUuid()); err != nil {
+			errs = append(errs, errors.New("agent.api.Connect:ApiKey:"+err.Error()))
+		} else {
+			finalConfig.ApiKey = newConfig.ApiKey
+		}
+	}
+
+	// Change the API hostname.
+	if newConfig.ApiHostname != "" && newConfig.ApiHostname != finalConfig.ApiHostname {
+		agent.logger.Warn("Changing API host from", finalConfig.ApiHostname, "to", newConfig.ApiHostname)
+		if err := agent.api.Connect(newConfig.ApiHostname, agent.api.ApiKey(), agent.api.AgentUuid()); err != nil {
+			errs = append(errs, errors.New("agent.api.Connect:ApiHostname:"+err.Error()))
+		} else {
+			finalConfig.ApiHostname = newConfig.ApiHostname
+		}
+	}
+
+	// Change the PID file: get new then remove old.
+	if newConfig.PidFile != finalConfig.PidFile {
+		agent.logger.Warn("Changing PID file from", finalConfig.PidFile, "to", newConfig.PidFile)
+		if err := agent.pidFile.Set(newConfig.PidFile); err != nil {
+			errs = append(errs, errors.New("agnet.pidFile.Set:"+err.Error()))
+		} else {
+			finalConfig.PidFile = newConfig.PidFile
+		}
+	}
+
+	// Write the new, updated config.  If this fails, agent will use old config if restarted.
+	if err := agent.WriteConfig(finalConfig, "agent"); err != nil {
+		errs = append(errs, errors.New("agent.WriteConfig:"+err.Error()))
+	}
+
+	// Lock agent config and re-point the pointer.
 	agent.configMux.Lock()
 	defer agent.configMux.Unlock()
+	agent.config = &finalConfig
 
-	finalConfig := agent.config
-
-	if newConfig.ApiKey != "" && newConfig.ApiKey != agent.config.ApiKey {
-		// todo: test access with new API key?
-		agent.logger.Warn("Changing API key from", agent.config.ApiKey, "to", newConfig.ApiKey)
-		finalConfig.ApiKey = newConfig.ApiKey
-	}
-
-	// todo: change ApiHostname and PidFile
-
-	if err := agent.WriteConfig(finalConfig, "agent"); err != nil {
-		agent.logger.Error("New agent config not applied")
-		return nil, err
-	}
-
-	agent.config = finalConfig
-	return finalConfig, nil
+	return &finalConfig, errs
 }
 
 //---------------------------------------------------------------------------
@@ -481,7 +530,7 @@ func (agent *Agent) statusHandler() {
 				replyChan <- cmd.Reply(agent.Status())
 			default:
 				if manager, ok := agent.services[cmd.Service]; ok {
-					replyChan <- manager.Handle(cmd)
+					replyChan <- cmd.Reply(manager.Status())
 				} else {
 					replyChan <- cmd.Reply(nil, pct.UnknownServiceError{Service: cmd.Service})
 				}
@@ -495,12 +544,12 @@ func (agent *Agent) statusHandler() {
 
 // statusHandler:@goroutine[2]
 func (agent *Agent) Status() map[string]string {
-	return agent.status.All()
+	return agent.status.Merge(agent.client.Status())
 }
 
 // statusHandler:@goroutine[2]
 func (agent *Agent) AllStatus() map[string]string {
-	status := agent.status.All()
+	status := agent.Status()
 	for service, manager := range agent.services {
 		if manager == nil { // should not happen
 			status[service] = fmt.Sprintf("ERROR: %s service manager is nil", service)

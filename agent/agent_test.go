@@ -53,6 +53,8 @@ type AgentTestSuite struct {
 	recvDataChan chan interface{}
 	sendChan     chan *proto.Cmd
 	recvChan     chan *proto.Reply
+	pidFile      *pct.PidFile
+	api          *mock.API
 	// --
 	readyChan      chan bool
 	traceChan      chan string
@@ -91,7 +93,6 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 	s.recvDataChan = make(chan interface{}, 5)
 	s.client = mock.NewWebsocketClient(s.sendChan, s.recvChan, s.sendDataChan, s.recvDataChan)
 	s.client.ErrChan = make(chan error)
-	go s.client.Start()
 
 	s.readyChan = make(chan bool, 2)
 	s.traceChan = make(chan string, 10)
@@ -104,7 +105,13 @@ func (s *AgentTestSuite) SetUpTest(t *C) {
 	s.services = make(map[string]pct.ServiceManager)
 	s.services["qan"] = mock.NewMockServiceManager("qan", s.readyChan, s.traceChan)
 	s.services["mm"] = mock.NewMockServiceManager("mm", s.readyChan, s.traceChan)
-	s.agent = agent.NewAgent(s.config, s.logger, s.client, s.services)
+
+	s.pidFile = pct.NewPidFile()
+
+	links := map[string]string{"agent": "http://localhost/agent"}
+	s.api = mock.NewAPI("http://localhost", s.config.ApiHostname, s.config.ApiKey, s.config.AgentUuid, links)
+
+	s.agent = agent.NewAgent(s.config, s.pidFile, s.logger, s.api, s.client, s.services)
 
 	// Run the agent.
 	go func() {
@@ -130,6 +137,8 @@ func (s *AgentTestSuite) TearDownTest(t *C) {
 	test.DrainSendChan(s.sendChan)
 	test.DrainRecvChan(s.recvChan)
 	test.DrainTraceChan(s.traceChan)
+	test.DrainTraceChan(s.client.TraceChan)
+	test.DrainBoolChan(s.client.ConnectChan())
 }
 
 func (s *AgentTestSuite) TearDownSuite(t *C) {
@@ -159,9 +168,51 @@ func (s *AgentTestSuite) TestStatus(t *C) {
 		"agent": "Ready",
 	}
 	if ok, diff := test.IsDeeply(got, expectStatus); !ok {
-		t.Logf("%+v", got)
+		test.Dump(got)
 		t.Error(diff)
 	}
+
+	// We asked for all status, so we should get mm too.
+	_, ok := got["mm"]
+	t.Check(ok, Equals, true)
+
+	/**
+	 * Get only agent's status
+	 */
+	statusCmd = &proto.Cmd{
+		Ts:      time.Now(),
+		User:    "daniel",
+		Cmd:     "Status",
+		Service: "agent",
+	}
+	s.sendChan <- statusCmd
+	got = test.WaitStatusReply(s.recvChan)
+	t.Assert(got, NotNil)
+
+	// Only asked for agent, so we shouldn't get mm.
+	_, ok = got["mm"]
+	t.Check(ok, Equals, false)
+
+	/**
+	 * Get only sub-service status.
+	 */
+	statusCmd = &proto.Cmd{
+		Ts:      time.Now(),
+		User:    "daniel",
+		Cmd:     "Status",
+		Service: "mm",
+	}
+	s.sendChan <- statusCmd
+	got = test.WaitStatusReply(s.recvChan)
+	t.Assert(got, NotNil)
+
+	// Asked for mm, so we get it.
+	_, ok = got["mm"]
+	t.Check(ok, Equals, true)
+
+	// Didn't ask for all or agent, so we don't get it.
+	_, ok = got["agent"]
+	t.Check(ok, Equals, false)
 }
 
 func (s *AgentTestSuite) TestStatusAfterConnFail(t *C) {
@@ -353,6 +404,42 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
 	t.Check(reply.Error, Equals, "")
 }
 
+func (s *AgentTestSuite) TestStartStopUnknownService(t *C) {
+	// Starting an unknown service should return an error.
+	serviceCmd := &proto.ServiceData{
+		Name: "foo",
+	}
+	serviceData, _ := json.Marshal(serviceCmd)
+	cmd := &proto.Cmd{
+		Ts:      time.Now(),
+		User:    "daniel",
+		Service: "agent",
+		Cmd:     "StartService",
+		Data:    serviceData,
+	}
+
+	s.sendChan <- cmd
+	gotReplies := test.WaitReply(s.recvChan)
+	t.Assert(len(gotReplies), Equals, 1)
+	t.Check(gotReplies[0].Cmd, Equals, "StartService")
+	t.Check(gotReplies[0].Error, Not(Equals), "")
+
+	// Stopp an unknown service should return an error.
+	cmd = &proto.Cmd{
+		Ts:      time.Now(),
+		User:    "daniel",
+		Service: "agent",
+		Cmd:     "StopService",
+		Data:    serviceData,
+	}
+
+	s.sendChan <- cmd
+	gotReplies = test.WaitReply(s.recvChan)
+	t.Assert(len(gotReplies), Equals, 1)
+	t.Check(gotReplies[0].Cmd, Equals, "StopService")
+	t.Check(gotReplies[0].Error, Not(Equals), "")
+}
+
 func (s *AgentTestSuite) TestLoadConfig(t *C) {
 	// Load a partial config to make sure LoadConfig() works in general but also
 	// when the config has missing options (which is normal).
@@ -412,7 +499,7 @@ func (s *AgentTestSuite) TestGetConfig(t *C) {
 	}
 }
 
-func (s *AgentTestSuite) TestSetConfig(t *C) {
+func (s *AgentTestSuite) TestSetConfigApiKey(t *C) {
 	newConfig := *s.config
 	newConfig.ApiKey = "101"
 	data, err := json.Marshal(newConfig)
@@ -434,16 +521,27 @@ func (s *AgentTestSuite) TestSetConfig(t *C) {
 		t.Fatal(err)
 	}
 
+	/**
+	 * Verify new agent config in memory.
+	 */
 	expect := *s.config
 	expect.ApiKey = "101"
 	expect.Dir = ""
 	expect.Links = nil
-
 	if ok, diff := test.IsDeeply(gotConfig, &expect); !ok {
 		t.Logf("%+v", gotConfig)
 		t.Error(diff)
 	}
 
+	/**
+	 * Verify new agent config in API connector.
+	 */
+	t.Check(s.api.ApiKey(), Equals, "101")
+	t.Check(s.api.Hostname(), Equals, agent.DEFAULT_API_HOSTNAME)
+
+	/**
+	 * Verify new agent config on disk.
+	 */
 	data, err = ioutil.ReadFile(s.tmpDir + "/agent.conf")
 	t.Assert(err, IsNil)
 	gotConfig = &agent.Config{}
@@ -454,5 +552,170 @@ func (s *AgentTestSuite) TestSetConfig(t *C) {
 		// @todo: if expect is not ptr, IsDeeply dies with "got ptr, expected struct"
 		t.Logf("%+v", gotConfig)
 		t.Error(diff)
+	}
+
+	// After changing the API key, the agent's ws should NOT reconnect yet,
+	// but status should show that its link has changed, so sending a Reconnect
+	// cmd will cause agent to reconnect its ws.
+	gotCalled := test.WaitTrace(s.client.TraceChan)
+	expectCalled := []string{"Start", "Connect"}
+	t.Check(gotCalled, DeepEquals, expectCalled)
+}
+
+func (s *AgentTestSuite) TestSetConfigApiHostname(t *C) {
+	newConfig := *s.config
+	newConfig.ApiHostname = "http://localhost"
+	data, err := json.Marshal(newConfig)
+	t.Assert(err, IsNil)
+
+	cmd := &proto.Cmd{
+		Ts:      time.Now(),
+		User:    "daniel",
+		Cmd:     "SetConfig",
+		Service: "agent",
+		Data:    data,
+	}
+	s.sendChan <- cmd
+
+	got := test.WaitReply(s.recvChan)
+	t.Assert(len(got), Equals, 1)
+	gotConfig := &agent.Config{}
+	if err := json.Unmarshal(got[0].Data, gotConfig); err != nil {
+		t.Fatal(err)
+	}
+
+	/**
+	 * Verify new agent config in memory.
+	 */
+	expect := *s.config
+	expect.ApiHostname = "http://localhost"
+	expect.Dir = ""
+	expect.Links = nil
+	if ok, diff := test.IsDeeply(gotConfig, &expect); !ok {
+		t.Logf("%+v", gotConfig)
+		t.Error(diff)
+	}
+
+	/**
+	 * Verify new agent config in API connector.
+	 */
+	t.Check(s.api.Hostname(), Equals, "http://localhost")
+	t.Check(s.api.ApiKey(), Equals, "789")
+
+	/**
+	 * Verify new agent config on disk.
+	 */
+	data, err = ioutil.ReadFile(s.tmpDir + "/agent.conf")
+	t.Assert(err, IsNil)
+	gotConfig = &agent.Config{}
+	if err := json.Unmarshal(data, gotConfig); err != nil {
+		t.Fatal(err)
+	}
+	if same, diff := test.IsDeeply(gotConfig, &expect); !same {
+		// @todo: if expect is not ptr, IsDeeply dies with "got ptr, expected struct"
+		t.Logf("%+v", gotConfig)
+		t.Error(diff)
+	}
+
+	// After changing the API host, the agent's ws should NOT reconnect yet,
+	// but status should show that its link has changed, so sending a Reconnect
+	// cmd will cause agent to reconnect its ws.
+	gotCalled := test.WaitTrace(s.client.TraceChan)
+	expectCalled := []string{"Start", "Connect"}
+	t.Check(gotCalled, DeepEquals, expectCalled)
+
+	/**
+	 * Test Reconnect here since it's usually done after changing ApiHostname/
+	 */
+
+	// There is NO reply after reconnect because we can't recv cmd on one connection
+	// and reply on another.  Instead, we should see agent try to reconnect:
+	connectChan := make(chan bool)
+	s.client.SetConnectChan(connectChan)
+	defer s.client.SetConnectChan(nil)
+
+	cmd = &proto.Cmd{
+		Ts:      time.Now(),
+		User:    "daniel",
+		Cmd:     "Reconnect",
+		Service: "agent",
+	}
+	s.sendChan <- cmd
+
+	// Wait for agent to reconnect.
+	<-connectChan
+	connectChan <- true
+
+	gotCalled = test.WaitTrace(s.client.TraceChan)
+	expectCalled = []string{"Disconnect", "Connect"}
+	t.Check(gotCalled, DeepEquals, expectCalled)
+}
+
+func (s *AgentTestSuite) TestSetConfigPidFile(t *C) {
+	pidFile := s.tmpDir + "/agent.pid"
+	defer os.Remove(pidFile)
+
+	newConfig := *s.config
+	newConfig.PidFile = pidFile
+	data, err := json.Marshal(newConfig)
+	t.Assert(err, IsNil)
+
+	cmd := &proto.Cmd{
+		Ts:      time.Now(),
+		User:    "daniel",
+		Cmd:     "SetConfig",
+		Service: "agent",
+		Data:    data,
+	}
+	s.sendChan <- cmd
+
+	got := test.WaitReply(s.recvChan)
+	t.Assert(len(got), Equals, 1)
+	gotConfig := &agent.Config{}
+	if err := json.Unmarshal(got[0].Data, gotConfig); err != nil {
+		t.Fatal(err)
+	}
+
+	/**
+	 * Verify new agent config in memory.
+	 */
+	expect := *s.config
+	expect.PidFile = pidFile
+	expect.Dir = ""
+	expect.Links = nil
+	if ok, diff := test.IsDeeply(gotConfig, &expect); !ok {
+		t.Logf("%+v", gotConfig)
+		t.Error(diff)
+	}
+
+	/**
+	 * Verify new agent config in API connector.
+	 */
+	t.Check(s.api.ApiKey(), Equals, "789")                        // not changed
+	t.Check(s.api.Hostname(), Equals, agent.DEFAULT_API_HOSTNAME) // not changed
+
+	/**
+	 * Verify new agent config on disk.
+	 */
+	data, err = ioutil.ReadFile(s.tmpDir + "/agent.conf")
+	t.Assert(err, IsNil)
+	gotConfig = &agent.Config{}
+	if err := json.Unmarshal(data, gotConfig); err != nil {
+		t.Fatal(err)
+	}
+	if same, diff := test.IsDeeply(gotConfig, &expect); !same {
+		// @todo: if expect is not ptr, IsDeeply dies with "got ptr, expected struct"
+		t.Logf("%+v", gotConfig)
+		t.Error(diff)
+	}
+
+	// The agent ws should NOT reconnect.
+	gotCalled := test.WaitTrace(s.client.TraceChan)
+	expectCalled := []string{"Start", "Connect"}
+	t.Check(gotCalled, DeepEquals, expectCalled)
+
+	// The new PID file should exist.
+	if !test.FileExists(pidFile) {
+		t.Error("SetConfig creates new PID file")
 	}
 }
