@@ -50,6 +50,7 @@ type ManagerTestSuite struct {
 	clock       *mock.Clock
 	dataChan    chan interface{}
 	spool       data.Spooler
+	tmpDir      string
 	configDir   string
 	im          *instance.Repo
 }
@@ -68,10 +69,14 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.dataChan = make(chan interface{}, 1)
 	s.spool = mock.NewSpooler(s.dataChan)
 
-	tmpdir, err := ioutil.TempDir("/tmp", "sysconfig-manager-test")
-	t.Log(err)
+	var err error
+	s.tmpDir, err = ioutil.TempDir("/tmp", "agent-test")
 	t.Assert(err, IsNil)
-	s.configDir = tmpdir
+
+	if err := pct.Basedir.Init(s.tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	s.configDir = pct.Basedir.Dir("config")
 
 	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im-test"), s.configDir)
 }
@@ -82,7 +87,7 @@ func (s *ManagerTestSuite) SetUpTest(t *C) {
 }
 
 func (s *ManagerTestSuite) TearDownSuite(t *C) {
-	if err := os.RemoveAll(s.configDir); err != nil {
+	if err := os.RemoveAll(s.tmpDir); err != nil {
 		t.Error(err)
 	}
 }
@@ -156,7 +161,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 	// sysconfig is a proxy manager so it doesn't have its own config file,
 	// but agent still calls LoadConfig() because this also tells
 	// the manager where to save configs, monitor configs in this case.
-	v, err := m.LoadConfig(s.configDir)
+	v, err := m.LoadConfig()
 	t.Check(v, IsNil)
 	t.Check(err, IsNil)
 
@@ -280,7 +285,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	m := sysconfig.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
 	t.Assert(m, NotNil)
 
-	v, err := m.LoadConfig(s.configDir)
+	v, err := m.LoadConfig()
 	t.Check(v, IsNil)
 	t.Check(err, IsNil)
 

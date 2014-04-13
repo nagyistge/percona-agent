@@ -19,7 +19,6 @@ package agent_test
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/agent"
 	"github.com/percona/cloud-tools/pct"
@@ -30,6 +29,7 @@ import (
 	. "launchpad.net/gocheck"
 	golog "log"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -40,7 +40,8 @@ func Test(t *testing.T) { TestingT(t) }
 var sample = test.RootDir + "/agent"
 
 type AgentTestSuite struct {
-	tmpDir string
+	tmpDir     string
+	configFile string
 	// Log
 	logger  *pct.Logger
 	logChan chan *proto.LogEntry
@@ -67,12 +68,14 @@ type AgentTestSuite struct {
 var _ = Suite(&AgentTestSuite{})
 
 func (s *AgentTestSuite) SetUpSuite(t *C) {
-	// Tmp dir
 	var err error
 	s.tmpDir, err = ioutil.TempDir("/tmp", "agent-test")
-	if err != nil {
+	t.Assert(err, IsNil)
+
+	if err := pct.Basedir.Init(s.tmpDir); err != nil {
 		t.Fatal(err)
 	}
+	s.configFile = filepath.Join(s.tmpDir, pct.CONFIG_DIR, "agent"+pct.CONFIG_FILE_SUFFIX)
 
 	// Log
 	// todo: use log.Manager instead
@@ -84,7 +87,6 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 		AgentUuid:   "abc-123-def",
 		ApiKey:      "789",
 		ApiHostname: agent.DEFAULT_API_HOSTNAME,
-		Dir:         s.tmpDir,
 	}
 
 	s.sendChan = make(chan *proto.Cmd, 5)
@@ -143,7 +145,7 @@ func (s *AgentTestSuite) TearDownTest(t *C) {
 
 func (s *AgentTestSuite) TearDownSuite(t *C) {
 	if err := os.RemoveAll(s.tmpDir); err != nil {
-		fmt.Println(err)
+		t.Error(err)
 	}
 }
 
@@ -443,33 +445,43 @@ func (s *AgentTestSuite) TestStartStopUnknownService(t *C) {
 func (s *AgentTestSuite) TestLoadConfig(t *C) {
 	// Load a partial config to make sure LoadConfig() works in general but also
 	// when the config has missing options (which is normal).
-	config, err := agent.LoadConfig(sample + "/config001.json")
+	os.Remove(s.configFile)
+	test.CopyFile(sample+"/config001.json", s.configFile)
+	bytes, err := agent.LoadConfig()
 	t.Assert(err, IsNil)
+	got := &agent.Config{}
+	if err := json.Unmarshal(bytes, got); err != nil {
+		t.Fatal(err)
+	}
 	expect := &agent.Config{
 		AgentUuid:   "abc-123-def",
 		ApiHostname: agent.DEFAULT_API_HOSTNAME,
 		ApiKey:      "123",
-		Dir:         sample,
 	}
-	if same, diff := test.IsDeeply(config, expect); !same {
+	if same, diff := test.IsDeeply(got, expect); !same {
 		// @todo: if expect is not ptr, IsDeeply dies with "got ptr, expected struct"
+		test.Dump(got)
 		t.Error(diff)
-		t.Logf("got: %+v", config)
 	}
 
 	// Load a config with all options to make sure LoadConfig() hasn't missed any.
-	fullConfig, err := agent.LoadConfig(sample + "/full_config.json")
+	os.Remove(s.configFile)
+	test.CopyFile(sample+"/full_config.json", s.configFile)
+	bytes, err = agent.LoadConfig()
 	t.Assert(err, IsNil)
+	got = &agent.Config{}
+	if err := json.Unmarshal(bytes, got); err != nil {
+		t.Fatal(err)
+	}
 	expect = &agent.Config{
 		ApiHostname: "agent hostname",
 		ApiKey:      "api key",
 		AgentUuid:   "agent uuid",
 		PidFile:     "pid file",
-		Dir:         sample,
 	}
-	if same, diff := test.IsDeeply(fullConfig, expect); !same {
+	if same, diff := test.IsDeeply(got, expect); !same {
+		test.Dump(got)
 		t.Error(diff)
-		t.Logf("got: %+v", config)
 	}
 }
 
@@ -490,7 +502,6 @@ func (s *AgentTestSuite) TestGetConfig(t *C) {
 	}
 
 	expect := *s.config
-	expect.Dir = ""
 	expect.Links = nil
 
 	if ok, diff := test.IsDeeply(gotConfig, &expect); !ok {
@@ -526,7 +537,6 @@ func (s *AgentTestSuite) TestSetConfigApiKey(t *C) {
 	 */
 	expect := *s.config
 	expect.ApiKey = "101"
-	expect.Dir = ""
 	expect.Links = nil
 	if ok, diff := test.IsDeeply(gotConfig, &expect); !ok {
 		t.Logf("%+v", gotConfig)
@@ -542,7 +552,7 @@ func (s *AgentTestSuite) TestSetConfigApiKey(t *C) {
 	/**
 	 * Verify new agent config on disk.
 	 */
-	data, err = ioutil.ReadFile(s.tmpDir + "/agent.conf")
+	data, err = ioutil.ReadFile(s.configFile)
 	t.Assert(err, IsNil)
 	gotConfig = &agent.Config{}
 	if err := json.Unmarshal(data, gotConfig); err != nil {
@@ -589,7 +599,6 @@ func (s *AgentTestSuite) TestSetConfigApiHostname(t *C) {
 	 */
 	expect := *s.config
 	expect.ApiHostname = "http://localhost"
-	expect.Dir = ""
 	expect.Links = nil
 	if ok, diff := test.IsDeeply(gotConfig, &expect); !ok {
 		t.Logf("%+v", gotConfig)
@@ -605,7 +614,7 @@ func (s *AgentTestSuite) TestSetConfigApiHostname(t *C) {
 	/**
 	 * Verify new agent config on disk.
 	 */
-	data, err = ioutil.ReadFile(s.tmpDir + "/agent.conf")
+	data, err = ioutil.ReadFile(s.configFile)
 	t.Assert(err, IsNil)
 	gotConfig = &agent.Config{}
 	if err := json.Unmarshal(data, gotConfig); err != nil {
@@ -681,7 +690,6 @@ func (s *AgentTestSuite) TestSetConfigPidFile(t *C) {
 	 */
 	expect := *s.config
 	expect.PidFile = pidFile
-	expect.Dir = ""
 	expect.Links = nil
 	if ok, diff := test.IsDeeply(gotConfig, &expect); !ok {
 		t.Logf("%+v", gotConfig)
@@ -697,7 +705,7 @@ func (s *AgentTestSuite) TestSetConfigPidFile(t *C) {
 	/**
 	 * Verify new agent config on disk.
 	 */
-	data, err = ioutil.ReadFile(s.tmpDir + "/agent.conf")
+	data, err = ioutil.ReadFile(s.configFile)
 	t.Assert(err, IsNil)
 	gotConfig = &agent.Config{}
 	if err := json.Unmarshal(data, gotConfig); err != nil {

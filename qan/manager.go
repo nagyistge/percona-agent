@@ -137,7 +137,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 	m.status.UpdateRe("qan", "Running", cmd)
 	logger.Info("Running")
 
-	if err := m.WriteConfig(c, ""); err != nil {
+	if err := pct.Basedir.WriteConfig("qan", c); err != nil {
 		return err
 	}
 
@@ -150,6 +150,10 @@ func (m *Manager) Stop(cmd *proto.Cmd) error {
 	m.logger.InResponseTo(cmd)
 	defer m.logger.InResponseTo(nil)
 	m.logger.Info("Stopping")
+
+	if err := pct.Basedir.RemoveConfig("qan"); err != nil {
+		m.logger.Error(err)
+	}
 
 	m.sync.Stop()
 	m.sync.Wait()
@@ -322,10 +326,9 @@ func (m *Manager) rotateSlowLog(interval *Interval) error {
 	return nil
 }
 
-func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
-	m.configDir = configDir
+func (m *Manager) LoadConfig() ([]byte, error) {
 	config := &Config{}
-	if err := pct.ReadConfig(configDir+"/"+CONFIG_FILE, config); err != nil {
+	if err := pct.Basedir.ReadConfig("qan", config); err != nil {
 		return nil, err
 	}
 	// There are no defaults; the config file should have everything we need.
@@ -334,22 +337,4 @@ func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
 		return nil, err
 	}
 	return data, nil
-}
-
-func (m *Manager) WriteConfig(config interface{}, name string) error {
-	if m.configDir == "" {
-		return nil
-	}
-	file := m.configDir + "/" + CONFIG_FILE
-	m.logger.Info("Writing", file)
-	return pct.WriteConfig(file, config)
-}
-
-func (m *Manager) RemoveConfig(name string) error {
-	if m.configDir == "" {
-		return nil
-	}
-	file := m.configDir + "/" + CONFIG_FILE
-	m.logger.Info("Removing", file)
-	return pct.RemoveFile(file)
 }

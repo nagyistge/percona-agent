@@ -22,7 +22,6 @@ import (
 	"errors"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
-	"os"
 	"time"
 )
 
@@ -144,13 +143,10 @@ func (m *Manager) Sender() *Sender {
 	return m.sender
 }
 
-func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
-	m.configDir = configDir
+func (m *Manager) LoadConfig() ([]byte, error) {
 	config := &Config{}
-	if err := pct.ReadConfig(configDir+"/"+CONFIG_FILE, config); err != nil {
-		if !os.IsNotExist(err) {
-			return nil, err
-		}
+	if err := pct.Basedir.ReadConfig("data", config); err != nil {
+		return nil, err
 	}
 	if config.Dir == "" {
 		config.Dir = DEFAULT_DATA_DIR
@@ -163,24 +159,6 @@ func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
 		return nil, err
 	}
 	return data, nil
-}
-
-func (m *Manager) WriteConfig(config interface{}, name string) error {
-	if m.configDir == "" {
-		return nil
-	}
-	file := m.configDir + "/" + CONFIG_FILE
-	m.logger.Info("Writing", file)
-	return pct.WriteConfig(file, config)
-}
-
-func (m *Manager) RemoveConfig(name string) error {
-	if m.configDir == "" {
-		return nil
-	}
-	file := m.configDir + "/" + CONFIG_FILE
-	m.logger.Info("Removing", file)
-	return pct.RemoveFile(file)
 }
 
 func (m *Manager) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
@@ -224,7 +202,7 @@ func (m *Manager) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 	}
 
 	// Write the new, updated config.  If this fails, agent will use old config if restarted.
-	if err := m.WriteConfig(finalConfig, "data"); err != nil {
+	if err := pct.Basedir.WriteConfig("data", finalConfig); err != nil {
 		errs = append(errs, errors.New("data.WriteConfig:"+err.Error()))
 	}
 

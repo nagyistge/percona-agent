@@ -18,7 +18,6 @@
 package log
 
 const (
-	CONFIG_FILE       = "log.conf"
 	DEFAULT_LOG_FILE  = ""
 	DEFAULT_LOG_LEVEL = "info"
 )

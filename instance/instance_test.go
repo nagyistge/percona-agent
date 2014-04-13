@@ -34,6 +34,7 @@ import (
 func Test(t *testing.T) { TestingT(t) }
 
 type RepoTestSuite struct {
+	tmpDir    string
 	logChan   chan *proto.LogEntry
 	logger    *pct.Logger
 	configDir string
@@ -42,11 +43,17 @@ type RepoTestSuite struct {
 var _ = Suite(&RepoTestSuite{})
 
 func (s *RepoTestSuite) SetUpSuite(t *C) {
+	var err error
+	s.tmpDir, err = ioutil.TempDir("/tmp", "agent-test")
+	t.Assert(err, IsNil)
+
+	if err := pct.Basedir.Init(s.tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	s.configDir = pct.Basedir.Dir("config")
+
 	s.logChan = make(chan *proto.LogEntry, 10)
 	s.logger = pct.NewLogger(s.logChan, "pct-it-test")
-
-	dir, _ := ioutil.TempDir("/tmp", "pct-it-test")
-	s.configDir = dir
 }
 
 func (s *RepoTestSuite) SetUpTest(t *C) {
@@ -59,7 +66,7 @@ func (s *RepoTestSuite) SetUpTest(t *C) {
 }
 
 func (s *RepoTestSuite) TearDownSuite(t *C) {
-	if err := os.RemoveAll(s.configDir); err != nil {
+	if err := os.RemoveAll(s.tmpDir); err != nil {
 		t.Error(err)
 	}
 }

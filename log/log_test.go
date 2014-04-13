@@ -412,7 +412,9 @@ var _ = Suite(&ManagerTestSuite{})
 func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	var err error
 	s.tmpDir, err = ioutil.TempDir("/tmp", "agent-test")
-	if err != nil {
+	t.Assert(err, IsNil)
+
+	if err := pct.Basedir.Init(s.tmpDir); err != nil {
 		t.Fatal(err)
 	}
 
@@ -421,15 +423,13 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.connectChan = make(chan bool)
 	s.client = mock.NewWebsocketClient(nil, nil, s.sendChan, s.recvChan)
 	s.logChan = make(chan *proto.LogEntry, log.BUFFER_SIZE*3)
-	s.logFile = s.tmpDir + "log"
+	s.logFile = s.tmpDir + "/log"
 }
 
 func (s *ManagerTestSuite) TearDownSuite(t *C) {
-	os.Remove(s.logFile)
 	if err := os.RemoveAll(s.tmpDir); err != nil {
 		fmt.Println(err)
 	}
-
 }
 
 // --------------------------------------------------------------------------
@@ -448,9 +448,6 @@ func (s *ManagerTestSuite) TestLogService(t *C) {
 
 	relay := m.Relay()
 	t.Assert(relay, NotNil)
-
-	// Doesn't load config, just sets internal configDir.
-	m.LoadConfig(s.tmpDir)
 
 	logger := pct.NewLogger(relay.LogChan(), "log-svc-test")
 	logger.Info("i'm a log entry")
@@ -550,7 +547,7 @@ func (s *ManagerTestSuite) TestLogService(t *C) {
 	}
 
 	// Verify new log config on disk.
-	data, err := ioutil.ReadFile(s.tmpDir + "/log.conf")
+	data, err := ioutil.ReadFile(pct.Basedir.ConfigFile("log"))
 	t.Assert(err, IsNil)
 	gotConfig := &log.Config{}
 	if err := json.Unmarshal(data, gotConfig); err != nil {

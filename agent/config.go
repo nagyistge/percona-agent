@@ -17,16 +17,8 @@
 
 package agent
 
-import (
-	"github.com/percona/cloud-tools/pct"
-	"path/filepath"
-)
-
 const (
-	CONFIG_FILE          = "agent.conf"
-	DEFAULT_CONFIG_FILE  = "/etc/percona/" + CONFIG_FILE
 	DEFAULT_API_HOSTNAME = "cloud-api.percona.com"
-	DEFAULT_PID_FILE     = ""
 )
 
 type Config struct {
@@ -35,17 +27,4 @@ type Config struct {
 	ApiKey      string
 	PidFile     string
 	Links       map[string]string `json:",omitempty"`
-	Dir         string            `json:"-"`
-}
-
-func LoadConfig(file string) (*Config, error) {
-	config := &Config{}
-	if err := pct.ReadConfig(file, config); err != nil {
-		return nil, err
-	}
-	config.Dir = filepath.Dir(file)
-	if config.ApiHostname == "" {
-		config.ApiHostname = DEFAULT_API_HOSTNAME
-	}
-	return config, nil
 }

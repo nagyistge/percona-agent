@@ -19,7 +19,6 @@ package pct
 
 import (
 	"os"
-	"path/filepath"
 )
 
 func FileSize(fileName string) (int64, error) {
@@ -46,14 +45,12 @@ func SameFile(file1, file2 string) (bool, error) {
 	return os.SameFile(stat1, stat2), nil
 }
 
-func MakeDir(file string) error {
-	dir := filepath.Dir(file)
-	if err := os.Mkdir(dir, 0755); err != nil {
-		if !os.IsExist(err) {
-			return err
-		}
+func MakeDir(dir string) error {
+	err := os.Mkdir(dir, 0755)
+	if os.IsExist(err) {
+		return nil
 	}
-	return nil
+	return err
 }
 
 func RemoveFile(file string) error {

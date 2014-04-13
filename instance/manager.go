@@ -88,16 +88,8 @@ func (m *Manager) Status() map[string]string {
 	return m.status.All()
 }
 
-func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
+func (m *Manager) LoadConfig() ([]byte, error) {
 	return nil, nil
-}
-
-func (m *Manager) WriteConfig(config interface{}, name string) error {
-	return nil
-}
-
-func (m *Manager) RemoveConfig(name string) error {
-	return nil
 }
 
 func (m *Manager) Repo() *Repo {
