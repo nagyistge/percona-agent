@@ -168,7 +168,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	}
 }
 
-func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
+func (m *Manager) LoadConfig() ([]byte, error) {
 	return nil, nil
 }
 

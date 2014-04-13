@@ -270,6 +270,12 @@ func LoadConfig() ([]byte, error) {
 	if config.ApiHostname == "" {
 		config.ApiHostname = DEFAULT_API_HOSTNAME
 	}
+	if config.ApiKey == "" {
+		return nil, errors.New("Missing ApiKey")
+	}
+	if config.AgentUuid == "" {
+		return nil, errors.New("Missing AgentUuid")
+	}
 	data, err := json.Marshal(config)
 	if err != nil {
 		return nil, err

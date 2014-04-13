@@ -88,7 +88,7 @@ func (m *Manager) Status() map[string]string {
 	return m.status.All()
 }
 
-func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
+func (m *Manager) LoadConfig() ([]byte, error) {
 	return nil, nil
 }
 

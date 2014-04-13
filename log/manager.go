@@ -152,7 +152,7 @@ func (m *Manager) Relay() *Relay {
 	return m.relay
 }
 
-func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
+func (m *Manager) LoadConfig() ([]byte, error) {
 	config := &Config{}
 	if err := pct.Basedir.ReadConfig("log", config); err != nil {
 		return nil, err

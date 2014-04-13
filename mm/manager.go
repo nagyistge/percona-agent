@@ -197,7 +197,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	}
 }
 
-func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
+func (m *Manager) LoadConfig() ([]byte, error) {
 	// mm is a proxy manager so it doesn't have its own config.  To get a monitor config:
 	// [Service:mm Cmd:GetConfig: Data:mm.Config[Name:..., Type:...]]
 	return nil, nil

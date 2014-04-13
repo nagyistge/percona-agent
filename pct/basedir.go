@@ -19,17 +19,17 @@ package pct
 
 import (
 	"encoding/json"
-	"errors"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 )
 
-// Relative to Basedir.path:
 const (
-	CONFIG_DIR         = "config"
-	DATA_DIR           = "data"
+	DEFAULT_BASEDIR    = "/var/lib/percona-agent"
 	CONFIG_FILE_SUFFIX = ".conf"
+	// Relative to Basedir.path:
+	CONFIG_DIR = "config"
+	DATA_DIR   = "data"
 )
 
 type basedir struct {
@@ -48,7 +48,9 @@ func (b *basedir) Init(path string) error {
 	}
 
 	if !FileExists(b.path) {
-		return errors.New(path + "does not exist")
+		if err := MakeDir(b.path); err != nil {
+			return err
+		}
 	}
 
 	b.configDir = filepath.Join(b.path, CONFIG_DIR)
@@ -62,6 +64,18 @@ func (b *basedir) Init(path string) error {
 	}
 
 	return nil
+}
+
+func (b *basedir) Path() string {
+	return b.path
+}
+
+func (b *basedir) Dir(service string) string {
+	return filepath.Join(b.configDir, service)
+}
+
+func (b *basedir) ConfigFile(service string) string {
+	return filepath.Join(b.configDir, service+CONFIG_FILE_SUFFIX)
 }
 
 func (b *basedir) ReadConfig(service string, v interface{}) error {

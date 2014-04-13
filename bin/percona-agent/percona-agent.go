@@ -20,6 +20,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/agent"
@@ -39,7 +40,6 @@ import (
 	golog "log"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -47,50 +47,58 @@ const (
 	VERSION = "1.0.0"
 )
 
+var (
+	flagPing    bool
+	flagBasedir string
+	flagVersion bool
+)
+
 func init() {
 	golog.SetFlags(golog.Ldate | golog.Ltime | golog.Lmicroseconds | golog.Lshortfile)
+
+	flag.BoolVar(&flagPing, "ping", false, "Ping API")
+	flag.StringVar(&flagBasedir, "basedir", pct.DEFAULT_BASEDIR, "Set basedir")
+	flag.BoolVar(&flagVersion, "version", false, "Stop percona-agent")
+	flag.Parse()
 }
 
 func main() {
 	t0 := time.Now()
 
+	if flagVersion {
+		fmt.Printf("percona-agent %s\n", VERSION)
+		os.Exit(0)
+	}
+
+	if err := pct.Basedir.Init(flagBasedir); err != nil {
+		golog.Fatal(err)
+	}
+
 	/**
 	 * Agent config (require API key and agent UUID)
 	 */
 
-	cmd, arg := ParseCmdLine()
-
-	// Check that agent config file exists.
-	configFile := agent.DEFAULT_CONFIG_FILE // default
-	if cmd == "start" && arg != "" {
-		// percona-agent <config file>
-		configFile = arg
-	}
-	if !pct.FileExists(configFile) {
-		golog.Fatalf("Agent config file %s does not exist", configFile)
+	if !pct.FileExists(pct.Basedir.ConfigFile("agent")) {
+		golog.Fatalf("Agent config file %s does not exist", pct.Basedir.ConfigFile("agent"))
 	}
 
-	agentConfig, err := agent.LoadConfig(configFile)
+	bytes, err := agent.LoadConfig()
 	if err != nil {
-		golog.Panicf("Error loading "+configFile+": ", err)
+		golog.Panicf("Error loading "+pct.Basedir.ConfigFile("agent")+": ", err)
+	}
+	agentConfig := &agent.Config{}
+	if err := json.Unmarshal(bytes, agentConfig); err != nil {
+		golog.Panicf("Error parsing "+pct.Basedir.ConfigFile("agent")+": ", err)
 	}
 
-	// Make sure agent config has everything we need.
-	if valid, missing := CheckConfig(agentConfig, configFile); !valid {
-		golog.Printf("%s is missing %d settings: %s", configFile, len(missing), strings.Join(missing, ", "))
-		os.Exit(-1)
-	}
-
-	// All service config files should be in same dir as agent config file.
-	configDir := filepath.Dir(configFile)
-
+	golog.Println("ApiHostname: " + agentConfig.ApiHostname)
 	golog.Println("AgentUuid: " + agentConfig.AgentUuid)
 
 	/**
 	 * Ping and exit, maybe.
 	 */
 
-	if cmd == "ping" {
+	if flagPing {
 		t0 := time.Now()
 		ok, resp := pct.PingAPI(agentConfig.ApiHostname, agentConfig.ApiKey)
 		d := time.Now().Sub(t0)
@@ -136,7 +144,7 @@ func main() {
 		golog.Fatalln(err)
 	}
 	logManager := log.NewManager(logClient, logChan)
-	logConfig, err := logManager.LoadConfig(configDir)
+	logConfig, err := logManager.LoadConfig()
 	if err := logManager.Start(&proto.Cmd{}, logConfig); err != nil {
 		golog.Panicf("Error starting log service: %s", err)
 	}
@@ -147,7 +155,7 @@ func main() {
 
 	itManager := instance.NewManager(
 		pct.NewLogger(logChan, "instance-manager"),
-		configDir,
+		pct.Basedir.Dir("config"),
 	)
 	if err := itManager.Start(nil, nil); err != nil {
 		golog.Panicf("Error starting instance manager: ", err)
@@ -168,7 +176,7 @@ func main() {
 		hostname,
 		dataClient,
 	)
-	dataConfig, err := dataManager.LoadConfig(configDir)
+	dataConfig, err := dataManager.LoadConfig()
 	if err := dataManager.Start(&proto.Cmd{}, dataConfig); err != nil {
 		golog.Panicf("Error starting data service: %s", err)
 	}
@@ -191,11 +199,11 @@ func main() {
 		dataManager.Spooler(),
 		itManager.Repo(),
 	)
-	mmConfig, err := mmManager.LoadConfig(configDir)
+	mmConfig, err := mmManager.LoadConfig()
 	if err := mmManager.Start(&proto.Cmd{}, mmConfig); err != nil {
 		golog.Panicf("Error starting mm service: ", err)
 	}
-	StartMonitors("mm", configDir, configDir+"/mm-*.conf", mmManager)
+	StartMonitors("mm", filepath.Join(pct.Basedir.Dir("config"), "/mm-*.conf"), mmManager)
 
 	sysconfigManager := sysconfig.NewManager(
 		pct.NewLogger(logChan, "sysconfig"),
@@ -204,11 +212,11 @@ func main() {
 		dataManager.Spooler(),
 		itManager.Repo(),
 	)
-	sysconfigConfig, err := sysconfigManager.LoadConfig(configDir)
+	sysconfigConfig, err := sysconfigManager.LoadConfig()
 	if err := sysconfigManager.Start(&proto.Cmd{}, sysconfigConfig); err != nil {
 		golog.Panicf("Error starting sysconfig service: ", err)
 	}
-	StartMonitors("sysconfig", configDir, configDir+"/sysconfig-*.conf", sysconfigManager)
+	StartMonitors("sysconfig", filepath.Join(pct.Basedir.Dir("config"), "/sysconfig-*.conf"), sysconfigManager)
 
 	/**
 	 * Query Analytics
@@ -223,7 +231,7 @@ func main() {
 		dataManager.Spooler(),
 		itManager.Repo(),
 	)
-	qanConfig, err := qanManager.LoadConfig(configDir)
+	qanConfig, err := qanManager.LoadConfig()
 	if qanConfig != nil {
 		if err := qanManager.Start(&proto.Cmd{}, qanConfig); err != nil {
 			golog.Panicf("Error starting qan service: %s", err)
@@ -264,63 +272,6 @@ func main() {
 	golog.Printf("stopReason=%s, update=%t\n", stopReason, update)
 }
 
-func ParseCmdLine() (cmd, arg string) {
-	usage := "Usage: percona-agent command [arg]\n\n" +
-		"Commands:\n" +
-		"  help                   Print help and exit\n" +
-		"  ping    [API hostname] Ping API, requires API key\n" +
-		"  start   [config file]  Start agent\n" +
-		"  version                Print version and exist\n\n" +
-		"Defaults:\n" +
-		"  API hostname  " + agent.DEFAULT_CONFIG_FILE + "\n" +
-		"  config file   " + agent.DEFAULT_API_HOSTNAME + "\n"
-	if len(os.Args) < 2 {
-		fmt.Println(usage)
-		os.Exit(1)
-	}
-	cmd = os.Args[1]
-	switch cmd {
-	case "version":
-		fmt.Printf("percona-agent %s\n", VERSION)
-		os.Exit(0)
-	case "help":
-		fmt.Println(usage)
-		os.Exit(0)
-	case "ping", "start":
-		if len(os.Args) > 3 {
-			fmt.Println(cmd + " takes only one arg")
-			fmt.Println(usage)
-			os.Exit(1)
-		} else if len(os.Args) == 3 {
-			arg = os.Args[2]
-		}
-	default:
-		fmt.Println("Unknown command: " + cmd)
-		fmt.Println(usage)
-		os.Exit(-1)
-	}
-	return cmd, arg
-}
-
-func CheckConfig(config *agent.Config, configFile string) (bool, []string) {
-	isValid := true
-	missing := []string{}
-
-	if config.ApiHostname == "" {
-		isValid = false
-		missing = append(missing, "ApiHostname")
-	}
-	if config.ApiKey == "" {
-		isValid = false
-		missing = append(missing, "ApiKey")
-	}
-	if config.AgentUuid == "" {
-		isValid = false
-		missing = append(missing, "AgentUuid")
-	}
-	return isValid, missing
-}
-
 func ConnectAPI(agentConfig *agent.Config) (*pct.API, error) {
 	golog.Println("ApiHostname: " + agentConfig.ApiHostname)
 	golog.Println("ApiKey: " + agentConfig.ApiKey)
@@ -342,7 +293,7 @@ func ConnectAPI(agentConfig *agent.Config) (*pct.API, error) {
 	return nil, errors.New("Timeout connecting to " + agentConfig.ApiHostname)
 }
 
-func StartMonitors(service, configDir, glob string, manager pct.ServiceManager) error {
+func StartMonitors(service, glob string, manager pct.ServiceManager) error {
 	configFiles, err := filepath.Glob(glob)
 	if err != nil {
 		golog.Fatal(err)
