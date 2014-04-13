@@ -372,6 +372,7 @@ func (s *SenderTestSuite) TestSendData(t *C) {
 type ManagerTestSuite struct {
 	logChan  chan *proto.LogEntry
 	logger   *pct.Logger
+	tmpDir   string
 	dataDir  string
 	dataChan chan []byte
 	respChan chan interface{}
@@ -381,6 +382,15 @@ type ManagerTestSuite struct {
 var _ = Suite(&ManagerTestSuite{})
 
 func (s *ManagerTestSuite) SetUpSuite(t *C) {
+	var err error
+	s.tmpDir, err = ioutil.TempDir("/tmp", "agent-test")
+	t.Assert(err, IsNil)
+
+	if err := pct.Basedir.Init(s.tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	s.dataDir = pct.Basedir.Dir("data")
+
 	s.logChan = make(chan *proto.LogEntry, 10)
 	s.logger = pct.NewLogger(s.logChan, "data_test")
 
@@ -393,7 +403,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 }
 
 func (s *ManagerTestSuite) TearDownSuite(t *C) {
-	if err := os.RemoveAll(s.dataDir); err != nil {
+	if err := os.RemoveAll(s.tmpDir); err != nil {
 		t.Error(err)
 	}
 }
@@ -450,9 +460,6 @@ func (s *ManagerTestSuite) TestSetConfig(t *C) {
 	m := data.NewManager(s.logger, "localhost", s.client)
 	t.Assert(m, NotNil)
 
-	// Doesn't load any config, just sets configDir internally.
-	m.LoadConfig(s.dataDir)
-
 	config := &data.Config{
 		Dir:          s.dataDir,
 		Encoding:     "",
@@ -499,7 +506,7 @@ func (s *ManagerTestSuite) TestSetConfig(t *C) {
 	}
 
 	// Verify new config on disk.
-	content, err := ioutil.ReadFile(s.dataDir + "/data.conf")
+	content, err := ioutil.ReadFile(pct.Basedir.ConfigFile("data"))
 	t.Assert(err, IsNil)
 	gotConfig := &data.Config{}
 	if err := json.Unmarshal(content, gotConfig); err != nil {
@@ -542,7 +549,7 @@ func (s *ManagerTestSuite) TestSetConfig(t *C) {
 	}
 
 	// Verify new config on disk.
-	content, err = ioutil.ReadFile(s.dataDir + "/data.conf")
+	content, err = ioutil.ReadFile(pct.Basedir.ConfigFile("data"))
 	t.Assert(err, IsNil)
 	gotConfig = &data.Config{}
 	if err := json.Unmarshal(content, gotConfig); err != nil {

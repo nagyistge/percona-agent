@@ -66,10 +66,6 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 
 	m.status.Update("log", "Starting")
 
-	if err := pct.MakeDir(c.File); err != nil {
-		return err
-	}
-
 	m.relay = NewRelay(m.client, m.logChan, c.File, level, c.Offline)
 	go m.relay.Run()
 	m.config = c
