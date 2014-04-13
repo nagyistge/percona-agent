@@ -25,6 +25,7 @@ import (
 	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/mm"
 	"github.com/percona/cloud-tools/mm/mysql"
+	"github.com/percona/cloud-tools/mm/system"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/test"
 	"github.com/percona/cloud-tools/test/mock"
@@ -323,18 +324,19 @@ func (s *AggregatorTestSuite) TestBadMetric(t *C) {
 /////////////////////////////////////////////////////////////////////////////
 
 type ManagerTestSuite struct {
-	logChan     chan *proto.LogEntry
-	logger      *pct.Logger
-	mockMonitor *mock.MmMonitor
-	factory     *mock.MmMonitorFactory
-	tickChan    chan time.Time
-	clock       *mock.Clock
-	dataChan    chan interface{}
-	spool       data.Spooler
-	traceChan   chan string
-	readyChan   chan bool
-	configDir   string
-	im          *instance.Repo
+	logChan       chan *proto.LogEntry
+	logger        *pct.Logger
+	tickChan      chan time.Time
+	clock         *mock.Clock
+	dataChan      chan interface{}
+	spool         data.Spooler
+	traceChan     chan string
+	readyChan     chan bool
+	configDir     string
+	im            *instance.Repo
+	mysqlMonitor  *mock.MmMonitor
+	systemMonitor *mock.MmMonitor
+	factory       *mock.MmMonitorFactory
 }
 
 var _ = Suite(&ManagerTestSuite{})
@@ -342,14 +344,8 @@ var _ = Suite(&ManagerTestSuite{})
 func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.logChan = make(chan *proto.LogEntry, 10)
 	s.logger = pct.NewLogger(s.logChan, "mm-manager-test")
-
-	s.mockMonitor = mock.NewMmMonitor()
-	s.factory = mock.NewMmMonitorFactory(map[string]mm.Monitor{"mysql-1": s.mockMonitor})
-
 	s.tickChan = make(chan time.Time)
-
 	s.traceChan = make(chan string, 10)
-
 	s.dataChan = make(chan interface{}, 1)
 	s.spool = mock.NewSpooler(s.dataChan)
 
@@ -359,13 +355,22 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.configDir = tmpdir
 
 	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im"), s.configDir)
-
 	data, err := json.Marshal(&proto.MySQLInstance{
 		Name: "db1",
 		DSN:  "user:host@tcp:(127.0.0.1:3306)",
 	})
 	t.Assert(err, IsNil)
 	s.im.Add("mysql", 1, data, false)
+	data, err = json.Marshal(&proto.ServerInstance{Hostname: "host1"})
+	t.Assert(err, IsNil)
+	s.im.Add("server", 1, data, false)
+
+	s.mysqlMonitor = mock.NewMmMonitor()
+	s.systemMonitor = mock.NewMmMonitor()
+	s.factory = mock.NewMmMonitorFactory(map[string]mm.Monitor{
+		"mysql-1":  s.mysqlMonitor,
+		"server-1": s.systemMonitor,
+	})
 }
 
 func (s *ManagerTestSuite) SetUpTest(t *C) {
@@ -387,7 +392,6 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 	 * but it doesn't actually start or stop.  Its main work is done
 	 * in Handle, starting and stopping monitors (tested later).
 	 */
-
 	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
 	if m == nil {
 		t.Fatal("Make new mm.Manager")
@@ -409,9 +413,7 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 		// No monitor-specific config
 	}
 	data, err := json.Marshal(config)
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Assert(err, IsNil)
 
 	// Then it sends a StartService cmd with the config data.
 	cmd := &proto.Cmd{
@@ -461,11 +463,8 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
  * - sneaked in:) unknown cmd test
  */
 func (s *ManagerTestSuite) TestStartStopStartMonitor(t *C) {
-
 	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
-	if m == nil {
-		t.Fatal("Make new mm.Manager")
-	}
+	t.Assert(m, NotNil)
 
 	// mm is a proxy manager so it doesn't have its own config file,
 	// but agent still calls LoadConfig() because this also tells
@@ -492,9 +491,7 @@ func (s *ManagerTestSuite) TestStartStopStartMonitor(t *C) {
 		},
 	}
 	mmConfigData, err := json.Marshal(mmConfig)
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Assert(err, IsNil)
 
 	/**
 	 * Start the monitor.
@@ -508,7 +505,7 @@ func (s *ManagerTestSuite) TestStartStopStartMonitor(t *C) {
 
 	// If this were a real monitor, it would decode and set its own config.
 	// The mock monitor doesn't have any real config type, so we set it manually.
-	s.mockMonitor.SetConfig(mmConfig)
+	s.mysqlMonitor.SetConfig(mmConfig)
 
 	// The agent calls mm.Handle() with the cmd (for logging and status) and the config data.
 	reply := m.Handle(cmd)
@@ -517,7 +514,7 @@ func (s *ManagerTestSuite) TestStartStopStartMonitor(t *C) {
 
 	// The monitor should be running.  The mock monitor returns "Running" if
 	// Start() has been called; else it returns "Stopped".
-	status := s.mockMonitor.Status()
+	status := s.mysqlMonitor.Status()
 	if status["monitor"] != "Running" {
 		t.Error("Monitor running")
 	}
@@ -536,7 +533,7 @@ func (s *ManagerTestSuite) TestStartStopStartMonitor(t *C) {
 	err = json.Unmarshal(data, gotConfig)
 	t.Check(err, IsNil)
 	if same, diff := test.IsDeeply(gotConfig, mmConfig); !same {
-		t.Logf("%+v", gotConfig)
+		test.Dump(gotConfig)
 		t.Error(diff)
 	}
 
@@ -556,7 +553,7 @@ func (s *ManagerTestSuite) TestStartStopStartMonitor(t *C) {
 	t.Assert(reply, NotNil)
 	t.Check(reply.Error, Equals, "")
 
-	status = s.mockMonitor.Status()
+	status = s.mysqlMonitor.Status()
 	if status["monitor"] != "Stopped" {
 		t.Error("Monitor stopped")
 	}
@@ -585,7 +582,7 @@ func (s *ManagerTestSuite) TestStartStopStartMonitor(t *C) {
 
 	// If this were a real monitor, it would decode and set its own config.
 	// The mock monitor doesn't have any real config type, so we set it manually.
-	s.mockMonitor.SetConfig(mmConfig)
+	s.mysqlMonitor.SetConfig(mmConfig)
 
 	// The agent calls mm.Handle() with the cmd (for logging and status) and the config data.
 	reply = m.Handle(cmd)
@@ -594,7 +591,7 @@ func (s *ManagerTestSuite) TestStartStopStartMonitor(t *C) {
 
 	// The monitor should be running.  The mock monitor returns "Running" if
 	// Start() has been called; else it returns "Stopped".
-	status = s.mockMonitor.Status()
+	status = s.mysqlMonitor.Status()
 	if status["monitor"] != "Running" {
 		t.Error("Monitor running")
 	}
@@ -632,12 +629,94 @@ func (s *ManagerTestSuite) TestStartStopStartMonitor(t *C) {
 	// Unknown cmd causes error.
 	reply = m.Handle(cmd)
 	t.Assert(reply, NotNil)
-	if reply.Error == "" {
-		t.Fatalf("Unknown Cmd to Handle() causes error")
-	}
+	t.Check(reply.Error, Not(Equals), "")
+}
+
+func (s *ManagerTestSuite) TestGetConfig(t *C) {
+	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
+	t.Assert(m, NotNil)
+
+	v, err := m.LoadConfig(s.configDir)
+	t.Check(v, IsNil)
+	t.Check(err, IsNil)
 
 	/**
-	 * Clean up
+	 * Start a mock MySQL monitor.
 	 */
-	m.Stop(cmd)
+	mysqlMonitorConfig := &mysql.Config{
+		Config: mm.Config{
+			ServiceInstance: proto.ServiceInstance{
+				Service:    "mysql",
+				InstanceId: 1,
+			},
+			Collect: 1,
+			Report:  60,
+		},
+		Status: map[string]string{
+			"threads_connected": "gauge",
+			"threads_running":   "gauge",
+		},
+	}
+	mysqlData, err := json.Marshal(mysqlMonitorConfig)
+	t.Assert(err, IsNil)
+	cmd := &proto.Cmd{
+		User:    "daniel",
+		Service: "mm",
+		Cmd:     "StartService",
+		Data:    mysqlData,
+	}
+	s.mysqlMonitor.SetConfig(mysqlMonitorConfig)
+	reply := m.Handle(cmd)
+	t.Assert(reply, NotNil)
+	t.Assert(reply.Error, Equals, "")
+
+	/**
+	 * Start a mock system monitor.
+	 */
+	systemMonitorConfig := &system.Config{
+		Config: mm.Config{
+			ServiceInstance: proto.ServiceInstance{
+				Service:    "server",
+				InstanceId: 1,
+			},
+			Collect: 10,
+			Report:  60,
+		},
+	}
+	systemData, err := json.Marshal(systemMonitorConfig)
+	t.Assert(err, IsNil)
+	cmd = &proto.Cmd{
+		User:    "daniel",
+		Service: "mm",
+		Cmd:     "StartService",
+		Data:    systemData,
+	}
+	s.systemMonitor.SetConfig(systemMonitorConfig)
+	reply = m.Handle(cmd)
+	t.Assert(reply, NotNil)
+	t.Assert(reply.Error, Equals, "")
+
+	/**
+	 * GetConfig from mm which should return all monitors' configs.
+	 */
+	cmd = &proto.Cmd{
+		Cmd:     "GetConfig",
+		Service: "mm",
+	}
+	reply = m.Handle(cmd)
+	t.Assert(reply, NotNil)
+	t.Assert(reply.Error, Equals, "")
+
+	configs := make(map[string]string)
+	if err := json.Unmarshal(reply.Data, &configs); err != nil {
+		t.Fatal(err)
+	}
+	expect := map[string]string{
+		"mm-mysql-1":  string(mysqlData),
+		"mm-server-1": string(systemData),
+	}
+	if same, diff := test.IsDeeply(configs, expect); !same {
+		test.Dump(configs)
+		t.Error(diff)
+	}
 }

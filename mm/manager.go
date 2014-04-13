@@ -96,32 +96,15 @@ func (m *Manager) Stop(cmd *proto.Cmd) error {
 // @goroutine[0]
 func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	m.status.UpdateRe("mm", "Handling", cmd)
-	var err error
-
-	defer func() {
-		if err != nil {
-			m.logger.Error(err)
-		}
-		m.status.Update("mm", "Ready")
-	}()
-
-	/**
-	 * cmd.Data is a monitor-specific config, e.g. mysql.Config.  But monitor-specific
-	 * configs embed mm.Config, so get that first to determine the monitor's name and
-	 * type which is all we need to start it.  The monitor itself will decode cmd.Data
-	 * into it's specific config, which we fetch back later by calling monitor.Config()
-	 * to save to disk.
-	 */
-	mm := &Config{}
-	if err = json.Unmarshal(cmd.Data, mm); err != nil {
-		return cmd.Reply(nil, errors.New("mm.Handle:json.Unmarshal:"+err.Error()))
-	}
-
-	// The real name of the internal service, e.g. mm-mysql-1:
-	name := "mm-" + m.im.Name(mm.Service, mm.InstanceId)
+	defer m.status.Update("mm", "Ready")
 
 	switch cmd.Cmd {
 	case "StartService":
+		mm, name, err := m.getMonitorConfig(cmd)
+		if err != nil {
+			return cmd.Reply(nil, err)
+		}
+
 		m.status.UpdateRe("mm", "Starting "+name, cmd)
 		m.logger.Info("Start", name, cmd)
 
@@ -132,8 +115,8 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		}
 
 		// Create the monitor based on its type.
-		var monitor Monitor
-		if monitor, err = m.factory.Make(mm.Service, mm.InstanceId, cmd.Data); err != nil {
+		monitor, err := m.factory.Make(mm.Service, mm.InstanceId, cmd.Data)
+		if err != nil {
 			return cmd.Reply(nil, errors.New("Factory: "+err.Error()))
 		}
 
@@ -164,36 +147,54 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		}
 
 		// Start the monitor.
-		if err = monitor.Start(tickChan, a.collectionChan); err != nil {
+		if err := monitor.Start(tickChan, a.collectionChan); err != nil {
 			return cmd.Reply(nil, errors.New("Start "+name+": "+err.Error()))
 		}
 		m.monitors[name] = monitor
 
 		// Save the monitor-specific config to disk so agent starts on restart.
 		monitorConfig := monitor.Config()
-		if err = m.WriteConfig(monitorConfig, name); err != nil {
+		if err := m.WriteConfig(monitorConfig, name); err != nil {
 			return cmd.Reply(nil, errors.New("Write "+name+" config:"+err.Error()))
 		}
+
+		return cmd.Reply(nil) // success
 	case "StopService":
+		_, name, err := m.getMonitorConfig(cmd)
+		if err != nil {
+			return cmd.Reply(nil, err)
+		}
 		m.status.UpdateRe("mm", "Stopping "+name, cmd)
 		m.logger.Info("Stop", name, cmd)
-		if monitor, ok := m.monitors[name]; ok {
-			m.clock.Remove(monitor.TickChan())
-			if err = monitor.Stop(); err != nil {
-				return cmd.Reply(nil, errors.New("Stop "+name+": "+err.Error()))
-			}
-			if err := m.RemoveConfig(name); err != nil {
-				return cmd.Reply(nil, errors.New("Remove "+name+": "+err.Error()))
-			}
-			delete(m.monitors, name)
-		} else {
+		monitor, ok := m.monitors[name]
+		if !ok {
 			return cmd.Reply(nil, errors.New("Unknown monitor: "+name))
 		}
+		if err := monitor.Stop(); err != nil {
+			return cmd.Reply(nil, errors.New("Stop "+name+": "+err.Error()))
+		}
+		m.clock.Remove(monitor.TickChan())
+		if err := m.RemoveConfig(name); err != nil {
+			return cmd.Reply(nil, errors.New("Remove "+name+": "+err.Error()))
+		}
+		delete(m.monitors, name)
+		return cmd.Reply(nil) // success
+	case "GetConfig":
+		configs := make(map[string]string)
+		for name, monitor := range m.monitors {
+			config := monitor.Config()
+			bytes, err := json.Marshal(config)
+			if err != nil {
+				m.logger.Error(err)
+			}
+			configs[name] = string(bytes)
+		}
+		return cmd.Reply(configs)
 	default:
+		// SetConfig does not work by design.  To re-configure a monitor,
+		// stop it then start it again with the new config.
 		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
-
-	return cmd.Reply(nil) // success
 }
 
 func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
@@ -225,4 +226,25 @@ func (m *Manager) RemoveConfig(name string) error {
 // @goroutine[1]
 func (m *Manager) Status() map[string]string {
 	return m.status.All()
+}
+
+func (m *Manager) getMonitorConfig(cmd *proto.Cmd) (*Config, string, error) {
+	/**
+	 * cmd.Data is a monitor-specific config, e.g. mysql.Config.  But monitor-specific
+	 * configs embed mm.Config, so get that first to determine the monitor's name and
+	 * type which is all we need to start it.  The monitor itself will decode cmd.Data
+	 * into it's specific config, which we fetch back later by calling monitor.Config()
+	 * to save to disk.
+	 */
+	mm := &Config{}
+	if cmd.Data != nil {
+		if err := json.Unmarshal(cmd.Data, mm); err != nil {
+			return nil, "", errors.New("mm.getMonitorConfig:json.Unmarshal:" + err.Error())
+		}
+	}
+
+	// The real name of the internal service, e.g. mm-mysql-1:
+	name := "mm-" + m.im.Name(mm.Service, mm.InstanceId)
+
+	return mm, name, nil
 }
