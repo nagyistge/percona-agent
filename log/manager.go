@@ -22,7 +22,6 @@ import (
 	"errors"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
-	"os"
 	"time"
 )
 
@@ -123,7 +122,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		}
 
 		// Write the new, updated config.  If this fails, agent will use old config if restarted.
-		if err := m.WriteConfig(m.config, "log"); err != nil {
+		if err := pct.Basedir.WriteConfig("log", m.config); err != nil {
 			errs = append(errs, errors.New("log.WriteConfig:"+err.Error()))
 		}
 
@@ -154,12 +153,9 @@ func (m *Manager) Relay() *Relay {
 }
 
 func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
-	m.configDir = configDir
 	config := &Config{}
-	if err := pct.ReadConfig(configDir+"/"+CONFIG_FILE, config); err != nil {
-		if !os.IsNotExist(err) {
-			return nil, err
-		}
+	if err := pct.Basedir.ReadConfig("log", config); err != nil {
+		return nil, err
 	}
 	if config.Level == "" {
 		config.Level = DEFAULT_LOG_LEVEL
@@ -173,27 +169,4 @@ func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
 		return nil, err
 	}
 	return data, nil
-}
-
-func (m *Manager) WriteConfig(config interface{}, name string) error {
-	// Write a monitor config.
-	if m.configDir == "" {
-		return nil
-	}
-	file := m.configDir + "/" + CONFIG_FILE
-	if m.logger != nil {
-		m.logger.Info("Writing", file)
-	}
-	return pct.WriteConfig(file, config)
-}
-
-func (m *Manager) RemoveConfig(name string) error {
-	if m.configDir == "" {
-		return nil
-	}
-	file := m.configDir + "/" + CONFIG_FILE
-	if m.logger != nil {
-		m.logger.Info("Removing", file)
-	}
-	return pct.RemoveFile(file)
 }

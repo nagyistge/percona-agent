@@ -262,22 +262,19 @@ func (agent *Agent) stop(cmd *proto.Cmd) {
 	agent.status.UpdateRe("agent", "Stopped", cmd)
 }
 
-func (agent *Agent) WriteConfig(config interface{}, name string) error {
-	if agent.config.Dir == "" {
-		golog.Panic("agent:WriteConfig:agent.config.Dir is not set")
+func LoadConfig() ([]byte, error) {
+	config := &Config{}
+	if err := pct.Basedir.ReadConfig("agent", config); err != nil {
+		return nil, err
 	}
-	file := agent.config.Dir + "/" + CONFIG_FILE
-	agent.logger.Info("Writing", file)
-	return pct.WriteConfig(file, config)
-}
-
-func (agent *Agent) RemoveConfig(name string) error {
-	if agent.configDir == "" {
-		golog.Panic("agent:RemoveConfig:agent.config.Dir is not set")
+	if config.ApiHostname == "" {
+		config.ApiHostname = DEFAULT_API_HOSTNAME
 	}
-	file := agent.config.Dir + "/" + CONFIG_FILE
-	agent.logger.Info("Removing", file)
-	return pct.RemoveFile(file)
+	data, err := json.Marshal(config)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
 // --------------------------------------------------------------------------
@@ -495,7 +492,7 @@ func (agent *Agent) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 	}
 
 	// Write the new, updated config.  If this fails, agent will use old config if restarted.
-	if err := agent.WriteConfig(finalConfig, "agent"); err != nil {
+	if err := pct.Basedir.WriteConfig("agent", finalConfig); err != nil {
 		errs = append(errs, errors.New("agent.WriteConfig:"+err.Error()))
 	}
 

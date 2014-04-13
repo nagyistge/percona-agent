@@ -130,9 +130,7 @@ func (r *Repo) Add(service string, id uint, data []byte, writeToDisk bool) error
 	}
 
 	if writeToDisk {
-		file := r.configDir + "/" + name + ".conf"
-		r.logger.Info("Writing", file)
-		if err := pct.WriteConfig(file, info); err != nil {
+		if err := pct.Basedir.WriteConfig(name, info); err != nil {
 			return err
 		}
 	}

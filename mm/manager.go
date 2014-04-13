@@ -154,7 +154,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 		// Save the monitor-specific config to disk so agent starts on restart.
 		monitorConfig := monitor.Config()
-		if err := m.WriteConfig(monitorConfig, name); err != nil {
+		if err := pct.Basedir.WriteConfig(name, monitorConfig); err != nil {
 			return cmd.Reply(nil, errors.New("Write "+name+" config:"+err.Error()))
 		}
 
@@ -174,7 +174,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 			return cmd.Reply(nil, errors.New("Stop "+name+": "+err.Error()))
 		}
 		m.clock.Remove(monitor.TickChan())
-		if err := m.RemoveConfig(name); err != nil {
+		if err := pct.Basedir.RemoveConfig(name); err != nil {
 			return cmd.Reply(nil, errors.New("Remove "+name+": "+err.Error()))
 		}
 		delete(m.monitors, name)
@@ -200,27 +200,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
 	// mm is a proxy manager so it doesn't have its own config.  To get a monitor config:
 	// [Service:mm Cmd:GetConfig: Data:mm.Config[Name:..., Type:...]]
-	m.configDir = configDir
 	return nil, nil
-}
-
-func (m *Manager) WriteConfig(config interface{}, name string) error {
-	// Write a monitor config.
-	if m.configDir == "" {
-		return nil
-	}
-	file := m.configDir + "/" + name + ".conf"
-	m.logger.Info("Writing", file)
-	return pct.WriteConfig(file, config)
-}
-
-func (m *Manager) RemoveConfig(name string) error {
-	if m.configDir == "" {
-		return nil
-	}
-	file := m.configDir + "/" + name + ".conf"
-	m.logger.Info("Removing", file)
-	return pct.RemoveFile(file)
 }
 
 // @goroutine[1]

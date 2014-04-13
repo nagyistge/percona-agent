@@ -27,8 +27,6 @@ type ServiceManager interface {
 	Stop(cmd *proto.Cmd) error
 	Handle(cmd *proto.Cmd) *proto.Reply
 	LoadConfig(configDir string) ([]byte, error)
-	WriteConfig(config interface{}, name string) error
-	RemoveConfig(name string) error
 	// @goroutine[1]
 	Status() map[string]string
 }

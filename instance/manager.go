@@ -92,14 +92,6 @@ func (m *Manager) LoadConfig(configDir string) ([]byte, error) {
 	return nil, nil
 }
 
-func (m *Manager) WriteConfig(config interface{}, name string) error {
-	return nil
-}
-
-func (m *Manager) RemoveConfig(name string) error {
-	return nil
-}
-
 func (m *Manager) Repo() *Repo {
 	return m.repo
 }
