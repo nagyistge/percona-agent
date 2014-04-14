@@ -18,6 +18,8 @@
 package qan
 
 import (
+	"fmt"
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
 	"os"
 	"time"
@@ -48,14 +50,23 @@ type IntervalIterFactory interface {
 }
 
 type FileIntervalIterFactory struct {
+	logChan chan *proto.LogEntry
+}
+
+func NewFileIntervalIterFactory(logChan chan *proto.LogEntry) *FileIntervalIterFactory {
+	f := &FileIntervalIterFactory{
+		logChan: logChan,
+	}
+	return f
 }
 
 func (f *FileIntervalIterFactory) Make(filename FilenameFunc, tickChan chan time.Time) IntervalIter {
-	return NewFileIntervalIter(filename, tickChan)
+	return NewFileIntervalIter(pct.NewLogger(f.logChan, "qan-interval"), filename, tickChan)
 }
 
 // Implements IntervalIter:
 type FileIntervalIter struct {
+	logger   *pct.Logger
 	filename FilenameFunc
 	tickChan chan time.Time
 	// --
@@ -64,8 +75,9 @@ type FileIntervalIter struct {
 	running      bool
 }
 
-func NewFileIntervalIter(filename FilenameFunc, tickChan chan time.Time) *FileIntervalIter {
+func NewFileIntervalIter(logger *pct.Logger, filename FilenameFunc, tickChan chan time.Time) *FileIntervalIter {
 	iter := &FileIntervalIter{
+		logger:   logger,
 		filename: filename,
 		tickChan: tickChan,
 		// --
@@ -106,9 +118,12 @@ func (i *FileIntervalIter) run() {
 	for {
 		select {
 		case now := <-i.tickChan:
+			i.logger.Debug("run:tick")
+
 			// Get the MySQL slow log file name at each interval because it can change.
 			curFile, err := i.filename()
 			if err != nil {
+				i.logger.Warn(err)
 				cur = new(Interval)
 				continue
 			}
@@ -116,9 +131,11 @@ func (i *FileIntervalIter) run() {
 			// Get the current size of the MySQL slow log.
 			curSize, err := pct.FileSize(curFile)
 			if err != nil {
+				i.logger.Warn(err)
 				cur = new(Interval)
 				continue
 			}
+			i.logger.Debug(fmt.Sprintf("run:%s:%d", curFile, curSize))
 
 			// File changed if prev file not same as current file.
 			// @todo: Normally this only changes when QAN manager rotates slow log

@@ -18,6 +18,8 @@
 package qan
 
 import (
+//	"encoding/json"
+//	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	mysqlLog "github.com/percona/percona-go-mysql/log"
 	"sort"
@@ -43,11 +45,20 @@ func (a ByQueryTime) Len() int      { return len(a) }
 func (a ByQueryTime) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a ByQueryTime) Less(i, j int) bool {
 	// descending order
+	/*
+	fmt.Printf("i=%d j=%d\n", i, j)
+	fmt.Printf("%+v\n", a[i])
+	fmt.Printf("%+v\n", a[j])
+	*/
+	// todo: will panic if struct is incorrect
 	return a[i].Metrics.TimeMetrics["Query_time"].Sum > a[j].Metrics.TimeMetrics["Query_time"].Sum
 }
 
 func MakeReport(it proto.ServiceInstance, interval *Interval, result *Result, config *Config) *Report {
-
+	/*
+	bytes, _ := json.MarshalIndent(result.Classes, "", "  ")
+	fmt.Println(string(bytes))
+*/
 	sort.Sort(ByQueryTime(result.Classes))
 
 	report := &Report{

@@ -226,7 +226,7 @@ func main() {
 		pct.NewLogger(logChan, "qan"),
 		&mysql.RealConnectionFactory{},
 		clock,
-		&qan.FileIntervalIterFactory{},
+		qan.NewFileIntervalIterFactory(logChan),
 		&qan.SlowLogWorkerFactory{},
 		dataManager.Spooler(),
 		itManager.Repo(),

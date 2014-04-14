@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/percona/cloud-protocol/proto"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -80,7 +81,7 @@ func (a *API) Connect(hostname, apiKey, agentUuid string) error {
 	}
 
 	// Get entry links: GET <API hostname>/
-	entryLinks, err := a.getLinks(schema + hostname)
+	entryLinks, err := a.getLinks(apiKey, schema+hostname)
 	if err != nil {
 		return err
 	}
@@ -89,7 +90,7 @@ func (a *API) Connect(hostname, apiKey, agentUuid string) error {
 	}
 
 	// Get agent links: <API hostname>/agents/
-	agentLinks, err := a.getLinks(entryLinks["agents"] + "/" + agentUuid)
+	agentLinks, err := a.getLinks(apiKey, entryLinks["agents"]+"/"+agentUuid)
 	if err != nil {
 		return err
 	}
@@ -117,13 +118,13 @@ func (a *API) checkLinks(links map[string]string, req ...string) error {
 	return nil
 }
 
-func (a *API) getLinks(url string) (map[string]string, error) {
+func (a *API) getLinks(apiKey, url string) (map[string]string, error) {
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Add("X-Percona-API-Key", a.apiKey)
+	req.Header.Add("X-Percona-API-Key", apiKey)
 
 	// todo: timeout
 	resp, err := client.Do(req)
@@ -144,12 +145,12 @@ func (a *API) getLinks(url string) (map[string]string, error) {
 		return nil, fmt.Errorf("OK response from ", url, "but no content")
 	}
 
-	links := make(map[string]string)
+	links := &proto.Links{}
 	if err := json.Unmarshal(body, links); err != nil {
 		return nil, fmt.Errorf("GET %s error: json.Unmarshal: %s: %s", url, err, string(body))
 	}
 
-	return links, nil
+	return links.Links, nil
 }
 
 func (a *API) AgentLink(resource string) string {

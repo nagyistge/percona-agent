@@ -120,6 +120,10 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 
 	// Make an iterator for the slow log file at interval ticks.
 	filenameFunc := func() (string, error) {
+		if err := m.mysqlConn.Connect(1); err != nil {
+			return "", err
+		}
+		defer m.mysqlConn.Close()
 		file := m.mysqlConn.GetGlobalVarString("slow_query_log_file")
 		return file, nil
 	}
@@ -221,20 +225,27 @@ func (m *Manager) run() {
 
 	m.status.Update("qan-log-parser", "Waiting for first interval")
 	intervalChan := m.iter.IntervalChan()
+	intervalNo := 0
 
 	for {
 		runningWorkers := len(m.workers)
-		m.status.Update("qan-log-parser", fmt.Sprintf("Ready (%d of %d running)", runningWorkers, m.config.MaxWorkers))
+		m.logger.Debug("run:wait")
+		m.status.Update("qan-log-parser", fmt.Sprintf("Idle (%d of %d running)", runningWorkers, m.config.MaxWorkers))
 
 		select {
 		case interval := <-intervalChan:
+			intervalNo++
+			m.logger.Debug(fmt.Sprintf("run:interval:%d", intervalNo))
+
 			runningWorkers := len(m.workers)
+			m.logger.Debug(fmt.Sprintf("%d workers running", runningWorkers))
 			if runningWorkers >= m.config.MaxWorkers {
 				m.logger.Warn("All workers busy, interval dropped")
 				continue
 			}
 
 			if interval.EndOffset >= m.config.MaxSlowLogSize {
+				m.logger.Info("Rotating slow log")
 				if err := m.rotateSlowLog(interval); err != nil {
 					m.logger.Error(err)
 				}
@@ -250,8 +261,12 @@ func (m *Manager) run() {
 			}
 			w := m.workerFactory.Make()
 			m.workers[w] = true
-			go func() {
-				defer func() { m.workerDoneChan <- w }()
+			go func(n int) {
+				m.logger.Debug(fmt.Sprintf("run:interval:%d:start", n))
+				defer func() {
+					m.logger.Debug(fmt.Sprintf("run:interval:%d:done", n))
+					m.workerDoneChan <- w
+				}()
 				t0 := time.Now()
 				result, err := w.Run(job)
 				t1 := time.Now()
@@ -265,8 +280,9 @@ func (m *Manager) run() {
 				}
 				result.RunTime = t1.Sub(t0).Seconds()
 				m.spool.Write("qan", MakeReport(m.config.ServiceInstance, interval, result, m.config))
-			}()
+			}(intervalNo)
 		case worker := <-m.workerDoneChan:
+			m.logger.Debug("run:worker:done")
 			m.status.Update("qan-log-parser", "Reaping worker")
 			delete(m.workers, worker)
 
@@ -284,6 +300,7 @@ func (m *Manager) run() {
 				}
 			}
 		case <-m.sync.StopChan:
+			m.logger.Debug("run:stop")
 			m.sync.Graceful()
 			return
 		}
