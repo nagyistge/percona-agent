@@ -283,8 +283,10 @@ func (c *WebsocketClient) RecvChan() chan *proto.Cmd {
 }
 
 func (c *WebsocketClient) Send(data interface{}, timeout uint) error {
-	c.logger.Debug("Send:call")
-	defer c.logger.Debug("Send:return")
+	// Do not do this, it causes a loop:
+	// c.logger.Debug("Send:call")
+	// defer c.logger.Debug("Send:return")
+
 	/**
 	 * I cannot provoke an EOF error on websocket.Send(), only Receive().
 	 * Perhaps EOF errors are only reported on recv?  This only affects
