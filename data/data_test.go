@@ -331,7 +331,7 @@ func (s *SenderTestSuite) TestSendData(t *C) {
 
 	sender := data.NewSender(s.logger, s.client)
 
-	err = sender.Start(spool, s.tickerChan)
+	err = sender.Start(spool, s.tickerChan, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +348,7 @@ func (s *SenderTestSuite) TestSendData(t *C) {
 		t.Error(diff)
 	}
 
-	// todo: check that data file not removed before response received
+	t.Check(len(spool.DataOut), Equals, 1)
 
 	select {
 	case s.respChan <- &proto.Response{Code: 200}:
@@ -360,6 +360,44 @@ func (s *SenderTestSuite) TestSendData(t *C) {
 	// which reports itself as "data-client: ok".
 	status := sender.Status()
 	t.Check(status["data-client"], Equals, "ok")
+
+	err = sender.Stop()
+	t.Assert(err, IsNil)
+
+	t.Check(len(spool.DataOut), Equals, 0)
+}
+
+func (s *SenderTestSuite) TestBlackhole(t *C) {
+	spool := mock.NewSpooler(nil)
+
+	slow001, err := ioutil.ReadFile(sample + "slow001.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	spool.FilesOut = []string{"slow001.json"}
+	spool.DataOut = map[string][]byte{"slow001.json": slow001}
+
+	sender := data.NewSender(s.logger, s.client)
+
+	err = sender.Start(spool, s.tickerChan, true) // <- true = enable blackhole
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s.tickerChan <- time.Now()
+
+	data := test.WaitBytes(s.dataChan)
+	if len(data) != 0 {
+		t.Errorf("Data sent despite blackhole; got %+v", data)
+	}
+
+	select {
+	case s.respChan <- &proto.Response{Code: 200}:
+		// Should not recv response because no data was sent.
+		t.Error("Sender receives prot.Response after sending data")
+	case <-time.After(500 * time.Millisecond):
+	}
 
 	err = sender.Stop()
 	t.Assert(err, IsNil)
@@ -411,11 +449,10 @@ func (s *ManagerTestSuite) TearDownSuite(t *C) {
 // --------------------------------------------------------------------------
 
 func (s *ManagerTestSuite) TestGetConfig(t *C) {
-	m := data.NewManager(s.logger, "localhost", s.client)
+	m := data.NewManager(s.logger, s.dataDir, "localhost", s.client)
 	t.Assert(m, NotNil)
 
 	config := &data.Config{
-		Dir:          s.dataDir,
 		Encoding:     "",
 		SendInterval: 1,
 	}
@@ -457,11 +494,10 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 }
 
 func (s *ManagerTestSuite) TestSetConfig(t *C) {
-	m := data.NewManager(s.logger, "localhost", s.client)
+	m := data.NewManager(s.logger, s.dataDir, "localhost", s.client)
 	t.Assert(m, NotNil)
 
 	config := &data.Config{
-		Dir:          s.dataDir,
 		Encoding:     "",
 		SendInterval: 1,
 	}
@@ -563,10 +599,9 @@ func (s *ManagerTestSuite) TestSetConfig(t *C) {
 
 func (s *ManagerTestSuite) TestStatus(t *C) {
 	// Start a data manager.
-	m := data.NewManager(s.logger, "localhost", s.client)
+	m := data.NewManager(s.logger, s.dataDir, "localhost", s.client)
 	t.Assert(m, NotNil)
 	config := &data.Config{
-		Dir:          s.dataDir,
 		Encoding:     "gzip",
 		SendInterval: 1,
 	}

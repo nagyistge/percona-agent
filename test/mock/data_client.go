@@ -3,6 +3,7 @@ package mock
 import (
 	"code.google.com/p/go.net/websocket"
 	"github.com/percona/cloud-protocol/proto"
+	"reflect"
 )
 
 type DataClient struct {
@@ -75,9 +76,11 @@ func (c *DataClient) SendBytes(data []byte) error {
 }
 
 // Second, agent calls this to recv response from API to previous send.
-func (c *DataClient) Recv(data interface{}, timeout uint) error {
+func (c *DataClient) Recv(resp interface{}, timeout uint) error {
 	select {
-	case data = <-c.respChan:
+	case r := <-c.respChan:
+		respVal := reflect.ValueOf(resp).Elem()
+		respVal.Set(reflect.ValueOf(r).Elem())
 	case err := <-c.RecvError:
 		return err
 	}
