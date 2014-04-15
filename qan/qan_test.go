@@ -480,6 +480,9 @@ func (s *ManagerTestSuite) TestStartServiceFast(c *gocheck.C) {
 	}
 	c.Assert(t.IsZero(), gocheck.Not(gocheck.Equals), true)
 
+	status := m.Status()
+	c.Check(status["qan-next-interval"], gocheck.Equals, "180.0s")
+
 	// Stop QAN.
 	cmd = &proto.Cmd{
 		User:      "daniel",

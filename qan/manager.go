@@ -65,7 +65,7 @@ func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock 
 		// --
 		workers:     make(map[Worker]bool),
 		workersMux:  new(sync.RWMutex),
-		status:      pct.NewStatus([]string{"qan", "qan-log-parser", "qan-interval"}),
+		status:      pct.NewStatus([]string{"qan", "qan-log-parser", "qan-next-interval"}),
 		sync:        pct.NewSyncChan(),
 		oldSlowLogs: make(map[string]int),
 	}
@@ -197,7 +197,7 @@ func (m *Manager) Status() map[string]string {
 	}
 	// XXX m.tickChan is not guarded
 	if m.tickChan != nil {
-		m.status.Update("qan-interval", fmt.Sprintf("%f", m.clock.ETA(m.tickChan)))
+		m.status.Update("qan-next-interval", fmt.Sprintf("%.1fs", m.clock.ETA(m.tickChan)))
 	}
 	return m.status.Merge(workerStatus)
 }
