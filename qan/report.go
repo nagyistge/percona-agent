@@ -42,12 +42,12 @@ type ByQueryTime []*mysqlLog.QueryClass
 func (a ByQueryTime) Len() int      { return len(a) }
 func (a ByQueryTime) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a ByQueryTime) Less(i, j int) bool {
+	// todo: will panic if struct is incorrect
 	// descending order
 	return a[i].Metrics.TimeMetrics["Query_time"].Sum > a[j].Metrics.TimeMetrics["Query_time"].Sum
 }
 
 func MakeReport(it proto.ServiceInstance, interval *Interval, result *Result, config *Config) *Report {
-
 	sort.Sort(ByQueryTime(result.Classes))
 
 	report := &Report{

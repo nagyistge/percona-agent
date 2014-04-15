@@ -27,6 +27,7 @@ import (
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/ticker"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -45,6 +46,7 @@ type Manager struct {
 	mysqlConn      mysql.Connector
 	iter           IntervalIter
 	workers        map[Worker]bool
+	workersMux     *sync.RWMutex
 	workerDoneChan chan Worker
 	status         *pct.Status
 	sync           *pct.SyncChan
@@ -62,7 +64,8 @@ func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock 
 		im:            im,
 		// --
 		workers:     make(map[Worker]bool),
-		status:      pct.NewStatus([]string{"qan", "qan-log-parser"}),
+		workersMux:  new(sync.RWMutex),
+		status:      pct.NewStatus([]string{"qan", "qan-log-parser", "qan-next-interval"}),
 		sync:        pct.NewSyncChan(),
 		oldSlowLogs: make(map[string]int),
 	}
@@ -120,6 +123,10 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 
 	// Make an iterator for the slow log file at interval ticks.
 	filenameFunc := func() (string, error) {
+		if err := m.mysqlConn.Connect(1); err != nil {
+			return "", err
+		}
+		defer m.mysqlConn.Close()
 		file := m.mysqlConn.GetGlobalVarString("slow_query_log_file")
 		return file, nil
 	}
@@ -182,15 +189,17 @@ func (m *Manager) Stop(cmd *proto.Cmd) error {
 }
 
 func (m *Manager) Status() map[string]string {
-	return m.status.All()
-}
-
-func (m *Manager) IsRunning() bool {
-	// We're running if we have a config.
-	if m.config != nil {
-		return true
+	workerStatus := make(map[string]string)
+	m.workersMux.RLock()
+	defer m.workersMux.RUnlock()
+	for w := range m.workers {
+		workerStatus[w.Name()] = w.Status()
 	}
-	return false // not running
+	// XXX m.tickChan is not guarded
+	if m.tickChan != nil {
+		m.status.Update("qan-next-interval", fmt.Sprintf("%.1fs", m.clock.ETA(m.tickChan)))
+	}
+	return m.status.Merge(workerStatus)
 }
 
 func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
@@ -219,22 +228,44 @@ func (m *Manager) run() {
 		m.sync.Done()
 	}()
 
-	m.status.Update("qan-log-parser", "Waiting for first interval")
+	m.status.Update("qan-log-parser", "Starting")
+
+	// If time to next interval is more than 1 minute, then start first
+	// interval now.  This means first interval will have partial results.
+	t := m.clock.ETA(m.tickChan)
+	if t > 60 {
+		began := ticker.Began(m.config.Interval, uint(time.Now().UTC().Unix()))
+		m.logger.Info("First interval began at", began)
+		m.tickChan <- began
+	}
+
 	intervalChan := m.iter.IntervalChan()
+	intervalNo := 0
 
 	for {
+		m.logger.Debug("run:wait")
+
+		m.workersMux.RLock()
 		runningWorkers := len(m.workers)
+		m.workersMux.RUnlock()
 		m.status.Update("qan-log-parser", fmt.Sprintf("Ready (%d of %d running)", runningWorkers, m.config.MaxWorkers))
 
 		select {
 		case interval := <-intervalChan:
+			intervalNo++
+			m.logger.Debug(fmt.Sprintf("run:interval:%d", intervalNo))
+
+			m.workersMux.RLock()
 			runningWorkers := len(m.workers)
+			m.workersMux.RUnlock()
+			m.logger.Debug(fmt.Sprintf("%d workers running", runningWorkers))
 			if runningWorkers >= m.config.MaxWorkers {
 				m.logger.Warn("All workers busy, interval dropped")
 				continue
 			}
 
 			if interval.EndOffset >= m.config.MaxSlowLogSize {
+				m.logger.Info("Rotating slow log")
 				if err := m.rotateSlowLog(interval); err != nil {
 					m.logger.Error(err)
 				}
@@ -242,16 +273,25 @@ func (m *Manager) run() {
 
 			m.status.Update("qan-log-parser", "Running worker")
 			job := &Job{
+				Id:             fmt.Sprintf("%d", intervalNo),
 				SlowLogFile:    interval.Filename,
 				StartOffset:    interval.StartOffset,
 				EndOffset:      interval.EndOffset,
 				RunTime:        time.Duration(m.config.WorkerRunTime) * time.Second,
 				ExampleQueries: m.config.ExampleQueries,
 			}
-			w := m.workerFactory.Make()
+			w := m.workerFactory.Make(fmt.Sprintf("qan-worker-%d", intervalNo))
+
+			m.workersMux.Lock()
 			m.workers[w] = true
-			go func() {
-				defer func() { m.workerDoneChan <- w }()
+			m.workersMux.Unlock()
+
+			go func(n int) {
+				m.logger.Debug(fmt.Sprintf("run:interval:%d:start", n))
+				defer func() {
+					m.logger.Debug(fmt.Sprintf("run:interval:%d:done", n))
+					m.workerDoneChan <- w
+				}()
 				t0 := time.Now()
 				result, err := w.Run(job)
 				t1 := time.Now()
@@ -264,11 +304,17 @@ func (m *Manager) run() {
 					return
 				}
 				result.RunTime = t1.Sub(t0).Seconds()
-				m.spool.Write("qan", MakeReport(m.config.ServiceInstance, interval, result, m.config))
-			}()
+
+				report := MakeReport(m.config.ServiceInstance, interval, result, m.config)
+				m.spool.Write("qan", report)
+			}(intervalNo)
 		case worker := <-m.workerDoneChan:
+			m.logger.Debug("run:worker:done")
 			m.status.Update("qan-log-parser", "Reaping worker")
+
+			m.workersMux.Lock()
 			delete(m.workers, worker)
+			m.workersMux.Unlock()
 
 			for file, cnt := range m.oldSlowLogs {
 				if cnt == 1 {
@@ -284,6 +330,7 @@ func (m *Manager) run() {
 				}
 			}
 		case <-m.sync.StopChan:
+			m.logger.Debug("run:stop")
 			m.sync.Graceful()
 			return
 		}
@@ -292,6 +339,9 @@ func (m *Manager) run() {
 
 // @goroutine[1]
 func (m *Manager) rotateSlowLog(interval *Interval) error {
+	m.logger.Debug("rotateSlowLog:call")
+	defer m.logger.Debug("rotateSlowLog:return")
+
 	if err := m.mysqlConn.Connect(2); err != nil {
 		m.logger.Warn(err)
 		return err
@@ -320,7 +370,9 @@ func (m *Manager) rotateSlowLog(interval *Interval) error {
 
 	// Save old slow log and remove later if configured to do so.
 	if m.config.RemoveOldSlowLogs {
+		m.workersMux.RLock()
 		m.oldSlowLogs[newSlowLogFile] = len(m.workers) + 1
+		m.workersMux.RUnlock()
 	}
 
 	return nil

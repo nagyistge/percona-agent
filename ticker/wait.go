@@ -78,3 +78,7 @@ func (wt *WaitTicker) Add(c chan time.Time) {
 func (wt *WaitTicker) Remove(c chan time.Time) {
 	wt.watcher = nil
 }
+
+func (wt *WaitTicker) ETA(now int64) float64 {
+	return 0 // todo
+}

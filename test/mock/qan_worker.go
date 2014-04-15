@@ -16,7 +16,7 @@ func NewQanWorkerFactory(workers []*QanWorker) qan.WorkerFactory {
 	return f
 }
 
-func (f *QanWorkerFactory) Make() qan.Worker {
+func (f *QanWorkerFactory) Make(name string) qan.Worker {
 	if f.workerNo > len(f.workers) {
 		return f.workers[f.workerNo-1]
 	}
@@ -26,6 +26,7 @@ func (f *QanWorkerFactory) Make() qan.Worker {
 }
 
 type QanWorker struct {
+	name     string
 	stopChan chan bool
 	result   *qan.Result
 	err      error
@@ -34,14 +35,23 @@ type QanWorker struct {
 	Job         *qan.Job
 }
 
-func NewQanWorker(stopChan chan bool, result *qan.Result, err error) *QanWorker {
+func NewQanWorker(name string, stopChan chan bool, result *qan.Result, err error) *QanWorker {
 	w := &QanWorker{
+		name:        name,
 		stopChan:    stopChan,
 		result:      result,
 		err:         err,
 		runningChan: make(chan bool, 1),
 	}
 	return w
+}
+
+func (w *QanWorker) Name() string {
+	return w.name
+}
+
+func (w *QanWorker) Status() string {
+	return "ok"
 }
 
 func (w *QanWorker) Run(job *qan.Job) (*qan.Result, error) {

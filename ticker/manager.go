@@ -19,6 +19,7 @@ package ticker
 
 import (
 	"log"
+	"math"
 	"sync"
 	"time"
 )
@@ -26,6 +27,7 @@ import (
 type Manager interface {
 	Add(c chan time.Time, atInterval uint, sync bool)
 	Remove(c chan time.Time)
+	ETA(c chan time.Time) float64
 }
 
 type Clock struct {
@@ -98,4 +100,33 @@ func (clock *Clock) Remove(c chan time.Time) {
 	if _, ok := clock.waitTicker[c]; ok {
 		delete(clock.waitTicker, c)
 	}
+}
+
+func (clock *Clock) ETA(c chan time.Time) float64 {
+	clock.watcherMux.Lock()
+	defer clock.watcherMux.Unlock()
+	ticker, ok := clock.watcher[c]
+	if !ok {
+		return 0
+	}
+	return ticker.ETA(clock.nowFunc())
+}
+
+// Return time when interval began for current time.
+func Began(interval uint, now uint) time.Time {
+	i := float64(interval)
+	t := float64(now)
+	d := uint(i - math.Mod(t, i))
+	if d != interval {
+		/**
+		 * now is not an interval, so it's after the interval's start.
+		 * E.g. if i=60 and now (t)=130, then t falls between intervals:
+		 *   120
+		 *   130  =t
+		 *   180  d=50
+		 * Interval began at 120, so decrease t by 10: i - d.
+		 */
+		now = now - (interval - d)
+	}
+	return time.Unix(int64(now), 0).UTC()
 }

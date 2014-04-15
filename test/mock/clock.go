@@ -7,6 +7,7 @@ import (
 type Clock struct {
 	Added   []uint
 	Removed []chan time.Time
+	Eta     float64
 }
 
 func NewClock() *Clock {
@@ -23,4 +24,8 @@ func (m *Clock) Add(c chan time.Time, t uint, sync bool) {
 
 func (m *Clock) Remove(c chan time.Time) {
 	m.Removed = append(m.Removed, c)
+}
+
+func (m *Clock) ETA(c chan time.Time) float64 {
+	return m.Eta
 }

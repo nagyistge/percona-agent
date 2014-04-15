@@ -42,3 +42,7 @@ func (t *Ticker) Add(c chan time.Time) {
 
 func (t *Ticker) Remove(c chan time.Time) {
 }
+
+func (t *Ticker) ETA(now int64) float64 {
+	return 0.1
+}
