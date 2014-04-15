@@ -22,6 +22,7 @@ import (
 	"errors"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
+	"os"
 	"time"
 )
 
@@ -151,7 +152,9 @@ func (m *Manager) Relay() *Relay {
 func (m *Manager) LoadConfig() ([]byte, error) {
 	config := &Config{}
 	if err := pct.Basedir.ReadConfig("log", config); err != nil {
-		return nil, err
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
 	}
 	if config.Level == "" {
 		config.Level = DEFAULT_LOG_LEVEL

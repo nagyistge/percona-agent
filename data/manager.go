@@ -22,6 +22,7 @@ import (
 	"errors"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
+	"os"
 	"time"
 )
 
@@ -147,13 +148,17 @@ func (m *Manager) Sender() *Sender {
 func (m *Manager) LoadConfig() ([]byte, error) {
 	config := &Config{}
 	if err := pct.Basedir.ReadConfig("data", config); err != nil {
-		return nil, err
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
 	}
 	if config.Encoding != "" && config.Encoding != "gzip" {
 		return nil, errors.New("Invalid data encoding: " + config.Encoding)
 	}
-	if config.SendInterval <= 0 {
+	if config.SendInterval < 0 {
 		return nil, errors.New("SendInterval must be > 0")
+	} else if config.SendInterval == 0 {
+		config.SendInterval = DEFAULT_DATA_SEND_INTERVAL
 	}
 	data, err := json.Marshal(config)
 	if err != nil {

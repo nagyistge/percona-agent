@@ -23,7 +23,6 @@ const (
 )
 
 type Config struct {
-	Dir          string
 	Encoding     string
 	SendInterval int
 	Blackhole    bool

@@ -384,6 +384,9 @@ func (m *Manager) rotateSlowLog(interval *Interval) error {
 func (m *Manager) LoadConfig() ([]byte, error) {
 	config := &Config{}
 	if err := pct.Basedir.ReadConfig("qan", config); err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	if config.Start == nil || len(config.Start) == 0 {
