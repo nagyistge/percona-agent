@@ -220,6 +220,22 @@ func (s *ManagerTestSuite) TestAddWatcher(t *gocheck.C) {
 	m.Remove(c)
 }
 
+func (s *ManagerTestSuite) TestBegan(t *gocheck.C) {
+	var began time.Time
+
+	// between intervals
+	began = ticker.Began(300, 1388577750)
+	t.Check(began.Unix(), gocheck.Equals, int64(1388577600))
+
+	// 1s before next interval
+	began = ticker.Began(300, 1388577899)
+	t.Check(began.Unix(), gocheck.Equals, int64(1388577600))
+
+	// at interval
+	began = ticker.Began(300, 1388577900)
+	t.Check(began.Unix(), gocheck.Equals, int64(1388577900))
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // WaitTicker test suite
 /////////////////////////////////////////////////////////////////////////////

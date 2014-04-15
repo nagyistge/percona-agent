@@ -65,7 +65,7 @@ func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock 
 		// --
 		workers:     make(map[Worker]bool),
 		workersMux:  new(sync.RWMutex),
-		status:      pct.NewStatus([]string{"qan", "qan-log-parser"}),
+		status:      pct.NewStatus([]string{"qan", "qan-log-parser", "qan-interval"}),
 		sync:        pct.NewSyncChan(),
 		oldSlowLogs: make(map[string]int),
 	}
@@ -195,6 +195,10 @@ func (m *Manager) Status() map[string]string {
 	for w := range m.workers {
 		workerStatus[w.Name()] = w.Status()
 	}
+	// XXX m.tickChan is not guarded
+	if m.tickChan != nil {
+		m.status.Update("qan-interval", fmt.Sprintf("%f", m.clock.ETA(m.tickChan)))
+	}
 	return m.status.Merge(workerStatus)
 }
 
@@ -224,7 +228,17 @@ func (m *Manager) run() {
 		m.sync.Done()
 	}()
 
-	m.status.Update("qan-log-parser", "Waiting for first interval")
+	m.status.Update("qan-log-parser", "Starting")
+
+	// If time to next interval is more than 1 minute, then start first
+	// interval now.  This means first interval will have partial results.
+	t := m.clock.ETA(m.tickChan)
+	if t > 60 {
+		began := ticker.Began(m.config.Interval, uint(time.Now().UTC().Unix()))
+		m.logger.Info("First interval began at", began)
+		m.tickChan <- began
+	}
+
 	intervalChan := m.iter.IntervalChan()
 	intervalNo := 0
 

@@ -220,7 +220,8 @@ func (s *ManagerTestSuite) SetUpSuite(c *gocheck.C) {
 	s.intervalChan = make(chan *qan.Interval, 1)
 	s.iter = mock.NewMockIntervalIter(s.intervalChan)
 	s.iterFactory = &mock.IntervalIterFactory{
-		Iters: []qan.IntervalIter{s.iter},
+		Iters:     []qan.IntervalIter{s.iter},
+		TickChans: make(map[qan.IntervalIter]chan time.Time),
 	}
 
 	s.dataChan = make(chan interface{}, 2)
@@ -253,6 +254,10 @@ func (s *ManagerTestSuite) SetUpTest(c *gocheck.C) {
 	}
 	s.nullmysql.Reset()
 	s.clock = mock.NewClock()
+
+	s.iterFactory.Iters = []qan.IntervalIter{s.iter}
+	s.iterFactory.TickChans = make(map[qan.IntervalIter]chan time.Time)
+	s.iterFactory.Reset()
 }
 
 func (s *ManagerTestSuite) TearDownTest(c *gocheck.C) {
@@ -423,6 +428,68 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	if len(s.clock.Removed) != 1 {
 		c.Error("Removed tickChan")
 	}
+}
+
+func (s *ManagerTestSuite) TestStartServiceFast(c *gocheck.C) {
+	/**
+	 * Like TestStartService but we simulate the next tick being 3m away
+	 * (mock.clock.Eta = 180) so that run() sends the first tick on the
+	 * tick chan, causing the first interval to start immediately.
+	 */
+
+	s.clock.Eta = 180
+	defer func() { s.clock.Eta = 0 }()
+
+	m := qan.NewManager(s.logger, &mysql.RealConnectionFactory{}, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im)
+	c.Assert(m, gocheck.NotNil)
+
+	config := &qan.Config{
+		ServiceInstance: s.mysqlInstance,
+		Start:           []mysql.Query{},
+		Stop:            []mysql.Query{},
+		Interval:        300,        // 5 min
+		MaxSlowLogSize:  1073741824, // 1 GiB
+		MaxWorkers:      1,
+		WorkerRunTime:   600, // 10 min
+	}
+	now := time.Now()
+	qanConfig, _ := json.Marshal(config)
+	cmd := &proto.Cmd{
+		User:      "daniel",
+		Ts:        now,
+		AgentUuid: "123",
+		Service:   "",
+		Cmd:       "StartService",
+		Data:      qanConfig,
+	}
+	err := m.Start(cmd, cmd.Data)
+	c.Assert(err, gocheck.IsNil)
+	test.WaitStatus(1, m, "qan-log-parser", "Starting")
+	tickChan := s.iterFactory.TickChans[s.iter]
+	c.Assert(tickChan, gocheck.NotNil)
+
+	// run() should prime the tickChan with the 1st tick immediately.  This makes
+	// the interval iter start the interval immediately.  Then run() continues
+	// waiting for the iter to send an interval which happens when the real ticker
+	// (the clock) sends the 2nd tick which is synced to the interval, thus ending
+	// the first interval started by run() and starting the 2nd interval as normal.
+	var t time.Time
+	select {
+	case t = <-tickChan:
+	case <-time.After(1 * time.Second):
+	}
+	c.Assert(t.IsZero(), gocheck.Not(gocheck.Equals), true)
+
+	// Stop QAN.
+	cmd = &proto.Cmd{
+		User:      "daniel",
+		Ts:        now,
+		AgentUuid: "123",
+		Service:   "",
+		Cmd:       "StopService",
+	}
+	err = m.Stop(cmd)
+	c.Assert(err, gocheck.IsNil)
 }
 
 func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(c *gocheck.C) {

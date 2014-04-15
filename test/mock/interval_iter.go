@@ -7,8 +7,9 @@ import (
 )
 
 type IntervalIterFactory struct {
-	Iters  []qan.IntervalIter
-	iterNo int
+	Iters     []qan.IntervalIter
+	iterNo    int
+	TickChans map[qan.IntervalIter]chan time.Time
 }
 
 func (tf *IntervalIterFactory) Make(filename qan.FilenameFunc, tickChan chan time.Time) qan.IntervalIter {
@@ -16,8 +17,13 @@ func (tf *IntervalIterFactory) Make(filename qan.FilenameFunc, tickChan chan tim
 		return tf.Iters[tf.iterNo-1]
 	}
 	nextIter := tf.Iters[tf.iterNo]
+	tf.TickChans[nextIter] = tickChan
 	tf.iterNo++
 	return nextIter
+}
+
+func (tf *IntervalIterFactory) Reset() {
+	tf.iterNo = 0
 }
 
 // --------------------------------------------------------------------------
