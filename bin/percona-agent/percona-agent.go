@@ -247,12 +247,16 @@ func main() {
 		golog.Fatal(err)
 	}
 
+	// The official list of services known to the agent.  Adding a new service
+	// requires a manager, starting the manager as above, and adding the manager
+	// to this map.
 	services := map[string]pct.ServiceManager{
-		"log":  logManager,
-		"data": dataManager,
-		"qan":  qanManager,
-		"mm":   mmManager,
-		"it":   itManager,
+		"log":       logManager,
+		"data":      dataManager,
+		"qan":       qanManager,
+		"mm":        mmManager,
+		"it":        itManager,
+		"sysconfig": sysconfigManager,
 	}
 
 	agent := agent.NewAgent(
