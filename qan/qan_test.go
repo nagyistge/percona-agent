@@ -47,12 +47,20 @@ var sample = test.RootDir + "/qan/"
 // Worker test suite
 /////////////////////////////////////////////////////////////////////////////
 
-type WorkerTestSuite struct{}
+type WorkerTestSuite struct {
+	logChan chan *proto.LogEntry
+	logger  *pct.Logger
+}
 
 var _ = gocheck.Suite(&WorkerTestSuite{})
 
-func RunWorker(job *qan.Job) string {
-	w := qan.NewSlowLogWorker()
+func (s *WorkerTestSuite) SetUpSuite(c *gocheck.C) {
+	s.logChan = make(chan *proto.LogEntry, 100)
+	s.logger = pct.NewLogger(s.logChan, "qan-worker")
+}
+
+func (s *WorkerTestSuite) RunWorker(job *qan.Job) string {
+	w := qan.NewSlowLogWorker(s.logger, "qan-worker-1")
 	result, _ := w.Run(job)
 
 	// Write the result as formatted JSON to a file...
@@ -70,7 +78,7 @@ func (s *WorkerTestSuite) TestWorkerSlow001(c *gocheck.C) {
 		ZeroRunTime:    true,
 		ExampleQueries: true,
 	}
-	tmpFilename := RunWorker(job)
+	tmpFilename := s.RunWorker(job)
 	defer os.Remove(tmpFilename)
 
 	// ...then diff <result file> <expected result file>
@@ -80,6 +88,7 @@ func (s *WorkerTestSuite) TestWorkerSlow001(c *gocheck.C) {
 
 func (s *WorkerTestSuite) TestWorkerSlow001NoExamples(c *gocheck.C) {
 	job := &qan.Job{
+		Id:             "99",
 		SlowLogFile:    testlog.Sample + "slow001.log",
 		StartOffset:    0,
 		EndOffset:      524,
@@ -87,7 +96,7 @@ func (s *WorkerTestSuite) TestWorkerSlow001NoExamples(c *gocheck.C) {
 		ZeroRunTime:    true,
 		ExampleQueries: false,
 	}
-	w := qan.NewSlowLogWorker()
+	w := qan.NewSlowLogWorker(s.logger, "qan-worker-1")
 	got, _ := w.Run(job)
 
 	expect := &qan.Result{}
@@ -99,6 +108,10 @@ func (s *WorkerTestSuite) TestWorkerSlow001NoExamples(c *gocheck.C) {
 		test.Dump(got)
 		c.Error(diff)
 	}
+
+	// Worker should be able to report its name and status.
+	c.Check(w.Name(), gocheck.Equals, "qan-worker-1")
+	c.Check(w.Status(), gocheck.Equals, "Done job "+job.Id)
 }
 
 func (s *WorkerTestSuite) TestWorkerSlow001Half(c *gocheck.C) {
@@ -113,7 +126,7 @@ func (s *WorkerTestSuite) TestWorkerSlow001Half(c *gocheck.C) {
 		ZeroRunTime:    true,
 		ExampleQueries: true,
 	}
-	tmpFilename := RunWorker(job)
+	tmpFilename := s.RunWorker(job)
 	defer os.Remove(tmpFilename)
 	c.Assert(tmpFilename, testlog.FileEquals, sample+"slow001-half.json")
 }
@@ -130,7 +143,7 @@ func (s *WorkerTestSuite) TestWorkerSlow001Resume(c *gocheck.C) {
 		ZeroRunTime:    true,
 		ExampleQueries: true,
 	}
-	tmpFilename := RunWorker(job)
+	tmpFilename := s.RunWorker(job)
 	defer os.Remove(tmpFilename)
 	c.Assert(tmpFilename, testlog.FileEquals, sample+"slow001-resume.json")
 }
@@ -145,7 +158,7 @@ func (s *WorkerTestSuite) TestWorkerSlow011(c *gocheck.C) {
 		ZeroRunTime:    true,
 		ExampleQueries: true,
 	}
-	w := qan.NewSlowLogWorker()
+	w := qan.NewSlowLogWorker(s.logger, "qan-worker-1")
 	got, _ := w.Run(job)
 
 	expect := &qan.Result{}
@@ -306,11 +319,6 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 	// It should start without error.
 	c.Assert(err, gocheck.IsNil)
 
-	// It should report itself as running
-	if !m.IsRunning() {
-		c.Error("Manager.IsRunning() is false after Start()")
-	}
-
 	// It should the config to disk.
 	data, err := ioutil.ReadFile(pct.Basedir.ConfigFile("qan"))
 	c.Check(err, gocheck.IsNil)
@@ -400,11 +408,6 @@ func (s *ManagerTestSuite) TestStartService(c *gocheck.C) {
 
 	// It should start without error.
 	c.Assert(err, gocheck.IsNil)
-
-	// It should not report itself as running.
-	if m.IsRunning() {
-		c.Error("Manager.IsRunning() is false after Start()")
-	}
 
 	// It should disable the slow log.
 	slowLog = s.realmysql.GetGlobalVarNumber("slow_query_log")
@@ -680,13 +683,13 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
 	// test that slow log is not removed until previous workers are done.
 	// Mock worker factory will return our mock workers when manager calls Make().
 	w1StopChan := make(chan bool)
-	w1 := mock.NewQanWorker(w1StopChan, nil, nil)
+	w1 := mock.NewQanWorker("qan-worker-1", w1StopChan, nil, nil)
 
 	w2StopChan := make(chan bool)
-	w2 := mock.NewQanWorker(w2StopChan, nil, nil)
+	w2 := mock.NewQanWorker("qan-worker-2", w2StopChan, nil, nil)
 
 	// Let's take this time to also test that MaxWorkers is enforced.
-	w3 := mock.NewQanWorker(nil, nil, nil)
+	w3 := mock.NewQanWorker("qan-worker-3", nil, nil, nil)
 
 	f := mock.NewQanWorkerFactory([]*mock.QanWorker{w1, w2, w3})
 
@@ -751,6 +754,16 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(c *gocheck.C) {
 	<-w2.Running()
 
 	test.WaitStatus(1, m, "qan-log-parser", "Ready (2 of 2 running)")
+
+	/**
+	 * Worker status test
+	 */
+
+	// Workers should have status and QAN manager should report them all.
+	status := m.Status()
+	c.Check(status["qan-worker-1"], gocheck.Equals, "ok")
+	c.Check(status["qan-worker-2"], gocheck.Equals, "ok")
+	c.Check(status["qan-worker-3"], gocheck.Equals, "") // not running due to MaxWorkers
 
 	/**
 	 * Quick side test: qan.Config.MaxWorkers is enforced.
@@ -868,9 +881,17 @@ func (s *ManagerTestSuite) TestGetConfig(c *gocheck.C) {
 // IntervalIter test suite
 /////////////////////////////////////////////////////////////////////////////
 
-type IntervalTestSuite struct{}
+type IntervalTestSuite struct {
+	logChan chan *proto.LogEntry
+	logger  *pct.Logger
+}
 
 var _ = gocheck.Suite(&IntervalTestSuite{})
+
+func (s *IntervalTestSuite) SetUpSuite(c *gocheck.C) {
+	s.logChan = make(chan *proto.LogEntry, 100)
+	s.logger = pct.NewLogger(s.logChan, "qan-worker")
+}
 
 var fileName string
 
@@ -890,7 +911,7 @@ func (s *IntervalTestSuite) TestIterFile(c *gocheck.C) {
 	defer func() { os.Remove(tmpFile.Name()) }()
 
 	// Start interating the file, waiting for ticks.
-	i := qan.NewFileIntervalIter(getFilename, tickChan)
+	i := qan.NewFileIntervalIter(s.logger, getFilename, tickChan)
 	i.Start()
 
 	// Send a tick to start the interval

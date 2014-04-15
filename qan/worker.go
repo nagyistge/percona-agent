@@ -18,6 +18,9 @@
 package qan
 
 import (
+	"fmt"
+	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-tools/pct"
 	mysqlLog "github.com/percona/percona-go-mysql/log"
 	"github.com/percona/percona-go-mysql/log/parser"
 	"os"
@@ -25,6 +28,7 @@ import (
 )
 
 type Job struct {
+	Id             string
 	SlowLogFile    string
 	RunTime        time.Duration
 	StartOffset    int64
@@ -43,29 +47,59 @@ type Result struct {
 }
 
 type Worker interface {
+	Name() string
+	Status() string
 	Run(job *Job) (*Result, error)
 }
 
 type WorkerFactory interface {
-	Make() Worker
+	Make(name string) Worker
 }
+
+// --------------------------------------------------------------------------
 
 type SlowLogWorkerFactory struct {
+	logChan chan *proto.LogEntry
 }
 
-func (f *SlowLogWorkerFactory) Make() Worker {
-	return NewSlowLogWorker()
+func NewSlowLogWorkerFactory(logChan chan *proto.LogEntry) *SlowLogWorkerFactory {
+	f := &SlowLogWorkerFactory{
+		logChan: logChan,
+	}
+	return f
 }
+
+func (f *SlowLogWorkerFactory) Make(name string) Worker {
+	return NewSlowLogWorker(pct.NewLogger(f.logChan, "qan-worker"), name)
+}
+
+// --------------------------------------------------------------------------
 
 type SlowLogWorker struct {
+	logger *pct.Logger
+	name   string
+	status *pct.Status
 }
 
-func NewSlowLogWorker() Worker {
-	w := &SlowLogWorker{}
+func NewSlowLogWorker(logger *pct.Logger, name string) *SlowLogWorker {
+	w := &SlowLogWorker{
+		logger: logger,
+		name:   name,
+		status: pct.NewStatus([]string{name}),
+	}
 	return w
 }
 
+func (w *SlowLogWorker) Name() string {
+	return w.name
+}
+
+func (w *SlowLogWorker) Status() string {
+	return w.status.Get(w.name, true)
+}
+
 func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
+	w.status.Update(w.name, "Starting job "+job.Id)
 
 	// Open the slow log file.
 	file, err := os.Open(job.SlowLogFile)
@@ -98,8 +132,22 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 	global := mysqlLog.NewGlobalClass()
 	queries := make(map[string]*mysqlLog.QueryClass)
 	t0 := time.Now()
+	jobSize := job.EndOffset - job.StartOffset
+	var runtime time.Duration
+
 EVENT_LOOP:
 	for event := range p.EventChan {
+		// Check run time, stop if exceeded.
+		runtime = time.Now().Sub(t0)
+		if runtime >= job.RunTime {
+			result.Error = "Run-time timeout: " + job.RunTime.String()
+			stopChan <- true
+			break EVENT_LOOP
+		}
+
+		w.status.Update(w.name, fmt.Sprintf("Parsing %s: %d%% %d/%d %d %s",
+			job.SlowLogFile, (int64(event.Offset)/job.EndOffset*100), event.Offset, job.EndOffset, jobSize, runtime))
+
 		if int64(event.Offset) >= job.EndOffset {
 			result.StopOffset = int64(event.Offset)
 			break
@@ -125,14 +173,9 @@ EVENT_LOOP:
 
 		// Add the event to its query class.
 		class.AddEvent(event)
-
-		// Check run time, stop if exceeded.
-		if time.Now().Sub(t0) >= job.RunTime {
-			result.Error = "Run-time timeout: " + job.RunTime.String()
-			stopChan <- true
-			break EVENT_LOOP
-		}
 	}
+
+	w.status.Update(w.name, "Finalizing job "+job.Id)
 
 	if result.StopOffset == 0 {
 		result.StopOffset, _ = file.Seek(0, os.SEEK_CUR)
@@ -144,6 +187,8 @@ EVENT_LOOP:
 		class.Finalize()
 	}
 	global.Finalize(uint64(len(queries)))
+
+	w.status.Update(w.name, "Combining LRQ job "+job.Id)
 
 	nQueries := len(queries)
 	classes := make([]*mysqlLog.QueryClass, nQueries)
@@ -160,5 +205,6 @@ EVENT_LOOP:
 		result.RunTime = time.Now().Sub(t0).Seconds()
 	}
 
+	w.status.Update(w.name, "Done job "+job.Id)
 	return result, nil
 }
