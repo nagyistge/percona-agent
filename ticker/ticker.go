@@ -29,6 +29,7 @@ type Ticker interface {
 	Stop()
 	Add(c chan time.Time)
 	Remove(c chan time.Time)
+	ETA(now int64) float64
 }
 
 type TickerFactory interface {
@@ -104,6 +105,12 @@ func (et *EvenTicker) Remove(c chan time.Time) {
 	if et.watcher[c] {
 		delete(et.watcher, c)
 	}
+}
+
+func (et *EvenTicker) ETA(nowNanosecond int64) float64 {
+	i := float64(time.Duration(et.atInterval) * time.Second)
+	d := i - math.Mod(float64(nowNanosecond), i)
+	return time.Duration(d).Seconds()
 }
 
 func (et *EvenTicker) tick(t time.Time) {

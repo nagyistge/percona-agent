@@ -73,6 +73,12 @@ func (s *TickerTestSuite) TestSleepTime2s(t *gocheck.C) {
 		t.Errorf("Got %d, expected %d\n", got, expect)
 	}
 
+	// ETA (time to next tick) should be reported as the same: 0.614880s
+	d := et.ETA(now)
+	if d < 0.614 || d > 0.615 {
+		t.Errorf("Got ETA %f, expected 0.614880\n", d)
+	}
+
 	et.Stop()
 }
 
@@ -203,6 +209,12 @@ func (s *ManagerTestSuite) TestAddWatcher(t *gocheck.C) {
 
 	if len(s.mockTicker.Added) == 0 {
 		t.Error("Ticker added watcher")
+	}
+
+	// Manager should call ticker's ETA() to return time to next tick.
+	d := m.ETA(c)
+	if d != 0.1 {
+		t.Error("clock.Manager.ETA()")
 	}
 
 	m.Remove(c)

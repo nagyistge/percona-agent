@@ -26,6 +26,7 @@ import (
 type Manager interface {
 	Add(c chan time.Time, atInterval uint, sync bool)
 	Remove(c chan time.Time)
+	ETA(c chan time.Time) float64
 }
 
 type Clock struct {
@@ -98,4 +99,14 @@ func (clock *Clock) Remove(c chan time.Time) {
 	if _, ok := clock.waitTicker[c]; ok {
 		delete(clock.waitTicker, c)
 	}
+}
+
+func (clock *Clock) ETA(c chan time.Time) float64 {
+	clock.watcherMux.Lock()
+	defer clock.watcherMux.Unlock()
+	ticker, ok := clock.watcher[c]
+	if !ok {
+		return 0
+	}
+	return ticker.ETA(clock.nowFunc())
 }
