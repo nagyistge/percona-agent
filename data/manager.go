@@ -27,20 +27,21 @@ import (
 
 type Manager struct {
 	logger   *pct.Logger
+	dataDir  string
 	hostname string
 	client   pct.WebsocketClient
 	// --
-	config    *Config
-	configDir string
-	sz        Serializer
-	spooler   Spooler
-	sender    *Sender
-	status    *pct.Status
+	config  *Config
+	sz      Serializer
+	spooler Spooler
+	sender  *Sender
+	status  *pct.Status
 }
 
-func NewManager(logger *pct.Logger, hostname string, client pct.WebsocketClient) *Manager {
+func NewManager(logger *pct.Logger, dataDir string, hostname string, client pct.WebsocketClient) *Manager {
 	m := &Manager{
 		logger:   logger,
+		dataDir:  dataDir,
 		hostname: hostname,
 		client:   client,
 		// --
@@ -66,7 +67,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 		return err
 	}
 
-	if err := pct.MakeDir(c.Dir); err != nil {
+	if err := pct.MakeDir(m.dataDir); err != nil {
 		return err
 	}
 
@@ -77,7 +78,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 
 	spooler := NewDiskvSpooler(
 		pct.NewLogger(m.logger.LogChan(), "data-spooler"),
-		c.Dir,
+		m.dataDir,
 		m.hostname,
 	)
 	if err := spooler.Start(sz); err != nil {
@@ -90,7 +91,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 		pct.NewLogger(m.logger.LogChan(), "data-sender"),
 		m.client,
 	)
-	if err := sender.Start(m.spooler, time.Tick(time.Duration(c.SendInterval)*time.Second)); err != nil {
+	if err := sender.Start(m.spooler, time.Tick(time.Duration(c.SendInterval)*time.Second), c.Blackhole); err != nil {
 		return err
 	}
 	m.sender = sender
@@ -148,11 +149,11 @@ func (m *Manager) LoadConfig() ([]byte, error) {
 	if err := pct.Basedir.ReadConfig("data", config); err != nil {
 		return nil, err
 	}
-	if config.Dir == "" {
-		config.Dir = DEFAULT_DATA_DIR
+	if config.Encoding != "" && config.Encoding != "gzip" {
+		return nil, errors.New("Invalid data encoding: " + config.Encoding)
 	}
 	if config.SendInterval <= 0 {
-		config.SendInterval = DEFAULT_DATA_SEND_INTERVAL
+		return nil, errors.New("SendInterval must be > 0")
 	}
 	data, err := json.Marshal(config)
 	if err != nil {
@@ -176,7 +177,7 @@ func (m *Manager) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 
 	if newConfig.SendInterval != finalConfig.SendInterval {
 		m.sender.Stop()
-		if err := m.sender.Start(m.spooler, time.Tick(time.Duration(newConfig.SendInterval)*time.Second)); err != nil {
+		if err := m.sender.Start(m.spooler, time.Tick(time.Duration(newConfig.SendInterval)*time.Second), newConfig.Blackhole); err != nil {
 			errs = append(errs, err)
 		} else {
 			finalConfig.SendInterval = newConfig.SendInterval

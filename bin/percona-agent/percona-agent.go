@@ -176,6 +176,7 @@ func main() {
 	}
 	dataManager := data.NewManager(
 		pct.NewLogger(logChan, "data"),
+		pct.Basedir.Dir("data"),
 		hostname,
 		dataClient,
 	)

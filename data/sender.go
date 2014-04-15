@@ -31,6 +31,7 @@ type Sender struct {
 	// --
 	spool      Spooler
 	tickerChan <-chan time.Time
+	blackhole  bool
 	sync       *pct.SyncChan
 	status     *pct.Status
 }
@@ -45,9 +46,10 @@ func NewSender(logger *pct.Logger, client pct.WebsocketClient) *Sender {
 	return s
 }
 
-func (s *Sender) Start(spool Spooler, tickerChan <-chan time.Time) error {
+func (s *Sender) Start(spool Spooler, tickerChan <-chan time.Time, blackhole bool) error {
 	s.spool = spool
 	s.tickerChan = tickerChan
+	s.blackhole = blackhole
 	go s.run()
 	return nil
 }
@@ -98,7 +100,7 @@ func (s *Sender) send() {
 	// Try a few times to connect to the API.
 	connected := false
 	var apiErr error
-	s.logger.Debug("Connecting to API")
+	s.logger.Debug("send:connect")
 	s.status.Update("data-sender", "Running")
 	for i := 1; i <= 3; i++ {
 		if apiErr = s.client.ConnectOnce(); apiErr != nil {
@@ -121,7 +123,7 @@ func (s *Sender) send() {
 		s.status.Update("data-api", fmt.Sprintf("Disconnected (%d)", apiErr))
 		return
 	}
-	s.logger.Debug("Connected to API")
+	s.logger.Debug("send:connected")
 	s.status.Update("data-api", "Connected")
 	defer s.status.Update("data-api", "Idle")
 
@@ -134,12 +136,19 @@ func (s *Sender) send() {
 	s.logger.Info("Start sending")
 	filesChan := s.spool.Files()
 	for file := range filesChan {
-		s.logger.Debug("Sending", file)
+		s.logger.Debug("send:" + file)
 
 		s.status.Update("data-sender", "Reading "+file)
 		data, err := s.spool.Read(file)
 		if err != nil {
 			s.logger.Error(err)
+			continue
+		}
+
+		if s.blackhole {
+			s.status.Update("data-sender", "Removing "+file+" (blackhole)")
+			s.spool.Remove(file)
+			s.logger.Info("Removed " + file + " (blackhole)")
 			continue
 		}
 
@@ -155,24 +164,29 @@ func (s *Sender) send() {
 			s.logger.Warn(err)
 			continue
 		}
-
-		if resp.Code >= 400 && resp.Code < 500 {
-			// Something on our side is broken.
-			if n400Err < maxWarnErr {
+		s.logger.Debug(fmt.Sprintf("send:resp:%+v", resp.Code))
+		if resp.Code != 200 && resp.Code != 201 {
+			if resp.Code >= 400 && resp.Code < 500 {
+				// Something on our side is broken.
+				if n400Err < maxWarnErr {
+					s.logger.Warn(resp)
+				}
+				n400Err++
+			} else if resp.Code >= 500 {
+				// Something on API side is broken.
+				if n500Err < maxWarnErr {
+					s.logger.Warn(resp)
+				}
+				n500Err++
+			} else {
 				s.logger.Warn(resp)
 			}
-			n400Err++
-		} else if resp.Code >= 500 {
-			// Something on API side is broken.
-			if n500Err < maxWarnErr {
-				s.logger.Warn(resp)
-			}
-			n500Err++
-		} else {
-			s.status.Update("data-sender", "Removing "+file)
-			s.spool.Remove(file)
-			s.logger.Info("Sent and removed", file)
+			continue
 		}
+
+		s.status.Update("data-sender", "Removing "+file)
+		s.spool.Remove(file)
+		s.logger.Info("Sent and removed", file)
 	}
 
 	if n400Err > maxWarnErr {
