@@ -84,7 +84,7 @@ func main() {
 
 	bytes, err := agent.LoadConfig()
 	if err != nil {
-		golog.Panicf("Error loading "+pct.Basedir.ConfigFile("agent")+": ", err)
+		golog.Fatalf("Invalid agent config: %s\n", err)
 	}
 	agentConfig := &agent.Config{}
 	if err := json.Unmarshal(bytes, agentConfig); err != nil {
@@ -145,8 +145,11 @@ func main() {
 	}
 	logManager := log.NewManager(logClient, logChan)
 	logConfig, err := logManager.LoadConfig()
+	if err != nil {
+		golog.Fatalf("Invalid log config: %s\n", err)
+	}
 	if err := logManager.Start(&proto.Cmd{}, logConfig); err != nil {
-		golog.Panicf("Error starting log service: %s", err)
+		golog.Fatalf("Error starting logmanager: %s\n", err)
 	}
 
 	/**
@@ -158,7 +161,7 @@ func main() {
 		pct.Basedir.Dir("config"),
 	)
 	if err := itManager.Start(nil, nil); err != nil {
-		golog.Panicf("Error starting instance manager: ", err)
+		golog.Fatalf("Error starting instance manager: %s\n", err)
 	}
 
 	/**
@@ -177,8 +180,11 @@ func main() {
 		dataClient,
 	)
 	dataConfig, err := dataManager.LoadConfig()
+	if err != nil {
+		golog.Fatalf("Invalid data config: %s\n", err)
+	}
 	if err := dataManager.Start(&proto.Cmd{}, dataConfig); err != nil {
-		golog.Panicf("Error starting data service: %s", err)
+		golog.Fatalf("Error starting data manager: %s\n", err)
 	}
 
 	/**
@@ -200,8 +206,11 @@ func main() {
 		itManager.Repo(),
 	)
 	mmConfig, err := mmManager.LoadConfig()
+	if err != nil {
+		golog.Fatalf("Invalid mm config: %s\n", err)
+	}
 	if err := mmManager.Start(&proto.Cmd{}, mmConfig); err != nil {
-		golog.Panicf("Error starting mm service: ", err)
+		golog.Fatalf("Error starting mm manager: %s\n", err)
 	}
 	StartMonitors("mm", filepath.Join(pct.Basedir.Dir("config"), "/mm-*.conf"), mmManager)
 
@@ -213,8 +222,11 @@ func main() {
 		itManager.Repo(),
 	)
 	sysconfigConfig, err := sysconfigManager.LoadConfig()
+	if err != nil {
+		golog.Fatalf("Invalid sysconfig config: %s\n", err)
+	}
 	if err := sysconfigManager.Start(&proto.Cmd{}, sysconfigConfig); err != nil {
-		golog.Panicf("Error starting sysconfig service: ", err)
+		golog.Fatalf("Error starting sysconfig manager: %s\n", err)
 	}
 	StartMonitors("sysconfig", filepath.Join(pct.Basedir.Dir("config"), "/sysconfig-*.conf"), sysconfigManager)
 
@@ -232,9 +244,12 @@ func main() {
 		itManager.Repo(),
 	)
 	qanConfig, err := qanManager.LoadConfig()
+	if err != nil {
+		golog.Fatalf("Invalid qan config: %s\n", err)
+	}
 	if qanConfig != nil {
 		if err := qanManager.Start(&proto.Cmd{}, qanConfig); err != nil {
-			golog.Panicf("Error starting qan service: %s", err)
+			golog.Fatalf("Error starting qan manager: %s\n", err)
 		}
 	}
 

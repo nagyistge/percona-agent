@@ -19,6 +19,7 @@ package qan
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/data"
@@ -237,6 +238,8 @@ func (m *Manager) run() {
 		began := ticker.Began(m.config.Interval, uint(time.Now().UTC().Unix()))
 		m.logger.Info("First interval began at", began)
 		m.tickChan <- began
+	} else {
+		m.logger.Info(fmt.Sprintf("First interval begins in %.1f seconds", t))
 	}
 
 	intervalChan := m.iter.IntervalChan()
@@ -382,6 +385,21 @@ func (m *Manager) LoadConfig() ([]byte, error) {
 	config := &Config{}
 	if err := pct.Basedir.ReadConfig("qan", config); err != nil {
 		return nil, err
+	}
+	if config.Start == nil || len(config.Start) == 0 {
+		return nil, errors.New("Start array is empty")
+	}
+	if config.Stop == nil || len(config.Stop) == 0 {
+		return nil, errors.New("Stop array is empty")
+	}
+	if config.MaxWorkers < 0 {
+		return nil, errors.New("MaxWorkers must be > 0")
+	}
+	if config.Interval == 0 {
+		return nil, errors.New("Interval must be > 0")
+	}
+	if config.WorkerRunTime == 0 {
+		return nil, errors.New("WorkerRuntime must be > 0")
 	}
 	// There are no defaults; the config file should have everything we need.
 	data, err := json.Marshal(config)

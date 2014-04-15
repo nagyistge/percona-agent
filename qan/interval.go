@@ -116,6 +116,8 @@ func (i *FileIntervalIter) run() {
 	cur := &Interval{}
 
 	for {
+		i.logger.Debug("run:wait")
+
 		select {
 		case now := <-i.tickChan:
 			i.logger.Debug("run:tick")
@@ -146,10 +148,13 @@ func (i *FileIntervalIter) run() {
 			prevFileInfo = curFileInfo
 
 			if !cur.StartTime.IsZero() { // StartTime is set
+				i.logger.Debug("run:next")
+
 				// End of current interval:
 				cur.Filename = curFile
 				if fileChanged {
 					// Start from beginning of new file.
+					i.logger.Info("File changed")
 					cur.StartOffset = 0
 				}
 				cur.EndOffset = curSize
@@ -171,11 +176,13 @@ func (i *FileIntervalIter) run() {
 			} else {
 				// First interval, either due to first tick or because an error
 				// occurred earlier so a new interval was started.
+				i.logger.Debug("run:first")
 				cur.StartOffset = curSize
 				cur.StartTime = now
 				prevFileInfo, _ = os.Stat(curFile)
 			}
 		case <-i.sync.StopChan:
+			i.logger.Debug("run:stop")
 			return
 		}
 	}
