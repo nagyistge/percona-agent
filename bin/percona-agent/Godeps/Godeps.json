@@ -1,0 +1,32 @@
+{
+	"ImportPath": "github.com/percona/cloud-tools/bin/percona-agent",
+	"GoVersion": "go1.2",
+	"Deps": [
+		{
+			"ImportPath": "code.google.com/p/go.net/websocket",
+			"Comment": "null-117",
+			"Rev": "c17ad62118ea511e1051721b429779fa40bddc74"
+		},
+		{
+			"ImportPath": "github.com/go-sql-driver/mysql",
+			"Comment": "v1.0-217-g0b11020",
+			"Rev": "0b11020cec264915fd090256a3b23256f96cc3ae"
+		},
+		{
+			"ImportPath": "github.com/percona/cloud-protocol/proto",
+			"Rev": "b4305a509af2e043501a701a91c6c9b8d3d9ba0d"
+		},
+		{
+			"ImportPath": "github.com/percona/percona-go-mysql/log",
+			"Rev": "66dc95e307c38717ceb68b2fe0ff9a02ce66081a"
+		},
+		{
+			"ImportPath": "github.com/petar/GoLLRB/llrb",
+			"Rev": "53be0d36a84c2a886ca057d34b6aa4468df9ccb4"
+		},
+		{
+			"ImportPath": "github.com/peterbourgon/diskv",
+			"Rev": "76403dd2469f77ad100a10d955a73592066a2660"
+		}
+	]
+}
