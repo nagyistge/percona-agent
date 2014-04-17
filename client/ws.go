@@ -286,8 +286,9 @@ func (c *WebsocketClient) RecvChan() chan *proto.Cmd {
 }
 
 func (c *WebsocketClient) Send(data interface{}, timeout uint) error {
-	c.logger.DebugOffline("Send:call")
-	defer c.logger.DebugOffline("Send:return")
+	// These make the debug output a little too verbose:
+	// c.logger.DebugOffline("Send:call")
+	// defer c.logger.DebugOffline("Send:return")
 
 	/**
 	 * I cannot provoke an EOF error on websocket.Send(), only Receive().
