@@ -40,6 +40,7 @@ import (
 	golog "log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 )
 
@@ -60,6 +61,8 @@ func init() {
 	flag.StringVar(&flagBasedir, "basedir", pct.DEFAULT_BASEDIR, "Set basedir")
 	flag.BoolVar(&flagVersion, "version", false, "Stop percona-agent")
 	flag.Parse()
+
+	runtime.GOMAXPROCS(runtime.NumCPU())
 }
 
 func main() {
