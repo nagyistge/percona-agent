@@ -11,8 +11,9 @@
      "Sum": 0,
      "Min": 0,
      "Avg": 0,
-     "Med": 0,
      "Pct95": 0,
+     "Stddev": 0,
+     "Med": 0,
      "Max": 0
     },
     "Query_time": {
@@ -20,8 +21,9 @@
      "Sum": 4,
      "Min": 2,
      "Avg": 2,
-     "Med": 2,
      "Pct95": 2,
+     "Stddev": 0,
+     "Med": 2,
      "Max": 2
     }
    },
@@ -31,8 +33,9 @@
      "Sum": 0,
      "Min": 0,
      "Avg": 0,
-     "Med": 0,
      "Pct95": 0,
+     "Stddev": 0,
+     "Med": 0,
      "Max": 0
     },
     "Rows_sent": {
@@ -40,8 +43,9 @@
      "Sum": 2,
      "Min": 1,
      "Avg": 1,
-     "Med": 1,
      "Pct95": 1,
+     "Stddev": 0,
+     "Med": 1,
      "Max": 1
     }
    }
@@ -58,8 +62,9 @@
       "Sum": 0,
       "Min": 0,
       "Avg": 0,
-      "Med": 0,
       "Pct95": 0,
+      "Stddev": 0,
+      "Med": 0,
       "Max": 0
      },
      "Query_time": {
@@ -67,8 +72,9 @@
       "Sum": 2,
       "Min": 2,
       "Avg": 2,
-      "Med": 2,
       "Pct95": 2,
+      "Stddev": 0,
+      "Med": 2,
       "Max": 2
      }
     },
@@ -78,8 +84,9 @@
       "Sum": 0,
       "Min": 0,
       "Avg": 0,
-      "Med": 0,
       "Pct95": 0,
+      "Stddev": 0,
+      "Med": 0,
       "Max": 0
      },
      "Rows_sent": {
@@ -87,8 +94,9 @@
       "Sum": 1,
       "Min": 1,
       "Avg": 1,
-      "Med": 1,
       "Pct95": 1,
+      "Stddev": 0,
+      "Med": 1,
       "Max": 1
      }
     }
@@ -110,8 +118,9 @@
       "Sum": 0,
       "Min": 0,
       "Avg": 0,
-      "Med": 0,
       "Pct95": 0,
+      "Stddev": 0,
+      "Med": 0,
       "Max": 0
      },
      "Query_time": {
@@ -119,8 +128,9 @@
       "Sum": 2,
       "Min": 2,
       "Avg": 2,
-      "Med": 2,
       "Pct95": 2,
+      "Stddev": 0,
+      "Med": 2,
       "Max": 2
      }
     },
@@ -130,8 +140,9 @@
       "Sum": 0,
       "Min": 0,
       "Avg": 0,
-      "Med": 0,
       "Pct95": 0,
+      "Stddev": 0,
+      "Med": 0,
       "Max": 0
      },
      "Rows_sent": {
@@ -139,8 +150,9 @@
       "Sum": 1,
       "Min": 1,
       "Avg": 1,
-      "Med": 1,
       "Pct95": 1,
+      "Stddev": 0,
+      "Med": 1,
       "Max": 1
      }
     }
