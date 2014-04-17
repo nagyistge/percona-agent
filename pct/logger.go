@@ -50,26 +50,31 @@ func (l *Logger) InResponseTo(cmd *proto.Cmd) {
 }
 
 func (l *Logger) Debug(entry ...interface{}) {
-	l.log(proto.LOG_DEBUG, entry)
+	l.log(false, proto.LOG_DEBUG, entry)
+}
+
+func (l *Logger) DebugOffline(entry ...interface{}) {
+	// Log entry is not sent to log API, only log file if enabled.
+	l.log(true, proto.LOG_DEBUG, entry)
 }
 
 func (l *Logger) Info(entry ...interface{}) {
-	l.log(proto.LOG_INFO, entry)
+	l.log(false, proto.LOG_INFO, entry)
 }
 
 func (l *Logger) Warn(entry ...interface{}) {
-	l.log(proto.LOG_WARNING, entry)
+	l.log(false, proto.LOG_WARNING, entry)
 }
 
 func (l *Logger) Error(entry ...interface{}) {
-	l.log(proto.LOG_ERROR, entry)
+	l.log(false, proto.LOG_ERROR, entry)
 }
 
 func (l *Logger) Fatal(entry ...interface{}) {
-	l.log(proto.LOG_CRITICAL, entry)
+	l.log(false, proto.LOG_CRITICAL, entry)
 }
 
-func (l *Logger) log(level byte, entry []interface{}) {
+func (l *Logger) log(offline bool, level byte, entry []interface{}) {
 	fullMsg := ""
 	for i, str := range entry {
 		if i > 0 {
@@ -82,6 +87,7 @@ func (l *Logger) log(level byte, entry []interface{}) {
 		Level:   level,
 		Service: l.service,
 		Msg:     fullMsg,
+		Offline: offline,
 	}
 	if l.cmd != nil {
 		logEntry.Cmd = fmt.Sprintf("%s", l.cmd)

@@ -116,7 +116,7 @@ func (r *Relay) Run() {
 			}
 
 			// Send to API if we have a websocket client, and not in offline mode.
-			if !r.offline && r.client != nil {
+			if !r.offline && !entry.Offline && r.client != nil {
 				r.send(entry, true) // buffer on err
 			}
 
