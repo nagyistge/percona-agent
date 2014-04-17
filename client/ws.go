@@ -150,8 +150,8 @@ func (c *WebsocketClient) ConnectOnce() error {
 }
 
 func (c *WebsocketClient) Disconnect() error {
-	c.logger.Debug("Disconnect:call")
-	defer c.logger.Debug("Disconnect:return")
+	c.logger.DebugOffline("Disconnect:call")
+	defer c.logger.DebugOffline("Disconnect:return")
 
 	/**
 	 * Must guard c.conn here to prevent duplicate notifyConnect() because Close()
@@ -165,12 +165,15 @@ func (c *WebsocketClient) Disconnect() error {
 
 	var err error
 	if c.conn != nil {
-		c.logger.Debug("Disconnect:websocket.Conn.Close")
+		c.logger.DebugOffline("Disconnect:websocket.Conn.Close")
 		if err = c.conn.Close(); err != nil {
-			c.logger.Error(err)
-			return err
+			// Example: write tcp 127.0.0.1:8000: i/o timeout
+			// That ^ can happen if remote end hangs up, then we call Close().
+			// Since there's nothing we can do about errors here, we ignore them.
+			c.logger.DebugOffline("Disconnect:websocket.Conn.Close:err:" + err.Error())
 		}
 		c.conn = nil
+		c.logger.DebugOffline("Disconnect:disconnected")
 		c.status.Update(c.name, "Disconnected")
 		c.notifyConnect(false)
 	}
@@ -183,13 +186,13 @@ func (c *WebsocketClient) send() {
 	 * Send Reply from agent to API.
 	 */
 
-	c.logger.Debug("send:call")
-	defer c.logger.Debug("send:return")
+	c.logger.DebugOffline("send:call")
+	defer c.logger.DebugOffline("send:return")
 	defer c.sendSync.Done()
 
 	for {
 		// Wait to start (connect) or be told to stop.
-		c.logger.Debug("send:start")
+		c.logger.DebugOffline("send:start")
 		select {
 		case <-c.sendSync.StartChan:
 			c.sendSync.StartChan <- true
@@ -199,13 +202,13 @@ func (c *WebsocketClient) send() {
 
 	SEND_LOOP:
 		for {
-			c.logger.Debug("send:wait")
+			c.logger.DebugOffline("send:wait")
 			select {
 			case reply := <-c.sendChan:
 				// Got Reply from agent, send to API.
-				c.logger.Debug("send:reply:", reply)
+				c.logger.DebugOffline("send:reply:", reply)
 				if err := c.Send(reply, 20); err != nil {
-					c.logger.Debug("send:err:", err)
+					c.logger.DebugOffline("send:err:", err)
 					select {
 					case c.errChan <- err:
 					default:
@@ -213,12 +216,12 @@ func (c *WebsocketClient) send() {
 					break SEND_LOOP
 				}
 			case <-c.sendSync.StopChan:
-				c.logger.Debug("send:stop")
+				c.logger.DebugOffline("send:stop")
 				return
 			}
 		}
 
-		c.logger.Debug("send:Disconnect")
+		c.logger.DebugOffline("send:Disconnect")
 		c.Disconnect()
 	}
 }
@@ -228,13 +231,13 @@ func (c *WebsocketClient) recv() {
 	 * Receive Cmd from API, forward to agent.
 	 */
 
-	c.logger.Debug("recv:call")
-	defer c.logger.Debug("recv:return")
+	c.logger.DebugOffline("recv:call")
+	defer c.logger.DebugOffline("recv:return")
 	defer c.recvSync.Done()
 
 	for {
 		// Wait to start (connect) or be told to stop.
-		c.logger.Debug("recv:start")
+		c.logger.DebugOffline("recv:start")
 		select {
 		case <-c.recvSync.StartChan:
 			c.recvSync.StartChan <- true
@@ -245,10 +248,10 @@ func (c *WebsocketClient) recv() {
 	RECV_LOOP:
 		for {
 			// Before blocking on Recv, see if we're supposed to stop.
-			c.logger.Debug("recv:wait")
+			c.logger.DebugOffline("recv:wait")
 			select {
 			case <-c.recvSync.StopChan:
-				c.logger.Debug("recv:stop")
+				c.logger.DebugOffline("recv:stop")
 				return
 			default:
 			}
@@ -256,7 +259,7 @@ func (c *WebsocketClient) recv() {
 			// Wait for Cmd from API.
 			cmd := &proto.Cmd{}
 			if err := c.Recv(cmd, 0); err != nil {
-				c.logger.Debug("recv:err:", err)
+				c.logger.DebugOffline("recv:err:", err)
 				select {
 				case c.errChan <- err:
 				default:
@@ -265,11 +268,11 @@ func (c *WebsocketClient) recv() {
 			}
 
 			// Forward Cmd to agent.
-			c.logger.Debug("recv:cmd:", cmd)
+			c.logger.DebugOffline("recv:cmd:", cmd)
 			c.recvChan <- cmd
 		}
 
-		c.logger.Debug("recv:Disconnect")
+		c.logger.DebugOffline("recv:Disconnect")
 		c.Disconnect()
 	}
 }
@@ -283,9 +286,8 @@ func (c *WebsocketClient) RecvChan() chan *proto.Cmd {
 }
 
 func (c *WebsocketClient) Send(data interface{}, timeout uint) error {
-	// Do not do this, it causes a loop:
-	// c.logger.Debug("Send:call")
-	// defer c.logger.Debug("Send:return")
+	c.logger.DebugOffline("Send:call")
+	defer c.logger.DebugOffline("Send:return")
 
 	/**
 	 * I cannot provoke an EOF error on websocket.Send(), only Receive().
@@ -300,7 +302,7 @@ func (c *WebsocketClient) Send(data interface{}, timeout uint) error {
 		c.conn.SetWriteDeadline(time.Time{})
 	}
 	if err := websocket.JSON.Send(c.conn, data); err != nil {
-		c.logger.Debug("Send:err:", err)
+		c.logger.DebugOffline("Send:err:", err)
 		return errors.New(fmt.Sprint("Send:", err))
 		return err
 	}
@@ -308,15 +310,15 @@ func (c *WebsocketClient) Send(data interface{}, timeout uint) error {
 }
 
 func (c *WebsocketClient) SendBytes(data []byte) error {
-	c.logger.Debug("SendBytes:call")
-	defer c.logger.Debug("SendBytes:return")
+	c.logger.DebugOffline("SendBytes:call")
+	defer c.logger.DebugOffline("SendBytes:return")
 	c.conn.SetWriteDeadline(time.Now().Add(20 * time.Second))
 	return websocket.Message.Send(c.conn, data)
 }
 
 func (c *WebsocketClient) Recv(data interface{}, timeout uint) error {
-	c.logger.Debug("Recv:call")
-	defer c.logger.Debug("Recv:return")
+	c.logger.DebugOffline("Recv:call")
+	defer c.logger.DebugOffline("Recv:return")
 	if timeout > 0 {
 		t := time.Now().Add(time.Duration(timeout) * time.Second)
 		c.conn.SetReadDeadline(t)
@@ -324,7 +326,7 @@ func (c *WebsocketClient) Recv(data interface{}, timeout uint) error {
 		c.conn.SetReadDeadline(time.Time{})
 	}
 	if err := websocket.JSON.Receive(c.conn, data); err != nil {
-		c.logger.Debug("Recv:err:", err)
+		c.logger.DebugOffline("Recv:err:", err)
 		return errors.New(fmt.Sprint("Recv:", err))
 	}
 	return nil
@@ -348,8 +350,8 @@ func (c *WebsocketClient) Status() map[string]string {
 }
 
 func (c *WebsocketClient) notifyConnect(state bool) {
-	c.logger.Debug(fmt.Sprintf("notifyConnect:call:%t", state))
-	defer c.logger.Debug("notifyConnect:return")
+	c.logger.DebugOffline(fmt.Sprintf("notifyConnect:call:%t", state))
+	defer c.logger.DebugOffline("notifyConnect:return")
 	select {
 	case c.connectChan <- state:
 	case <-time.After(20):
