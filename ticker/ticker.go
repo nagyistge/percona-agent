@@ -119,7 +119,7 @@ func (et *EvenTicker) tick(t time.Time) {
 	for c, _ := range et.watcher {
 		select {
 		case c <- t:
-		default:
+		case <-time.After(20 * time.Millisecond):  // 0.05s
 			// watcher missed this tick
 		}
 	}
