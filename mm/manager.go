@@ -32,6 +32,7 @@ import (
 	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/ticker"
+	"sync"
 	"time"
 )
 
@@ -58,6 +59,7 @@ type Manager struct {
 	status      *pct.Status
 	aggregators map[uint]*Binding
 	configDir   string
+	mux         *sync.RWMutex
 }
 
 func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager, spool data.Spooler, im *instance.Repo) *Manager {
@@ -71,6 +73,7 @@ func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager
 		monitors:    make(map[string]Monitor),
 		status:      pct.NewStatus([]string{"mm"}),
 		aggregators: make(map[uint]*Binding),
+		mux:         new(sync.RWMutex),
 	}
 	return m
 }
@@ -108,7 +111,9 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		m.logger.Info("Start", name, cmd)
 
 		// Monitors names must be unique.
+		m.mux.RLock()
 		_, haveMonitor := m.monitors[name]
+		m.mux.RUnlock()
 		if haveMonitor {
 			return cmd.Reply(nil, errors.New("Duplicate monitor: "+name))
 		}
@@ -135,7 +140,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		if !ok {
 			// Make new aggregator for this report interval.
 			logger := pct.NewLogger(m.logger.LogChan(), fmt.Sprintf("mm-ag-%d", mm.Report))
-			collectionChan := make(chan *Collection, 2*len(m.monitors)+1)
+			collectionChan := make(chan *Collection, 5)
 			aggregator := NewAggregator(logger, int64(mm.Report), collectionChan, m.spool)
 			aggregator.Start()
 
@@ -149,7 +154,9 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		if err := monitor.Start(tickChan, a.collectionChan); err != nil {
 			return cmd.Reply(nil, errors.New("Start "+name+": "+err.Error()))
 		}
+		m.mux.Lock()
 		m.monitors[name] = monitor
+		m.mux.Unlock()
 
 		// Save the monitor-specific config to disk so agent starts on restart.
 		monitorConfig := monitor.Config()
@@ -165,7 +172,9 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		}
 		m.status.UpdateRe("mm", "Stopping "+name, cmd)
 		m.logger.Info("Stop", name, cmd)
+		m.mux.RLock()
 		monitor, ok := m.monitors[name]
+		m.mux.RUnlock()
 		if !ok {
 			return cmd.Reply(nil, errors.New("Unknown monitor: "+name))
 		}
@@ -176,10 +185,13 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		if err := pct.Basedir.RemoveConfig(name); err != nil {
 			return cmd.Reply(nil, errors.New("Remove "+name+": "+err.Error()))
 		}
+		m.mux.Lock()
 		delete(m.monitors, name)
+		m.mux.Unlock()
 		return cmd.Reply(nil) // success
 	case "GetConfig":
 		configs := make(map[string]string)
+		m.mux.RLock()
 		for name, monitor := range m.monitors {
 			config := monitor.Config()
 			bytes, err := json.Marshal(config)
@@ -188,6 +200,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 			}
 			configs[name] = string(bytes)
 		}
+		m.mux.RUnlock()
 		return cmd.Reply(configs)
 	default:
 		// SetConfig does not work by design.  To re-configure a monitor,
@@ -204,7 +217,16 @@ func (m *Manager) LoadConfig() ([]byte, error) {
 
 // @goroutine[1]
 func (m *Manager) Status() map[string]string {
-	return m.status.All()
+	status := m.status.All()
+	m.mux.RLock()
+	defer m.mux.RUnlock()
+	for _, monitor := range m.monitors {
+		monitorStatus := monitor.Status()
+		for k, v := range monitorStatus {
+			status[k] = v
+		}
+	}
+	return status
 }
 
 func (m *Manager) getMonitorConfig(cmd *proto.Cmd) (*Config, string, error) {

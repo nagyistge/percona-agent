@@ -438,9 +438,9 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 		t.Errorf("Does not add tickChan, got %#v", diff)
 	}
 
-	// Its status should be "Ready".
+	// Its status should be "Running".
 	status := m.Status()
-	t.Check(status["mm"], Equals, "Ready")
+	t.Check(status["mm"], Equals, "Running")
 
 	// Normally, starting an already started service results in a ServiceIsRunningError,
 	// but mm is a proxy manager so starting it is a null op.
@@ -455,9 +455,9 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 		t.Fatalf("Stop manager without error, got %s", err)
 	}
 
-	// ...which is why its status is always "Ready".
+	// ...which is why its status is always "Running".
 	status = m.Status()
-	t.Check(status["mm"], Equals, "Ready")
+	t.Check(status["mm"], Equals, "Running")
 }
 
 /**
@@ -467,7 +467,7 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
  * - starting monitor again (restarting monitor)
  * - sneaked in:) unknown cmd test
  */
-func (s *ManagerTestSuite) TestStartStopStartMonitor(t *C) {
+func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
 	t.Assert(m, NotNil)
 
@@ -519,10 +519,8 @@ func (s *ManagerTestSuite) TestStartStopStartMonitor(t *C) {
 
 	// The monitor should be running.  The mock monitor returns "Running" if
 	// Start() has been called; else it returns "Stopped".
-	status := s.mysqlMonitor.Status()
-	if status["monitor"] != "Running" {
-		t.Error("Monitor running")
-	}
+	status := m.Status()
+	t.Check(status["monitor"], Equals, "Running")
 
 	// There should be a 1s collect ticker for the monitor.
 	if ok, diff := test.IsDeeply(s.clock.Added, []uint{1}); !ok {
@@ -558,10 +556,10 @@ func (s *ManagerTestSuite) TestStartStopStartMonitor(t *C) {
 	t.Assert(reply, NotNil)
 	t.Check(reply.Error, Equals, "")
 
-	status = s.mysqlMonitor.Status()
-	if status["monitor"] != "Stopped" {
-		t.Error("Monitor stopped")
-	}
+	// Stop a monitor removes it from the managers list of monitors.
+	// So it's no longer present in a status request.
+	status = m.Status()
+	t.Check(status["monitor"], Equals, "")
 
 	// After stopping the monitor, the manager should remove its tickChan.
 	if len(s.clock.Removed) != 1 {
@@ -596,10 +594,8 @@ func (s *ManagerTestSuite) TestStartStopStartMonitor(t *C) {
 
 	// The monitor should be running.  The mock monitor returns "Running" if
 	// Start() has been called; else it returns "Stopped".
-	status = s.mysqlMonitor.Status()
-	if status["monitor"] != "Running" {
-		t.Error("Monitor running")
-	}
+	status = m.Status()
+	t.Check(status["monitor"], Equals, "Running")
 
 	// There should be a 1s collect ticker for the monitor.
 	// (Actually two in s.clock.Added, as this is mock and we started monitor twice)

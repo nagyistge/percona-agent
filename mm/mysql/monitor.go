@@ -77,6 +77,7 @@ func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collect
 
 	go m.run()
 	m.running = true
+	m.logger.Info("Started")
 
 	return nil
 }
@@ -97,8 +98,8 @@ func (m *Monitor) Stop() error {
 
 	// XXX todo: this line will panic if connect() is running
 	m.config = nil // no config if not running
-
 	m.running = false
+	m.logger.Info("Stopped")
 
 	// Do not update status to "Stopped" here; run() does that on return.
 	return nil
@@ -184,15 +185,18 @@ func (m *Monitor) run() {
 
 	go m.connect(nil)
 
+	m.status.Update(m.name, "Ready")
+
+	var lastTs int64
 	for {
+		m.status.Update(m.name, fmt.Sprintf("Idle (last collected at %s)", time.Unix(lastTs, 0).UTC()))
 		select {
 		case now := <-m.tickChan:
+			m.logger.Debug("run:tick")
 			if !m.connected {
-				m.logger.Debug("run:collect:!connected")
+				m.logger.Debug("run:not connected")
 				continue
 			}
-
-			m.logger.Debug("run:collect:start")
 			m.status.Update(m.name, "Running")
 
 			c := &mm.Collection{
@@ -229,9 +233,11 @@ func (m *Monitor) run() {
 			}
 
 			// Send the metrics to an mm.Aggregator.
+			m.status.Update(m.name, "Sending metrics")
 			if len(c.Metrics) > 0 {
 				select {
 				case m.collectionChan <- c:
+					lastTs = c.Ts
 				case <-time.After(500 * time.Millisecond):
 					// lost collection
 					m.logger.Debug("Lost MySQL metrics; timeout spooling after 500ms")
@@ -241,7 +247,6 @@ func (m *Monitor) run() {
 			}
 
 			m.logger.Debug("run:collect:stop")
-			m.status.Update(m.name, "Ready")
 		case connected := <-m.connectedChan:
 			m.connected = connected
 			if connected {
@@ -266,6 +271,8 @@ func (m *Monitor) run() {
 func (m *Monitor) GetShowStatusMetrics(conn *sql.DB, c *mm.Collection) error {
 	m.logger.Debug("GetShowStatusMetrics:call")
 	defer m.logger.Debug("GetShowStatusMetrics:return")
+
+	m.status.Update(m.name, "Getting global status metrics")
 
 	rows, err := conn.Query("SHOW /*!50002 GLOBAL */ STATUS")
 	if err != nil {
@@ -311,6 +318,8 @@ func (m *Monitor) GetInnoDBMetrics(conn *sql.DB, c *mm.Collection) error {
 	m.logger.Debug("GetInnoDBMetrics:call")
 	defer m.logger.Debug("GetInnoDBMetrics:return")
 
+	m.status.Update(m.name, "Getting InnoDB metrics")
+
 	rows, err := conn.Query("SELECT NAME, SUBSYSTEM, COUNT, TYPE FROM INFORMATION_SCHEMA.INNODB_METRICS WHERE STATUS='enabled'")
 	if err != nil {
 		return err
@@ -355,6 +364,8 @@ func (m *Monitor) GetInnoDBMetrics(conn *sql.DB, c *mm.Collection) error {
 func (m *Monitor) getTableUserStats(conn *sql.DB, c *mm.Collection, ignoreDb string) error {
 	m.logger.Debug("getTableUserStats:call")
 	defer m.logger.Debug("getTableUserStats:return")
+
+	m.status.Update(m.name, "Getting userstat table metrics")
 
 	/**
 	 *  SELECT * FROM INFORMATION_SCHEMA.TABLE_STATISTICS;
@@ -409,6 +420,8 @@ func (m *Monitor) getTableUserStats(conn *sql.DB, c *mm.Collection, ignoreDb str
 func (m *Monitor) getIndexUserStats(conn *sql.DB, c *mm.Collection, ignoreDb string) error {
 	m.logger.Debug("getIndexUserStats:call")
 	defer m.logger.Debug("getIndexUserStats:return")
+
+	m.status.Update(m.name, "Getting userstat index metrics")
 
 	/**
 	 *  SELECT * FROM INFORMATION_SCHEMA.INDEX_STATISTICS;
