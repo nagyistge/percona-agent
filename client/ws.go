@@ -355,7 +355,7 @@ func (c *WebsocketClient) notifyConnect(state bool) {
 	defer c.logger.DebugOffline("notifyConnect:return")
 	select {
 	case c.connectChan <- state:
-	case <-time.After(20):
+	case <-time.After(20 * time.Second):
 		c.logger.Error("notifyConnect timeout")
 	}
 }
