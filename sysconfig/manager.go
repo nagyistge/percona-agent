@@ -72,15 +72,14 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 	if !m.spoolerRunning {
 		go m.spooler()
 	}
-	m.status.Update("sysconfig", "Ready")
-	m.logger.Info("Ready")
+	m.logger.Info("Started")
+	m.status.Update("sysconfig", "Running")
 	return nil
 }
 
 // @goroutine[0]
 func (m *Manager) Stop(cmd *proto.Cmd) error {
-	m.status.Update("sysconfig", "Ready")
-	m.logger.Info("Ready")
+	// Can't stop the sysconfig manager.
 	return nil
 }
 
@@ -183,7 +182,9 @@ func (m *Manager) spooler() {
 	defer m.status.Update("sysconfig-spooler", "Stopped")
 	m.status.Update("sysconfig-spooler", "Running")
 	for s := range m.reportChan {
-		m.spool.Write("sysconfig", s)
+		if err := m.spool.Write("sysconfig", s); err != nil {
+			m.logger.Warn("Lost report:", err)
+		}
 	}
 }
 

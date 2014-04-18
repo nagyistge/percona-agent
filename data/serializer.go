@@ -26,6 +26,7 @@ import (
 type Serializer interface {
 	ToBytes(data interface{}) ([]byte, error)
 	Encoding() string
+	Concurrent() bool
 }
 
 type JsonGzipSerializer struct {
@@ -62,6 +63,11 @@ func (s *JsonGzipSerializer) Encoding() string {
 	return "gzip"
 }
 
+
+func (s *JsonGzipSerializer) Concurrent() bool {
+	return false
+}
+
 // --------------------------------------------------------------------------
 
 type JsonSerializer struct {
@@ -78,4 +84,8 @@ func (j *JsonSerializer) ToBytes(data interface{}) ([]byte, error) {
 
 func (s *JsonSerializer) Encoding() string {
 	return ""
+}
+
+func (s *JsonSerializer) Concurrent() bool {
+	return true
 }

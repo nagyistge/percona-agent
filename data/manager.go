@@ -86,7 +86,6 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 		return err
 	}
 	m.spooler = spooler
-	m.logger.Info("Started spooler")
 
 	sender := NewSender(
 		pct.NewLogger(m.logger.LogChan(), "data-sender"),
@@ -96,12 +95,10 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 		return err
 	}
 	m.sender = sender
-	m.logger.Info("Started sender")
 
 	m.config = c
-
-	m.status.Update("data", "Ready")
-	m.logger.Info("Ready")
+	m.logger.Info("Started")
+	m.status.Update("data", "Running")
 	return nil
 }
 
@@ -109,13 +106,18 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 func (m *Manager) Stop(cmd *proto.Cmd) error {
 	m.sender.Stop()
 	m.spooler.Stop()
+	m.logger.Info("data", "Stopped")
 	m.status.Update("data", "Stopped")
 	return nil
 }
 
 // @goroutine[0]
 func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
-	defer m.status.Update("data", "Ready")
+	m.status.UpdateRe("data", "Handling", cmd)
+	defer m.status.Update("data", "Running")
+
+	m.logger.Info("Handle", cmd)
+
 	switch cmd.Cmd {
 	case "GetConfig":
 		// proto.Cmd[Service:data, Cmd:GetConfig]
@@ -123,12 +125,8 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	case "SetConfig":
 		newConfig, errs := m.handleSetConfig(cmd)
 		return cmd.Reply(newConfig, errs...)
-	case "Status":
-		// proto.Cmd[Service:data, Cmd:Status]
-		status := m.Status()
-		return cmd.Reply(status)
 	default:
-		return cmd.Reply(pct.UnknownCmdError{Cmd: cmd.Cmd})
+		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
 }
 

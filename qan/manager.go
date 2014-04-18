@@ -79,8 +79,6 @@ func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock 
 
 // @goroutine[0]
 func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
-	m.status.UpdateRe("qan", "Starting", cmd)
-
 	logger := m.logger
 	logger.InResponseTo(cmd)
 	defer logger.InResponseTo(nil)
@@ -142,13 +140,12 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 
 	// Save the config.
 	m.config = c
-	m.status.UpdateRe("qan", "Running", cmd)
-	logger.Info("Running")
-
 	if err := pct.Basedir.WriteConfig("qan", c); err != nil {
-		return err
+		m.logger.Warn(err)
 	}
 
+	logger.Info("Started")
+	m.status.Update("qan", "Running")
 	return nil // success
 }
 
@@ -309,7 +306,9 @@ func (m *Manager) run() {
 				result.RunTime = t1.Sub(t0).Seconds()
 
 				report := MakeReport(m.config.ServiceInstance, interval, result, m.config)
-				m.spool.Write("qan", report)
+				if err := m.spool.Write("qan", report); err != nil {
+					m.logger.Warn("Lost report:", err)
+				}
 			}(intervalNo)
 		case worker := <-m.workerDoneChan:
 			m.logger.Debug("run:worker:done")

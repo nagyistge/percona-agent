@@ -81,22 +81,21 @@ func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager
 
 // @goroutine[0]
 func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
-	m.status.Update("mm", "Ready")
-	m.logger.Info("Ready")
+	m.logger.Info("Started")
+	m.status.Update("mm", "Running")
 	return nil
 }
 
 // @goroutine[0]
 func (m *Manager) Stop(cmd *proto.Cmd) error {
-	m.status.Update("mm", "Ready")
-	m.logger.Info("Ready")
+	// Can't stop the mm manager.
 	return nil
 }
 
 // @goroutine[0]
 func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	m.status.UpdateRe("mm", "Handling", cmd)
-	defer m.status.Update("mm", "Ready")
+	defer m.status.Update("mm", "Running")
 
 	switch cmd.Cmd {
 	case "StartService":

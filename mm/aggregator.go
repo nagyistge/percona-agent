@@ -167,7 +167,9 @@ func (a *Aggregator) report(startTs time.Time, is []*InstanceStats) {
 		Duration: uint(a.interval),
 		Stats:    is,
 	}
-	a.spool.Write("mm", report)
+	if err := a.spool.Write("mm", report); err != nil {
+		a.logger.Warn("Lost report:", err)
+	}
 }
 
 func GoTime(interval, unixTs int64) time.Time {

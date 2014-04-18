@@ -25,6 +25,7 @@ import (
 	"github.com/percona/cloud-tools/pct"
 	"github.com/peterbourgon/diskv"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -32,6 +33,8 @@ const (
 	WRITE_BUFFER = 100
 	CACHE_SIZE   = 1024 * 1024 * 8 // 8M
 )
+
+var ErrSpoolTimeout = errors.New("Timeout spooling data")
 
 type Spooler interface {
 	Start(Serializer) error
@@ -54,6 +57,7 @@ type DiskvSpooler struct {
 	sync     *pct.SyncChan
 	cache    *diskv.Diskv
 	status   *pct.Status
+	mux      *sync.Mutex
 }
 
 func NewDiskvSpooler(logger *pct.Logger, dataDir string, hostname string) *DiskvSpooler {
@@ -65,6 +69,7 @@ func NewDiskvSpooler(logger *pct.Logger, dataDir string, hostname string) *Diskv
 		dataChan: make(chan *proto.Data, WRITE_BUFFER),
 		sync:     pct.NewSyncChan(),
 		status:   pct.NewStatus([]string{"data-spooler"}),
+		mux:      new(sync.Mutex),
 	}
 	return s
 }
@@ -94,6 +99,7 @@ func (s *DiskvSpooler) Start(sz Serializer) error {
 	})
 
 	go s.run()
+	s.logger.Info("Started")
 	return nil
 }
 
@@ -102,6 +108,7 @@ func (s *DiskvSpooler) Stop() error {
 	s.sync.Wait()
 	s.sz = nil
 	s.cache = nil
+	s.logger.Info("Stopped")
 	return nil
 }
 
@@ -110,6 +117,20 @@ func (s *DiskvSpooler) Status() map[string]string {
 }
 
 func (s *DiskvSpooler) Write(service string, data interface{}) error {
+	/**
+	 * This method is shared: multiple goroutines call it to write data.
+	 * If the data serializer (sz) is not concurrent, then we serialize
+	 * access.  For example, the JSON text sz is concurrent, but the gzip
+	 * sz is not because it uses internal, non-mutex-guarded buffers.
+	 */
+	if !s.sz.Concurrent() {
+		s.mux.Lock()
+		defer s.mux.Unlock()
+	}
+
+	s.logger.Debug("write:call")
+	defer s.logger.Debug("write:return")
+
 	// Serialize the data: T{} -> []byte
 	encodedData, err := s.sz.ToBytes(data)
 	if err != nil {
@@ -129,9 +150,10 @@ func (s *DiskvSpooler) Write(service string, data interface{}) error {
 	// Write data to disk.
 	select {
 	case s.dataChan <- protoData:
-	default:
-		s.logger.Warn("Spool write buffer is full")
-		return errors.New("Spool write buffer is full")
+	case <-time.After(100 * time.Millisecond):
+		// Let caller decide what to do.
+		s.logger.Debug("write:timeout")
+		return ErrSpoolTimeout
 	}
 
 	return nil
@@ -170,8 +192,9 @@ func (s *DiskvSpooler) run() {
 		s.status.Update("data-spooler", "Idle")
 		select {
 		case protoData := <-s.dataChan:
-			s.status.Update("data-spooler", "Spooling data")
 			key := fmt.Sprintf("%s_%d", protoData.Service, protoData.Created.UnixNano())
+			s.logger.Debug("run:spool:" + key)
+			s.status.Update("data-spooler", "Spooling "+key)
 
 			bytes, err := json.Marshal(protoData)
 			if err != nil {
@@ -182,8 +205,6 @@ func (s *DiskvSpooler) run() {
 			if err := s.cache.Write(key, bytes); err != nil {
 				s.logger.Error(err)
 			}
-
-			s.logger.Debug("Spooled ", key)
 		case <-s.sync.StopChan:
 			s.sync.Graceful()
 			return

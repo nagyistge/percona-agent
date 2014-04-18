@@ -50,21 +50,21 @@ func NewManager(logger *pct.Logger, configDir string) *Manager {
 // @goroutine[0]
 func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 	return m.repo.Init()
-	m.status.Update("instance-manager", "Ready")
-	m.logger.Info("Ready")
+	m.logger.Info("Started")
+	m.status.Update("instance-manager", "Running")
 	return nil
 }
 
 // @goroutine[0]
 func (m *Manager) Stop(cmd *proto.Cmd) error {
-	// Can't stop instance manager.
+	// Can't stop the instance manager.
 	return nil
 }
 
 // @goroutine[0]
 func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	m.status.UpdateRe("instance-manager", "Handling", cmd)
-	defer m.status.Update("instance-manager", "Ready")
+	defer m.status.Update("instance-manager", "Running")
 
 	it := &proto.ServiceInstance{}
 	if err := json.Unmarshal(cmd.Data, it); err != nil {
@@ -80,7 +80,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		return cmd.Reply(nil, err)
 	default:
 		// todo: dynamic config
-		return cmd.Reply(pct.UnknownCmdError{Cmd: cmd.Cmd})
+		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
 }
 

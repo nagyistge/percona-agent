@@ -248,7 +248,7 @@ func WaitStatus(timeout int, r pct.StatusReporter, proc string, state string) bo
 		case <-time.After(100 * time.Millisecond):
 			status := r.Status()
 			if s, ok := status[proc]; !ok {
-				panic("StatusReporter does not have " + proc)
+				log.Fatalf("StatusReporter does not have %s: %+v\n", proc, status)
 			} else {
 				if s == state {
 					return true
