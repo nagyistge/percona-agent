@@ -44,7 +44,7 @@ type Connection struct {
 func NewConnection(dsn string) *Connection {
 	c := &Connection{
 		dsn:     dsn,
-		backoff: pct.NewBackoff(1 * time.Minute),
+		backoff: pct.NewBackoff(20 * time.Second),
 	}
 	return c
 }

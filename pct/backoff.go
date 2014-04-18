@@ -60,11 +60,15 @@ func (b *Backoff) Success() {
 		// is flapping, there maybe be other tries real soon, so we want the
 		// backoff wait to take effect.
 		b.lastSuccess = time.Now()
-	} else if b.lastSuccess.Sub(b.NowFunc()) > b.resetAfter {
-		// If it's been > 5m since the last success and this success,
-		// then the remote end was flapping at least stopped for 5 minutes,
-		// so we reset the backoff.
-		b.lastSuccess = time.Now()
+		return
+	}
+
+	now := b.NowFunc()
+	if now.Sub(b.lastSuccess) > b.resetAfter {
+		// If it's been long enough since the last success and this success,
+		// then we consider the remote end has stabilized, so reset the backoff
+		// to allow new connect attempts more quickly.
 		b.try = 0
 	}
+	b.lastSuccess = time.Now()
 }
