@@ -68,7 +68,7 @@ func (b *Backoff) Success() {
 		// If it's been long enough since the last success and this success,
 		// then we consider the remote end has stabilized, so reset the backoff
 		// to allow new connect attempts more quickly.
-		b.lastSuccess = time.Now()
 		b.try = 0
 	}
+	b.lastSuccess = time.Now()
 }
