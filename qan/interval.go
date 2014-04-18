@@ -131,6 +131,7 @@ func (i *FileIntervalIter) run() {
 			}
 
 			// Get the current size of the MySQL slow log.
+			i.logger.Debug("run:file size")
 			curSize, err := pct.FileSize(curFile)
 			if err != nil {
 				i.logger.Warn(err)
@@ -160,12 +161,11 @@ func (i *FileIntervalIter) run() {
 				cur.EndOffset = curSize
 				cur.StopTime = now
 
-				// Send interval non-blocking: if reciever is not ready,
-				// that's ok, the system may be busy, so drop the interval.
+				// Send interval to manager which should be ready to receive it.
 				select {
 				case i.intervalChan <- cur:
-				default:
-					// @todo: handle, count lost intervals
+				case <-time.After(1 * time.Second):
+					i.logger.Warn(fmt.Sprintf("Lost interval: %+v", cur))
 				}
 
 				// Next interval:
