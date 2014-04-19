@@ -63,7 +63,6 @@ func (s *JsonGzipSerializer) Encoding() string {
 	return "gzip"
 }
 
-
 func (s *JsonGzipSerializer) Concurrent() bool {
 	return false
 }
