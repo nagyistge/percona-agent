@@ -213,6 +213,8 @@ func (r *Repo) Name(service string, id uint) string {
 }
 
 func (r *Repo) List() []string {
+	r.mux.Lock()
+	defer r.mux.Unlock()
 	instances := []string{}
 	for name, _ := range r.it {
 		instances = append(instances, name)
