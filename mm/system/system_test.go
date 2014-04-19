@@ -504,9 +504,9 @@ func (s *ManagerTestSuite) TestStartCollectStop(t *C) {
 		t.Fatalf("Start monitor without error, got %s", err)
 	}
 
-	// system-monitor=Idle once it has started its internals,
+	// system-monitor=Ready once it has started its internals,
 	// should be very fast.
-	if ok := test.WaitStatus(3, m, s.name, "Idle"); !ok {
+	if ok := test.WaitStatusPrefix(3, m, s.name, "Idle"); !ok {
 		t.Fatal("Monitor is ready")
 	}
 

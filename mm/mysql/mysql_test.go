@@ -121,7 +121,7 @@ func (s *TestSuite) TestStartCollectStop(t *C) {
 
 	// monitor=Ready once it has successfully connected to MySQL.  This may
 	// take a few seconds (hopefully < 5) on a slow test machine.
-	if ok := test.WaitStatus(5, m, s.name, "Ready"); !ok {
+	if ok := test.WaitStatus(5, m, s.name+"-mysql", "Connected"); !ok {
 		t.Fatal("Monitor is ready")
 	}
 
@@ -215,7 +215,7 @@ func (s *TestSuite) TestCollectInnoDBStats(t *C) {
 		t.Fatalf("Start monitor without error, got %s", err)
 	}
 
-	if ok := test.WaitStatus(5, m, s.name, "Ready"); !ok {
+	if ok := test.WaitStatus(5, m, s.name+"-mysql", "Connected"); !ok {
 		t.Fatal("Monitor is ready")
 	}
 
@@ -296,7 +296,7 @@ func (s *TestSuite) TestCollectUserstats(t *C) {
 		t.Fatalf("Start monitor without error, got %s", err)
 	}
 
-	if ok := test.WaitStatus(5, m, s.name, "Ready"); !ok {
+	if ok := test.WaitStatus(5, m, s.name+"-mysql", "Connected"); !ok {
 		t.Fatal("Monitor is ready")
 	}
 
