@@ -95,7 +95,7 @@ func (w *SlowLogWorker) Name() string {
 }
 
 func (w *SlowLogWorker) Status() string {
-	return w.status.Get(w.name, true)
+	return w.status.Get(w.name)
 }
 
 func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
