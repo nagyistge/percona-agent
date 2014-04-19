@@ -65,28 +65,27 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 		return errors.New("Invalid log level: " + c.Level)
 	}
 
-	m.status.Update("log", "Starting")
-
 	m.relay = NewRelay(m.client, m.logChan, c.File, level, c.Offline)
 	go m.relay.Run()
 	m.config = c
 
 	m.logger = pct.NewLogger(m.relay.LogChan(), "log")
 
-	m.status.Update("log", "Ready")
+	m.logger.Info("Started")
+	m.status.Update("log", "Running")
 	return nil
 }
 
 // @goroutine[0]
 func (m *Manager) Stop(cmd *proto.Cmd) error {
-	// Can't stop the logger yet.
+	// Can't stop the log service.
 	return nil
 }
 
 // @goroutine[0]
 func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	m.status.UpdateRe("log", "Handling", cmd)
-	defer m.status.Update("log", "Ready")
+	defer m.status.Update("log", "Running")
 
 	switch cmd.Cmd {
 	case "SetConfig":
@@ -127,15 +126,11 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	case "GetConfig":
 		// proto.Cmd[Service:log, Cmd:GetConfig]
 		return cmd.Reply(m.config)
-	case "Status":
-		// proto.Cmd[Service:log, Cmd:Status]
-		status := m.Status()
-		return cmd.Reply(status)
 	case "Reconnect":
 		err := m.client.Disconnect()
 		return cmd.Reply(nil, err)
 	default:
-		return cmd.Reply(pct.UnknownCmdError{Cmd: cmd.Cmd})
+		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
 }
 

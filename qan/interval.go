@@ -27,6 +27,7 @@ import (
 
 // A slice of the MySQL slow log:
 type Interval struct {
+	Number      int
 	Filename    string    // slow_query_log_file
 	StartTime   time.Time // UTC
 	StopTime    time.Time // UTC
@@ -70,6 +71,7 @@ type FileIntervalIter struct {
 	filename FilenameFunc
 	tickChan chan time.Time
 	// --
+	intervalNo   int
 	intervalChan chan *Interval
 	sync         *pct.SyncChan
 	running      bool
@@ -150,6 +152,7 @@ func (i *FileIntervalIter) run() {
 
 			if !cur.StartTime.IsZero() { // StartTime is set
 				i.logger.Debug("run:next")
+				i.intervalNo++
 
 				// End of current interval:
 				cur.Filename = curFile
@@ -160,6 +163,7 @@ func (i *FileIntervalIter) run() {
 				}
 				cur.EndOffset = curSize
 				cur.StopTime = now
+				cur.Number = i.intervalNo
 
 				// Send interval to manager which should be ready to receive it.
 				select {

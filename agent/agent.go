@@ -70,7 +70,7 @@ func NewAgent(config *Config, pidFile *pct.PidFile, logger *pct.Logger, api pct.
 		client:    client,
 		services:  services,
 		// --
-		status:     pct.NewStatus([]string{"agent", "agent-cmd-handler", "agent-api"}),
+		status:     pct.NewStatus([]string{"agent", "agent-cmd-handler"}),
 		cmdChan:    make(chan *proto.Cmd, CMD_QUEUE_SIZE),
 		statusChan: make(chan *proto.Cmd, STATUS_QUEUE_SIZE),
 		stopChan:   make(chan bool, 1),
@@ -85,7 +85,8 @@ func NewAgent(config *Config, pidFile *pct.PidFile, logger *pct.Logger, api pct.
 // percona-agent:@goroutine[0]
 func (agent *Agent) Run() (stopReason string, update bool) {
 	logger := agent.logger
-	logger.Debug("start")
+	logger.Debug("Run:call")
+	defer logger.Debug("Run:return")
 
 	// Reset for testing.
 	agent.stopping = false
@@ -102,7 +103,7 @@ func (agent *Agent) Run() (stopReason string, update bool) {
 	go agent.connect()
 
 	defer func() {
-		logger.Info("Agent stopped")
+		logger.Info("Stopped")
 		client.Disconnect()
 		client.Stop()
 	}()
@@ -128,11 +129,13 @@ func (agent *Agent) Run() (stopReason string, update bool) {
 	cmdHandlerErrors := 0
 	statusHandlerErrors := 0
 
-	agent.status.Update("agent", "Ready")
-	logger.Info("Ready")
+	logger.Info("Started")
+
 AGENT_LOOP:
 	for {
 		logger.Debug("wait")
+		agent.status.Update("agent", "Idle")
+
 		select {
 		case cmd := <-cmdChan: // from API
 			if cmd.Cmd == "Abort" {
@@ -142,6 +145,7 @@ AGENT_LOOP:
 				golog.Panicf("%s\n", cmd)
 			}
 
+			agent.status.UpdateRe("agent", "Handling", cmd)
 			logger.Debug("recv: ", cmd)
 
 			if agent.stopping {
@@ -218,9 +222,6 @@ AGENT_LOOP:
 		case <-agent.stopChan:
 			break AGENT_LOOP
 		} // select
-
-		agent.status.Update("agent", "Ready")
-
 	} // for AGENT_LOOP
 
 	return agent.stopReason, agent.update
@@ -228,7 +229,6 @@ AGENT_LOOP:
 
 // @goroutine[0]
 func (agent *Agent) connect() {
-	agent.status.Update("agent", "Connecting to API")
 	agent.logger.Info("Connecting to API")
 	agent.client.Connect()
 }
@@ -302,7 +302,7 @@ func (agent *Agent) cmdHandler() {
 
 		select {
 		case cmd := <-agent.cmdChan:
-			agent.status.UpdateRe("agent-cmd-handler", "Running", cmd)
+			agent.status.UpdateRe("agent-cmd-handler", "Handling", cmd)
 
 			if cmd.Cmd == "Reconnect" && cmd.Service == "agent" {
 				/**
@@ -357,7 +357,7 @@ func (agent *Agent) cmdHandler() {
 
 // cmdHandler:@goroutine[3]
 func (agent *Agent) Handle(cmd *proto.Cmd) *proto.Reply {
-	agent.status.UpdateRe("agent-cmd-handler", "Running", cmd)
+	agent.status.UpdateRe("agent-cmd-handler", "Handling", cmd)
 	agent.logger.Info("Running", cmd)
 
 	defer func() {

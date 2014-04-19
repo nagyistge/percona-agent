@@ -41,7 +41,7 @@ func NewSender(logger *pct.Logger, client pct.WebsocketClient) *Sender {
 		logger: logger,
 		client: client,
 		sync:   pct.NewSyncChan(),
-		status: pct.NewStatus([]string{"data-sender", "data-api"}),
+		status: pct.NewStatus([]string{"data-sender"}),
 	}
 	return s
 }
@@ -51,6 +51,7 @@ func (s *Sender) Start(spool Spooler, tickerChan <-chan time.Time, blackhole boo
 	s.tickerChan = tickerChan
 	s.blackhole = blackhole
 	go s.run()
+	s.logger.Info("Started")
 	return nil
 }
 
@@ -59,6 +60,7 @@ func (s *Sender) Stop() error {
 	s.sync.Wait()
 	s.spool = nil
 	s.tickerChan = nil
+	s.logger.Info("Stopped")
 	return nil
 }
 
@@ -97,11 +99,13 @@ func (s *Sender) run() {
 }
 
 func (s *Sender) send() {
+	s.logger.Debug("send:call")
+	defer s.logger.Debug("send:return")
+
 	// Try a few times to connect to the API.
+	s.status.Update("data-sender", "Connecting")
 	connected := false
 	var apiErr error
-	s.logger.Debug("send:connect")
-	s.status.Update("data-sender", "Running")
 	for i := 1; i <= 3; i++ {
 		if apiErr = s.client.ConnectOnce(); apiErr != nil {
 			s.logger.Warn("Connect API failed:", apiErr)
@@ -111,8 +115,9 @@ func (s *Sender) send() {
 			connected = true
 			// client.WebsocketClient expects caller to recv on ConenctChan(),
 			// even though in this case we're not using the async channels.
-			// tood: fix this poor design assumption/coupling in ws/client.go
+			// todo: fix this poor design assumption/coupling in ws/client.go
 			defer func() {
+				s.status.Update("data-sender", "Disconnecting")
 				s.client.Disconnect()
 				<-s.client.ConnectChan()
 			}()
@@ -120,20 +125,19 @@ func (s *Sender) send() {
 		}
 	}
 	if !connected {
-		s.status.Update("data-api", fmt.Sprintf("Disconnected (%d)", apiErr))
 		return
 	}
 	s.logger.Debug("send:connected")
-	s.status.Update("data-api", "Connected")
-	defer s.status.Update("data-api", "Idle")
 
 	maxWarnErr := 3
 	n400Err := 0
 	n500Err := 0
 
 	// Send all files.
-	// todo: number/time/rate limit so we dont DDoS API
 	s.logger.Info("Start sending")
+	defer s.logger.Info("Done sending") // todo: log basic numbers: number of files sent, errors, time, etc.
+
+	s.status.Update("data-sender", "Running")
 	filesChan := s.spool.Files()
 	for file := range filesChan {
 		s.logger.Debug("send:" + file)
@@ -152,6 +156,7 @@ func (s *Sender) send() {
 			continue
 		}
 
+		// todo: number/time/rate limit so we dont DDoS API
 		s.status.Update("data-sender", "Sending "+file)
 		if err := s.client.SendBytes(data); err != nil {
 			s.logger.Warn(err)
@@ -195,7 +200,4 @@ func (s *Sender) send() {
 	if n500Err > maxWarnErr {
 		s.logger.Warn(fmt.Sprintf("%d more 5xx errors", n500Err-maxWarnErr))
 	}
-
-	// todo: log some basic numbers like number of files sent, errors, time, etc.
-	s.logger.Info("Done sending")
 }

@@ -611,26 +611,11 @@ func (s *ManagerTestSuite) TestStatus(t *C) {
 	t.Assert(err, IsNil)
 
 	// Get its status directly.
-	if !test.WaitStatus(5, m, "data", "Ready") {
+	if !test.WaitStatus(5, m, "data", "Running") {
 		t.Fatal("test.WaitStatus() timeout")
 	}
 	status := m.Status()
-	t.Check(status["data"], Equals, "Ready")
+	t.Check(status["data"], Equals, "Running")
 	t.Check(status["data-spooler"], Equals, "Idle")
 	t.Check(status["data-sender"], Equals, "Idle")
-
-	// Get its status via cmd.
-	cmd := &proto.Cmd{
-		User:    "daniel",
-		Service: "data",
-		Cmd:     "Status",
-	}
-	gotReply := m.Handle(cmd)
-	gotStatus := make(map[string]string)
-	if err := json.Unmarshal(gotReply.Data, &gotStatus); err != nil {
-		t.Fatal(err)
-	}
-	t.Check(gotStatus["data"], Equals, "Ready")
-	t.Check(gotStatus["data-spooler"], Equals, "Idle")
-	t.Check(gotStatus["data-sender"], Equals, "Idle")
 }

@@ -46,7 +46,7 @@ type Manager struct {
 	tickChan       chan time.Time
 	mysqlConn      mysql.Connector
 	iter           IntervalIter
-	workers        map[Worker]bool
+	workers        map[Worker]*Interval
 	workersMux     *sync.RWMutex
 	workerDoneChan chan Worker
 	status         *pct.Status
@@ -64,9 +64,9 @@ func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock 
 		spool:         spool,
 		im:            im,
 		// --
-		workers:     make(map[Worker]bool),
+		workers:     make(map[Worker]*Interval),
 		workersMux:  new(sync.RWMutex),
-		status:      pct.NewStatus([]string{"qan", "qan-log-parser", "qan-next-interval"}),
+		status:      pct.NewStatus([]string{"qan", "qan-log-parser", "qan-last-interval", "qan-next-interval"}),
 		sync:        pct.NewSyncChan(),
 		oldSlowLogs: make(map[string]int),
 	}
@@ -79,8 +79,6 @@ func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock 
 
 // @goroutine[0]
 func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
-	m.status.UpdateRe("qan", "Starting", cmd)
-
 	logger := m.logger
 	logger.InResponseTo(cmd)
 	defer logger.InResponseTo(nil)
@@ -142,13 +140,12 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 
 	// Save the config.
 	m.config = c
-	m.status.UpdateRe("qan", "Running", cmd)
-	logger.Info("Running")
-
 	if err := pct.Basedir.WriteConfig("qan", c); err != nil {
-		return err
+		m.logger.Warn(err)
 	}
 
+	logger.Info("Started")
+	m.status.Update("qan", "Running")
 	return nil // success
 }
 
@@ -243,7 +240,7 @@ func (m *Manager) run() {
 	}
 
 	intervalChan := m.iter.IntervalChan()
-	intervalNo := 0
+	lastTs := time.Time{}
 
 	for {
 		m.logger.Debug("run:wait")
@@ -251,12 +248,11 @@ func (m *Manager) run() {
 		m.workersMux.RLock()
 		runningWorkers := len(m.workers)
 		m.workersMux.RUnlock()
-		m.status.Update("qan-log-parser", fmt.Sprintf("Ready (%d of %d running)", runningWorkers, m.config.MaxWorkers))
+		m.status.Update("qan-log-parser", fmt.Sprintf("Idle (%d of %d running)", runningWorkers, m.config.MaxWorkers))
 
 		select {
 		case interval := <-intervalChan:
-			intervalNo++
-			m.logger.Debug(fmt.Sprintf("run:interval:%d", intervalNo))
+			m.logger.Debug(fmt.Sprintf("run:interval:%d", interval.Number))
 
 			m.workersMux.RLock()
 			runningWorkers := len(m.workers)
@@ -276,23 +272,23 @@ func (m *Manager) run() {
 
 			m.status.Update("qan-log-parser", "Running worker")
 			job := &Job{
-				Id:             fmt.Sprintf("%d", intervalNo),
+				Id:             fmt.Sprintf("%d", interval.Number),
 				SlowLogFile:    interval.Filename,
 				StartOffset:    interval.StartOffset,
 				EndOffset:      interval.EndOffset,
 				RunTime:        time.Duration(m.config.WorkerRunTime) * time.Second,
 				ExampleQueries: m.config.ExampleQueries,
 			}
-			w := m.workerFactory.Make(fmt.Sprintf("qan-worker-%d", intervalNo))
+			w := m.workerFactory.Make(fmt.Sprintf("qan-worker-%d", interval.Number))
 
 			m.workersMux.Lock()
-			m.workers[w] = true
+			m.workers[w] = interval
 			m.workersMux.Unlock()
 
-			go func(n int) {
-				m.logger.Debug(fmt.Sprintf("run:interval:%d:start", n))
+			go func(interval *Interval) {
+				m.logger.Debug(fmt.Sprintf("run:interval:%d:start", interval.Number))
 				defer func() {
-					m.logger.Debug(fmt.Sprintf("run:interval:%d:done", n))
+					m.logger.Debug(fmt.Sprintf("run:interval:%d:done", interval.Number))
 					m.workerDoneChan <- w
 				}()
 				t0 := time.Now()
@@ -309,15 +305,25 @@ func (m *Manager) run() {
 				result.RunTime = t1.Sub(t0).Seconds()
 
 				report := MakeReport(m.config.ServiceInstance, interval, result, m.config)
-				m.spool.Write("qan", report)
-			}(intervalNo)
+				if err := m.spool.Write("qan", report); err != nil {
+					m.logger.Warn("Lost report:", err)
+				}
+			}(interval)
 		case worker := <-m.workerDoneChan:
 			m.logger.Debug("run:worker:done")
 			m.status.Update("qan-log-parser", "Reaping worker")
 
 			m.workersMux.Lock()
+			interval := m.workers[worker]
 			delete(m.workers, worker)
 			m.workersMux.Unlock()
+
+			if interval.StartTime.After(lastTs) {
+				t0 := interval.StartTime.Format("2006-01-02 15:04:05")
+				t1 := interval.StopTime.Format("15:04:05 MST")
+				m.status.Update("qan-last-interval", fmt.Sprintf("%s to %s", t0, t1))
+				lastTs = interval.StartTime
+			}
 
 			for file, cnt := range m.oldSlowLogs {
 				if cnt == 1 {

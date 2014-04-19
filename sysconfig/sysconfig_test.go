@@ -132,9 +132,9 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 		t.Errorf("Does not add tickChan, got %#v", diff)
 	}
 
-	// Its status should be "Ready".
+	// Its status should be "Running".
 	status := m.Status()
-	t.Check(status["sysconfig"], Equals, "Ready")
+	t.Check(status["sysconfig"], Equals, "Running")
 
 	// Normally, starting an already started service results in a ServiceIsRunningError,
 	// but sysconfig is a proxy manager so starting it is a null op.
@@ -149,9 +149,9 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 		t.Fatalf("Stop manager without error, got %s", err)
 	}
 
-	// ...which is why its status is always "Ready".
+	// ...which is why its status is always "Running".
 	status = m.Status()
-	t.Check(status["sysconfig"], Equals, "Ready")
+	t.Check(status["sysconfig"], Equals, "Running")
 }
 
 func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {

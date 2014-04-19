@@ -18,6 +18,7 @@
 package system
 
 import (
+	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/mm"
 	"github.com/percona/cloud-tools/pct"
@@ -79,6 +80,7 @@ func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collect
 
 	go m.run()
 	m.running = true
+	m.logger.Info("Started")
 
 	return nil
 }
@@ -99,6 +101,7 @@ func (m *Monitor) Stop() error {
 
 	m.config = nil // no config if not running
 	m.running = false
+	m.logger.Info("Stopped")
 
 	// Do not update status to "Stopped" here; run() does that on return.
 	return nil
@@ -139,9 +142,10 @@ func (m *Monitor) run() {
 		m.logger.Debug("run:return")
 	}()
 
+	var lastTs int64
 	for {
-		m.status.Update(m.name, "Idle")
-
+		m.logger.Debug("run:wait")
+		m.status.Update(m.name, fmt.Sprintf("Idle (last collected at %s)", time.Unix(lastTs, 0)))
 		select {
 		case now := <-m.tickChan:
 			m.logger.Debug("run:collect:start")
@@ -205,6 +209,7 @@ func (m *Monitor) run() {
 			if len(c.Metrics) > 0 {
 				select {
 				case m.collectionChan <- c:
+					lastTs = c.Ts
 				case <-time.After(500 * time.Millisecond):
 					// lost collection
 					m.logger.Debug("Lost system metrics; timeout spooling after 500ms")
@@ -214,7 +219,6 @@ func (m *Monitor) run() {
 			}
 
 			m.logger.Debug("run:collect:stop")
-			m.status.Update(m.name, "Ready")
 		case <-m.sync.StopChan:
 			m.logger.Debug("run:stop")
 			return
@@ -225,6 +229,8 @@ func (m *Monitor) run() {
 func (m *Monitor) ProcStat(content []byte) ([]mm.Metric, error) {
 	m.logger.Debug("ProcStat:call")
 	defer m.logger.Debug("ProcStat:return")
+
+	m.status.Update(m.name, "Getting /proc/stat metrics")
 
 	metrics := []mm.Metric{}
 	currCPUval := make(map[string][]float64)
@@ -342,6 +348,8 @@ func (m *Monitor) ProcMeminfo(content []byte) ([]mm.Metric, error) {
 	m.logger.Debug("ProcMeminfo:call")
 	defer m.logger.Debug("ProcMeminfo:return")
 
+	m.status.Update(m.name, "Getting /proc/meminfo metrics")
+
 	/**
 	 * MemTotal:        8046892 kB
 	 * MemFree:         5273644 kB
@@ -372,6 +380,8 @@ func (m *Monitor) ProcMeminfo(content []byte) ([]mm.Metric, error) {
 func (m *Monitor) ProcVmstat(content []byte) ([]mm.Metric, error) {
 	m.logger.Debug("ProcVmstat:call")
 	defer m.logger.Debug("ProcVmstat:return")
+
+	m.status.Update(m.name, "Getting /proc/vmstat metrics")
 
 	/**
 	 * nr_free_pages 1318376
@@ -404,6 +414,8 @@ func (m *Monitor) ProcVmstat(content []byte) ([]mm.Metric, error) {
 func (m *Monitor) ProcLoadavg(content []byte) ([]mm.Metric, error) {
 	m.logger.Debug("ProcLoadavg:call")
 	defer m.logger.Debug("ProcLoadavg:return")
+
+	m.status.Update(m.name, "Getting /proc/loadavg metrics")
 
 	/**
 	 * Should be just one line:
@@ -449,6 +461,8 @@ func (m *Monitor) ProcLoadavg(content []byte) ([]mm.Metric, error) {
 func (m *Monitor) ProcDiskstats(content []byte) ([]mm.Metric, error) {
 	m.logger.Debug("ProcDiskstats:call")
 	defer m.logger.Debug("ProcDiskstats:return")
+
+	m.status.Update(m.name, "Getting /proc/diskstats metrics")
 
 	/**
 	 *   1       0 ram0 0 0 0 0 0 0 0 0 0 0 0

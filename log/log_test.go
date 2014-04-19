@@ -228,6 +228,11 @@ func (s *RelayTestSuite) TestOfflineBuffering(t *C) {
 	// Wait for the relay to call client.Connect().
 	<-s.connectChan
 
+	// Double-check that relay is offline.
+	if !test.WaitStatus(1, s.relay, "ws", "Disconnected") {
+		t.Fatal("Relay connects")
+	}
+
 	// Relay is offline and trying to connect again in another goroutine.
 	// These entries should therefore not be sent.  There's a minor race
 	// condition: when relay goes offline, it sends an internal log entry.
@@ -242,7 +247,7 @@ func (s *RelayTestSuite) TestOfflineBuffering(t *C) {
 
 	// Unblock the relay's connect attempt.
 	s.connectChan <- true
-	if !test.WaitStatus(1, s.relay, "log-api", "Connected") {
+	if !test.WaitStatus(1, s.relay, "ws", "Connected") {
 		t.Fatal("Relay connects")
 	}
 
@@ -283,7 +288,7 @@ func (s *RelayTestSuite) TestOfflineBufferOverflow(t *C) {
 
 	// Unblock the relay's connect attempt.
 	s.connectChan <- true
-	if !test.WaitStatus(1, s.relay, "log-api", "Connected") {
+	if !test.WaitStatus(1, s.relay, "ws", "Connected") {
 		t.Fatal("Relay connects")
 	}
 
@@ -331,7 +336,7 @@ func (s *RelayTestSuite) TestOfflineBufferOverflow(t *C) {
 
 	// Unblock the relay's connect attempt.
 	s.connectChan <- true
-	if !test.WaitStatus(1, s.relay, "log-api", "Connected") {
+	if !test.WaitStatus(1, s.relay, "ws", "Connected") {
 		t.Fatal("Relay connects")
 	}
 
@@ -579,18 +584,8 @@ func (s *ManagerTestSuite) TestLogService(t *C) {
 	 * Status (internal status of log and relay)
 	 */
 
-	cmd = &proto.Cmd{
-		User:    "daniel",
-		Service: "log",
-		Cmd:     "Status",
-	}
-
-	gotReply = m.Handle(cmd)
-	status := make(map[string]string)
-	if err := json.Unmarshal(gotReply.Data, &status); err != nil {
-		t.Error(err)
-	}
-	t.Check(status["log-api"], Equals, "Connected")
+	status := m.Status()
+	t.Check(status["ws"], Equals, "Connected")
 	t.Check(status["log-file"], Equals, newLogFile)
 	t.Check(status["log-level"], Equals, "warning")
 }

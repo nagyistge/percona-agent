@@ -47,7 +47,6 @@ type Relay struct {
 	secondBufSize int
 	lost          int
 	status        *pct.Status
-	apiErr        error
 }
 
 func NewRelay(client pct.WebsocketClient, logChan chan *proto.LogEntry, logFile string, logLevel byte, offline bool) *Relay {
@@ -69,7 +68,6 @@ func NewRelay(client pct.WebsocketClient, logChan chan *proto.LogEntry, logFile 
 			"log-chan",
 			"log-buf1",
 			"log-buf2",
-			"log-api",
 		}),
 	}
 	return r
@@ -88,13 +86,14 @@ func (r *Relay) LogFileChan() chan string {
 }
 
 func (r *Relay) Status() map[string]string {
-	return r.status.All()
+	return r.status.Merge(r.client.Status())
 }
 
 func (r *Relay) Run() {
 	r.status.Update("log-relay", "Running")
 	defer r.status.Update("log-relay", "Stopped")
 
+	r.setLogLevel(r.logLevel)
 	r.setLogFile(r.logFile)
 
 	// Connect if we were created with a client.  If this is slow, log entries
@@ -125,7 +124,6 @@ func (r *Relay) Run() {
 			r.connected = connected
 			r.internal(fmt.Sprintf("connected: %t", connected))
 			if connected {
-				r.status.Update("log-api", "Connected")
 				if len(r.firstBuf) > 0 {
 					// Send log entries we saved while offline.
 					r.resend()
@@ -159,16 +157,9 @@ func (r *Relay) internal(msg string) {
 func (r *Relay) connect() {
 	if r.client == nil || r.offline {
 		// log file only
-		r.status.Update("log-api", "Disabled")
 		return
 	}
-	if r.apiErr != nil {
-		r.status.Update("log-api", fmt.Sprintf("Connecting (%s)", r.apiErr))
-	} else {
-		r.status.Update("log-api", "Connecting")
-	}
 	r.client.Connect()
-	r.apiErr = nil
 	go r.waitErr()
 }
 
@@ -179,12 +170,13 @@ func (r *Relay) waitErr() {
 	// waiting for error/disconenct.
 	var data interface{}
 	if err := r.client.Recv(data, 0); err != nil {
-		r.apiErr = err
 		r.client.Disconnect()
 	}
 }
 
 func (r *Relay) buffer(e *proto.LogEntry) {
+	r.status.Update("log-relay", "Buffering")
+
 	defer func() {
 		r.status.Update("log-buf1", fmt.Sprintf("%d", r.firstBufSize))
 		r.status.Update("log-buf2", fmt.Sprintf("%d", r.secondBufSize))
@@ -221,6 +213,7 @@ func (r *Relay) buffer(e *proto.LogEntry) {
 func (r *Relay) send(entry *proto.LogEntry, bufferOnErr bool) error {
 	var err error
 	if r.connected {
+		r.status.Update("log-relay", "Sending")
 		if err = r.client.Send(entry, 5); err != nil {
 			if bufferOnErr {
 				// todo: if error is just timeout, when will this be resent?
@@ -239,6 +232,7 @@ func (r *Relay) resend() {
 		r.status.Update("log-buf2", fmt.Sprintf("%d", r.secondBufSize))
 	}()
 
+	r.status.Update("log-relay", "Resending buf1")
 	for i := 0; i < BUFFER_SIZE; i++ {
 		if r.firstBuf[i] != nil {
 			if err := r.send(r.firstBuf[i], false); err == nil {
@@ -263,6 +257,7 @@ func (r *Relay) resend() {
 		r.lost = 0
 	}
 
+	r.status.Update("log-relay", "Resending buf2")
 	for i := 0; i < BUFFER_SIZE; i++ {
 		if r.secondBuf[i] != nil {
 			if err := r.send(r.secondBuf[i], false); err == nil {
@@ -275,6 +270,8 @@ func (r *Relay) resend() {
 }
 
 func (r *Relay) setLogLevel(level byte) {
+	r.status.Update("log-relay", fmt.Sprintf("Setting log level: %d", level))
+
 	if level < proto.LOG_EMERGENCY || level > proto.LOG_DEBUG {
 		r.internal(fmt.Sprintf("Invalid log level: %d\n", level))
 		return
@@ -285,12 +282,12 @@ func (r *Relay) setLogLevel(level byte) {
 }
 
 func (r *Relay) setLogFile(logFile string) {
-	r.status.Update("log-file", "Setting to "+logFile)
+	r.status.Update("log-relay", "Setting log file: "+logFile)
 
 	if logFile == "" {
 		r.logger = nil
 		r.logFile = ""
-		r.status.Update("log-file", "Disabled")
+		r.status.Update("log-file", "")
 		return
 	}
 

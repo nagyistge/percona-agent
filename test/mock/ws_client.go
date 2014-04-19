@@ -17,6 +17,7 @@ type WebsocketClient struct {
 	RecvError        chan error
 	connectChan      chan bool
 	testConnectChan  chan bool
+	connected        bool
 	started          bool
 	RecvBytes        chan []byte
 	TraceChan        chan string
@@ -51,16 +52,19 @@ func (c *WebsocketClient) Connect() {
 		<-c.testConnectChan
 	}
 	c.connectChan <- true // to SUT
+	c.connected = true
 }
 
 func (c *WebsocketClient) ConnectOnce() error {
 	c.TraceChan <- "ConnectOnce"
+	c.connected = true
 	return nil
 }
 
 func (c *WebsocketClient) Disconnect() error {
 	c.TraceChan <- "Disconnect"
 	c.connectChan <- false
+	c.connected = false
 	return nil
 }
 
@@ -134,8 +138,14 @@ func (c *WebsocketClient) SetConnectChan(connectChan chan bool) {
 }
 
 func (c *WebsocketClient) Status() map[string]string {
+	wsStatus := ""
+	if c.connected {
+		wsStatus = "Connected"
+	} else {
+		wsStatus = "Disconnected"
+	}
 	return map[string]string{
-		"ws":      "Connected",
+		"ws":      wsStatus,
 		"ws-link": "http://localhost",
 	}
 }

@@ -86,7 +86,7 @@ func (s *TestSuite) TestStartCollectStop(t *C) {
 
 	// monitor=Ready once it has successfully connected to MySQL.  This may
 	// take a few seconds (hopefully < 5) on a slow test machine.
-	if ok := test.WaitStatus(5, m, s.name, "Ready"); !ok {
+	if ok := test.WaitStatusPrefix(5, m, s.name, "Idle"); !ok {
 		t.Fatal("Monitor is ready")
 	}
 

@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
+	"strings"
 )
 
 type Manager struct {
@@ -37,7 +38,7 @@ func NewManager(logger *pct.Logger, configDir string) *Manager {
 		logger:    logger,
 		configDir: configDir,
 		// --
-		status: pct.NewStatus([]string{"instance-manager"}),
+		status: pct.NewStatus([]string{"instances", "instances-repo"}),
 		repo:   repo,
 	}
 	return m
@@ -49,22 +50,24 @@ func NewManager(logger *pct.Logger, configDir string) *Manager {
 
 // @goroutine[0]
 func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
-	return m.repo.Init()
-	m.status.Update("instance-manager", "Ready")
-	m.logger.Info("Ready")
+	if err := m.repo.Init(); err != nil {
+		return err
+	}
+	m.logger.Info("Started")
+	m.status.Update("instances", "Running")
 	return nil
 }
 
 // @goroutine[0]
 func (m *Manager) Stop(cmd *proto.Cmd) error {
-	// Can't stop instance manager.
+	// Can't stop the instance manager.
 	return nil
 }
 
 // @goroutine[0]
 func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
-	m.status.UpdateRe("instance-manager", "Handling", cmd)
-	defer m.status.Update("instance-manager", "Ready")
+	m.status.UpdateRe("instances", "Handling", cmd)
+	defer m.status.Update("instances", "Running")
 
 	it := &proto.ServiceInstance{}
 	if err := json.Unmarshal(cmd.Data, it); err != nil {
@@ -80,11 +83,12 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		return cmd.Reply(nil, err)
 	default:
 		// todo: dynamic config
-		return cmd.Reply(pct.UnknownCmdError{Cmd: cmd.Cmd})
+		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
 }
 
 func (m *Manager) Status() map[string]string {
+	m.status.Update("instances-repo", strings.Join(m.repo.List(), " "))
 	return m.status.All()
 }
 

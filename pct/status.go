@@ -64,37 +64,21 @@ func (s *Status) UpdateRe(proc string, status string, cmd *proto.Cmd) {
 	s.status[proc] = fmt.Sprintf("%s %s", status, cmd)
 }
 
-func (s *Status) Get(proc string, lock bool) string {
-	_, ok := s.status[proc]
-	if !ok {
-		return ""
+func (s *Status) Get(proc string) string {
+	if _, ok := s.status[proc]; !ok {
+		return "ERROR: " + proc + " status not found"
 	}
-	if lock {
-		s.mux[proc].RLock()
-		defer s.mux[proc].RUnlock()
-	}
-
+	s.mux[proc].RLock()
+	defer s.mux[proc].RUnlock()
 	return s.status[proc]
 }
 
 func (s *Status) All() map[string]string {
 	all := make(map[string]string)
 	for proc, _ := range s.status {
-		all[proc] = s.Get(proc, true)
+		all[proc] = s.Get(proc)
 	}
 	return all
-}
-
-func (s *Status) Lock() {
-	for _, mux := range s.mux {
-		mux.RLock()
-	}
-}
-
-func (s *Status) Unlock() {
-	for _, mux := range s.mux {
-		mux.RUnlock()
-	}
 }
 
 func (s *Status) Merge(others ...map[string]string) map[string]string {
