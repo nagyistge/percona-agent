@@ -50,7 +50,9 @@ func NewManager(logger *pct.Logger, configDir string) *Manager {
 
 // @goroutine[0]
 func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
-	return m.repo.Init()
+	if err := m.repo.Init(); err != nil {
+		return err
+	}
 	m.logger.Info("Started")
 	m.status.Update("instances", "Running")
 	return nil

@@ -319,7 +319,9 @@ func (m *Manager) run() {
 			m.workersMux.Unlock()
 
 			if interval.StartTime.After(lastTs) {
-				m.status.Update("qan-last-interval", interval.StartTime.String())
+				t0 := interval.StartTime.Format("2006-01-02 15:04:05")
+				t1 := interval.StopTime.Format("15:04:05 MST")
+				m.status.Update("qan-last-interval", fmt.Sprintf("%s to %s", t0, t1))
 				lastTs = interval.StartTime
 			}
 
