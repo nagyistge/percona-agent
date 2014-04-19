@@ -167,7 +167,7 @@ func (s *AgentTestSuite) TestStatus(t *C) {
 	t.Assert(got, NotNil)
 
 	expectStatus := map[string]string{
-		"agent": "Ready",
+		"agent": "Idle",
 	}
 	if ok, diff := test.IsDeeply(got, expectStatus); !ok {
 		test.Dump(got)
@@ -241,7 +241,7 @@ func (s *AgentTestSuite) TestStatusAfterConnFail(t *C) {
 	// Get reply.
 	got := test.WaitStatusReply(s.recvChan)
 	t.Assert(got, NotNil)
-	t.Check(got["agent"], Equals, "Ready")
+	t.Check(got["agent"], Equals, "Idle")
 }
 
 func (s *AgentTestSuite) TestStartStopService(t *C) {
@@ -291,10 +291,10 @@ func (s *AgentTestSuite) TestStartStopService(t *C) {
 	}
 
 	// To double-check that the agent started without error, get its status
-	// which should show everything is "Ready".
+	// which should show everything is "Ready" or "Idle".
 	status := test.GetStatus(s.sendChan, s.recvChan)
 	expectStatus := map[string]string{
-		"agent": "Ready",
+		"agent": "Idle",
 		"qan":   "Ready",
 		"mm":    "",
 	}
@@ -344,7 +344,7 @@ func (s *AgentTestSuite) TestStartStopService(t *C) {
 	}
 
 	status = test.GetStatus(s.sendChan, s.recvChan)
-	t.Check(status["agent"], Equals, "Ready")
+	t.Check(status["agent"], Equals, "Idle")
 	t.Check(status["qan"], Equals, "Stopped")
 	t.Check(status["mm"], Equals, "")
 }
@@ -387,7 +387,7 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
 	// Agent should be able to reply on status chan, indicating that it's
 	// still starting the service.
 	gotStatus := test.GetStatus(s.sendChan, s.recvChan)
-	t.Check(gotStatus["agent"], Equals, "Ready")
+	t.Check(gotStatus["agent"], Equals, "Idle")
 
 	// Make it seem like service has started now.
 	s.readyChan <- true

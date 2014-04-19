@@ -19,6 +19,7 @@ package mysql
 
 import (
 	"database/sql"
+	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/mysql"
@@ -69,6 +70,7 @@ func (m *Monitor) Start(tickChan chan time.Time, reportChan chan *sysconfig.Repo
 	m.reportChan = reportChan
 	go m.run()
 	m.running = true
+	m.logger.Info("Started")
 	return nil
 }
 
@@ -83,6 +85,7 @@ func (m *Monitor) Stop() error {
 	m.sync.Stop()
 	m.sync.Wait()
 	m.running = false
+	m.logger.Info("Stopped")
 	// Do not update status to "Stopped" here; run() does that on return.
 
 	return nil
@@ -114,21 +117,24 @@ func (m *Monitor) run() {
 		m.sync.Done()
 	}()
 
+	var lastTs int64
 	for {
-		m.logger.Debug("Ready")
-		m.status.Update(m.name, "Ready")
+		m.logger.Debug("run:wait")
+		m.status.Update(m.name, fmt.Sprintf("Idle (last collected at %s)", time.Unix(lastTs, 0)))
 
 		select {
 		case now := <-m.tickChan:
+			m.logger.Debug("run:collect:start")
+			m.status.Update(m.name, "Running")
+
+			// Connect to MySQL.
+			m.status.Update(m.name+"-mysql", "Connecting")
 			if err := m.conn.Connect(2); err != nil {
-				m.status.Update(m.name+"-mysql", "Error: "+err.Error())
 				m.logger.Warn(err)
+				m.status.Update(m.name+"-mysql", "Error: "+err.Error())
 				continue
 			}
 			m.status.Update(m.name+"-mysql", "Connected")
-
-			m.logger.Debug("Running")
-			m.status.Update(m.name, "Running")
 
 			c := &sysconfig.Report{
 				ServiceInstance: proto.ServiceInstance{
@@ -139,16 +145,20 @@ func (m *Monitor) run() {
 				System:   "mysql global variables",
 				Settings: []sysconfig.Setting{},
 			}
+
+			// Get SHOW GLOBAL VARIABLES.
 			if err := m.GetGlobalVariables(m.conn.DB(), c); err != nil {
 				m.logger.Warn(err)
 			}
 
+			// Disconnect from MySQL.
 			m.conn.Close()
 			m.status.Update(m.name+"-mysql", "Disconnected (OK)")
 
 			if len(c.Settings) > 0 {
 				select {
 				case m.reportChan <- c:
+					lastTs = c.Ts
 				case <-time.After(500 * time.Millisecond):
 					// lost sysconfig
 					m.logger.Debug("Lost MySQL settings; timeout spooling after 500ms")
@@ -156,7 +166,10 @@ func (m *Monitor) run() {
 			} else {
 				m.logger.Debug("No settings") // shouldn't happen
 			}
+
+			m.logger.Debug("run:collect:stop")
 		case <-m.sync.StopChan:
+			m.logger.Debug("run:stop")
 			return
 		}
 	}
@@ -166,6 +179,8 @@ func (m *Monitor) run() {
 func (m *Monitor) GetGlobalVariables(conn *sql.DB, c *sysconfig.Report) error {
 	m.logger.Debug("Getting global variables")
 	m.status.Update(m.name, "Getting global variables")
+
+	m.status.Update(m.name, "Getting SHOW GLOBAL VARIABLES")
 
 	rows, err := conn.Query("SHOW /*!50002 GLOBAL */ VARIABLES")
 	if err != nil {

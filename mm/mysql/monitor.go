@@ -189,12 +189,12 @@ func (m *Monitor) run() {
 
 	var lastTs int64
 	for {
-		m.status.Update(m.name, fmt.Sprintf("Idle (last collected at %s)", time.Unix(lastTs, 0).UTC()))
+		m.status.Update(m.name, fmt.Sprintf("Idle (last collected at %s)", time.Unix(lastTs, 0)))
 		select {
 		case now := <-m.tickChan:
-			m.logger.Debug("run:tick")
+			m.logger.Debug("run:collect:start")
 			if !m.connected {
-				m.logger.Debug("run:not connected")
+				m.logger.Debug("run:collect:disconnected")
 				continue
 			}
 			m.status.Update(m.name, "Running")
