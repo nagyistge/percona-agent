@@ -86,7 +86,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 }
 
 func (m *Manager) Status() map[string]string {
-	m.status.Update("instances-repo", strings.Join(m.repo.List(), ", "))
+	m.status.Update("instances-repo", strings.Join(m.repo.List(), " "))
 	return m.status.All()
 }
 
