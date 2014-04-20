@@ -45,10 +45,6 @@ func (l *Logger) LogChan() chan *proto.LogEntry {
 	return l.logChan
 }
 
-func (l *Logger) InResponseTo(cmd *proto.Cmd) {
-	l.cmd = cmd
-}
-
 func (l *Logger) Debug(entry ...interface{}) {
 	l.log(false, proto.LOG_DEBUG, entry)
 }
@@ -88,9 +84,6 @@ func (l *Logger) log(offline bool, level byte, entry []interface{}) {
 		Service: l.service,
 		Msg:     fullMsg,
 		Offline: offline,
-	}
-	if l.cmd != nil {
-		logEntry.Cmd = fmt.Sprintf("%s", l.cmd)
 	}
 	select {
 	case l.logChan <- logEntry:

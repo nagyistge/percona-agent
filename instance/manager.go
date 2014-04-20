@@ -49,7 +49,8 @@ func NewManager(logger *pct.Logger, configDir string) *Manager {
 /////////////////////////////////////////////////////////////////////////////
 
 // @goroutine[0]
-func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
+func (m *Manager) Start() error {
+	m.status.Update("instances", "Starting")
 	if err := m.repo.Init(); err != nil {
 		return err
 	}
@@ -59,7 +60,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 }
 
 // @goroutine[0]
-func (m *Manager) Stop(cmd *proto.Cmd) error {
+func (m *Manager) Stop() error {
 	// Can't stop the instance manager.
 	return nil
 }
@@ -82,7 +83,6 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		err := m.repo.Remove(it.Service, it.InstanceId)
 		return cmd.Reply(nil, err)
 	default:
-		// todo: dynamic config
 		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
 }
@@ -90,10 +90,6 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 func (m *Manager) Status() map[string]string {
 	m.status.Update("instances-repo", strings.Join(m.repo.List(), " "))
 	return m.status.All()
-}
-
-func (m *Manager) LoadConfig() ([]byte, error) {
-	return nil, nil
 }
 
 func (m *Manager) Repo() *Repo {

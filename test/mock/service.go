@@ -25,8 +25,8 @@ func NewMockServiceManager(name string, readyChan chan bool, traceChan chan stri
 	return m
 }
 
-func (m *MockServiceManager) Start(msg *proto.Cmd, config []byte) error {
-	m.traceChan <- fmt.Sprintf("Start %s %s", m.name, string(config))
+func (m *MockServiceManager) Start() error {
+	m.traceChan <- fmt.Sprintf("Start %s", m.name)
 	// Return when caller is ready.  This allows us to simulate slow starts.
 	m.status = "Starting"
 	<-m.readyChan
@@ -35,7 +35,7 @@ func (m *MockServiceManager) Start(msg *proto.Cmd, config []byte) error {
 	return m.StartErr
 }
 
-func (m *MockServiceManager) Stop(msg *proto.Cmd) error {
+func (m *MockServiceManager) Stop() error {
 	m.traceChan <- "Stop " + m.name
 	// Return when caller is ready.  This allows us to simulate slow stops.
 	m.status = "Stopping"
@@ -61,8 +61,4 @@ func (m *MockServiceManager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 func (m *MockServiceManager) Reset() {
 	m.status = ""
-}
-
-func (m *MockServiceManager) LoadConfig() ([]byte, error) {
-	return nil, nil
 }

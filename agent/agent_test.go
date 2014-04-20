@@ -117,7 +117,7 @@ func (s *AgentTestSuite) SetUpTest(t *C) {
 
 	// Run the agent.
 	go func() {
-		s.stopReason, s.upgrade = s.agent.Run()
+		s.agent.Run()
 		s.doneChan <- true
 	}()
 }
@@ -307,7 +307,7 @@ func (s *AgentTestSuite) TestStartStopService(t *C) {
 	// the previous ^.
 	got := test.WaitTrace(s.traceChan)
 	expect := []string{
-		`Start qan ` + string(qanConfigData),
+		`Start qan`,
 		`Status qan`,
 		`Status mm`,
 	}

@@ -36,11 +36,11 @@ import (
 	"github.com/percona/cloud-tools/sysconfig"
 	sysconfigMonitor "github.com/percona/cloud-tools/sysconfig/monitor"
 	"github.com/percona/cloud-tools/ticker"
-	"io/ioutil"
 	golog "log"
 	"os"
-	"path/filepath"
+	"os/signal"
 	"runtime"
+	"syscall"
 	"time"
 )
 
@@ -66,8 +66,6 @@ func init() {
 }
 
 func main() {
-	t0 := time.Now()
-
 	if flagVersion {
 		fmt.Printf("percona-agent %s\n", VERSION)
 		os.Exit(0)
@@ -146,12 +144,11 @@ func main() {
 	if err != nil {
 		golog.Fatalln(err)
 	}
-	logManager := log.NewManager(logClient, logChan)
-	logConfig, err := logManager.LoadConfig()
-	if err != nil {
-		golog.Fatalf("Invalid log config: %s\n", err)
-	}
-	if err := logManager.Start(&proto.Cmd{}, logConfig); err != nil {
+	logManager := log.NewManager(
+		logClient,
+		logChan,
+	)
+	if err := logManager.Start(); err != nil {
 		golog.Fatalf("Error starting logmanager: %s\n", err)
 	}
 
@@ -163,7 +160,7 @@ func main() {
 		pct.NewLogger(logChan, "instance-manager"),
 		pct.Basedir.Dir("config"),
 	)
-	if err := itManager.Start(nil, nil); err != nil {
+	if err := itManager.Start(); err != nil {
 		golog.Fatalf("Error starting instance manager: %s\n", err)
 	}
 
@@ -183,11 +180,7 @@ func main() {
 		hostname,
 		dataClient,
 	)
-	dataConfig, err := dataManager.LoadConfig()
-	if err != nil {
-		golog.Fatalf("Invalid data config: %s\n", err)
-	}
-	if err := dataManager.Start(&proto.Cmd{}, dataConfig); err != nil {
+	if err := dataManager.Start(); err != nil {
 		golog.Fatalf("Error starting data manager: %s\n", err)
 	}
 
@@ -209,14 +202,9 @@ func main() {
 		dataManager.Spooler(),
 		itManager.Repo(),
 	)
-	mmConfig, err := mmManager.LoadConfig()
-	if err != nil {
-		golog.Fatalf("Invalid mm config: %s\n", err)
-	}
-	if err := mmManager.Start(&proto.Cmd{}, mmConfig); err != nil {
+	if err := mmManager.Start(); err != nil {
 		golog.Fatalf("Error starting mm manager: %s\n", err)
 	}
-	StartMonitors("mm", filepath.Join(pct.Basedir.Dir("config"), "/mm-*.conf"), mmManager)
 
 	sysconfigManager := sysconfig.NewManager(
 		pct.NewLogger(logChan, "sysconfig"),
@@ -225,14 +213,9 @@ func main() {
 		dataManager.Spooler(),
 		itManager.Repo(),
 	)
-	sysconfigConfig, err := sysconfigManager.LoadConfig()
-	if err != nil {
-		golog.Fatalf("Invalid sysconfig config: %s\n", err)
-	}
-	if err := sysconfigManager.Start(&proto.Cmd{}, sysconfigConfig); err != nil {
+	if err := sysconfigManager.Start(); err != nil {
 		golog.Fatalf("Error starting sysconfig manager: %s\n", err)
 	}
-	StartMonitors("sysconfig", filepath.Join(pct.Basedir.Dir("config"), "/sysconfig-*.conf"), sysconfigManager)
 
 	/**
 	 * Query Analytics
@@ -247,15 +230,25 @@ func main() {
 		dataManager.Spooler(),
 		itManager.Repo(),
 	)
-	qanConfig, err := qanManager.LoadConfig()
-	if err != nil {
-		golog.Fatalf("Invalid qan config: %s\n", err)
+	if err := qanManager.Start(); err != nil {
+		golog.Fatalf("Error starting qan manager: %s\n", err)
 	}
-	if qanConfig != nil {
-		if err := qanManager.Start(&proto.Cmd{}, qanConfig); err != nil {
-			golog.Fatalf("Error starting qan manager: %s\n", err)
-		}
-	}
+
+	/**
+	 * Signal handler
+	 */
+
+	// Generally the agent has a crash-only design, but QAN is so far the only service
+	// which reconfigures MySQL: it enables the slow log, sets long_query_time, etc.
+	// It's not terrible to leave slow log on, but it's nicer to turn it off.
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		sig := <-sigChan
+		golog.Printf("Caught %s signal, shutting down...\n", sig)
+		qanManager.Stop()
+		os.Exit(1)
+	}()
 
 	/**
 	 * Agent
@@ -287,12 +280,16 @@ func main() {
 		services,
 	)
 
-	t := time.Now().Sub(t0)
-	golog.Printf("Running agent (%s)\n", t)
+	update := agent.Run()
+	golog.Printf("Agent stopped; update %t\n", update)
 
-	stopReason, update := agent.Run()
+	qanManager.Stop() // see Signal handler ^
 
-	golog.Printf("stopReason=%s, update=%t\n", stopReason, update)
+	if update {
+		// todo
+	}
+
+	os.Exit(0)
 }
 
 func ConnectAPI(agentConfig *agent.Config) (*pct.API, error) {
@@ -314,34 +311,4 @@ func ConnectAPI(agentConfig *agent.Config) (*pct.API, error) {
 	}
 
 	return nil, errors.New("Timeout connecting to " + agentConfig.ApiHostname)
-}
-
-func StartMonitors(service, glob string, manager pct.ServiceManager) error {
-	configFiles, err := filepath.Glob(glob)
-	if err != nil {
-		golog.Fatal(err)
-	}
-
-	for _, configFile := range configFiles {
-		data, err := ioutil.ReadFile(configFile)
-		if err != nil {
-			golog.Println("Read " + configFile + ": " + err.Error())
-			continue
-		}
-		config := &mm.Config{}
-		json.Unmarshal(data, config)
-		cmd := &proto.Cmd{
-			Ts:      time.Now().UTC(),
-			User:    "percona-agent",
-			Service: service,
-			Cmd:     "StartService",
-			Data:    data,
-		}
-		golog.Println("Starting " + service + " monitor: " + configFile)
-		reply := manager.Handle(cmd)
-		if reply.Error != "" {
-			golog.Println("Start " + configFile + " monitor:" + reply.Error)
-		}
-	}
-	return nil
 }
