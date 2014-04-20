@@ -384,10 +384,10 @@ func (m *Manager) rotateSlowLog(config Config, interval *Interval) error {
 
 func (m *Manager) validateConfig(config *Config) error {
 	if config.Start == nil || len(config.Start) == 0 {
-		return errors.New("Start array is empty")
+		return errors.New("qan.Config.Start array is empty")
 	}
 	if config.Stop == nil || len(config.Stop) == 0 {
-		return errors.New("Stop array is empty")
+		return errors.New("qan.Config.Stop array is empty")
 	}
 	if config.MaxWorkers < 0 {
 		return errors.New("MaxWorkers must be > 0")
@@ -473,6 +473,7 @@ func (m *Manager) stop() error {
 
 	// Stop the interval iter and remove tickChan from the clock.
 	m.iter.Stop()
+	m.iter = nil
 	m.clock.Remove(m.tickChan)
 
 	// Stop run()/qan-log-parser.

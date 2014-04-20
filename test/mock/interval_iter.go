@@ -59,7 +59,6 @@ func (i *MockIntervalIter) IntervalChan() chan *qan.Interval {
 
 func (i *MockIntervalIter) run() {
 	defer func() {
-		close(i.intervalChan)
 		i.sync.Done()
 	}()
 	for {

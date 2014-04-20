@@ -313,18 +313,18 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 		User:      "daniel",
 		Ts:        now,
 		AgentUuid: "123",
-		Service:   "",
+		Service:   "agent",
 		Cmd:       "StartService",
 		Data:      qanConfig,
 	}
 
 	// Have the service manager start the qa service
-	err := m.Start(cmd, cmd.Data)
+	reply := m.Handle(cmd)
 
 	// It should start without error.
-	t.Assert(err, IsNil)
+	t.Assert(reply.Error, Equals, "")
 
-	// It should the config to disk.
+	// It should write the config to disk.
 	data, err := ioutil.ReadFile(pct.Basedir.ConfigFile("qan"))
 	t.Check(err, IsNil)
 	gotConfig := &qan.Config{}
@@ -349,24 +349,12 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	t.Assert(longQueryTime, Equals, 0.123)
 
 	// Starting an already started service should result in a ServiceIsRunningError.
-	err = m.Start(cmd, cmd.Data)
-	if err == nil {
-		t.Error("Start manager when already start cauess error")
-	}
-	switch err.(type) { // todo: ugly hack to access and test error type
-	case pct.ServiceIsRunningError:
-		// ok
-	default:
-		t.Error("Error is type pct.ServiceIsRunningError, got %T", err)
-	}
+	reply = m.Handle(cmd)
+	t.Check(reply.Error, Not(Equals), "")
 
 	// It should add a tickChan for the interval iter.
-	if len(s.clock.Added) != 1 {
-		t.Error("Adds tickChan to clock, got %#v", s.clock.Added)
-	}
-	if len(s.clock.Removed) != 0 {
-		t.Error("tickChan not removed yet")
-	}
+	t.Check(s.clock.Added, HasLen, 1)
+	t.Check(s.clock.Removed, HasLen, 0)
 
 	/**
 	 * Have manager run a worker, parse, and send data.
@@ -382,9 +370,7 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	s.intervalChan <- interv
 
 	v := test.WaitData(s.dataChan)
-	if len(v) == 0 {
-		t.Fatal("Got report")
-	}
+	t.Assert(v, HasLen, 1)
 	report := v[0].(*qan.Report)
 
 	result := &qan.Result{
@@ -396,7 +382,7 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	t.Check(tmpFile, testlog.FileEquals, sample+"slow001.json")
 
 	/**
-	 * Stop manager like API would: by sending StopService cmd.
+	 * Send StopService cmd to stop qan/qan-log-parser.
 	 */
 
 	now = time.Now()
@@ -404,15 +390,15 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 		User:      "daniel",
 		Ts:        now,
 		AgentUuid: "123",
-		Service:   "",
+		Service:   "agent",
 		Cmd:       "StopService",
 	}
 
 	// Have the service manager start the qa service
-	err = m.Stop(cmd)
+	reply = m.Handle(cmd)
 
 	// It should start without error.
-	t.Assert(err, IsNil)
+	t.Assert(reply.Error, Equals, "")
 
 	// It should disable the slow log.
 	slowLog = s.realmysql.GetGlobalVarNumber("slow_query_log")
@@ -422,12 +408,14 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	t.Assert(longQueryTime, Equals, 10.0)
 
 	// It should remove the tickChan (and not have added others).
-	if len(s.clock.Added) != 1 {
-		t.Error("Added only 1 tickChan, got %#v", s.clock.Added)
-	}
-	if len(s.clock.Removed) != 1 {
-		t.Error("Removed tickChan")
-	}
+	t.Check(s.clock.Added, HasLen, 1)
+	t.Check(s.clock.Removed, HasLen, 1)
+
+	// qan still running, but qan-log-parser stopped.
+	test.WaitStatus(1, m, "qan-log-parser", "Stopped")
+	status = m.Status()
+	t.Check(status["qan"], Equals, "Running")
+	t.Check(status["qan-log-parser"], Equals, "Stopped")
 }
 
 func (s *ManagerTestSuite) TestStartServiceFast(t *C) {
@@ -445,12 +433,16 @@ func (s *ManagerTestSuite) TestStartServiceFast(t *C) {
 
 	config := &qan.Config{
 		ServiceInstance: s.mysqlInstance,
-		Start:           []mysql.Query{},
-		Stop:            []mysql.Query{},
-		Interval:        300,        // 5 min
-		MaxSlowLogSize:  1073741824, // 1 GiB
-		MaxWorkers:      1,
-		WorkerRunTime:   600, // 10 min
+		Start: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+		},
+		Stop: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+		},
+		Interval:       300,        // 5 min
+		MaxSlowLogSize: 1073741824, // 1 GiB
+		MaxWorkers:     1,
+		WorkerRunTime:  600, // 10 min
 	}
 	now := time.Now()
 	qanConfig, _ := json.Marshal(config)
@@ -458,12 +450,12 @@ func (s *ManagerTestSuite) TestStartServiceFast(t *C) {
 		User:      "daniel",
 		Ts:        now,
 		AgentUuid: "123",
-		Service:   "",
+		Service:   "qan",
 		Cmd:       "StartService",
 		Data:      qanConfig,
 	}
-	err := m.Start(cmd, cmd.Data)
-	t.Assert(err, IsNil)
+	reply := m.Handle(cmd)
+	t.Assert(reply.Error, Equals, "")
 	test.WaitStatus(1, m, "qan-log-parser", "Starting")
 	tickChan := s.iterFactory.TickChans[s.iter]
 	t.Assert(tickChan, NotNil)
@@ -473,12 +465,12 @@ func (s *ManagerTestSuite) TestStartServiceFast(t *C) {
 	// waiting for the iter to send an interval which happens when the real ticker
 	// (the clock) sends the 2nd tick which is synced to the interval, thus ending
 	// the first interval started by run() and starting the 2nd interval as normal.
-	var t time.Time
+	var tick time.Time
 	select {
-	case t = <-tickChan:
+	case tick = <-tickChan:
 	case <-time.After(1 * time.Second):
 	}
-	t.Assert(t.IsZero(), Not(Equals), true)
+	t.Assert(tick.IsZero(), Not(Equals), true)
 
 	status := m.Status()
 	t.Check(status["qan-next-interval"], Equals, "180.0s")
@@ -491,8 +483,8 @@ func (s *ManagerTestSuite) TestStartServiceFast(t *C) {
 		Service:   "",
 		Cmd:       "StopService",
 	}
-	err = m.Stop(cmd)
-	t.Assert(err, IsNil)
+	reply = m.Handle(cmd)
+	t.Assert(reply.Error, Equals, "")
 }
 
 func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(t *C) {
@@ -550,11 +542,10 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(t *C) {
 		Cmd:  "StartService",
 		Data: qanConfig,
 	}
-	err := m.Start(cmd, cmd.Data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	test.WaitStatus(1, m, "qan-log-parser", "Idle")
+	reply := m.Handle(cmd)
+	t.Assert(reply.Error, Equals, "")
+
+	test.WaitStatusPrefix(1, m, "qan-log-parser", "Idle")
 
 	// Make copy of slow log because test will mv/rename it.
 	cp := exec.Command("cp", testlog.Sample+slowlog, "/tmp/"+slowlog)
@@ -617,8 +608,8 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(t *C) {
 	}()
 
 	// Stop manager
-	err = m.Stop(&proto.Cmd{Cmd: "StopService"})
-	t.Assert(err, IsNil)
+	reply = m.Handle(&proto.Cmd{Cmd: "StopService"})
+	t.Assert(reply.Error, Equals, "")
 }
 
 func (s *ManagerTestSuite) TestRotateSlowLog(t *C) {
@@ -661,14 +652,11 @@ func (s *ManagerTestSuite) TestRotateSlowLog(t *C) {
 		Cmd:  "StartService",
 		Data: qanConfig,
 	}
-	err := m.Start(cmd, cmd.Data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	test.WaitStatus(1, m, "qan-log-parser", "Idle")
+	reply := m.Handle(cmd)
+	t.Assert(reply.Error, Equals, "")
 
+	test.WaitStatusPrefix(1, m, "qan-log-parser", "Idle")
 	s.nullmysql.Reset()
-
 	cp := exec.Command("cp", testlog.Sample+slowlog, "/tmp/"+slowlog)
 	cp.Run()
 
@@ -742,9 +730,8 @@ func (s *ManagerTestSuite) TestRotateSlowLog(t *C) {
 	}
 
 	// Stop manager
-	err = m.Stop(&proto.Cmd{Cmd: "StopService"})
-	t.Assert(err, IsNil)
-
+	reply = m.Handle(&proto.Cmd{Cmd: "StopService"})
+	t.Assert(reply.Error, Equals, "")
 }
 
 func (s *ManagerTestSuite) TestWaitRemoveSlowLog(t *C) {
@@ -779,11 +766,18 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(t *C) {
 		t.Fatal("Create qan.Manager")
 	}
 	config := &qan.Config{
-		ServiceInstance: s.mysqlInstance,
-		// very abbreviated qan.Config because we're mocking a lot
+		ServiceInstance:   s.mysqlInstance,
 		MaxSlowLogSize:    1000,
 		RemoveOldSlowLogs: true, // done after w2 and w1 done
 		MaxWorkers:        2,    // w1 and w2 but not w3
+		Interval:          60,
+		WorkerRunTime:     60,
+		Start: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+		},
+		Stop: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+		},
 	}
 	qanConfig, _ := json.Marshal(config)
 	cmd := &proto.Cmd{
@@ -791,11 +785,10 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(t *C) {
 		Cmd:  "StartService",
 		Data: qanConfig,
 	}
-	err := m.Start(cmd, cmd.Data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	test.WaitStatus(1, m, "qan-log-parser", "Idle")
+	reply := m.Handle(cmd)
+	t.Assert(reply.Error, Equals, "")
+
+	test.WaitStatusPrefix(1, m, "qan-log-parser", "Idle")
 
 	// Start first mock worker (w1) with interval 0 - 736.  The worker's Run()
 	// func won't return until we send true to its stop chan, so manager will
@@ -888,8 +881,8 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(t *C) {
 	}
 
 	// Stop manager
-	err = m.Stop(&proto.Cmd{Cmd: "StopService"})
-	t.Assert(err, IsNil)
+	reply = m.Handle(&proto.Cmd{Cmd: "StopService"})
+	t.Assert(reply.Error, Equals, "")
 }
 
 func (s *ManagerTestSuite) TestGetConfig(t *C) {
@@ -919,9 +912,9 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 		Cmd:  "StartService",
 		Data: qanConfig,
 	}
-	err := m.Start(cmd, cmd.Data)
-	t.Assert(err, IsNil)
-	test.WaitStatus(1, m, "qan-log-parser", "Idle")
+	reply := m.Handle(cmd)
+	t.Assert(reply.Error, Equals, "")
+	test.WaitStatusPrefix(1, m, "qan-log-parser", "Idle")
 
 	s.nullmysql.Reset()
 
@@ -929,7 +922,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 		Cmd:     "GetConfig",
 		Service: "qan",
 	}
-	reply := m.Handle(cmd)
+	reply = m.Handle(cmd)
 	t.Assert(reply, NotNil)
 	t.Assert(reply.Error, Equals, "")
 
@@ -943,8 +936,8 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	}
 
 	// Stop manager
-	err = m.Stop(&proto.Cmd{Cmd: "StopService"})
-	t.Assert(err, IsNil)
+	reply = m.Handle(&proto.Cmd{Cmd: "StopService"})
+	t.Assert(reply.Error, Equals, "")
 }
 
 /////////////////////////////////////////////////////////////////////////////
