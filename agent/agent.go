@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
-	golog "log"
 	"sync"
 	"time"
 )
@@ -51,13 +50,8 @@ type Agent struct {
 	status     *pct.Status
 	statusChan chan *proto.Cmd
 	//
-	stopping   bool
-	stopReason string
-	update     bool
-	//
 	cmdHandlerSync    *pct.SyncChan
 	statusHandlerSync *pct.SyncChan
-	stopChan          chan bool
 }
 
 func NewAgent(config *Config, pidFile *pct.PidFile, logger *pct.Logger, api pct.APIConnector, client pct.WebsocketClient, services map[string]pct.ServiceManager) *Agent {
@@ -73,7 +67,6 @@ func NewAgent(config *Config, pidFile *pct.PidFile, logger *pct.Logger, api pct.
 		status:     pct.NewStatus([]string{"agent", "agent-cmd-handler"}),
 		cmdChan:    make(chan *proto.Cmd, CMD_QUEUE_SIZE),
 		statusChan: make(chan *proto.Cmd, STATUS_QUEUE_SIZE),
-		stopChan:   make(chan bool, 1),
 	}
 	return agent
 }
@@ -83,14 +76,10 @@ func NewAgent(config *Config, pidFile *pct.PidFile, logger *pct.Logger, api pct.
 /////////////////////////////////////////////////////////////////////////////
 
 // percona-agent:@goroutine[0]
-func (agent *Agent) Run() (stopReason string, update bool) {
+func (agent *Agent) Run() bool {
 	logger := agent.logger
 	logger.Debug("Run:call")
 	defer logger.Debug("Run:return")
-
-	// Reset for testing.
-	agent.stopping = false
-	agent.update = false
 
 	// Start client goroutines for sending/receving cmd/reply via channels
 	// so we can do non-blocking send/recv.  This only needs to be done once.
@@ -103,6 +92,7 @@ func (agent *Agent) Run() (stopReason string, update bool) {
 	go agent.connect()
 
 	defer func() {
+		agent.stop()
 		logger.Info("Stopped")
 		client.Disconnect()
 		client.Stop()
@@ -131,7 +121,6 @@ func (agent *Agent) Run() (stopReason string, update bool) {
 
 	logger.Info("Started")
 
-AGENT_LOOP:
 	for {
 		logger.Debug("wait")
 		agent.status.Update("agent", "Idle")
@@ -139,36 +128,17 @@ AGENT_LOOP:
 		select {
 		case cmd := <-cmdChan: // from API
 			if cmd.Cmd == "Abort" {
-				// Try to log the abort, but this cmd should be fail-safe so don't wait too long.
-				go agent.logger.Fatal("ABORT: %s", cmd)
-				time.Sleep(3 * time.Second)
-				golog.Panicf("%s\n", cmd)
+				panic(cmd)
 			}
 
 			agent.status.UpdateRe("agent", "Handling", cmd)
 			logger.Debug("recv: ", cmd)
 
-			if agent.stopping {
-				// Already received Stop or Update, so reject further cmds.
-				logger.Info("Got stop again, ignorning")
-				err := pct.CmdRejectedError{Cmd: cmd.Cmd, Reason: agent.stopReason}
-				replyChan <- cmd.Reply(nil, err)
-				continue AGENT_LOOP
-			}
-
 			switch cmd.Cmd {
-			case "Stop", "Update":
-				agent.stopping = true
-				var reason string
-				if cmd.Cmd == "Stop" {
-					reason = fmt.Sprintf("agent received Stop command [%s]", cmd)
-				} else {
-					reason = fmt.Sprintf("agent received Update command [%s]", cmd)
-					update = true
-				}
-				logger.Info("STOP: " + reason)
-				agent.stopReason = reason
-				go agent.stop(cmd)
+			case "Stop":
+				return false
+			case "Update":
+				return true
 			case "Status":
 				agent.status.UpdateRe("agent", "Queueing", cmd)
 				select {
@@ -214,17 +184,10 @@ AGENT_LOOP:
 			} else {
 				// websocket closed/crashed/err
 				logger.Warn("Lost connection to API")
-				if agent.stopping {
-					logger.Warn("Lost connection to API while stopping")
-				}
 				go agent.connect()
 			}
-		case <-agent.stopChan:
-			break AGENT_LOOP
-		} // select
-	} // for AGENT_LOOP
-
-	return agent.stopReason, agent.update
+		}
+	}
 }
 
 // @goroutine[0]
@@ -234,16 +197,17 @@ func (agent *Agent) connect() {
 }
 
 // @goroutine[0]
-func (agent *Agent) stop(cmd *proto.Cmd) {
-	agent.logger.InResponseTo(cmd)
-	defer agent.logger.InResponseTo(nil)
-
+func (agent *Agent) stop() {
+	cmd := &proto.Cmd{Ts: time.Now().UTC(), User: "agent"}
 	agent.logger.Info("Stopping cmdHandler")
 	agent.status.UpdateRe("agent", "Stopping cmdHandler", cmd)
 	agent.cmdHandlerSync.Stop()
 	agent.cmdHandlerSync.Wait()
 
 	for service, manager := range agent.services {
+		if service == "log" {
+			continue
+		}
 		agent.logger.Info("Stopping " + service)
 		agent.status.UpdateRe("agent", "Stopping "+service, cmd)
 		manager.Stop(cmd)
@@ -253,13 +217,6 @@ func (agent *Agent) stop(cmd *proto.Cmd) {
 	agent.status.UpdateRe("agent", "Stopping statusHandler", cmd)
 	agent.statusHandlerSync.Stop()
 	agent.statusHandlerSync.Wait()
-
-	agent.logger.Info("Stopping agent")
-	agent.status.UpdateRe("agent", "Stopping agent", cmd)
-	agent.stopChan <- true
-
-	agent.logger.Info("Agent stopped")
-	agent.status.UpdateRe("agent", "Stopped", cmd)
 }
 
 func LoadConfig() ([]byte, error) {

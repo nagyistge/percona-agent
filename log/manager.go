@@ -78,7 +78,6 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 
 // @goroutine[0]
 func (m *Manager) Stop(cmd *proto.Cmd) error {
-	// Can't stop the log service.
 	return nil
 }
 

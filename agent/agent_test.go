@@ -117,7 +117,7 @@ func (s *AgentTestSuite) SetUpTest(t *C) {
 
 	// Run the agent.
 	go func() {
-		s.stopReason, s.upgrade = s.agent.Run()
+		s.agent.Run()
 		s.doneChan <- true
 	}()
 }

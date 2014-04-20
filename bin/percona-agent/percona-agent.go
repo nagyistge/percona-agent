@@ -39,8 +39,10 @@ import (
 	"io/ioutil"
 	golog "log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
+	"syscall"
 	"time"
 )
 
@@ -66,8 +68,6 @@ func init() {
 }
 
 func main() {
-	t0 := time.Now()
-
 	if flagVersion {
 		fmt.Printf("percona-agent %s\n", VERSION)
 		os.Exit(0)
@@ -251,11 +251,43 @@ func main() {
 	if err != nil {
 		golog.Fatalf("Invalid qan config: %s\n", err)
 	}
-	if qanConfig != nil {
 		if err := qanManager.Start(&proto.Cmd{}, qanConfig); err != nil {
 			golog.Fatalf("Error starting qan manager: %s\n", err)
 		}
+	if qanConfig != nil {
+		data, err := json.Marshal(qanConfig)
+		if err != nil {
+			golog.Fatal(err)
+		}
+		cmd := &proto.Cmd{
+			Ts:      time.Now().UTC(),
+			User:    "percona-agent",
+			Service: "qan",
+			Cmd:     "StartService",
+			Data:    data,
+		}
+		golog.Println("Starting qan")
+		reply := manager.Handle(cmd)
+		if reply.Error != "" {
+			golog.Println("Start " + configFile + " monitor:" + reply.Error)
+		}
 	}
+
+	/**
+	 * Signal handler
+	 */
+
+	// Generally the agent has a crash-only design, but QAN is so far the only service
+	// which reconfigures MySQL: it enables the slow log, sets long_query_time, etc.
+	// It's not terrible to leave slow log on, but it's nicer to turn it off.
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		sig := <-sigChan
+		golog.Printf("Caught %s signal, shutting down...\n", sig)
+		qanManager.Stop(&proto.Cmd{Ts: time.Now().UTC(), User: sig.String() + " signal"})
+		os.Exit(1)
+	}()
 
 	/**
 	 * Agent
@@ -287,12 +319,16 @@ func main() {
 		services,
 	)
 
-	t := time.Now().Sub(t0)
-	golog.Printf("Running agent (%s)\n", t)
+	update := agent.Run()
+	golog.Printf("Agent stopped; update %t\n", update)
 
-	stopReason, update := agent.Run()
+	qanManager.Stop(&proto.Cmd{Ts: time.Now().UTC(), User: "shutdown"})
 
-	golog.Printf("stopReason=%s, update=%t\n", stopReason, update)
+	if update {
+		// todo
+	}
+
+	os.Exit(0)
 }
 
 func ConnectAPI(agentConfig *agent.Config) (*pct.API, error) {

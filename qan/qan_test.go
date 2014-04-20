@@ -1086,7 +1086,7 @@ func (s *ReportTestSuite) TestResult001(c *gocheck.C) {
 		StartOffset: 0,
 		EndOffset:   1000,
 	}
-	config := &qan.Config{
+	config := qan.Config{
 		ReportLimit: 10,
 	}
 	report := qan.MakeReport(it, interval, result, config)
