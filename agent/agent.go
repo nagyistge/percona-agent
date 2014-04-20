@@ -210,7 +210,9 @@ func (agent *Agent) stop() {
 		}
 		agent.logger.Info("Stopping " + service)
 		agent.status.UpdateRe("agent", "Stopping "+service, cmd)
-		manager.Stop(cmd)
+		if err := manager.Stop(); err != nil {
+			agent.logger.Warn(err)
+		}
 	}
 
 	agent.logger.Info("Stopping statusHandler")
@@ -366,8 +368,8 @@ func (agent *Agent) handleStartService(cmd *proto.Cmd) (interface{}, error) {
 		return nil, pct.UnknownServiceError{Service: s.Name}
 	}
 
-	// Start the service with the given config.
-	if err := m.Start(cmd, s.Config); err != nil {
+	// Start the service.
+	if err := m.Start(); err != nil {
 		return nil, err
 	}
 
@@ -393,7 +395,7 @@ func (agent *Agent) handleStopService(cmd *proto.Cmd) (interface{}, error) {
 	}
 
 	// Stop the service.
-	err := m.Stop(cmd)
+	err := m.Stop()
 	return nil, err
 }
 

@@ -32,6 +32,7 @@ import (
 	"io/ioutil"
 	. "launchpad.net/gocheck"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -380,6 +381,16 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 
 func (s *ManagerTestSuite) SetUpTest(t *C) {
 	s.clock = mock.NewClock()
+	glob := filepath.Join(pct.Basedir.Dir("config"), "*")
+	files, err := filepath.Glob(glob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		if err := os.Remove(file); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func (s *ManagerTestSuite) TearDownSuite(t *C) {
@@ -417,24 +428,16 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 		Report:  60,
 		// No monitor-specific config
 	}
-	data, err := json.Marshal(config)
+	err := pct.Basedir.WriteConfig("mm-mysql-1", config)
 	t.Assert(err, IsNil)
 
-	// Then it sends a StartService cmd with the config data.
-	cmd := &proto.Cmd{
-		User: "daniel",
-		Cmd:  "StartService",
-		Data: data,
-	}
+	// The agent calls mm.Start().
+	err = m.Start()
+	t.Assert(err, IsNil)
 
-	// The agent calls mm.Start with the cmd (for logging and status) and the config data.
-	err = m.Start(cmd, data)
-	if err != nil {
-		t.Fatalf("Start manager without error, got %s", err)
-	}
-
-	// It should not add a tickChan to the clock (this is done in Handle()).
-	if ok, diff := test.IsDeeply(s.clock.Added, []uint{}); !ok {
+	// There is a monitor so there should be tickers.
+	if ok, diff := test.IsDeeply(s.clock.Added, []uint{1}); !ok {
+		test.Dump(s.clock.Added)
 		t.Errorf("Does not add tickChan, got %#v", diff)
 	}
 
@@ -442,22 +445,18 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 	status := m.Status()
 	t.Check(status["mm"], Equals, "Running")
 
-	// Normally, starting an already started service results in a ServiceIsRunningError,
-	// but mm is a proxy manager so starting it is a null op.
-	err = m.Start(cmd, data)
-	if err != nil {
-		t.Error("Starting mm manager multiple times doesn't cause error")
-	}
+	// Can't start mm twice.
+	err = m.Start()
+	t.Check(err, Not(Equals), "")
 
-	// Stopping the mm manager is also a null op...
-	err = m.Stop(cmd)
-	if err != nil {
-		t.Fatalf("Stop manager without error, got %s", err)
-	}
+	// Stopping should be idempotent.
+	err = m.Stop()
+	t.Check(err, IsNil)
+	err = m.Stop()
+	t.Check(err, IsNil)
 
-	// ...which is why its status is always "Running".
 	status = m.Status()
-	t.Check(status["mm"], Equals, "Running")
+	t.Check(status["mm"], Equals, "Stopped")
 }
 
 /**
@@ -468,19 +467,14 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
  * - sneaked in:) unknown cmd test
  */
 func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
+	// Create and start mm, no monitors yet.
 	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
 	t.Assert(m, NotNil)
+	err := m.Start()
+	t.Assert(err, IsNil)
 
-	// mm is a proxy manager so it doesn't have its own config file,
-	// but agent still calls LoadConfig() because this also tells
-	// the manager where to save configs, monitor configs in this case.
-	v, err := m.LoadConfig()
-	t.Check(v, IsNil)
-	t.Check(err, IsNil)
-
-	// Starting a monitor is like starting the manager: it requires
-	// a "StartService" cmd and the monitor's config.  This is the
-	// config in test/mm/config/mm-mysql-1.conf.
+	// Start a monitor by sending StartService + monitor config.
+	// This is the config in test/mm/config/mm-mysql-1.conf.
 	mmConfig := &mysql.Config{
 		Config: mm.Config{
 			ServiceInstance: proto.ServiceInstance{
@@ -498,21 +492,17 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	mmConfigData, err := json.Marshal(mmConfig)
 	t.Assert(err, IsNil)
 
-	/**
-	 * Start the monitor.
-	 */
+	// If this were a real monitor, it would decode and set its own config.
+	// The mock monitor doesn't have any real config type, so we set it manually.
+	s.mysqlMonitor.SetConfig(mmConfig)
+
+	// The agent calls mm.Handle() with the cmd (for logging and status) and the config data.
 	cmd := &proto.Cmd{
 		User:    "daniel",
 		Service: "mm",
 		Cmd:     "StartService",
 		Data:    mmConfigData,
 	}
-
-	// If this were a real monitor, it would decode and set its own config.
-	// The mock monitor doesn't have any real config type, so we set it manually.
-	s.mysqlMonitor.SetConfig(mmConfig)
-
-	// The agent calls mm.Handle() with the cmd (for logging and status) and the config data.
 	reply := m.Handle(cmd)
 	t.Assert(reply, NotNil)
 	t.Check(reply.Error, Equals, "")
@@ -636,10 +626,8 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
 	t.Assert(m, NotNil)
-
-	v, err := m.LoadConfig()
-	t.Check(v, IsNil)
-	t.Check(err, IsNil)
+	err := m.Start()
+	t.Assert(err, IsNil)
 
 	/**
 	 * Start a mock MySQL monitor.

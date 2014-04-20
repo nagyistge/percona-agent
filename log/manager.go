@@ -23,6 +23,7 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -30,11 +31,11 @@ type Manager struct {
 	client  pct.WebsocketClient
 	logChan chan *proto.LogEntry
 	// --
-	config    *Config
-	configDir string
-	logger    *pct.Logger
-	relay     *Relay
-	status    *pct.Status
+	mux    *sync.RWMutex
+	config *Config
+	logger *pct.Logger
+	relay  *Relay
+	status *pct.Status
 }
 
 func NewManager(client pct.WebsocketClient, logChan chan *proto.LogEntry) *Manager {
@@ -43,33 +44,38 @@ func NewManager(client pct.WebsocketClient, logChan chan *proto.LogEntry) *Manag
 		logChan: logChan,
 		// --
 		status: pct.NewStatus([]string{"log"}),
+		mux:    new(sync.RWMutex),
 	}
 	return m
 }
 
 // @goroutine[0]
-func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
-	if m.relay != nil {
-		err := pct.ServiceIsRunningError{Service: "log"}
+func (m *Manager) Start() error {
+	m.mux.Lock()
+	defer m.mux.Unlock()
+
+	if m.config != nil {
+		return pct.ServiceIsRunningError{Service: "log"}
+	}
+
+	// Load config from disk.
+	config := &Config{}
+	if err := pct.Basedir.ReadConfig("log", config); err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+	}
+	if err := m.validateConfig(config); err != nil {
 		return err
 	}
 
-	// proto.Cmd[Service:agent, Cmd:StartService, Data:proto.ServiceData[Name:log Config:log.Config]]
-	c := &Config{}
-	if err := json.Unmarshal(config, c); err != nil {
-		return err
-	}
-
-	level, ok := proto.LogLevelNumber[c.Level]
-	if !ok {
-		return errors.New("Invalid log level: " + c.Level)
-	}
-
-	m.relay = NewRelay(m.client, m.logChan, c.File, level, c.Offline)
+	// Start relay (it buffers and sends log entries to API).
+	level := proto.LogLevelNumber[config.Level]
+	m.relay = NewRelay(m.client, m.logChan, config.File, level, config.Offline)
 	go m.relay.Run()
-	m.config = c
 
 	m.logger = pct.NewLogger(m.relay.LogChan(), "log")
+	m.config = config
 
 	m.logger.Info("Started")
 	m.status.Update("log", "Running")
@@ -77,7 +83,7 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 }
 
 // @goroutine[0]
-func (m *Manager) Stop(cmd *proto.Cmd) error {
+func (m *Manager) Stop() error {
 	return nil
 }
 
@@ -86,31 +92,35 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	m.status.UpdateRe("log", "Handling", cmd)
 	defer m.status.Update("log", "Running")
 
+	m.mux.Lock()
+	defer m.mux.Unlock()
+
 	switch cmd.Cmd {
 	case "SetConfig":
 		// proto.Cmd[Service:log, Cmd:SetConfig, Data:log.Config]
-		c := &Config{}
-		if err := json.Unmarshal(cmd.Data, c); err != nil {
+		newConfig := &Config{}
+		if err := json.Unmarshal(cmd.Data, newConfig); err != nil {
+			return cmd.Reply(nil, err)
+		}
+
+		if err := m.validateConfig(newConfig); err != nil {
 			return cmd.Reply(nil, err)
 		}
 
 		errs := []error{}
-		if m.config.File != c.File {
+		if m.config.File != newConfig.File {
 			select {
-			case m.relay.LogFileChan() <- c.File:
-				m.config.File = c.File
+			case m.relay.LogFileChan() <- newConfig.File:
+				m.config.File = newConfig.File
 			case <-time.After(3 * time.Second):
 				errs = append(errs, errors.New("Timeout setting new log file"))
 			}
 		}
-		if m.config.Level != c.Level {
-			level, ok := proto.LogLevelNumber[c.Level]
-			if !ok {
-				return cmd.Reply(nil, errors.New("Invalid log level: "+c.Level))
-			}
+		if m.config.Level != newConfig.Level {
+			level := proto.LogLevelNumber[newConfig.Level] // already validated
 			select {
 			case m.relay.LogLevelChan() <- level:
-				m.config.Level = c.Level
+				m.config.Level = newConfig.Level
 			case <-time.After(3 * time.Second):
 				errs = append(errs, errors.New("Timeout setting new log level"))
 			}
@@ -143,23 +153,14 @@ func (m *Manager) Relay() *Relay {
 	return m.relay
 }
 
-func (m *Manager) LoadConfig() ([]byte, error) {
-	config := &Config{}
-	if err := pct.Basedir.ReadConfig("log", config); err != nil {
-		if !os.IsNotExist(err) {
-			return nil, err
-		}
-	}
+func (m *Manager) validateConfig(config *Config) error {
 	if config.Level == "" {
 		config.Level = DEFAULT_LOG_LEVEL
 	} else {
 		if _, ok := proto.LogLevelNumber[config.Level]; !ok {
-			return nil, errors.New("Invalid log level: " + config.Level)
+			return errors.New("Invalid log level: " + config.Level)
 		}
 	}
-	data, err := json.Marshal(config)
-	if err != nil {
-		return nil, err
-	}
-	return data, nil
+	// todo: log file should be relative to basedir, e.g. can't be /etc/passwd
+	return nil
 }

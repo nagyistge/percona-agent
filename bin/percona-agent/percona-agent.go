@@ -36,11 +36,9 @@ import (
 	"github.com/percona/cloud-tools/sysconfig"
 	sysconfigMonitor "github.com/percona/cloud-tools/sysconfig/monitor"
 	"github.com/percona/cloud-tools/ticker"
-	"io/ioutil"
 	golog "log"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"runtime"
 	"syscall"
 	"time"
@@ -146,12 +144,11 @@ func main() {
 	if err != nil {
 		golog.Fatalln(err)
 	}
-	logManager := log.NewManager(logClient, logChan)
-	logConfig, err := logManager.LoadConfig()
-	if err != nil {
-		golog.Fatalf("Invalid log config: %s\n", err)
-	}
-	if err := logManager.Start(&proto.Cmd{}, logConfig); err != nil {
+	logManager := log.NewManager(
+		logClient,
+		logChan,
+	)
+	if err := logManager.Start(); err != nil {
 		golog.Fatalf("Error starting logmanager: %s\n", err)
 	}
 
@@ -163,7 +160,7 @@ func main() {
 		pct.NewLogger(logChan, "instance-manager"),
 		pct.Basedir.Dir("config"),
 	)
-	if err := itManager.Start(nil, nil); err != nil {
+	if err := itManager.Start(); err != nil {
 		golog.Fatalf("Error starting instance manager: %s\n", err)
 	}
 
@@ -183,11 +180,7 @@ func main() {
 		hostname,
 		dataClient,
 	)
-	dataConfig, err := dataManager.LoadConfig()
-	if err != nil {
-		golog.Fatalf("Invalid data config: %s\n", err)
-	}
-	if err := dataManager.Start(&proto.Cmd{}, dataConfig); err != nil {
+	if err := dataManager.Start(); err != nil {
 		golog.Fatalf("Error starting data manager: %s\n", err)
 	}
 
@@ -209,14 +202,9 @@ func main() {
 		dataManager.Spooler(),
 		itManager.Repo(),
 	)
-	mmConfig, err := mmManager.LoadConfig()
-	if err != nil {
-		golog.Fatalf("Invalid mm config: %s\n", err)
-	}
-	if err := mmManager.Start(&proto.Cmd{}, mmConfig); err != nil {
+	if err := mmManager.Start(); err != nil {
 		golog.Fatalf("Error starting mm manager: %s\n", err)
 	}
-	StartMonitors("mm", filepath.Join(pct.Basedir.Dir("config"), "/mm-*.conf"), mmManager)
 
 	sysconfigManager := sysconfig.NewManager(
 		pct.NewLogger(logChan, "sysconfig"),
@@ -225,14 +213,9 @@ func main() {
 		dataManager.Spooler(),
 		itManager.Repo(),
 	)
-	sysconfigConfig, err := sysconfigManager.LoadConfig()
-	if err != nil {
-		golog.Fatalf("Invalid sysconfig config: %s\n", err)
-	}
-	if err := sysconfigManager.Start(&proto.Cmd{}, sysconfigConfig); err != nil {
+	if err := sysconfigManager.Start(); err != nil {
 		golog.Fatalf("Error starting sysconfig manager: %s\n", err)
 	}
-	StartMonitors("sysconfig", filepath.Join(pct.Basedir.Dir("config"), "/sysconfig-*.conf"), sysconfigManager)
 
 	/**
 	 * Query Analytics
@@ -247,30 +230,8 @@ func main() {
 		dataManager.Spooler(),
 		itManager.Repo(),
 	)
-	qanConfig, err := qanManager.LoadConfig()
-	if err != nil {
-		golog.Fatalf("Invalid qan config: %s\n", err)
-	}
-		if err := qanManager.Start(&proto.Cmd{}, qanConfig); err != nil {
-			golog.Fatalf("Error starting qan manager: %s\n", err)
-		}
-	if qanConfig != nil {
-		data, err := json.Marshal(qanConfig)
-		if err != nil {
-			golog.Fatal(err)
-		}
-		cmd := &proto.Cmd{
-			Ts:      time.Now().UTC(),
-			User:    "percona-agent",
-			Service: "qan",
-			Cmd:     "StartService",
-			Data:    data,
-		}
-		golog.Println("Starting qan")
-		reply := manager.Handle(cmd)
-		if reply.Error != "" {
-			golog.Println("Start " + configFile + " monitor:" + reply.Error)
-		}
+	if err := qanManager.Start(); err != nil {
+		golog.Fatalf("Error starting qan manager: %s\n", err)
 	}
 
 	/**
@@ -285,7 +246,7 @@ func main() {
 	go func() {
 		sig := <-sigChan
 		golog.Printf("Caught %s signal, shutting down...\n", sig)
-		qanManager.Stop(&proto.Cmd{Ts: time.Now().UTC(), User: sig.String() + " signal"})
+		qanManager.Stop()
 		os.Exit(1)
 	}()
 
@@ -322,7 +283,7 @@ func main() {
 	update := agent.Run()
 	golog.Printf("Agent stopped; update %t\n", update)
 
-	qanManager.Stop(&proto.Cmd{Ts: time.Now().UTC(), User: "shutdown"})
+	qanManager.Stop() // see Signal handler ^
 
 	if update {
 		// todo
@@ -350,34 +311,4 @@ func ConnectAPI(agentConfig *agent.Config) (*pct.API, error) {
 	}
 
 	return nil, errors.New("Timeout connecting to " + agentConfig.ApiHostname)
-}
-
-func StartMonitors(service, glob string, manager pct.ServiceManager) error {
-	configFiles, err := filepath.Glob(glob)
-	if err != nil {
-		golog.Fatal(err)
-	}
-
-	for _, configFile := range configFiles {
-		data, err := ioutil.ReadFile(configFile)
-		if err != nil {
-			golog.Println("Read " + configFile + ": " + err.Error())
-			continue
-		}
-		config := &mm.Config{}
-		json.Unmarshal(data, config)
-		cmd := &proto.Cmd{
-			Ts:      time.Now().UTC(),
-			User:    "percona-agent",
-			Service: service,
-			Cmd:     "StartService",
-			Data:    data,
-		}
-		golog.Println("Starting " + service + " monitor: " + configFile)
-		reply := manager.Handle(cmd)
-		if reply.Error != "" {
-			golog.Println("Start " + configFile + " monitor:" + reply.Error)
-		}
-	}
-	return nil
 }

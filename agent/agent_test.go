@@ -307,7 +307,7 @@ func (s *AgentTestSuite) TestStartStopService(t *C) {
 	// the previous ^.
 	got := test.WaitTrace(s.traceChan)
 	expect := []string{
-		`Start qan ` + string(qanConfigData),
+		`Start qan`,
 		`Status qan`,
 		`Status mm`,
 	}
