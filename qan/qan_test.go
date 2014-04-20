@@ -940,6 +940,58 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	t.Assert(reply.Error, Equals, "")
 }
 
+func (s *ManagerTestSuite) TestStart(t *C) {
+	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
+	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im)
+	t.Assert(m, NotNil)
+
+	// Starting qan without a config does nothing but start the qan manager.
+	err := m.Start()
+	t.Check(err, IsNil)
+
+	status := m.Status()
+	t.Check(status["qan-log-parser"], Equals, "")
+	t.Check(status["qan-last-interval"], Equals, "")
+	t.Check(status["qan-next-interval"], Equals, "")
+
+	// Write a qan config to disk.
+	config := &qan.Config{
+		ServiceInstance: s.mysqlInstance,
+		Interval:        300,
+		MaxWorkers:      1,
+		WorkerRunTime:   600,
+		Start: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=0.456"},
+			mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+		},
+		Stop: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
+		},
+	}
+	err = pct.Basedir.WriteConfig("qan", config)
+	t.Assert(err, IsNil)
+
+	// qan.Start() should read and use config on disk.
+	err = m.Start()
+	t.Check(err, IsNil)
+
+	if !test.WaitStatusPrefix(1, m, "qan-log-parser", "Idle") {
+		t.Error("WaitStatusPrefix(qan-log-parser, Idle) failed")
+	}
+
+	status = m.Status()
+	t.Check(status["qan-log-parser"], Equals, "Idle (0 of 1 running)")
+	t.Check(status["qan-last-interval"], Equals, "")
+	t.Check(status["qan-next-interval"], Not(Equals), "")
+
+	// Stopping qan.Stop() should leave config file on disk.
+	err = m.Stop()
+	t.Assert(err, IsNil)
+	t.Check(test.FileExists(pct.Basedir.ConfigFile("qan")), Equals, true)
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // IntervalIter test suite
 /////////////////////////////////////////////////////////////////////////////
