@@ -510,6 +510,22 @@ func (s *AgentTestSuite) TestGetConfig(t *C) {
 	}
 }
 
+func (s *AgentTestSuite) TestGetVersion(t *C) {
+	cmd := &proto.Cmd{
+		Ts:      time.Now(),
+		User:    "daniel",
+		Cmd:     "Version",
+		Service: "agent",
+	}
+	s.sendChan <- cmd
+
+	got := test.WaitReply(s.recvChan)
+	t.Assert(len(got), Equals, 1)
+	var version string
+	json.Unmarshal(got[0].Data, &version)
+	t.Check(version, Equals, agent.VERSION)
+}
+
 func (s *AgentTestSuite) TestSetConfigApiKey(t *C) {
 	newConfig := *s.config
 	newConfig.ApiKey = "101"

@@ -28,6 +28,7 @@ import (
 )
 
 const (
+	VERSION           = "1.0.0"
 	CMD_QUEUE_SIZE    = 10
 	STATUS_QUEUE_SIZE = 10
 	MAX_ERRORS        = 3
@@ -87,7 +88,6 @@ func (agent *Agent) Run() bool {
 	client := agent.client
 	client.Start()
 	cmdChan := client.RecvChan()
-	replyChan := client.SendChan()
 
 	go agent.connect()
 
@@ -145,7 +145,7 @@ func (agent *Agent) Run() bool {
 				case agent.statusChan <- cmd: // to statusHandler
 				default:
 					err := pct.QueueFullError{Cmd: cmd.Cmd, Name: "statusQueue", Size: STATUS_QUEUE_SIZE}
-					replyChan <- cmd.Reply(nil, err)
+					agent.reply(cmd.Reply(nil, err))
 				}
 			default:
 				agent.status.UpdateRe("agent", "Queueing", cmd)
@@ -153,7 +153,7 @@ func (agent *Agent) Run() bool {
 				case agent.cmdChan <- cmd: // to cmdHandler
 				default:
 					err := pct.QueueFullError{Cmd: cmd.Cmd, Name: "cmdQueue", Size: CMD_QUEUE_SIZE}
-					replyChan <- cmd.Reply(nil, err)
+					agent.reply(cmd.Reply(nil, err))
 				}
 			}
 		case <-agent.cmdHandlerSync.CrashChan:
@@ -248,7 +248,6 @@ func LoadConfig() ([]byte, error) {
 
 // Run:@goroutine[1]
 func (agent *Agent) cmdHandler() {
-	replyChan := agent.client.SendChan()
 	cmdReply := make(chan *proto.Reply, 1)
 
 	defer func() {
@@ -302,15 +301,21 @@ func (agent *Agent) cmdHandler() {
 			}
 
 			// Reply to cmd.
-			select {
-			case replyChan <- reply:
-			case <-time.After(20 * time.Second):
-				agent.logger.Warn("Failed to send reply:", reply)
-			}
+			agent.reply(reply)
 		case <-agent.cmdHandlerSync.StopChan: // from stop()
 			agent.cmdHandlerSync.Graceful()
 			return
 		}
+	}
+}
+
+func (agent *Agent) reply(reply *proto.Reply) {
+	// replyChan is buffered
+	replyChan := agent.client.SendChan()
+	select {
+	case replyChan <- reply:
+	case <-time.After(20 * time.Second):
+		agent.logger.Warn("Failed to send reply:", reply)
 	}
 }
 
@@ -335,6 +340,8 @@ func (agent *Agent) Handle(cmd *proto.Cmd) *proto.Reply {
 		data, err = agent.handleGetConfig(cmd)
 	case "SetConfig":
 		data, errs = agent.handleSetConfig(cmd)
+	case "Version":
+		data = VERSION
 	default:
 		errs = append(errs, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}

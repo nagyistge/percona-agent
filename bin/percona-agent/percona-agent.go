@@ -44,10 +44,6 @@ import (
 	"time"
 )
 
-const (
-	VERSION = "1.0.0"
-)
-
 var (
 	flagPing    bool
 	flagBasedir string
@@ -67,7 +63,7 @@ func init() {
 
 func main() {
 	if flagVersion {
-		fmt.Printf("percona-agent %s\n", VERSION)
+		fmt.Printf("percona-agent %s\n", agent.VERSION)
 		os.Exit(0)
 	}
 
