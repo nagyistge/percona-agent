@@ -15,6 +15,8 @@ import (
 
 type APIConnector interface {
 	Connect(hostname, apiKey, agentUuid string) error
+	Get(url string) (int, []byte, error)
+	EntryLink(resource string) string
 	AgentLink(resource string) string
 	Origin() string
 	Hostname() string

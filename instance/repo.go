@@ -36,13 +36,13 @@ import (
 type Repo struct {
 	logger    *pct.Logger
 	configDir string
-	api       *pct.API
+	api       pct.APIConnector
 	// --
 	it  map[string]interface{}
 	mux *sync.RWMutex
 }
 
-func NewRepo(logger *pct.Logger, configDir string, api *pct.API) *Repo {
+func NewRepo(logger *pct.Logger, configDir string, api pct.APIConnector) *Repo {
 	m := &Repo{
 		logger:    logger,
 		configDir: configDir,

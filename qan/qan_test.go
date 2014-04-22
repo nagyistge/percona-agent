@@ -194,6 +194,7 @@ type ManagerTestSuite struct {
 	configDir     string
 	im            *instance.Repo
 	mysqlInstance proto.ServiceInstance
+	api           *mock.API
 }
 
 var _ = Suite(&ManagerTestSuite{})
@@ -237,14 +238,20 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	}
 	s.configDir = pct.Basedir.Dir("config")
 
-	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im-test"), s.configDir)
+	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im-test"), s.configDir, s.api)
 	data, err := json.Marshal(&proto.MySQLInstance{
-		Name: "db1",
-		DSN:  s.dsn,
+		Hostname: "db1",
+		DSN:      s.dsn,
 	})
 	t.Assert(err, IsNil)
 	s.im.Add("mysql", 1, data, false)
 	s.mysqlInstance = proto.ServiceInstance{Service: "mysql", InstanceId: 1}
+
+	links := map[string]string{
+		"agent":     "http://localhost/agent",
+		"instances": "http://localhost/instances",
+	}
+	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
 }
 
 func (s *ManagerTestSuite) SetUpTest(t *C) {

@@ -23,6 +23,7 @@ import (
 	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/test"
+	"github.com/percona/cloud-tools/test/mock"
 	"io/ioutil"
 	. "launchpad.net/gocheck"
 	"os"
@@ -38,6 +39,7 @@ type RepoTestSuite struct {
 	logChan   chan *proto.LogEntry
 	logger    *pct.Logger
 	configDir string
+	api       *mock.API
 }
 
 var _ = Suite(&RepoTestSuite{})
@@ -54,6 +56,12 @@ func (s *RepoTestSuite) SetUpSuite(t *C) {
 
 	s.logChan = make(chan *proto.LogEntry, 10)
 	s.logger = pct.NewLogger(s.logChan, "pct-it-test")
+
+	links := map[string]string{
+		"agent":     "http://localhost/agent",
+		"instances": "http://localhost/instances",
+	}
+	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
 }
 
 func (s *RepoTestSuite) SetUpTest(t *C) {
@@ -74,7 +82,7 @@ func (s *RepoTestSuite) TearDownSuite(t *C) {
 // --------------------------------------------------------------------------
 
 func (s *RepoTestSuite) TestInit(t *C) {
-	im := instance.NewRepo(s.logger, s.configDir)
+	im := instance.NewRepo(s.logger, s.configDir, s.api)
 	t.Assert(im, NotNil)
 
 	err := im.Init()
@@ -90,11 +98,11 @@ func (s *RepoTestSuite) TestInit(t *C) {
 	err = im.Get("mysql", 1, mysqlIt)
 	t.Assert(err, IsNil)
 	expect := &proto.MySQLInstance{
-		Id:      1,
-		Name:    "db1",
-		DSN:     "user:host@tcp:(127.0.0.1:3306)",
-		Distro:  "Percona Server",
-		Version: "5.6.16",
+		Id:       1,
+		Hostname: "db1",
+		DSN:      "user:host@tcp:(127.0.0.1:3306)",
+		Distro:   "Percona Server",
+		Version:  "5.6.16",
 	}
 	if same, diff := test.IsDeeply(mysqlIt, expect); !same {
 		t.Error(diff)
@@ -102,17 +110,17 @@ func (s *RepoTestSuite) TestInit(t *C) {
 }
 
 func (s *RepoTestSuite) TestAddRemove(t *C) {
-	im := instance.NewRepo(s.logger, s.configDir)
+	im := instance.NewRepo(s.logger, s.configDir, s.api)
 	t.Assert(im, NotNil)
 
 	t.Check(test.FileExists(s.configDir+"/mysql-1.conf"), Equals, false)
 
 	mysqlIt := &proto.MySQLInstance{
-		Id:      1,
-		Name:    "db1",
-		DSN:     "user:host@tcp:(127.0.0.1:3306)",
-		Distro:  "Percona Server",
-		Version: "5.6.16",
+		Id:       1,
+		Hostname: "db1",
+		DSN:      "user:host@tcp:(127.0.0.1:3306)",
+		Distro:   "Percona Server",
+		Version:  "5.6.16",
 	}
 	data, err := json.Marshal(mysqlIt)
 	t.Assert(err, IsNil)
@@ -143,15 +151,15 @@ func (s *RepoTestSuite) TestAddRemove(t *C) {
 }
 
 func (s *RepoTestSuite) TestErrors(t *C) {
-	im := instance.NewRepo(s.logger, s.configDir)
+	im := instance.NewRepo(s.logger, s.configDir, s.api)
 	t.Assert(im, NotNil)
 
 	mysqlIt := &proto.MySQLInstance{
-		Id:      0,
-		Name:    "db1",
-		DSN:     "user:host@tcp:(127.0.0.1:3306)",
-		Distro:  "Percona Server",
-		Version: "5.6.16",
+		Id:       0,
+		Hostname: "db1",
+		DSN:      "user:host@tcp:(127.0.0.1:3306)",
+		Distro:   "Percona Server",
+		Version:  "5.6.16",
 	}
 	data, err := json.Marshal(mysqlIt)
 	t.Assert(err, IsNil)
