@@ -35,7 +35,7 @@ type Manager struct {
 	repo   *Repo
 }
 
-func NewManager(logger *pct.Logger, configDir string, api *pct.API) *Manager {
+func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector) *Manager {
 	repo := NewRepo(pct.NewLogger(logger.LogChan(), "instance-repo"), configDir, api)
 	m := &Manager{
 		logger:    logger,
@@ -86,7 +86,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		err := m.repo.Remove(it.Service, it.InstanceId)
 		return cmd.Reply(nil, err)
 	case "GetInfo":
-		info, err := m.handleGetInfo(it.Service, cmd.Data)
+		info, err := m.handleGetInfo(it.Service, it.Instance)
 		return cmd.Reply(info, err)
 	default:
 		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
