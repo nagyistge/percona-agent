@@ -32,8 +32,8 @@ type Manager struct {
 	repo   *Repo
 }
 
-func NewManager(logger *pct.Logger, configDir string) *Manager {
-	repo := NewRepo(pct.NewLogger(logger.LogChan(), "instance-repo"), configDir)
+func NewManager(logger *pct.Logger, configDir string, api *pct.API) *Manager {
+	repo := NewRepo(pct.NewLogger(logger.LogChan(), "instance-repo"), configDir, api)
 	m := &Manager{
 		logger:    logger,
 		configDir: configDir,

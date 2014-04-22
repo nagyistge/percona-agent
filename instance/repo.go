@@ -36,14 +36,17 @@ import (
 type Repo struct {
 	logger    *pct.Logger
 	configDir string
-	it        map[string]interface{}
-	mux       *sync.RWMutex
+	api       *pct.API
+	// --
+	it  map[string]interface{}
+	mux *sync.RWMutex
 }
 
-func NewRepo(logger *pct.Logger, configDir string) *Repo {
+func NewRepo(logger *pct.Logger, configDir string, api *pct.API) *Repo {
 	m := &Repo{
 		logger:    logger,
 		configDir: configDir,
+		api:       api,
 		// --
 		it:  make(map[string]interface{}),
 		mux: &sync.RWMutex{},
@@ -54,7 +57,7 @@ func NewRepo(logger *pct.Logger, configDir string) *Repo {
 func (r *Repo) Init() error {
 	for service, _ := range proto.ExternalService {
 		if err := r.loadInstances(service); err != nil {
-			return err
+			return fmt.Errorf("%s: %s", service, err)
 		}
 	}
 	return nil
@@ -99,9 +102,22 @@ func (r *Repo) loadInstances(service string) error {
 }
 
 func (r *Repo) Add(service string, id uint, data []byte, writeToDisk bool) error {
+	r.logger.Debug("Get:call")
+	defer r.logger.Debug("Get:return")
+
 	if !valid(service, id) {
 		return pct.InvalidServiceInstanceError{Service: service, Id: id}
 	}
+
+	r.mux.Lock()
+	defer r.mux.Unlock()
+
+	return r.add(service, id, data, writeToDisk)
+}
+
+func (r *Repo) add(service string, id uint, data []byte, writeToDisk bool) error {
+	r.logger.Debug("add:call")
+	defer r.logger.Debug("add:return")
 
 	var info interface{}
 	switch service {
@@ -121,9 +137,6 @@ func (r *Repo) Add(service string, id uint, data []byte, writeToDisk bool) error
 		return errors.New(fmt.Sprintf("Invalid service name: %s", service))
 	}
 
-	r.mux.Lock()
-	defer r.mux.Unlock()
-
 	name := r.Name(service, id)
 	if _, ok := r.it[name]; ok {
 		return pct.DuplicateServiceInstanceError{Service: service, Id: id}
@@ -133,6 +146,7 @@ func (r *Repo) Add(service string, id uint, data []byte, writeToDisk bool) error
 		if err := pct.Basedir.WriteConfig(name, info); err != nil {
 			return err
 		}
+		r.logger.Info("Added " + name)
 	}
 
 	r.it[name] = info
@@ -140,6 +154,19 @@ func (r *Repo) Add(service string, id uint, data []byte, writeToDisk bool) error
 }
 
 func (r *Repo) Get(service string, id uint, info interface{}) error {
+	r.logger.Debug("Get:call")
+	defer r.logger.Debug("Get:return")
+
+	r.mux.Lock()
+	defer r.mux.Unlock()
+
+	return r.get(service, id, info)
+}
+
+func (r *Repo) get(service string, id uint, info interface{}) error {
+	r.logger.Debug("get:call")
+	defer r.logger.Debug("get:return")
+
 	if reflect.ValueOf(info).Kind() != reflect.Ptr {
 		log.Fatal("info arg is not a pointer; need &T{}")
 	}
@@ -148,13 +175,33 @@ func (r *Repo) Get(service string, id uint, info interface{}) error {
 		return pct.InvalidServiceInstanceError{Service: service, Id: id}
 	}
 
-	r.mux.Lock()
-	defer r.mux.Unlock()
-
+	// Get instance info locally, from file on disk.
 	name := r.Name(service, id)
 	it, ok := r.it[name]
 	if !ok {
-		return pct.UnknownServiceInstanceError{Service: service, Id: id}
+		// Get instance info from API.
+		link := r.api.EntryLink("instances")
+		if link == "" {
+			r.logger.Warn("No 'instance' API link")
+			return pct.UnknownServiceInstanceError{Service: service, Id: id}
+		}
+		url := fmt.Sprintf("%s/%s/%d", link, service, id)
+		r.logger.Info("GET", url)
+		code, data, err := r.api.Get(url)
+		if err != nil {
+			return fmt.Errorf("Failed to get %s instance from %s: %s", name, link, err)
+		} else if code != 200 {
+			return fmt.Errorf("Getting %s instance from %s returned code %d, expected 200", name, link, code)
+		} else if data == nil {
+			return fmt.Errorf("Getting %s instance from %s did not return data")
+		} else {
+			// Save new instance locally.
+			if err := r.add(service, uint(id), data, true); err != nil {
+				return fmt.Errorf("Failed to add new instance: %s", err)
+			}
+			// Recurse to re-get and return new instance.
+			return r.get(service, id, info)
+		}
 	}
 
 	/**
@@ -174,6 +221,9 @@ func (r *Repo) Get(service string, id uint, info interface{}) error {
 }
 
 func (r *Repo) Remove(service string, id uint) error {
+	r.logger.Debug("Remove:call")
+	defer r.logger.Debug("Remove:return")
+
 	// todo: API --> agent --> side.Remove()
 	// Agent should stop all services using the instance before call this.
 	if !valid(service, id) {
@@ -195,6 +245,7 @@ func (r *Repo) Remove(service string, id uint) error {
 	}
 
 	delete(r.it, name)
+	r.logger.Info("Removed " + name)
 	return nil
 }
 

@@ -159,6 +159,7 @@ func main() {
 	itManager := instance.NewManager(
 		pct.NewLogger(logChan, "instance-manager"),
 		pct.Basedir.Dir("config"),
+		api,
 	)
 	if err := itManager.Start(); err != nil {
 		golog.Fatalf("Error starting instance manager: %s\n", err)
