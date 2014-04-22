@@ -49,6 +49,7 @@ type WebsocketClient struct {
 	mux         *sync.Mutex
 	name        string
 	status      *pct.Status
+	connected   bool
 }
 
 func NewWebsocketClient(logger *pct.Logger, api pct.APIConnector, link string) (*WebsocketClient, error) {
@@ -143,6 +144,7 @@ func (c *WebsocketClient) ConnectOnce() error {
 
 	c.mux.Lock()
 	defer c.mux.Unlock()
+	c.connected = true
 	c.conn = conn
 	c.status.Update(c.name, "Connected "+link)
 
@@ -163,16 +165,22 @@ func (c *WebsocketClient) Disconnect() error {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 
-	var err error
-	if c.conn != nil {
+	if c.connected {
 		c.logger.DebugOffline("Disconnect:websocket.Conn.Close")
-		if err = c.conn.Close(); err != nil {
+		if err := c.conn.Close(); err != nil {
 			// Example: write tcp 127.0.0.1:8000: i/o timeout
 			// That ^ can happen if remote end hangs up, then we call Close().
 			// Since there's nothing we can do about errors here, we ignore them.
 			c.logger.DebugOffline("Disconnect:websocket.Conn.Close:err:" + err.Error())
 		}
-		c.conn = nil
+		/**
+		 * Do not set c.conn = nil to indicate that connection is closed because
+		 * unless we also guard c.conn in Send() and Recv() c.conn.Set*Deadline()
+		 * will panic.  If the underlying websocket.Conn is closed, then
+		 * Set*Deadline() will do nothing and websocket.JSON.Send/Receive() will
+		 * just return an error, which is a lot better than a panic.
+		 */
+		c.connected = false
 		c.logger.DebugOffline("Disconnect:disconnected")
 		c.status.Update(c.name, "Disconnected")
 		c.notifyConnect(false)
@@ -207,7 +215,7 @@ func (c *WebsocketClient) send() {
 			case reply := <-c.sendChan:
 				// Got Reply from agent, send to API.
 				c.logger.DebugOffline("send:reply:", reply)
-				if err := c.Send(reply, 20); err != nil {
+				if err := c.Send(reply, 10); err != nil {
 					c.logger.DebugOffline("send:err:", err)
 					select {
 					case c.errChan <- err:
@@ -304,8 +312,7 @@ func (c *WebsocketClient) Send(data interface{}, timeout uint) error {
 	}
 	if err := websocket.JSON.Send(c.conn, data); err != nil {
 		c.logger.DebugOffline("Send:err:", err)
-		return errors.New(fmt.Sprint("Send:", err))
-		return err
+		return fmt.Errorf("Send:", err)
 	}
 	return nil
 }
