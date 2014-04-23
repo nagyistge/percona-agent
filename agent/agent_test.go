@@ -110,7 +110,10 @@ func (s *AgentTestSuite) SetUpTest(t *C) {
 
 	s.pidFile = pct.NewPidFile()
 
-	links := map[string]string{"agent": "http://localhost/agent"}
+	links := map[string]string{
+		"agent": "http://localhost/agent",
+		"instances": "http://localhost/instances",
+	}
 	s.api = mock.NewAPI("http://localhost", s.config.ApiHostname, s.config.ApiKey, s.config.AgentUuid, links)
 
 	s.agent = agent.NewAgent(s.config, s.pidFile, s.logger, s.api, s.client, s.services)

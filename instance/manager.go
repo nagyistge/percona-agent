@@ -19,7 +19,10 @@ package instance
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
 	"strings"
 )
@@ -32,8 +35,8 @@ type Manager struct {
 	repo   *Repo
 }
 
-func NewManager(logger *pct.Logger, configDir string) *Manager {
-	repo := NewRepo(pct.NewLogger(logger.LogChan(), "instance-repo"), configDir)
+func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector) *Manager {
+	repo := NewRepo(pct.NewLogger(logger.LogChan(), "instance-repo"), configDir, api)
 	m := &Manager{
 		logger:    logger,
 		configDir: configDir,
@@ -82,6 +85,9 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	case "Remove":
 		err := m.repo.Remove(it.Service, it.InstanceId)
 		return cmd.Reply(nil, err)
+	case "GetInfo":
+		info, err := m.handleGetInfo(it.Service, it.Instance)
+		return cmd.Reply(info, err)
 	default:
 		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
@@ -94,4 +100,48 @@ func (m *Manager) Status() map[string]string {
 
 func (m *Manager) Repo() *Repo {
 	return m.repo
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Implementation
+/////////////////////////////////////////////////////////////////////////////
+
+func (m *Manager) handleGetInfo(service string, data []byte) (interface{}, error) {
+	switch service {
+	case "mysql":
+		it := &proto.MySQLInstance{}
+		if err := json.Unmarshal(data, it); err != nil {
+			return nil, errors.New("instance.Repo:json.Unmarshal:" + err.Error())
+		}
+		if it.DSN == "" {
+			return nil, fmt.Errorf("MySQL instance DSN is not set")
+		}
+		if err := GetMySQLInfo(it); err != nil {
+			return nil, err
+		}
+		return it, nil
+	default:
+		return nil, fmt.Errorf("Don't know how to get info for %s service", service)
+	}
+}
+
+func GetMySQLInfo(it *proto.MySQLInstance) error {
+	conn := mysql.NewConnection(it.DSN)
+	if err := conn.Connect(1); err != nil {
+		return err
+	}
+	sql := "SELECT /* percona-agent */" +
+		" CONCAT_WS('.', @@hostname, IF(@@port='3306',NULL,@@port)) AS Hostname," +
+		" @@version_comment AS Distro," +
+		" @@version AS Version"
+	err := conn.DB().QueryRow(sql).Scan(
+		&it.Hostname,
+		&it.Distro,
+		&it.Version,
+	)
+	if err != nil {
+		return err
+	}
+	conn.Close()
+	return nil
 }

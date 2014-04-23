@@ -5,20 +5,20 @@ import (
 )
 
 type API struct {
-	origin     string
-	hostname   string
-	apiKey     string
-	agentUuid  string
-	agentLinks map[string]string
+	origin    string
+	hostname  string
+	apiKey    string
+	agentUuid string
+	links     map[string]string
 }
 
-func NewAPI(origin, hostname, apiKey, agentUuid string, agentLinks map[string]string) *API {
+func NewAPI(origin, hostname, apiKey, agentUuid string, links map[string]string) *API {
 	a := &API{
-		origin:     origin,
-		hostname:   hostname,
-		apiKey:     apiKey,
-		agentUuid:  agentUuid,
-		agentLinks: agentLinks,
+		origin:    origin,
+		hostname:  hostname,
+		apiKey:    apiKey,
+		agentUuid: agentUuid,
+		links:     links,
 	}
 	return a
 }
@@ -35,7 +35,11 @@ func (a *API) Connect(hostname, apiKey, agentUuid string) error {
 }
 
 func (a *API) AgentLink(resource string) string {
-	return a.agentLinks[resource]
+	return a.links[resource]
+}
+
+func (a *API) EntryLink(resource string) string {
+	return a.links[resource]
 }
 
 func (a *API) Origin() string {
@@ -52,4 +56,8 @@ func (a *API) ApiKey() string {
 
 func (a *API) AgentUuid() string {
 	return a.agentUuid
+}
+
+func (a *API) Get(url string) (int, []byte, error) {
+	return 200, nil, nil
 }
