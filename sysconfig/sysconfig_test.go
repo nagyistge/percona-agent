@@ -54,6 +54,7 @@ type ManagerTestSuite struct {
 	tmpDir      string
 	configDir   string
 	im          *instance.Repo
+	api         *mock.API
 }
 
 var _ = Suite(&ManagerTestSuite{})
@@ -79,7 +80,13 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	}
 	s.configDir = pct.Basedir.Dir("config")
 
-	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im-test"), s.configDir)
+	links := map[string]string{
+		"agent":     "http://localhost/agent",
+		"instances": "http://localhost/instances",
+	}
+	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
+
+	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im-test"), s.configDir, s.api)
 }
 
 func (s *ManagerTestSuite) SetUpTest(t *C) {

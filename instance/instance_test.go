@@ -21,8 +21,10 @@ import (
 	"encoding/json"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/instance"
+	"github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/test"
+	"github.com/percona/cloud-tools/test/mock"
 	"io/ioutil"
 	. "launchpad.net/gocheck"
 	"os"
@@ -38,6 +40,7 @@ type RepoTestSuite struct {
 	logChan   chan *proto.LogEntry
 	logger    *pct.Logger
 	configDir string
+	api       *mock.API
 }
 
 var _ = Suite(&RepoTestSuite{})
@@ -54,6 +57,12 @@ func (s *RepoTestSuite) SetUpSuite(t *C) {
 
 	s.logChan = make(chan *proto.LogEntry, 10)
 	s.logger = pct.NewLogger(s.logChan, "pct-it-test")
+
+	links := map[string]string{
+		"agent":     "http://localhost/agent",
+		"instances": "http://localhost/instances",
+	}
+	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
 }
 
 func (s *RepoTestSuite) SetUpTest(t *C) {
@@ -74,7 +83,7 @@ func (s *RepoTestSuite) TearDownSuite(t *C) {
 // --------------------------------------------------------------------------
 
 func (s *RepoTestSuite) TestInit(t *C) {
-	im := instance.NewRepo(s.logger, s.configDir)
+	im := instance.NewRepo(s.logger, s.configDir, s.api)
 	t.Assert(im, NotNil)
 
 	err := im.Init()
@@ -90,11 +99,11 @@ func (s *RepoTestSuite) TestInit(t *C) {
 	err = im.Get("mysql", 1, mysqlIt)
 	t.Assert(err, IsNil)
 	expect := &proto.MySQLInstance{
-		Id:      1,
-		Name:    "db1",
-		DSN:     "user:host@tcp:(127.0.0.1:3306)",
-		Distro:  "Percona Server",
-		Version: "5.6.16",
+		Id:       1,
+		Hostname: "db1",
+		DSN:      "user:host@tcp:(127.0.0.1:3306)",
+		Distro:   "Percona Server",
+		Version:  "5.6.16",
 	}
 	if same, diff := test.IsDeeply(mysqlIt, expect); !same {
 		t.Error(diff)
@@ -102,17 +111,17 @@ func (s *RepoTestSuite) TestInit(t *C) {
 }
 
 func (s *RepoTestSuite) TestAddRemove(t *C) {
-	im := instance.NewRepo(s.logger, s.configDir)
+	im := instance.NewRepo(s.logger, s.configDir, s.api)
 	t.Assert(im, NotNil)
 
 	t.Check(test.FileExists(s.configDir+"/mysql-1.conf"), Equals, false)
 
 	mysqlIt := &proto.MySQLInstance{
-		Id:      1,
-		Name:    "db1",
-		DSN:     "user:host@tcp:(127.0.0.1:3306)",
-		Distro:  "Percona Server",
-		Version: "5.6.16",
+		Id:       1,
+		Hostname: "db1",
+		DSN:      "user:host@tcp:(127.0.0.1:3306)",
+		Distro:   "Percona Server",
+		Version:  "5.6.16",
 	}
 	data, err := json.Marshal(mysqlIt)
 	t.Assert(err, IsNil)
@@ -143,15 +152,15 @@ func (s *RepoTestSuite) TestAddRemove(t *C) {
 }
 
 func (s *RepoTestSuite) TestErrors(t *C) {
-	im := instance.NewRepo(s.logger, s.configDir)
+	im := instance.NewRepo(s.logger, s.configDir, s.api)
 	t.Assert(im, NotNil)
 
 	mysqlIt := &proto.MySQLInstance{
-		Id:      0,
-		Name:    "db1",
-		DSN:     "user:host@tcp:(127.0.0.1:3306)",
-		Distro:  "Percona Server",
-		Version: "5.6.16",
+		Id:       0,
+		Hostname: "db1",
+		DSN:      "user:host@tcp:(127.0.0.1:3306)",
+		Distro:   "Percona Server",
+		Version:  "5.6.16",
 	}
 	data, err := json.Marshal(mysqlIt)
 	t.Assert(err, IsNil)
@@ -163,4 +172,124 @@ func (s *RepoTestSuite) TestErrors(t *C) {
 	// Service name must be one of proto.ExternalService.
 	err = im.Add("foo", 1, data, false)
 	t.Assert(err, NotNil)
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Manager test suite
+/////////////////////////////////////////////////////////////////////////////
+
+type ManagerTestSuite struct {
+	tmpDir    string
+	logChan   chan *proto.LogEntry
+	logger    *pct.Logger
+	configDir string
+	api       *mock.API
+}
+
+var _ = Suite(&ManagerTestSuite{})
+
+func (s *ManagerTestSuite) SetUpSuite(t *C) {
+	var err error
+	s.tmpDir, err = ioutil.TempDir("/tmp", "agent-test")
+	t.Assert(err, IsNil)
+
+	if err := pct.Basedir.Init(s.tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	s.configDir = pct.Basedir.Dir("config")
+
+	s.logChan = make(chan *proto.LogEntry, 10)
+	s.logger = pct.NewLogger(s.logChan, "pct-it-test")
+
+	links := map[string]string{
+		"agent":     "http://localhost/agent",
+		"instances": "http://localhost/instances",
+	}
+	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
+}
+
+func (s *ManagerTestSuite) SetUpTest(t *C) {
+	files, _ := filepath.Glob(s.configDir + "/*")
+	for _, file := range files {
+		if err := os.Remove(file); err != nil {
+			t.Error(err)
+		}
+	}
+}
+
+func (s *ManagerTestSuite) TearDownSuite(t *C) {
+	if err := os.RemoveAll(s.tmpDir); err != nil {
+		t.Error(err)
+	}
+}
+
+var dsn = os.Getenv("PCT_TEST_MYSQL_DSN")
+
+// --------------------------------------------------------------------------
+
+func (s *ManagerTestSuite) TestHandleGetInfoMySQL(t *C) {
+	if dsn == "" {
+		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
+	}
+
+	/**
+	 * First get MySQL info manually.  This is what GetInfo should do, too.
+	 */
+
+	conn := mysql.NewConnection(dsn)
+	if err := conn.Connect(1); err != nil {
+		t.Fatal(err)
+	}
+	var hostname, distro, version string
+	sql := "SELECT" +
+		" CONCAT_WS('.', @@hostname, IF(@@port='3306',NULL,@@port)) AS Hostname," +
+		" @@version_comment AS Distro," +
+		" @@version AS Version"
+	if err := conn.DB().QueryRow(sql).Scan(&hostname, &distro, &version); err != nil {
+		t.Fatal(err)
+	}
+
+	/**
+	 * Now use the instance manager and GetInfo to get MySQL info like API would.
+	 */
+
+	// Create an instance manager.
+	m := instance.NewManager(s.logger, s.configDir, s.api)
+	t.Assert(m, NotNil)
+
+	// API sends Cmd[Service:"it", Cmd:"GetInfo",
+	//               Data:proto.ServiceInstance[Service:"mysql",
+	//                                          Data:proto.MySQLInstance[]]]
+	// Only DSN is needed.  We set Id just to test that it's not changed.
+	mysqlIt := &proto.MySQLInstance{
+		Id:  9,
+		DSN: dsn,
+	}
+	mysqlData, err := json.Marshal(mysqlIt)
+	t.Assert(err, IsNil)
+
+	serviceIt := &proto.ServiceInstance{
+		Service:  "mysql",
+		Instance: mysqlData,
+	}
+	serviceData, err := json.Marshal(serviceIt)
+	t.Assert(err, IsNil)
+
+	cmd := &proto.Cmd{
+		Cmd:     "GetInfo",
+		Service: "instance",
+		Data:    serviceData,
+	}
+
+	reply := m.Handle(cmd)
+
+	got := &proto.MySQLInstance{}
+	err = json.Unmarshal(reply.Data, got)
+	t.Assert(err, IsNil)
+
+	t.Check(got.Id, Equals, uint(9))        // not changed
+	t.Check(got.DSN, Equals, mysqlIt.DSN)   // not changed
+	t.Check(got.Hostname, Equals, hostname) // new
+	t.Check(got.Distro, Equals, distro)     // new
+	t.Check(got.Version, Equals, version)   // new
 }

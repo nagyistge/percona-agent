@@ -339,6 +339,7 @@ type ManagerTestSuite struct {
 	mysqlMonitor  *mock.MmMonitor
 	systemMonitor *mock.MmMonitor
 	factory       *mock.MmMonitorFactory
+	api           *mock.API
 }
 
 var _ = Suite(&ManagerTestSuite{})
@@ -360,10 +361,10 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	}
 	s.configDir = pct.Basedir.Dir("config")
 
-	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im"), s.configDir)
+	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im"), s.configDir, s.api)
 	data, err := json.Marshal(&proto.MySQLInstance{
-		Name: "db1",
-		DSN:  "user:host@tcp:(127.0.0.1:3306)",
+		Hostname: "db1",
+		DSN:      "user:host@tcp:(127.0.0.1:3306)",
 	})
 	t.Assert(err, IsNil)
 	s.im.Add("mysql", 1, data, false)
@@ -377,6 +378,12 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 		"mysql-1":  s.mysqlMonitor,
 		"server-1": s.systemMonitor,
 	})
+
+	links := map[string]string{
+		"agent":     "http://localhost/agent",
+		"instances": "http://localhost/instances",
+	}
+	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
 }
 
 func (s *ManagerTestSuite) SetUpTest(t *C) {
