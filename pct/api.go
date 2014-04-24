@@ -1,10 +1,13 @@
 package pct
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -162,15 +165,27 @@ func (a *API) get(apiKey, url string) (int, []byte, error) {
 	if err != nil {
 		return 0, nil, fmt.Errorf("GET %s error: client.Do: %s", url, err)
 	}
+	defer resp.Body.Close()
 
-	// todo: timeout
-	body, err := ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	if err != nil {
-		return 0, nil, fmt.Errorf("GET %s error: ioutil.ReadAll: %s", url, err)
+	var data []byte
+	if resp.Header.Get("Content-Type") == "application/x-gzip" {
+		buf := new(bytes.Buffer)
+		gz, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return 0, nil, err
+		}
+		if _, err := io.Copy(buf, gz); err != nil {
+			return resp.StatusCode, nil, err
+		}
+		data = buf.Bytes()
+	} else {
+		data, err = ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return resp.StatusCode, nil, fmt.Errorf("GET %s error: ioutil.ReadAll: %s", url, err)
+		}
 	}
 
-	return resp.StatusCode, body, nil
+	return resp.StatusCode, data, nil
 }
 
 func (a *API) EntryLink(resource string) string {
