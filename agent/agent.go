@@ -23,6 +23,11 @@ import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -77,7 +82,7 @@ func NewAgent(config *Config, pidFile *pct.PidFile, logger *pct.Logger, api pct.
 /////////////////////////////////////////////////////////////////////////////
 
 // percona-agent:@goroutine[0]
-func (agent *Agent) Run() bool {
+func (agent *Agent) Run() error {
 	logger := agent.logger
 	logger.Debug("Run:call")
 	defer logger.Debug("Run:return")
@@ -135,10 +140,49 @@ func (agent *Agent) Run() bool {
 			logger.Debug("recv: ", cmd)
 
 			switch cmd.Cmd {
+			case "Restart":
+				logger.Debug("Restart:start")
+
+				// Secure the start-lock file.  This lets us start our self but
+				// wait until this process has exited, at which time the start-lock
+				// is removed and the 2nd self continues starting.
+				if err := makeStartLockFile(); err != nil {
+					agent.reply(cmd.Reply(nil, err))
+					continue
+				}
+
+				// Run our self with the same args this process was started with.
+				bin, err := filepath.Abs(os.Args[0])
+				if err != nil {
+					agent.reply(cmd.Reply(nil, err))
+				}
+				cwd, err := os.Getwd()
+				if err != nil {
+					agent.reply(cmd.Reply(nil, err))
+				}
+				sh := fmt.Sprintf("#!/bin/sh\ncd %s\nnohup %s %s 2>&1 >> %s/percona-agent.log &\n",
+					cwd,
+					bin,
+					strings.Join(os.Args[1:len(os.Args)], " "),
+					pct.Basedir.Path(),
+				)
+				startScript := filepath.Join(pct.Basedir.Path(), "start")
+				if err := ioutil.WriteFile(startScript, []byte(sh), os.FileMode(0770)); err != nil {
+					agent.reply(cmd.Reply(nil, err))
+				}
+				logger.Debug("Restart:run start script")
+				self := exec.Command(startScript)
+				if err := self.Start(); err != nil {
+					agent.reply(cmd.Reply(nil, err))
+				}
+				agent.reply(cmd.Reply(nil))
+				logger.Debug("Restart:done")
+				return nil
 			case "Stop":
-				return false
+				agent.reply(cmd.Reply(nil))
+				return nil
 			case "Update":
-				return true
+				// handleUpdate()
 			case "Status":
 				agent.status.UpdateRe("agent", "Queueing", cmd)
 				select {
@@ -453,14 +497,20 @@ func (agent *Agent) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 		}
 	}
 
-	// Change the PID file: get new then remove old.
+	// Enable/disable the PID file (basedir/percona-agent.pid).
 	if newConfig.PidFile != finalConfig.PidFile {
-		agent.logger.Warn("Changing PID file from", finalConfig.PidFile, "to", newConfig.PidFile)
-		if err := agent.pidFile.Set(newConfig.PidFile); err != nil {
-			errs = append(errs, errors.New("agnet.pidFile.Set:"+err.Error()))
+		if newConfig.PidFile {
+			agent.logger.Warn("Enabling PID file")
+			if err := agent.pidFile.Set(pct.Basedir.File("pid")); err != nil {
+				errs = append(errs, errors.New("agnet.pidFile.Set:"+err.Error()))
+			}
 		} else {
-			finalConfig.PidFile = newConfig.PidFile
+			agent.logger.Warn("Disabling PID file")
+			if err := agent.pidFile.Remove(); err != nil {
+				errs = append(errs, errors.New("agnet.pidFile.Remove:"+err.Error()))
+			}
 		}
+		finalConfig.PidFile = newConfig.PidFile
 	}
 
 	// Write the new, updated config.  If this fails, agent will use old config if restarted.
@@ -529,4 +579,13 @@ func (agent *Agent) AllStatus() map[string]string {
 		}
 	}
 	return status
+}
+
+func makeStartLockFile() error {
+	flags := os.O_CREATE | os.O_EXCL | os.O_WRONLY
+	file, err := os.OpenFile(pct.Basedir.File("start-lock"), flags, 0644)
+	if err != nil {
+		return err
+	}
+	return file.Close()
 }
