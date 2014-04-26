@@ -29,8 +29,10 @@ const (
 	DEFAULT_BASEDIR    = "/var/lib/percona-agent"
 	CONFIG_FILE_SUFFIX = ".conf"
 	// Relative to Basedir.path:
-	CONFIG_DIR = "config"
-	DATA_DIR   = "data"
+	CONFIG_DIR      = "config"
+	DATA_DIR        = "data"
+	START_LOCK_FILE = "start.lock"
+	PID_FILE        = "percona-agent.pid"
 )
 
 type basedir struct {
@@ -112,4 +114,16 @@ func (b *basedir) WriteConfig(service string, config interface{}) error {
 func (b *basedir) RemoveConfig(service string) error {
 	configFile := filepath.Join(b.configDir, service+CONFIG_FILE_SUFFIX)
 	return RemoveFile(configFile)
+}
+
+func (b *basedir) File(file string) string {
+	switch file {
+	case "start-lock":
+		file = START_LOCK_FILE
+	case "pid":
+		file = PID_FILE
+	default:
+		log.Panicf("Unknown basedir file: %s", file)
+	}
+	return filepath.Join(b.Path(), file)
 }

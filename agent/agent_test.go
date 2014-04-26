@@ -111,7 +111,7 @@ func (s *AgentTestSuite) SetUpTest(t *C) {
 	s.pidFile = pct.NewPidFile()
 
 	links := map[string]string{
-		"agent": "http://localhost/agent",
+		"agent":     "http://localhost/agent",
 		"instances": "http://localhost/instances",
 	}
 	s.api = mock.NewAPI("http://localhost", s.config.ApiHostname, s.config.ApiKey, s.config.AgentUuid, links)
@@ -511,6 +511,22 @@ func (s *AgentTestSuite) TestGetConfig(t *C) {
 		t.Logf("%+v", gotConfig)
 		t.Error(diff)
 	}
+}
+
+func (s *AgentTestSuite) TestGetVersion(t *C) {
+	cmd := &proto.Cmd{
+		Ts:      time.Now(),
+		User:    "daniel",
+		Cmd:     "Version",
+		Service: "agent",
+	}
+	s.sendChan <- cmd
+
+	got := test.WaitReply(s.recvChan)
+	t.Assert(len(got), Equals, 1)
+	var version string
+	json.Unmarshal(got[0].Data, &version)
+	t.Check(version, Equals, agent.VERSION)
 }
 
 func (s *AgentTestSuite) TestSetConfigApiKey(t *C) {

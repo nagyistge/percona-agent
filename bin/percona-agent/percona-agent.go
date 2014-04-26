@@ -44,10 +44,6 @@ import (
 	"time"
 )
 
-const (
-	VERSION = "1.0.0"
-)
-
 var (
 	flagPing    bool
 	flagBasedir string
@@ -65,31 +61,41 @@ func init() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 }
 
-func main() {
+func run() error {
 	if flagVersion {
-		fmt.Printf("percona-agent %s\n", VERSION)
-		os.Exit(0)
+		fmt.Printf("percona-agent %s\n", agent.VERSION)
+		return nil
 	}
 
 	if err := pct.Basedir.Init(flagBasedir); err != nil {
-		golog.Fatal(err)
+		return err
 	}
+
+	// Start-lock file is used to let agent1 self-update, create start-lock,
+	// start updated agent2, exit cleanly, then agent2 starts.  agent1 may
+	// not use a PID file, so this special file is required.
+	if err := pct.WaitStartLock(); err != nil {
+		return err
+	}
+	// NOTE: This must run last, and defer if LIFO, so it must be declared first,
+	//       especially so it runs after removing the PID file.
+	defer os.Remove(pct.Basedir.File("start-lock"))
 
 	/**
 	 * Agent config (require API key and agent UUID)
 	 */
 
 	if !pct.FileExists(pct.Basedir.ConfigFile("agent")) {
-		golog.Fatalf("Agent config file %s does not exist", pct.Basedir.ConfigFile("agent"))
+		return fmt.Errorf("Agent config file %s does not exist", pct.Basedir.ConfigFile("agent"))
 	}
 
 	bytes, err := agent.LoadConfig()
 	if err != nil {
-		golog.Fatalf("Invalid agent config: %s\n", err)
+		return fmt.Errorf("Invalid agent config: %s\n", err)
 	}
 	agentConfig := &agent.Config{}
 	if err := json.Unmarshal(bytes, agentConfig); err != nil {
-		golog.Panicf("Error parsing "+pct.Basedir.ConfigFile("agent")+": ", err)
+		return fmt.Errorf("Error parsing "+pct.Basedir.ConfigFile("agent")+": ", err)
 	}
 
 	golog.Println("ApiHostname: " + agentConfig.ApiHostname)
@@ -105,11 +111,10 @@ func main() {
 		d := time.Now().Sub(t0)
 		golog.Printf("%+v\n", resp)
 		if !ok {
-			golog.Printf("Ping FAIL (%s)", d)
-			os.Exit(1)
+			return fmt.Errorf("Ping FAIL (%s)", d)
 		} else {
 			golog.Printf("Ping OK (%s)", d)
-			os.Exit(0)
+			return nil
 		}
 	}
 
@@ -149,11 +154,11 @@ func main() {
 		logChan,
 	)
 	if err := logManager.Start(); err != nil {
-		golog.Fatalf("Error starting logmanager: %s\n", err)
+		return fmt.Errorf("Error starting logmanager: %s\n", err)
 	}
 
 	/**
-	 * Service instance manager
+	 * Instance manager
 	 */
 
 	itManager := instance.NewManager(
@@ -162,7 +167,7 @@ func main() {
 		api,
 	)
 	if err := itManager.Start(); err != nil {
-		golog.Fatalf("Error starting instance manager: %s\n", err)
+		return fmt.Errorf("Error starting instance manager: %s\n", err)
 	}
 
 	/**
@@ -182,7 +187,7 @@ func main() {
 		dataClient,
 	)
 	if err := dataManager.Start(); err != nil {
-		golog.Fatalf("Error starting data manager: %s\n", err)
+		return fmt.Errorf("Error starting data manager: %s\n", err)
 	}
 
 	/**
@@ -204,7 +209,7 @@ func main() {
 		itManager.Repo(),
 	)
 	if err := mmManager.Start(); err != nil {
-		golog.Fatalf("Error starting mm manager: %s\n", err)
+		return fmt.Errorf("Error starting mm manager: %s\n", err)
 	}
 
 	sysconfigManager := sysconfig.NewManager(
@@ -215,7 +220,7 @@ func main() {
 		itManager.Repo(),
 	)
 	if err := sysconfigManager.Start(); err != nil {
-		golog.Fatalf("Error starting sysconfig manager: %s\n", err)
+		return fmt.Errorf("Error starting sysconfig manager: %s\n", err)
 	}
 
 	/**
@@ -232,7 +237,7 @@ func main() {
 		itManager.Repo(),
 	)
 	if err := qanManager.Start(); err != nil {
-		golog.Fatalf("Error starting qan manager: %s\n", err)
+		return fmt.Errorf("Error starting qan manager: %s\n", err)
 	}
 
 	/**
@@ -243,12 +248,12 @@ func main() {
 	// which reconfigures MySQL: it enables the slow log, sets long_query_time, etc.
 	// It's not terrible to leave slow log on, but it's nicer to turn it off.
 	sigChan := make(chan os.Signal, 1)
+	stopChan := make(chan error, 2)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		sig := <-sigChan
 		golog.Printf("Caught %s signal, shutting down...\n", sig)
-		qanManager.Stop()
-		os.Exit(1)
+		stopChan <- qanManager.Stop()
 	}()
 
 	/**
@@ -281,16 +286,18 @@ func main() {
 		services,
 	)
 
-	update := agent.Run()
-	golog.Printf("Agent stopped; update %t\n", update)
+	/**
+	 * Run agent, wait for it to stop or signal.
+	 */
 
-	qanManager.Stop() // see Signal handler ^
-
-	if update {
-		// todo
-	}
-
-	os.Exit(0)
+	go func() {
+		stopChan <- agent.Run()
+	}()
+	stopErr := <-stopChan // agent or signal
+	golog.Println("Agent stopped, shutting down...")
+	qanManager.Stop()           // see Signal handler ^
+	time.Sleep(2 * time.Second) // wait for final replies and log entries
+	return stopErr
 }
 
 func ConnectAPI(agentConfig *agent.Config) (*pct.API, error) {
@@ -312,4 +319,11 @@ func ConnectAPI(agentConfig *agent.Config) (*pct.API, error) {
 	}
 
 	return nil, errors.New("Timeout connecting to " + agentConfig.ApiHostname)
+}
+
+func main() {
+	if err := run(); err != nil {
+		golog.Fatal(err) // non-zero exit
+	}
+	os.Exit(0)
 }

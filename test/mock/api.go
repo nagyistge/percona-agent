@@ -10,6 +10,9 @@ type API struct {
 	apiKey    string
 	agentUuid string
 	links     map[string]string
+	GetCode   []int
+	GetData   [][]byte
+	GetError  []error
 }
 
 func NewAPI(origin, hostname, apiKey, agentUuid string, links map[string]string) *API {
@@ -59,5 +62,20 @@ func (a *API) AgentUuid() string {
 }
 
 func (a *API) Get(url string) (int, []byte, error) {
-	return 200, nil, nil
+	code := 200
+	var data []byte
+	var err error
+	if len(a.GetCode) > 0 {
+		code = a.GetCode[0]
+		a.GetCode = a.GetCode[1:len(a.GetCode)]
+	}
+	if len(a.GetData) > 0 {
+		data = a.GetData[0]
+		a.GetData = a.GetData[1:len(a.GetData)]
+	}
+	if len(a.GetError) > 0 {
+		err = a.GetError[0]
+		a.GetError = a.GetError[1:len(a.GetError)]
+	}
+	return code, data, err
 }

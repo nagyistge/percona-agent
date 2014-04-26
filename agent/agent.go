@@ -23,11 +23,17 @@ import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
 
 const (
+	VERSION           = "1.0.0"
 	CMD_QUEUE_SIZE    = 10
 	STATUS_QUEUE_SIZE = 10
 	MAX_ERRORS        = 3
@@ -42,15 +48,15 @@ type Agent struct {
 	api       pct.APIConnector
 	pidFile   *pct.PidFile
 	services  map[string]pct.ServiceManager
+	updater   *pct.Updater
 	// --
-	cmdSync *pct.SyncChan
-	cmdChan chan *proto.Cmd
+	cmdSync        *pct.SyncChan
+	cmdChan        chan *proto.Cmd
+	cmdHandlerSync *pct.SyncChan
 	//
-	statusSync *pct.SyncChan
-	status     *pct.Status
-	statusChan chan *proto.Cmd
-	//
-	cmdHandlerSync    *pct.SyncChan
+	statusSync        *pct.SyncChan
+	status            *pct.Status
+	statusChan        chan *proto.Cmd
 	statusHandlerSync *pct.SyncChan
 }
 
@@ -63,6 +69,7 @@ func NewAgent(config *Config, pidFile *pct.PidFile, logger *pct.Logger, api pct.
 		logger:    logger,
 		client:    client,
 		services:  services,
+		updater:   pct.NewUpdater(logger, api, pct.PublicKey, os.Args[0], VERSION),
 		// --
 		status:     pct.NewStatus([]string{"agent", "agent-cmd-handler"}),
 		cmdChan:    make(chan *proto.Cmd, CMD_QUEUE_SIZE),
@@ -76,7 +83,7 @@ func NewAgent(config *Config, pidFile *pct.PidFile, logger *pct.Logger, api pct.
 /////////////////////////////////////////////////////////////////////////////
 
 // percona-agent:@goroutine[0]
-func (agent *Agent) Run() bool {
+func (agent *Agent) Run() error {
 	logger := agent.logger
 	logger.Debug("Run:call")
 	defer logger.Debug("Run:return")
@@ -87,7 +94,6 @@ func (agent *Agent) Run() bool {
 	client := agent.client
 	client.Start()
 	cmdChan := client.RecvChan()
-	replyChan := client.SendChan()
 
 	go agent.connect()
 
@@ -135,17 +141,46 @@ func (agent *Agent) Run() bool {
 			logger.Debug("recv: ", cmd)
 
 			switch cmd.Cmd {
+			case "Restart":
+				// Secure the start-lock file.  This lets us start our self but
+				// wait until this process has exited, at which time the start-lock
+				// is removed and the 2nd self continues starting.
+				if err := pct.MakeStartLock(); err != nil {
+					agent.reply(cmd.Reply(nil, err))
+					continue
+				}
+
+				// Start our self with the same args this process was started with.
+				cwd, err := os.Getwd()
+				if err != nil {
+					agent.reply(cmd.Reply(nil, err))
+				}
+				sh := fmt.Sprintf("#!/bin/sh\ncd %s\n%s %s >> %s/nohup-percona-agent.log 2>&1 &\n",
+					cwd,
+					os.Args[0],
+					strings.Join(os.Args[1:len(os.Args)], " "),
+					pct.Basedir.Path(),
+				)
+				startScript := filepath.Join(pct.Basedir.Path(), "start")
+				if err := ioutil.WriteFile(startScript, []byte(sh), os.FileMode(0770)); err != nil {
+					agent.reply(cmd.Reply(nil, err))
+				}
+				logger.Debug("Restart:sh")
+				self := exec.Command(startScript)
+				err = self.Start()
+				agent.reply(cmd.Reply(nil, err))
+				logger.Debug("Restart:done")
+				return nil
 			case "Stop":
-				return false
-			case "Update":
-				return true
+				agent.reply(cmd.Reply(nil))
+				return nil
 			case "Status":
 				agent.status.UpdateRe("agent", "Queueing", cmd)
 				select {
 				case agent.statusChan <- cmd: // to statusHandler
 				default:
 					err := pct.QueueFullError{Cmd: cmd.Cmd, Name: "statusQueue", Size: STATUS_QUEUE_SIZE}
-					replyChan <- cmd.Reply(nil, err)
+					agent.reply(cmd.Reply(nil, err))
 				}
 			default:
 				agent.status.UpdateRe("agent", "Queueing", cmd)
@@ -153,7 +188,7 @@ func (agent *Agent) Run() bool {
 				case agent.cmdChan <- cmd: // to cmdHandler
 				default:
 					err := pct.QueueFullError{Cmd: cmd.Cmd, Name: "cmdQueue", Size: CMD_QUEUE_SIZE}
-					replyChan <- cmd.Reply(nil, err)
+					agent.reply(cmd.Reply(nil, err))
 				}
 			}
 		case <-agent.cmdHandlerSync.CrashChan:
@@ -248,7 +283,6 @@ func LoadConfig() ([]byte, error) {
 
 // Run:@goroutine[1]
 func (agent *Agent) cmdHandler() {
-	replyChan := agent.client.SendChan()
 	cmdReply := make(chan *proto.Reply, 1)
 
 	defer func() {
@@ -293,24 +327,36 @@ func (agent *Agent) cmdHandler() {
 			}()
 
 			// Wait for the cmd to complete.
+			var timeout <-chan time.Time
+			if cmd.Cmd == "Update" {
+				timeout = time.After(5 * time.Minute)
+			} else {
+				timeout = time.After(20 * time.Second)
+			}
 			var reply *proto.Reply
 			select {
 			case reply = <-cmdReply:
 				// todo: instrument cmd exec time
-			case <-time.After(20 * time.Second):
+			case <-timeout:
 				reply = cmd.Reply(nil, pct.CmdTimeoutError{Cmd: cmd.Cmd})
 			}
 
 			// Reply to cmd.
-			select {
-			case replyChan <- reply:
-			case <-time.After(20 * time.Second):
-				agent.logger.Warn("Failed to send reply:", reply)
-			}
+			agent.reply(reply)
 		case <-agent.cmdHandlerSync.StopChan: // from stop()
 			agent.cmdHandlerSync.Graceful()
 			return
 		}
+	}
+}
+
+func (agent *Agent) reply(reply *proto.Reply) {
+	// replyChan is buffered
+	replyChan := agent.client.SendChan()
+	select {
+	case replyChan <- reply:
+	case <-time.After(20 * time.Second):
+		agent.logger.Warn("Failed to send reply:", reply)
 	}
 }
 
@@ -335,6 +381,10 @@ func (agent *Agent) Handle(cmd *proto.Cmd) *proto.Reply {
 		data, err = agent.handleGetConfig(cmd)
 	case "SetConfig":
 		data, errs = agent.handleSetConfig(cmd)
+	case "Update":
+		data, errs = agent.handleUpdate(cmd)
+	case "Version":
+		data = VERSION
 	default:
 		errs = append(errs, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
@@ -467,6 +517,18 @@ func (agent *Agent) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 	agent.config = &finalConfig
 
 	return &finalConfig, errs
+}
+
+// Handle:@goroutine[3]
+func (agent *Agent) handleUpdate(cmd *proto.Cmd) (interface{}, []error) {
+	agent.status.UpdateRe("agent-cmd-handler", "Update", cmd)
+	agent.logger.Info(cmd)
+	version := ""
+	if err := json.Unmarshal(cmd.Data, &version); err != nil {
+		return nil, []error{err}
+	}
+	err := agent.updater.Update(version)
+	return nil, []error{err}
 }
 
 //---------------------------------------------------------------------------
