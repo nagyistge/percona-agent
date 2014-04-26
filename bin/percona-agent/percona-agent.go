@@ -39,7 +39,6 @@ import (
 	golog "log"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"runtime"
 	"syscall"
 	"time"
@@ -75,18 +74,11 @@ func run() error {
 	// Start-lock file is used to let agent1 self-update, create start-lock,
 	// start updated agent2, exit cleanly, then agent2 starts.  agent1 may
 	// not use a PID file, so this special file is required.
-	startLock := filepath.Join(pct.Basedir.Path(), "start.lock")
-	if startLockExists := pct.FileExists(startLock); startLockExists {
-		golog.Printf("Start-lock file %s exists; agent starts when removed, else aborts in 1 minute...",
-			startLock)
-		for i := 0; i < 60 && startLockExists; i++ {
-			time.Sleep(1 * time.Second)
-			startLockExists = pct.FileExists(startLock)
-		}
-		if startLockExists {
-			return fmt.Errorf("Start-lock file %s not removed after 1 minute", startLock)
-		}
+	if err := pct.WaitStartLock(); err != nil {
+		return err
 	}
+	// NOTE: This must run last, and defer if LIFO, so it must be declared first,
+	//       especially so it runs after removing the PID file.
 	defer os.Remove(pct.Basedir.File("start-lock"))
 
 	/**

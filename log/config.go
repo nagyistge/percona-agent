@@ -18,7 +18,7 @@
 package log
 
 const (
-	DEFAULT_LOG_FILE  = ""
+	DEFAULT_LOG_FILE  = "percona-agent.log"
 	DEFAULT_LOG_LEVEL = "info"
 )
 

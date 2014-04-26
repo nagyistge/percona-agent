@@ -17,6 +17,14 @@
 
 package pct
 
+import (
+	"fmt"
+	golog "log"
+	"os"
+	"path/filepath"
+	"time"
+)
+
 type SyncChan struct {
 	StartChan chan bool
 	StopChan  chan bool
@@ -71,4 +79,31 @@ func (sync *SyncChan) Graceful() {
 
 func (sync *SyncChan) IsGraceful() bool {
 	return !sync.Crash
+}
+
+// --------------------------------------------------------------------------
+
+func MakeStartLock() error {
+	flags := os.O_CREATE | os.O_EXCL | os.O_WRONLY
+	file, err := os.OpenFile(Basedir.File("start-lock"), flags, 0644)
+	if err != nil {
+		return err
+	}
+	return file.Close()
+}
+
+func WaitStartLock() error {
+	startLock := filepath.Join(Basedir.Path(), "start.lock")
+	if startLockExists := FileExists(startLock); startLockExists {
+		golog.Printf("Start-lock file %s exists; agent starts when removed, else aborts in 1 minute...",
+			startLock)
+		for i := 0; i < 60 && startLockExists; i++ {
+			time.Sleep(500 * time.Millisecond)
+			startLockExists = FileExists(startLock)
+		}
+		if startLockExists {
+			return fmt.Errorf("Start-lock file %s not removed after 1 minute", startLock)
+		}
+	}
+	return nil
 }

@@ -33,9 +33,16 @@ import (
 	"strings"
 )
 
-var PublicKey = `-----BEGIN PUBLIC KEY-----
-TODO
------END PUBLIC KEY-----`
+// todo: use real key, this is the test key
+var PublicKey = []byte(`-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnkM3amaGKrr5uflqIPYO
+NNrjxU0a5AOXkR50TW4uLAwsFoz02Ro2MWjEoTP+G4sIFi5NCxwQpzXjrj7LEVj6
+7pYjlpbZhb3w4lWU7HBul9v1wDVnr6jf4OgJX8DGzeyCztP2pcgwgSGjAvXJzUfM
+2dwnJylRdnQ1W+Id6y3iTiQBP6hA0n+bFw08xkh/pX2nEYEFyvdVf05fBGv/adnU
+AaKmZZx3FF/XE5z7Uw90e78u+a7acE1yKkiW9vAR/7/G5VnGIKduMoFSJLcEc/Ox
+DHFwESunrPT0WZnsoJpTWpKkTu0mYzEwoRZ8v4L5UfuxNWVhyWUVsDrAq5vFs6Ii
+sQIDAQAB
+-----END PUBLIC KEY-----`)
 
 type Updater struct {
 	logger         *Logger
@@ -73,7 +80,7 @@ func NewUpdater(logger *Logger, api APIConnector, pubKey []byte, currentBin, cur
 }
 
 func (u *Updater) Check() (string, string, error) {
-	url := fmt.Sprintf("%s/latest", u.api.EntryLink("update"), u.major, u.minor)
+	url := fmt.Sprintf("%s/latest", u.api.EntryLink("download"), u.major, u.minor)
 	v, err := u.download(url)
 	if err != nil {
 		return "", "", err
@@ -96,7 +103,7 @@ func (u *Updater) Update(version string) error {
 	u.logger.Info("Updating to", version)
 
 	// Download and decompress the gzipped bin and its signature.
-	url := u.api.EntryLink("update")
+	url := u.api.EntryLink("download")
 	data, err := u.download(url + "/percona-agent-" + version + ".gz")
 	if err != nil {
 		return err

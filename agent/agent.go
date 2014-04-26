@@ -48,15 +48,15 @@ type Agent struct {
 	api       pct.APIConnector
 	pidFile   *pct.PidFile
 	services  map[string]pct.ServiceManager
+	updater   *pct.Updater
 	// --
-	cmdSync *pct.SyncChan
-	cmdChan chan *proto.Cmd
+	cmdSync        *pct.SyncChan
+	cmdChan        chan *proto.Cmd
+	cmdHandlerSync *pct.SyncChan
 	//
-	statusSync *pct.SyncChan
-	status     *pct.Status
-	statusChan chan *proto.Cmd
-	//
-	cmdHandlerSync    *pct.SyncChan
+	statusSync        *pct.SyncChan
+	status            *pct.Status
+	statusChan        chan *proto.Cmd
 	statusHandlerSync *pct.SyncChan
 }
 
@@ -69,6 +69,7 @@ func NewAgent(config *Config, pidFile *pct.PidFile, logger *pct.Logger, api pct.
 		logger:    logger,
 		client:    client,
 		services:  services,
+		updater:   pct.NewUpdater(logger, api, pct.PublicKey, os.Args[0], VERSION),
 		// --
 		status:     pct.NewStatus([]string{"agent", "agent-cmd-handler"}),
 		cmdChan:    make(chan *proto.Cmd, CMD_QUEUE_SIZE),
@@ -141,28 +142,22 @@ func (agent *Agent) Run() error {
 
 			switch cmd.Cmd {
 			case "Restart":
-				logger.Debug("Restart:start")
-
 				// Secure the start-lock file.  This lets us start our self but
 				// wait until this process has exited, at which time the start-lock
 				// is removed and the 2nd self continues starting.
-				if err := makeStartLockFile(); err != nil {
+				if err := pct.MakeStartLock(); err != nil {
 					agent.reply(cmd.Reply(nil, err))
 					continue
 				}
 
-				// Run our self with the same args this process was started with.
-				bin, err := filepath.Abs(os.Args[0])
-				if err != nil {
-					agent.reply(cmd.Reply(nil, err))
-				}
+				// Start our self with the same args this process was started with.
 				cwd, err := os.Getwd()
 				if err != nil {
 					agent.reply(cmd.Reply(nil, err))
 				}
-				sh := fmt.Sprintf("#!/bin/sh\ncd %s\nnohup %s %s 2>&1 >> %s/percona-agent.log &\n",
+				sh := fmt.Sprintf("#!/bin/sh\ncd %s\n%s %s >> %s/nohup-percona-agent.log 2>&1 &\n",
 					cwd,
-					bin,
+					os.Args[0],
 					strings.Join(os.Args[1:len(os.Args)], " "),
 					pct.Basedir.Path(),
 				)
@@ -170,19 +165,15 @@ func (agent *Agent) Run() error {
 				if err := ioutil.WriteFile(startScript, []byte(sh), os.FileMode(0770)); err != nil {
 					agent.reply(cmd.Reply(nil, err))
 				}
-				logger.Debug("Restart:run start script")
+				logger.Debug("Restart:sh")
 				self := exec.Command(startScript)
-				if err := self.Start(); err != nil {
-					agent.reply(cmd.Reply(nil, err))
-				}
-				agent.reply(cmd.Reply(nil))
+				err = self.Start()
+				agent.reply(cmd.Reply(nil, err))
 				logger.Debug("Restart:done")
 				return nil
 			case "Stop":
 				agent.reply(cmd.Reply(nil))
 				return nil
-			case "Update":
-				// handleUpdate()
 			case "Status":
 				agent.status.UpdateRe("agent", "Queueing", cmd)
 				select {
@@ -336,11 +327,17 @@ func (agent *Agent) cmdHandler() {
 			}()
 
 			// Wait for the cmd to complete.
+			var timeout <-chan time.Time
+			if cmd.Cmd == "Update" {
+				timeout = time.After(5 * time.Minute)
+			} else {
+				timeout = time.After(20 * time.Second)
+			}
 			var reply *proto.Reply
 			select {
 			case reply = <-cmdReply:
 				// todo: instrument cmd exec time
-			case <-time.After(20 * time.Second):
+			case <-timeout:
 				reply = cmd.Reply(nil, pct.CmdTimeoutError{Cmd: cmd.Cmd})
 			}
 
@@ -384,6 +381,8 @@ func (agent *Agent) Handle(cmd *proto.Cmd) *proto.Reply {
 		data, err = agent.handleGetConfig(cmd)
 	case "SetConfig":
 		data, errs = agent.handleSetConfig(cmd)
+	case "Update":
+		data, errs = agent.handleUpdate(cmd)
 	case "Version":
 		data = VERSION
 	default:
@@ -526,6 +525,18 @@ func (agent *Agent) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 	return &finalConfig, errs
 }
 
+// Handle:@goroutine[3]
+func (agent *Agent) handleUpdate(cmd *proto.Cmd) (interface{}, []error) {
+	agent.status.UpdateRe("agent-cmd-handler", "Update", cmd)
+	agent.logger.Info(cmd)
+	version := ""
+	if err := json.Unmarshal(cmd.Data, &version); err != nil {
+		return nil, []error{err}
+	}
+	err := agent.updater.Update(version)
+	return nil, []error{err}
+}
+
 //---------------------------------------------------------------------------
 // Status handler
 // --------------------------------------------------------------------------
@@ -579,13 +590,4 @@ func (agent *Agent) AllStatus() map[string]string {
 		}
 	}
 	return status
-}
-
-func makeStartLockFile() error {
-	flags := os.O_CREATE | os.O_EXCL | os.O_WRONLY
-	file, err := os.OpenFile(pct.Basedir.File("start-lock"), flags, 0644)
-	if err != nil {
-		return err
-	}
-	return file.Close()
 }

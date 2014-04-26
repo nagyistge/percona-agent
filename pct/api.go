@@ -16,6 +16,9 @@ import (
 	"sync"
 )
 
+var requiredEntryLinks = []string{"agents", "instances", "download"}
+var requiredAgentLinks = []string{"cmd", "log", "data"}
+
 type APIConnector interface {
 	Connect(hostname, apiKey, agentUuid string) error
 	Get(url string) (int, []byte, error)
@@ -93,7 +96,7 @@ func (a *API) Connect(hostname, apiKey, agentUuid string) error {
 	if err != nil {
 		return err
 	}
-	if err := a.checkLinks(entryLinks, "agents", "instances"); err != nil {
+	if err := a.checkLinks(entryLinks, requiredEntryLinks...); err != nil {
 		return err
 	}
 
@@ -102,7 +105,7 @@ func (a *API) Connect(hostname, apiKey, agentUuid string) error {
 	if err != nil {
 		return err
 	}
-	if err := a.checkLinks(agentLinks, "cmd", "log", "data"); err != nil {
+	if err := a.checkLinks(agentLinks, requiredAgentLinks...); err != nil {
 		return err
 	}
 
