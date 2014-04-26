@@ -496,20 +496,14 @@ func (agent *Agent) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 		}
 	}
 
-	// Enable/disable the PID file (basedir/percona-agent.pid).
+	// Change the PID file: get new then remove old.
 	if newConfig.PidFile != finalConfig.PidFile {
-		if newConfig.PidFile {
-			agent.logger.Warn("Enabling PID file")
-			if err := agent.pidFile.Set(pct.Basedir.File("pid")); err != nil {
-				errs = append(errs, errors.New("agnet.pidFile.Set:"+err.Error()))
-			}
+		agent.logger.Warn("Changing PID file from", finalConfig.PidFile, "to", newConfig.PidFile)
+		if err := agent.pidFile.Set(newConfig.PidFile); err != nil {
+			errs = append(errs, errors.New("agnet.pidFile.Set:"+err.Error()))
 		} else {
-			agent.logger.Warn("Disabling PID file")
-			if err := agent.pidFile.Remove(); err != nil {
-				errs = append(errs, errors.New("agnet.pidFile.Remove:"+err.Error()))
-			}
+			finalConfig.PidFile = newConfig.PidFile
 		}
-		finalConfig.PidFile = newConfig.PidFile
 	}
 
 	// Write the new, updated config.  If this fails, agent will use old config if restarted.

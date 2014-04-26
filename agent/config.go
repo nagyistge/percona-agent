@@ -25,6 +25,6 @@ type Config struct {
 	AgentUuid   string
 	ApiHostname string
 	ApiKey      string
-	PidFile     bool
+	PidFile     string
 	Links       map[string]string `json:",omitempty"`
 }

@@ -123,13 +123,11 @@ func run() error {
 	 */
 
 	pidFile := pct.NewPidFile()
-	defer pidFile.Remove()
-	if agentConfig.PidFile {
-		if err := pidFile.Set(pct.Basedir.File("pid")); err != nil {
-			golog.Fatalln(err)
-		}
-		golog.Println("PidFile: " + pct.Basedir.File("pid"))
+	if err := pidFile.Set(agentConfig.PidFile); err != nil {
+		golog.Fatalln(err)
 	}
+	defer pidFile.Remove()
+	golog.Println("PidFile: " + agentConfig.PidFile)
 
 	/**
 	 * REST API
