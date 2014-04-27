@@ -18,7 +18,7 @@
 		},
 		{
 			"ImportPath": "github.com/percona/percona-go-mysql/log",
-			"Rev": "7846d297ef9f918cdfa818d2fd72585a3d336447"
+			"Rev": "cbedb2e4f63e63d7eab52650075f0635c4061622"
 		},
 		{
 			"ImportPath": "github.com/petar/GoLLRB/llrb",

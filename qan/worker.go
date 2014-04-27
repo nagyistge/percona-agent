@@ -107,17 +107,11 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 		return nil, err
 	}
 
-	// Seek to the start offset, if any.
-	// @todo error if start off > file size
-	if job.StartOffset != 0 {
-		// @todo handle error
-		file.Seek(int64(job.StartOffset), os.SEEK_SET)
-	}
-
 	// Create a slow log parser and run it.  It sends events log events
 	// via its channel.
 	stopChan := make(chan bool, 1)
 	opts := parser.Options{
+		StartOffset: uint64(job.StartOffset),
 		FilterAdminCommand: map[string]bool{
 			"Binlog Dump":      true,
 			"Binlog Dump GTID": true,
