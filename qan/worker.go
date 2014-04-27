@@ -145,7 +145,7 @@ EVENT_LOOP:
 			break EVENT_LOOP
 		}
 
-		w.status.Update(w.name, fmt.Sprintf("Parsing %s: %d%% %d/%d %d %s",
+		w.status.Update(w.name, fmt.Sprintf("Parsing %s: %.1f%% %d/%d %d %s",
 			job.SlowLogFile, (int64(event.Offset)/job.EndOffset*100), event.Offset, job.EndOffset, jobSize, runtime))
 
 		if int64(event.Offset) >= job.EndOffset {
