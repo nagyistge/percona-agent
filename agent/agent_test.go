@@ -524,9 +524,9 @@ func (s *AgentTestSuite) TestGetVersion(t *C) {
 
 	got := test.WaitReply(s.recvChan)
 	t.Assert(len(got), Equals, 1)
-	var version string
+	version := &proto.Version{}
 	json.Unmarshal(got[0].Data, &version)
-	t.Check(version, Equals, agent.VERSION)
+	t.Check(version.Running, Equals, agent.VERSION)
 }
 
 func (s *AgentTestSuite) TestSetConfigApiKey(t *C) {

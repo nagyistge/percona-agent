@@ -77,8 +77,8 @@ func (cli *Cli) doCmd(args []string) {
 		cli.status(args)
 	case "config":
 		cli.config(args)
-	case "control":
-		cli.control(args)
+	case "send":
+		cli.send(args)
 	default:
 		fmt.Println("Unknown command: " + args[0])
 		return
@@ -213,7 +213,7 @@ func (cli *Cli) config(args []string) {
 	}
 }
 
-func (cli *Cli) control(args []string) {
+func (cli *Cli) send(args []string) {
 	if !cli.connected {
 		fmt.Println("Not connected to API.  Use 'connect' command.")
 		return
@@ -222,18 +222,20 @@ func (cli *Cli) control(args []string) {
 		fmt.Println("Agent UUID not set.  Use 'agent' command.")
 		return
 	}
-	if len(args) != 2 {
-		fmt.Printf("ERROR: Invalid number of args: got %d, expected 2\n", len(args))
-		fmt.Println("Usage: control cmd")
-		fmt.Println("Exmaple: control Stop")
+	if len(args) != 3 {
+		fmt.Printf("ERROR: Invalid number of args: got %d, expected 3\n", len(args))
+		fmt.Println("Usage: send cmd service")
+		fmt.Println("Exmaple: send Stop agent")
 		return
 	}
 	cmd := &proto.Cmd{
-		Ts:   time.Now(),
-		User: "percona-agent-cli",
-		Cmd:  args[1],
+		Ts:        time.Now(),
+		User:      "percona-agent-cli",
+		AgentUuid: cli.agentUuid,
+		Cmd:       args[1],
+		Service:   args[2],
 	}
-	reply, err := cli.Post(cli.agentLinks["self"]+"/control/"+args[1], cmd)
+	reply, err := cli.Put(cli.agentLinks["self"]+"/cmd", cmd)
 	if err != nil {
 		golog.Println(err)
 		return
@@ -243,6 +245,15 @@ func (cli *Cli) control(args []string) {
 		return
 	}
 	fmt.Println("OK")
+	switch cmd.Cmd {
+	case "Version":
+		v := &proto.Version{}
+		if err := json.Unmarshal(reply.Data, v); err != nil {
+			fmt.Printf("Invalid Version reply: %s\n", err)
+			return
+		}
+		fmt.Printf("%#v\n", v)
+	}
 }
 
 func (cli *Cli) Get(url string) []byte {
@@ -266,14 +277,14 @@ func (cli *Cli) Get(url string) []byte {
 	return body
 }
 
-func (cli *Cli) Post(url string, cmd *proto.Cmd) (*proto.Reply, error) {
+func (cli *Cli) Put(url string, cmd *proto.Cmd) (*proto.Reply, error) {
 	golog.Printf("POST %s\n", url)
 	data, err := json.Marshal(cmd)
 	if err != nil {
 		return nil, err
 	}
 	buf := bytes.NewBuffer(data)
-	req, err := http.NewRequest("POST", url, buf)
+	req, err := http.NewRequest("PUT", url, buf)
 	if err != nil {
 		return nil, err
 	}

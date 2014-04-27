@@ -384,7 +384,7 @@ func (agent *Agent) Handle(cmd *proto.Cmd) *proto.Reply {
 	case "Update":
 		data, errs = agent.handleUpdate(cmd)
 	case "Version":
-		data = VERSION
+		data, errs = agent.handleVersion(cmd)
 	default:
 		errs = append(errs, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
@@ -517,6 +517,25 @@ func (agent *Agent) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 	agent.config = &finalConfig
 
 	return &finalConfig, errs
+}
+
+func (agent *Agent) handleVersion(cmd *proto.Cmd) (interface{}, []error) {
+	v := &proto.Version{
+		Running: VERSION,
+	}
+	bin, err := filepath.Abs(os.Args[0])
+	if err != nil {
+		return v, []error{err}
+	}
+	if strings.HasSuffix(bin, "percona-agent") {
+		return v, nil
+	}
+	out, err := exec.Command(bin, "-version").Output()
+	if err != nil {
+		return v, []error{err}
+	}
+	v.Installed = strings.TrimSpace(string(out))
+	return v, nil
 }
 
 // Handle:@goroutine[3]
