@@ -1172,3 +1172,37 @@ func (s *ReportTestSuite) TestResult001(t *C) {
 	t.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Max, Equals, float64(1.12))
 	t.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Avg, Equals, float64(0.505))
 }
+
+func (s *WorkerTestSuite) TestResult014(t *C) {
+	job := &qan.Job{
+		SlowLogFile:    testlog.Sample + "slow014.log",
+		StartOffset:    0,
+		EndOffset:      127118681,
+		RunTime:        time.Duration(3 * time.Second),
+		ZeroRunTime:    true,
+		ExampleQueries: true,
+	}
+	w := qan.NewSlowLogWorker(s.logger, "qan-worker-1")
+	result, _ := w.Run(job)
+
+	start := time.Now().Add(-1 * time.Second)
+	stop := time.Now()
+	it := proto.ServiceInstance{Service: "mysql", InstanceId: 1}
+	interval := &qan.Interval{
+		Filename:    "slow.log",
+		StartTime:   start,
+		StopTime:    stop,
+		StartOffset: 0,
+		EndOffset:   127118680,
+	}
+	config := qan.Config{
+		ReportLimit: 500,
+	}
+	report := qan.MakeReport(it, interval, result, config)
+
+	t.Check(report.Global.TotalQueries, Equals, uint64(4))
+	t.Check(report.Global.UniqueQueries, Equals, uint64(4))
+	t.Assert(report.Class, HasLen, 4)
+	// This query required improving the log parser to get the correct checksum ID:
+	t.Check(report.Class[0].Id, Equals, "DB9EF18846547B8C")
+}
