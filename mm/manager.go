@@ -32,6 +32,8 @@ import (
 	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/pct"
 	"github.com/percona/cloud-tools/ticker"
+	"io/ioutil"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -58,8 +60,8 @@ type Manager struct {
 	monitors    map[string]Monitor
 	status      *pct.Status
 	aggregators map[uint]*Binding
-	configDir   string
 	mux         *sync.RWMutex
+	running     bool
 }
 
 func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager, spool data.Spooler, im *instance.Repo) *Manager {
@@ -83,15 +85,65 @@ func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager
 /////////////////////////////////////////////////////////////////////////////
 
 // @goroutine[0]
-func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
+func (m *Manager) Start() error {
+	if m.running {
+		return pct.ServiceIsRunningError{Service: "mm"}
+	}
+
+	// Start all metric monitors.
+	glob := filepath.Join(pct.Basedir.Dir("config"), "mm-*.conf")
+	configFiles, err := filepath.Glob(glob)
+	if err != nil {
+		return err
+	}
+
+	for _, configFile := range configFiles {
+		data, err := ioutil.ReadFile(configFile)
+		if err != nil {
+			m.logger.Error("Read " + configFile + ": " + err.Error())
+			continue
+		}
+		config := &Config{}
+		if err := json.Unmarshal(data, config); err != nil {
+			m.logger.Error("Decode " + configFile + ": " + err.Error())
+			continue
+		}
+		cmd := &proto.Cmd{
+			Ts:   time.Now().UTC(),
+			Cmd:  "StartService",
+			Data: data,
+		}
+		reply := m.Handle(cmd)
+		if reply.Error != "" {
+			m.logger.Error("Start " + configFile + ": " + err.Error())
+			continue
+		}
+		m.logger.Info("Started " + configFile)
+	}
+
+	m.running = true
+
 	m.logger.Info("Started")
 	m.status.Update("mm", "Running")
 	return nil
 }
 
 // @goroutine[0]
-func (m *Manager) Stop(cmd *proto.Cmd) error {
-	// Can't stop the mm manager.
+func (m *Manager) Stop() error {
+	m.mux.Lock()
+	defer m.mux.Unlock()
+	for name, monitor := range m.monitors {
+		m.status.Update("mm", "Stopping "+name)
+		if err := monitor.Stop(); err != nil {
+			m.logger.Warn("Failed to stop " + name + ": " + err.Error())
+			continue
+		}
+		m.clock.Remove(monitor.TickChan())
+		delete(m.monitors, name)
+	}
+	m.running = false
+	m.logger.Info("Stopped")
+	m.status.Update("mm", "Stopped")
 	return nil
 }
 
@@ -207,12 +259,6 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		// stop it then start it again with the new config.
 		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
-}
-
-func (m *Manager) LoadConfig() ([]byte, error) {
-	// mm is a proxy manager so it doesn't have its own config.  To get a monitor config:
-	// [Service:mm Cmd:GetConfig: Data:mm.Config[Name:..., Type:...]]
-	return nil, nil
 }
 
 // @goroutine[1]

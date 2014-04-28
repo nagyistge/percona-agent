@@ -42,7 +42,7 @@ type Manager struct {
 	im            *instance.Repo
 	// --
 	config         *Config // nil if not running
-	configDir      string
+	mux            *sync.RWMutex
 	tickChan       chan time.Time
 	mysqlConn      mysql.Connector
 	iter           IntervalIter
@@ -64,11 +64,14 @@ func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock 
 		spool:         spool,
 		im:            im,
 		// --
-		workers:     make(map[Worker]*Interval),
-		workersMux:  new(sync.RWMutex),
-		status:      pct.NewStatus([]string{"qan", "qan-log-parser", "qan-last-interval", "qan-next-interval"}),
-		sync:        pct.NewSyncChan(),
-		oldSlowLogs: make(map[string]int),
+		mux:            new(sync.RWMutex),
+		tickChan:       make(chan time.Time),
+		workers:        make(map[Worker]*Interval),
+		workersMux:     new(sync.RWMutex),
+		workerDoneChan: make(chan Worker, 2),
+		status:         pct.NewStatus([]string{"qan", "qan-log-parser", "qan-last-interval", "qan-next-interval"}),
+		sync:           pct.NewSyncChan(),
+		oldSlowLogs:    make(map[string]int),
 	}
 	return m
 }
@@ -78,130 +81,120 @@ func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock 
 /////////////////////////////////////////////////////////////////////////////
 
 // @goroutine[0]
-func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
-	logger := m.logger
-	logger.InResponseTo(cmd)
-	defer logger.InResponseTo(nil)
-	logger.Info("Starting")
+func (m *Manager) Start() error {
+	m.mux.Lock()
+	defer m.mux.Unlock()
 
-	// Can't start if already running.
 	if m.config != nil {
-		err := pct.ServiceIsRunningError{Service: "qan"}
-		logger.Error(err)
-		return err
+		return pct.ServiceIsRunningError{Service: "qan"}
 	}
 
-	// Parse JSON into Config struct.
-	c := &Config{}
-	if err := json.Unmarshal(config, c); err != nil {
-		logger.Error(err)
-		return err
-	}
+	// Mangaer ("qan" in status) runs indepdent from qan-log-parser.
+	m.status.Update("qan", "Starting")
+	defer m.status.Update("qan", "Running")
 
-	// Get MySQL instance info from service instance database (SID).
-	mysqlIt := &proto.MySQLInstance{}
-	if err := m.im.Get(c.Service, c.InstanceId, mysqlIt); err != nil {
-		logger.Warn(err)
-		return err
-	}
-
-	// Connect to MySQL and set global vars to config/enable slow log.
-	m.mysqlConn = m.mysqlFactory.Make(mysqlIt.DSN)
-	if err := m.mysqlConn.Connect(2); err != nil {
-		return err
-	}
-	defer m.mysqlConn.Close()
-
-	if err := m.mysqlConn.Set(c.Start); err != nil {
-		return err
-	}
-
-	// Add a tickChan to the clock so it receives ticks at intervals.
-	m.tickChan = make(chan time.Time)
-	m.clock.Add(m.tickChan, c.Interval, true)
-
-	// Make an iterator for the slow log file at interval ticks.
-	filenameFunc := func() (string, error) {
-		if err := m.mysqlConn.Connect(1); err != nil {
-			return "", err
+	// Load qan config from disk.
+	config := &Config{}
+	if err := pct.Basedir.ReadConfig("qan", config); err != nil {
+		if os.IsNotExist(err) {
+			m.logger.Info("Not enabled")
+			return nil
 		}
-		defer m.mysqlConn.Close()
-		file := m.mysqlConn.GetGlobalVarString("slow_query_log_file")
-		return file, nil
-	}
-	m.iter = m.iterFactory.Make(filenameFunc, m.tickChan)
-	m.iter.Start()
-
-	// When Worker finishes parsing an interval, it singals done on this chan.
-	m.workerDoneChan = make(chan Worker, c.MaxWorkers)
-
-	// Run Query Analytics!
-	go m.run()
-
-	// Save the config.
-	m.config = c
-	if err := pct.Basedir.WriteConfig("qan", c); err != nil {
-		m.logger.Warn(err)
+		return err
 	}
 
-	logger.Info("Started")
-	m.status.Update("qan", "Running")
+	// Start run()/qan-log-parser.
+	if err := m.start(config); err != nil {
+		return err
+	}
+	m.config = config
+
+	m.logger.Info("Started")
 	return nil // success
 }
 
-func (m *Manager) Stop(cmd *proto.Cmd) error {
-	m.status.UpdateRe("qan", "Stopping", cmd)
+func (m *Manager) Stop() error {
+	m.mux.Lock()
+	defer m.mux.Unlock()
 
-	m.logger.InResponseTo(cmd)
-	defer m.logger.InResponseTo(nil)
-	m.logger.Info("Stopping")
+	if m.config == nil {
+		return nil
+	}
 
-	if err := pct.Basedir.RemoveConfig("qan"); err != nil {
+	m.status.Update("qan", "Stopping")
+	defer m.status.Update("qan", "Stopped")
+
+	if err := m.stop(); err != nil {
 		m.logger.Error(err)
 	}
-
-	m.sync.Stop()
-	m.sync.Wait()
-
-	if err := m.mysqlConn.Connect(2); err != nil {
-		m.logger.Warn(err)
-		return err
-	}
-	defer m.mysqlConn.Close()
-
-	err := m.mysqlConn.Set(m.config.Stop)
-	if err != nil {
-		m.logger.Warn(err)
-	} else {
-		m.logger.Info("Stopped")
-	}
-
-	m.clock.Remove(m.tickChan)
-	m.tickChan = nil
-	m.workerDoneChan = nil
 	m.config = nil
 
-	m.status.UpdateRe("qan", "Stopped", cmd)
-
-	return err
+	m.logger.Info("Stopped")
+	return nil
 }
 
 func (m *Manager) Status() map[string]string {
-	workerStatus := make(map[string]string)
+	m.mux.RLock()
+	defer m.mux.RUnlock()
+	if m.config != nil {
+		m.status.Update("qan-next-interval", fmt.Sprintf("%.1fs", m.clock.ETA(m.tickChan)))
+	} else {
+		m.status.Update("qan-next-interval", "")
+	}
+
 	m.workersMux.RLock()
 	defer m.workersMux.RUnlock()
+	workerStatus := make(map[string]string)
 	for w := range m.workers {
 		workerStatus[w.Name()] = w.Status()
 	}
-	// XXX m.tickChan is not guarded
-	if m.tickChan != nil {
-		m.status.Update("qan-next-interval", fmt.Sprintf("%.1fs", m.clock.ETA(m.tickChan)))
-	}
+
 	return m.status.Merge(workerStatus)
 }
 
 func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
+	m.status.UpdateRe("qan", "Handling", cmd)
+	defer m.status.Update("qan", "Running")
+
+	m.mux.Lock()
+	defer m.mux.Unlock()
+
 	switch cmd.Cmd {
+	case "StartService":
+		if m.config != nil {
+			return cmd.Reply(nil, pct.ServiceIsRunningError{Service: "qan"})
+		}
+
+		config := &Config{}
+		if err := json.Unmarshal(cmd.Data, config); err != nil {
+			return cmd.Reply(nil, err)
+		}
+
+		// Start run()/qan-log-parser.
+		if err := m.start(config); err != nil {
+			return cmd.Reply(nil, err)
+		}
+
+		// Save the config.
+		m.config = config
+		if err := pct.Basedir.WriteConfig("qan", config); err != nil {
+			return cmd.Reply(nil, err)
+		}
+
+		return cmd.Reply(nil) // success
+	case "StopService":
+		if m.config == nil {
+			return cmd.Reply(nil)
+		}
+		errs := []error{}
+		if err := m.stop(); err != nil {
+			errs = append(errs, err)
+		}
+		m.config = nil
+		if err := pct.Basedir.RemoveConfig("qan"); err != nil {
+			errs = append(errs, err)
+		}
+		return cmd.Reply(nil, errs...)
 	case "GetConfig":
 		return cmd.Reply(m.config)
 	default:
@@ -216,7 +209,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 /////////////////////////////////////////////////////////////////////////////
 
 // @goroutine[1]
-func (m *Manager) run() {
+func (m *Manager) run(config Config) {
 	defer func() {
 		if m.sync.IsGraceful() {
 			m.status.Update("qan-log-parser", "Stopped")
@@ -232,7 +225,7 @@ func (m *Manager) run() {
 	// interval now.  This means first interval will have partial results.
 	t := m.clock.ETA(m.tickChan)
 	if t > 60 {
-		began := ticker.Began(m.config.Interval, uint(time.Now().UTC().Unix()))
+		began := ticker.Began(config.Interval, uint(time.Now().UTC().Unix()))
 		m.logger.Info("First interval began at", began)
 		m.tickChan <- began
 	} else {
@@ -248,7 +241,7 @@ func (m *Manager) run() {
 		m.workersMux.RLock()
 		runningWorkers := len(m.workers)
 		m.workersMux.RUnlock()
-		m.status.Update("qan-log-parser", fmt.Sprintf("Idle (%d of %d running)", runningWorkers, m.config.MaxWorkers))
+		m.status.Update("qan-log-parser", fmt.Sprintf("Idle (%d of %d running)", runningWorkers, config.MaxWorkers))
 
 		select {
 		case interval := <-intervalChan:
@@ -258,14 +251,14 @@ func (m *Manager) run() {
 			runningWorkers := len(m.workers)
 			m.workersMux.RUnlock()
 			m.logger.Debug(fmt.Sprintf("%d workers running", runningWorkers))
-			if runningWorkers >= m.config.MaxWorkers {
+			if runningWorkers >= config.MaxWorkers {
 				m.logger.Warn("All workers busy, interval dropped")
 				continue
 			}
 
-			if interval.EndOffset >= m.config.MaxSlowLogSize {
+			if interval.EndOffset >= config.MaxSlowLogSize {
 				m.logger.Info("Rotating slow log")
-				if err := m.rotateSlowLog(interval); err != nil {
+				if err := m.rotateSlowLog(config, interval); err != nil {
 					m.logger.Error(err)
 				}
 			}
@@ -276,8 +269,8 @@ func (m *Manager) run() {
 				SlowLogFile:    interval.Filename,
 				StartOffset:    interval.StartOffset,
 				EndOffset:      interval.EndOffset,
-				RunTime:        time.Duration(m.config.WorkerRunTime) * time.Second,
-				ExampleQueries: m.config.ExampleQueries,
+				RunTime:        time.Duration(config.WorkerRunTime) * time.Second,
+				ExampleQueries: config.ExampleQueries,
 			}
 			w := m.workerFactory.Make(fmt.Sprintf("qan-worker-%d", interval.Number))
 
@@ -304,7 +297,7 @@ func (m *Manager) run() {
 				}
 				result.RunTime = t1.Sub(t0).Seconds()
 
-				report := MakeReport(m.config.ServiceInstance, interval, result, m.config)
+				report := MakeReport(config.ServiceInstance, interval, result, config)
 				if err := m.spool.Write("qan", report); err != nil {
 					m.logger.Warn("Lost report:", err)
 				}
@@ -347,9 +340,11 @@ func (m *Manager) run() {
 }
 
 // @goroutine[1]
-func (m *Manager) rotateSlowLog(interval *Interval) error {
+func (m *Manager) rotateSlowLog(config Config, interval *Interval) error {
 	m.logger.Debug("rotateSlowLog:call")
 	defer m.logger.Debug("rotateSlowLog:return")
+
+	m.status.Update("qan-log-parser", "Rotating slow log")
 
 	if err := m.mysqlConn.Connect(2); err != nil {
 		m.logger.Warn(err)
@@ -358,7 +353,7 @@ func (m *Manager) rotateSlowLog(interval *Interval) error {
 	defer m.mysqlConn.Close()
 
 	// Stop slow log so we don't move it while MySQL is using it.
-	if err := m.mysqlConn.Set(m.config.Stop); err != nil {
+	if err := m.mysqlConn.Set(config.Stop); err != nil {
 		return err
 	}
 
@@ -369,7 +364,7 @@ func (m *Manager) rotateSlowLog(interval *Interval) error {
 	}
 
 	// Re-enable slow log.
-	if err := m.mysqlConn.Set(m.config.Start); err != nil {
+	if err := m.mysqlConn.Set(config.Start); err != nil {
 		return err
 	}
 
@@ -378,7 +373,7 @@ func (m *Manager) rotateSlowLog(interval *Interval) error {
 	interval.EndOffset, _ = pct.FileSize(newSlowLogFile) // todo: handle err
 
 	// Save old slow log and remove later if configured to do so.
-	if m.config.RemoveOldSlowLogs {
+	if config.RemoveOldSlowLogs {
 		m.workersMux.RLock()
 		m.oldSlowLogs[newSlowLogFile] = len(m.workers) + 1
 		m.workersMux.RUnlock()
@@ -387,33 +382,113 @@ func (m *Manager) rotateSlowLog(interval *Interval) error {
 	return nil
 }
 
-func (m *Manager) LoadConfig() ([]byte, error) {
-	config := &Config{}
-	if err := pct.Basedir.ReadConfig("qan", config); err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
+func (m *Manager) validateConfig(config *Config) error {
 	if config.Start == nil || len(config.Start) == 0 {
-		return nil, errors.New("Start array is empty")
+		return errors.New("qan.Config.Start array is empty")
 	}
 	if config.Stop == nil || len(config.Stop) == 0 {
-		return nil, errors.New("Stop array is empty")
+		return errors.New("qan.Config.Stop array is empty")
 	}
 	if config.MaxWorkers < 0 {
-		return nil, errors.New("MaxWorkers must be > 0")
+		return errors.New("MaxWorkers must be > 0")
+	}
+	if config.MaxWorkers > 4 {
+		return errors.New("MaxWorkers must be < 4")
 	}
 	if config.Interval == 0 {
-		return nil, errors.New("Interval must be > 0")
+		return errors.New("Interval must be > 0")
+	}
+	if config.Interval > 3600 {
+		return errors.New("Interval must be <= 3600 (1 hour)")
 	}
 	if config.WorkerRunTime == 0 {
-		return nil, errors.New("WorkerRuntime must be > 0")
+		return errors.New("WorkerRuntime must be > 0")
 	}
-	// There are no defaults; the config file should have everything we need.
-	data, err := json.Marshal(config)
-	if err != nil {
-		return nil, err
+	if config.WorkerRunTime > 1200 {
+		return errors.New("WorkerRuntime must be <= 1200 (20 minutes)")
 	}
-	return data, nil
+	return nil
+}
+
+func (m *Manager) start(config *Config) error {
+	/**
+	 * XXX Presume caller guards m.config with m.mux.
+	 */
+
+	m.logger.Debug("start:call")
+	defer m.logger.Debug("start:return")
+
+	// Validate the config.
+	if err := m.validateConfig(config); err != nil {
+		return err
+	}
+
+	// Get MySQL instance info from service instance database (SID).
+	mysqlIt := &proto.MySQLInstance{}
+	if err := m.im.Get(config.Service, config.InstanceId, mysqlIt); err != nil {
+		return err
+	}
+
+	// Connect to MySQL and set global vars to config/enable slow log.
+	m.mysqlConn = m.mysqlFactory.Make(mysqlIt.DSN)
+	if err := m.mysqlConn.Connect(2); err != nil {
+		return err
+	}
+	defer m.mysqlConn.Close()
+
+	if err := m.mysqlConn.Set(config.Start); err != nil {
+		return err
+	}
+
+	// Add a tickChan to the clock so it receives ticks at intervals.
+	m.clock.Add(m.tickChan, config.Interval, true)
+
+	// Make an iterator for the slow log file at interval ticks.
+	filenameFunc := func() (string, error) {
+		if err := m.mysqlConn.Connect(1); err != nil {
+			return "", err
+		}
+		defer m.mysqlConn.Close()
+		file := m.mysqlConn.GetGlobalVarString("slow_query_log_file")
+		return file, nil
+	}
+	m.iter = m.iterFactory.Make(filenameFunc, m.tickChan)
+	m.iter.Start()
+
+	// Start qan-log-parser with a copy of the config because it does not use
+	// m.mux when it access the config.  Plus, the config isn't dynamic, so
+	// it shouldn't change while running.
+	go m.run(*config)
+
+	return nil
+}
+
+func (m *Manager) stop() error {
+	/**
+	 * XXX Presume caller guards m.config with m.mux.
+	 */
+
+	m.logger.Debug("stop:call")
+	defer m.logger.Debug("stop:return")
+
+	// Stop the interval iter and remove tickChan from the clock.
+	m.iter.Stop()
+	m.iter = nil
+	m.clock.Remove(m.tickChan)
+
+	// Stop run()/qan-log-parser.
+	m.sync.Stop()
+	m.sync.Wait()
+
+	// Turn off MySQL slow log.
+	m.logger.Debug("stop:mysql")
+	if err := m.mysqlConn.Connect(2); err != nil {
+		return err
+	}
+	defer m.mysqlConn.Close()
+	if err := m.mysqlConn.Set(m.config.Stop); err != nil {
+		return err
+	}
+
+	return nil
 }

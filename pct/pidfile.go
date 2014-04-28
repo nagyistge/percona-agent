@@ -3,6 +3,7 @@ package pct
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -40,6 +41,10 @@ func (p *PidFile) Set(pidFile string) error {
 			return err
 		}
 		return nil
+	}
+
+	if !filepath.IsAbs(pidFile) {
+		pidFile = filepath.Join(Basedir.Path(), pidFile)
 	}
 
 	// Create new PID file, success only if it doesn't already exist.

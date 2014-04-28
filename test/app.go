@@ -1,7 +1,13 @@
 package test
 
 import (
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha1"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"io/ioutil"
@@ -161,4 +167,44 @@ func Debug(logChan chan *proto.LogEntry) {
 func CopyFile(src, dst string) error {
 	cmd := exec.Command("cp", src, dst)
 	return cmd.Run()
+}
+
+func Sign(file string) ([]byte, []byte, error) {
+	data, err := ioutil.ReadFile(file)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	key, err := privkey(RootDir + "/pct/key.pem")
+	if err != nil {
+		return nil, nil, fmt.Errorf("privkey: %s", err)
+	}
+
+	h := sha1.New()
+	h.Write(data)
+
+	sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA1, h.Sum(nil))
+	if err != nil {
+		return nil, nil, err
+	}
+	return data, sig, nil
+}
+
+func privkey(file string) (key *rsa.PrivateKey, err error) {
+	buf, err := ioutil.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+
+	p, _ := pem.Decode(buf)
+	if p == nil {
+		return nil, fmt.Errorf("Invalid private key")
+	}
+
+	der, err := x509.DecryptPEMBlock(p, []byte("percona cloud tools"))
+	if err != nil {
+		return nil, fmt.Errorf("x509.DecryptPEMBlock: %s", err)
+	}
+
+	return x509.ParsePKCS1PrivateKey(der)
 }

@@ -109,7 +109,6 @@ func (i *FileIntervalIter) IntervalChan() chan *Interval {
 
 func (i *FileIntervalIter) run() {
 	defer func() {
-		close(i.intervalChan)
 		i.running = false
 		i.sync.Done()
 	}()

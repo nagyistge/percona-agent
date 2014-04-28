@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
@@ -76,6 +77,8 @@ func (cli *Cli) doCmd(args []string) {
 		cli.status(args)
 	case "config":
 		cli.config(args)
+	case "send":
+		cli.send(args)
 	default:
 		fmt.Println("Unknown command: " + args[0])
 		return
@@ -210,6 +213,49 @@ func (cli *Cli) config(args []string) {
 	}
 }
 
+func (cli *Cli) send(args []string) {
+	if !cli.connected {
+		fmt.Println("Not connected to API.  Use 'connect' command.")
+		return
+	}
+	if cli.agentUuid == "" {
+		fmt.Println("Agent UUID not set.  Use 'agent' command.")
+		return
+	}
+	if len(args) != 3 {
+		fmt.Printf("ERROR: Invalid number of args: got %d, expected 3\n", len(args))
+		fmt.Println("Usage: send cmd service")
+		fmt.Println("Exmaple: send Stop agent")
+		return
+	}
+	cmd := &proto.Cmd{
+		Ts:        time.Now(),
+		User:      "percona-agent-cli",
+		AgentUuid: cli.agentUuid,
+		Cmd:       args[1],
+		Service:   args[2],
+	}
+	reply, err := cli.Put(cli.agentLinks["self"]+"/cmd", cmd)
+	if err != nil {
+		golog.Println(err)
+		return
+	}
+	if reply.Error != "" {
+		fmt.Printf("ERROR: %s\n", reply.Error)
+		return
+	}
+	fmt.Println("OK")
+	switch cmd.Cmd {
+	case "Version":
+		v := &proto.Version{}
+		if err := json.Unmarshal(reply.Data, v); err != nil {
+			fmt.Printf("Invalid Version reply: %s\n", err)
+			return
+		}
+		fmt.Printf("%#v\n", v)
+	}
+}
+
 func (cli *Cli) Get(url string) []byte {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -229,4 +275,32 @@ func (cli *Cli) Get(url string) []byte {
 		return nil
 	}
 	return body
+}
+
+func (cli *Cli) Put(url string, cmd *proto.Cmd) (*proto.Reply, error) {
+	golog.Printf("POST %s\n", url)
+	data, err := json.Marshal(cmd)
+	if err != nil {
+		return nil, err
+	}
+	buf := bytes.NewBuffer(data)
+	req, err := http.NewRequest("PUT", url, buf)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Add("X-Percona-API-Key", cli.apiKey)
+	resp, err := cli.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return nil, err
+	}
+	reply := &proto.Reply{}
+	if err := json.Unmarshal(body, reply); err != nil {
+		return nil, err
+	}
+	return reply, nil
 }

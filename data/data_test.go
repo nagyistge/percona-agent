@@ -456,10 +456,9 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 		Encoding:     "",
 		SendInterval: 1,
 	}
-	configData, err := json.Marshal(config)
-	t.Assert(err, IsNil)
+	pct.Basedir.WriteConfig("data", config)
 
-	err = m.Start(&proto.Cmd{}, configData)
+	err := m.Start()
 	t.Assert(err, IsNil)
 
 	sender := m.Sender()
@@ -478,12 +477,11 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	gotReply := m.Handle(cmd)
 	expectReply := cmd.Reply(config)
 	if same, diff := test.IsDeeply(gotReply, expectReply); !same {
-		t.Logf("%+v", gotReply)
+		test.Dump(gotReply)
 		t.Error(diff)
 	}
 
-	cmd.Cmd = "StopService"
-	err = m.Stop(cmd)
+	err = m.Stop()
 	t.Assert(err, IsNil)
 	if !test.WaitStatus(5, m, "data", "Stopped") {
 		t.Fatal("test.WaitStatus() timeout")
@@ -501,10 +499,9 @@ func (s *ManagerTestSuite) TestSetConfig(t *C) {
 		Encoding:     "",
 		SendInterval: 1,
 	}
-	configData, err := json.Marshal(config)
-	t.Assert(err, IsNil)
+	pct.Basedir.WriteConfig("data", config)
 
-	err = m.Start(&proto.Cmd{}, configData)
+	err := m.Start()
 	t.Assert(err, IsNil)
 
 	sender := m.Sender()
@@ -514,7 +511,7 @@ func (s *ManagerTestSuite) TestSetConfig(t *C) {
 	 * Change SendInterval
 	 */
 	config.SendInterval = 5
-	configData, err = json.Marshal(config)
+	configData, err := json.Marshal(config)
 	t.Assert(err, IsNil)
 	cmd := &proto.Cmd{
 		User:    "daniel",
@@ -605,9 +602,9 @@ func (s *ManagerTestSuite) TestStatus(t *C) {
 		Encoding:     "gzip",
 		SendInterval: 1,
 	}
-	configData, err := json.Marshal(config)
-	t.Assert(err, IsNil)
-	err = m.Start(&proto.Cmd{}, configData)
+	pct.Basedir.WriteConfig("data", config)
+
+	err := m.Start()
 	t.Assert(err, IsNil)
 
 	// Get its status directly.

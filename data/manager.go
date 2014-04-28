@@ -56,27 +56,37 @@ func NewManager(logger *pct.Logger, dataDir string, hostname string, client pct.
 /////////////////////////////////////////////////////////////////////////////
 
 // @goroutine[0]
-func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
+func (m *Manager) Start() error {
 	if m.config != nil {
-		err := pct.ServiceIsRunningError{Service: "data"}
+		return pct.ServiceIsRunningError{Service: "data"}
+	}
+
+	m.status.Update("data", "Starting")
+
+	// Load config from disk (optional, but should exist).
+	config := &Config{}
+	if err := pct.Basedir.ReadConfig("data", config); err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+	}
+	if err := m.validateConfig(config); err != nil {
 		return err
 	}
 
-	// proto.Cmd[Service:agent, Cmd:StartService, Data:proto.ServiceData[Name:data Config:data.Config]]
-	c := &Config{}
-	if err := json.Unmarshal(config, c); err != nil {
-		return err
-	}
-
+	// Make data dir used/shared by all services (mm, qan, etc.).
 	if err := pct.MakeDir(m.dataDir); err != nil {
 		return err
 	}
 
-	sz, err := makeSerializer(c.Encoding)
+	// Make data serializer/encoder, e.g. T{} -> gzip -> []byte.
+	sz, err := makeSerializer(config.Encoding)
 	if err != nil {
 		return err
 	}
 
+	// Make persistent (disk-back) key-value cache and start data spooler.
+	m.status.Update("data", "Starting spooler")
 	spooler := NewDiskvSpooler(
 		pct.NewLogger(m.logger.LogChan(), "data-spooler"),
 		m.dataDir,
@@ -87,25 +97,31 @@ func (m *Manager) Start(cmd *proto.Cmd, config []byte) error {
 	}
 	m.spooler = spooler
 
+	// Start data sender.
+	m.status.Update("data", "Starting sender")
 	sender := NewSender(
 		pct.NewLogger(m.logger.LogChan(), "data-sender"),
 		m.client,
 	)
-	if err := sender.Start(m.spooler, time.Tick(time.Duration(c.SendInterval)*time.Second), c.Blackhole); err != nil {
+	if err := sender.Start(m.spooler, time.Tick(time.Duration(config.SendInterval)*time.Second), config.Blackhole); err != nil {
 		return err
 	}
 	m.sender = sender
 
-	m.config = c
+	m.config = config
 	m.logger.Info("Started")
 	m.status.Update("data", "Running")
 	return nil
 }
 
 // @goroutine[0]
-func (m *Manager) Stop(cmd *proto.Cmd) error {
+func (m *Manager) Stop() error {
+	m.status.Update("data", "Stopping sender")
 	m.sender.Stop()
+
+	m.status.Update("data", "Stopping spooler")
 	m.spooler.Stop()
+
 	m.logger.Info("data", "Stopped")
 	m.status.Update("data", "Stopped")
 	return nil
@@ -143,31 +159,30 @@ func (m *Manager) Sender() *Sender {
 	return m.sender
 }
 
-func (m *Manager) LoadConfig() ([]byte, error) {
-	config := &Config{}
-	if err := pct.Basedir.ReadConfig("data", config); err != nil {
-		if !os.IsNotExist(err) {
-			return nil, err
-		}
-	}
+func (m *Manager) validateConfig(config *Config) error {
 	if config.Encoding != "" && config.Encoding != "gzip" {
-		return nil, errors.New("Invalid data encoding: " + config.Encoding)
+		return errors.New("Invalid data encoding: " + config.Encoding)
 	}
 	if config.SendInterval < 0 {
-		return nil, errors.New("SendInterval must be > 0")
+		return errors.New("SendInterval must be > 0")
+	} else if config.SendInterval > 3600 {
+		// Don't want to let the spool grow too large.  This doesn't affect
+		// how much spool can hold within the hour, only that we should try
+		// to send data and reduce spool at least once an hour.
+		return errors.New("SendInterval must be <= 3600 (1 hour)")
 	} else if config.SendInterval == 0 {
 		config.SendInterval = DEFAULT_DATA_SEND_INTERVAL
 	}
-	data, err := json.Marshal(config)
-	if err != nil {
-		return nil, err
-	}
-	return data, nil
+	return nil
 }
 
 func (m *Manager) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 	newConfig := &Config{}
 	if err := json.Unmarshal(cmd.Data, newConfig); err != nil {
+		return nil, []error{err}
+	}
+
+	if err := m.validateConfig(newConfig); err != nil {
 		return nil, []error{err}
 	}
 

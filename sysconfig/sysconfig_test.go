@@ -30,6 +30,7 @@ import (
 	"io/ioutil"
 	. "launchpad.net/gocheck"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -53,6 +54,7 @@ type ManagerTestSuite struct {
 	tmpDir      string
 	configDir   string
 	im          *instance.Repo
+	api         *mock.API
 }
 
 var _ = Suite(&ManagerTestSuite{})
@@ -78,12 +80,28 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	}
 	s.configDir = pct.Basedir.Dir("config")
 
-	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im-test"), s.configDir)
+	links := map[string]string{
+		"agent":     "http://localhost/agent",
+		"instances": "http://localhost/instances",
+	}
+	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
+
+	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im-test"), s.configDir, s.api)
 }
 
 func (s *ManagerTestSuite) SetUpTest(t *C) {
 	s.factory.Set([]sysconfig.Monitor{s.mockMonitor})
 	s.clock = mock.NewClock()
+	glob := filepath.Join(pct.Basedir.Dir("config"), "*")
+	files, err := filepath.Glob(glob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		if err := os.Remove(file); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func (s *ManagerTestSuite) TearDownSuite(t *C) {
@@ -103,67 +121,47 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 		t.Error("tickChan not added yet")
 	}
 
-	// First the API marshals an sysconfig.Config.
+	// Write a sysconfig monitor config to disk.
 	config := &sysconfig.Config{
 		ServiceInstance: proto.ServiceInstance{Service: "mysql", InstanceId: 1},
 		Report:          3600,
 		// No monitor-specific config
 	}
-	data, err := json.Marshal(config)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pct.Basedir.WriteConfig("sysconfig-mysql-1", config)
 
-	// Then it sends a StartService cmd with the config data.
-	cmd := &proto.Cmd{
-		User: "daniel",
-		Cmd:  "StartService",
-		Data: data,
-	}
-
-	// The agent calls sysconfig.Start with the cmd (for logging and status) and the config data.
-	err = m.Start(cmd, data)
-	if err != nil {
-		t.Fatalf("Start manager without error, got %s", err)
-	}
+	// The agent calls sysconfig.Start() to start manager which starts all monitors.
+	err := m.Start()
+	t.Assert(err, IsNil)
 
 	// It should not add a tickChan to the clock (this is done in Handle()).
-	if ok, diff := test.IsDeeply(s.clock.Added, []uint{}); !ok {
-		t.Errorf("Does not add tickChan, got %#v", diff)
+	if ok, diff := test.IsDeeply(s.clock.Added, []uint{3600}); !ok {
+		t.Errorf("Adds tickChan, got %#v", diff)
 	}
 
 	// Its status should be "Running".
 	status := m.Status()
 	t.Check(status["sysconfig"], Equals, "Running")
 
-	// Normally, starting an already started service results in a ServiceIsRunningError,
-	// but sysconfig is a proxy manager so starting it is a null op.
-	err = m.Start(cmd, data)
-	if err != nil {
-		t.Error("Starting sysconfig manager multiple times doesn't cause error")
-	}
+	// Can't start manager twice.
+	err = m.Start()
+	t.Check(err, NotNil)
 
-	// Stopping the sysconfig manager is also a null op...
-	err = m.Stop(cmd)
-	if err != nil {
-		t.Fatalf("Stop manager without error, got %s", err)
-	}
+	// Stopping is idempotent.
+	err = m.Stop()
+	t.Check(err, IsNil)
+	err = m.Stop()
+	t.Check(err, IsNil)
 
-	// ...which is why its status is always "Running".
 	status = m.Status()
-	t.Check(status["sysconfig"], Equals, "Running")
+	t.Check(status["sysconfig"], Equals, "Stopped")
 }
 
 func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 	m := sysconfig.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
 	t.Assert(m, NotNil)
 
-	// sysconfig is a proxy manager so it doesn't have its own config file,
-	// but agent still calls LoadConfig() because this also tells
-	// the manager where to save configs, monitor configs in this case.
-	v, err := m.LoadConfig()
-	t.Check(v, IsNil)
-	t.Check(err, IsNil)
+	err := m.Start()
+	t.Assert(err, IsNil)
 
 	// Starting a monitor is like starting the manager: it requires
 	// a "StartService" cmd and the monitor's config.  This is the
@@ -178,9 +176,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 		},
 	}
 	sysconfigConfigData, err := json.Marshal(sysconfigConfig)
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
 		User:    "daniel",
@@ -278,16 +274,15 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 	/**
 	 * Clean up
 	 */
-	m.Stop(cmd)
+	m.Stop()
 }
 
 func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	m := sysconfig.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
 	t.Assert(m, NotNil)
 
-	v, err := m.LoadConfig()
-	t.Check(v, IsNil)
-	t.Check(err, IsNil)
+	err := m.Start()
+	t.Assert(err, IsNil)
 
 	// Start a sysconfig monitor.
 	sysconfigConfig := &mysql.Config{

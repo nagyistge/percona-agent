@@ -22,11 +22,8 @@ import (
 )
 
 type ServiceManager interface {
-	// @goroutine[0]
-	Start(cmd *proto.Cmd, config []byte) error
-	Stop(cmd *proto.Cmd) error
-	Handle(cmd *proto.Cmd) *proto.Reply
-	LoadConfig() ([]byte, error)
-	// @goroutine[1]
+	Start() error
+	Stop() error
 	Status() map[string]string
+	Handle(cmd *proto.Cmd) *proto.Reply
 }

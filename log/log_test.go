@@ -444,11 +444,10 @@ func (s *ManagerTestSuite) TestLogService(t *C) {
 		File:  s.logFile,
 		Level: "info",
 	}
-	configData, err := json.Marshal(config)
-	t.Assert(err, IsNil)
+	pct.Basedir.WriteConfig("log", config)
 
 	m := log.NewManager(s.client, s.logChan)
-	err = m.Start(&proto.Cmd{}, configData)
+	err := m.Start()
 	t.Assert(err, IsNil)
 
 	relay := m.Relay()
@@ -488,7 +487,7 @@ func (s *ManagerTestSuite) TestLogService(t *C) {
 	}
 
 	// Can't stop log service, but Stop() should work and not return error.
-	err = m.Stop(&proto.Cmd{})
+	err = m.Stop()
 	t.Assert(err, IsNil)
 
 	/**
@@ -502,7 +501,7 @@ func (s *ManagerTestSuite) TestLogService(t *C) {
 		File:  newLogFile,
 		Level: "warning",
 	}
-	configData, err = json.Marshal(config)
+	configData, err := json.Marshal(config)
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{

@@ -23,6 +23,7 @@ import (
 	"github.com/percona/cloud-tools/pct"
 	golog "log"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -297,8 +298,11 @@ func (r *Relay) setLogFile(logFile string) {
 	} else if logFile == "STDERR" {
 		file = os.Stderr
 	} else {
+		if !filepath.IsAbs(logFile) {
+			logFile = filepath.Join(pct.Basedir.Path(), logFile)
+		}
 		var err error
-		file, err = os.OpenFile(logFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0755)
+		file, err = os.OpenFile(logFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 		if err != nil {
 			r.internal(err.Error())
 			return

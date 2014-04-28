@@ -110,14 +110,17 @@ func (s *AgentTestSuite) SetUpTest(t *C) {
 
 	s.pidFile = pct.NewPidFile()
 
-	links := map[string]string{"agent": "http://localhost/agent"}
+	links := map[string]string{
+		"agent":     "http://localhost/agent",
+		"instances": "http://localhost/instances",
+	}
 	s.api = mock.NewAPI("http://localhost", s.config.ApiHostname, s.config.ApiKey, s.config.AgentUuid, links)
 
 	s.agent = agent.NewAgent(s.config, s.pidFile, s.logger, s.api, s.client, s.services)
 
 	// Run the agent.
 	go func() {
-		s.stopReason, s.upgrade = s.agent.Run()
+		s.agent.Run()
 		s.doneChan <- true
 	}()
 }
@@ -307,7 +310,7 @@ func (s *AgentTestSuite) TestStartStopService(t *C) {
 	// the previous ^.
 	got := test.WaitTrace(s.traceChan)
 	expect := []string{
-		`Start qan ` + string(qanConfigData),
+		`Start qan`,
 		`Status qan`,
 		`Status mm`,
 	}
@@ -508,6 +511,22 @@ func (s *AgentTestSuite) TestGetConfig(t *C) {
 		t.Logf("%+v", gotConfig)
 		t.Error(diff)
 	}
+}
+
+func (s *AgentTestSuite) TestGetVersion(t *C) {
+	cmd := &proto.Cmd{
+		Ts:      time.Now(),
+		User:    "daniel",
+		Cmd:     "Version",
+		Service: "agent",
+	}
+	s.sendChan <- cmd
+
+	got := test.WaitReply(s.recvChan)
+	t.Assert(len(got), Equals, 1)
+	version := &proto.Version{}
+	json.Unmarshal(got[0].Data, &version)
+	t.Check(version.Running, Equals, agent.VERSION)
 }
 
 func (s *AgentTestSuite) TestSetConfigApiKey(t *C) {
