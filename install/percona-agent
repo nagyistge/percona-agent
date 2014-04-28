@@ -1,10 +1,10 @@
 #!/bin/sh
 #
-# percona-agentd  This shell script takes care of starting and stopping
-#                  the percona-agent service.
+# percona-agent  This shell script takes care of starting and stopping
+#                the percona-agent service.
 #
 # chkconfig: 2345 65 35
-# description: Percona Agent  to work with Percona Cloud Tools
+# description: Agent for Percona Cloud Tools
 #
 ### BEGIN INIT INFO
 # Provides:          percona-agent
@@ -12,32 +12,33 @@
 # Required-Stop:     $local_fs $network  
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Short-Description: Start percona-agent at boot time
-# Description:       Enable Percona Cloud service
+# Short-Description: Start and stop percona-agent
+# Description:       Agent for Percona Cloud Tools
 ### END INIT INFO
- 
-SERVICE=percona-agentd
- 
-# User under which server will run
-USERNAME=root
- 
-CMD="/usr/local/percona/percona-agent/web"
- 
-# Some global variables
+
 export LANG=en_US
- 
-ARCH=`arch`
- 
-# Location of the pid file.
-PIDDIR="/var/run/$SERVICE"
- 
-if [ ! -e $PIDDIR ]; then
-    mkdir -p $PIDDIR
+
+SERVICE="percona-agent"
+
+# Agent uses a single base directory for all its files and data.
+BASEDIR="/usr/local/percona/percona-agent"
+if [ ! -d "$BASEDIR" ]; then
+   mkdir -p "$BASEDIR" || exit 1
+fi
+
+# Agent needs to run as root to read MySQL slow log.
+USERNAME="root"
+
+# Make sure the percona-agent binary exists.
+CMD="/usr/local/percona/percona-agent/bin/percona-agent"
+if [ ! -x "$CMD" ]; then
+   echo "$CMD does not exist or is not executable. Check that percona-agent" \
+        "has been installed correctly." >&2
+   exit 1
 fi
  
 # Allow configuration overrides in /etc/sysconfig/$SERVICE
-CONFIGFILE=/etc/sysconfig/$SERVICE
- 
+CONFIGFILE="/etc/sysconfig/$SERVICE"
 [ -x $CONFIGFILE ] && . $CONFIGFILE
  
 # Get the fully qualified path to the script
@@ -53,6 +54,7 @@ esac
  
 # Change spaces to ":" so the tokens can be parsed.
 SCRIPT=`echo $SCRIPT | sed -e 's; ;:;g'`
+
 # Get the real path to this script, resolving any symbolic links
 TOKENS=`echo $SCRIPT | sed -e 's;/; ;g'`
 REALPATH=
@@ -68,18 +70,15 @@ for C in $TOKENS; do
         fi
     done
 done
+
 # Change ":" chars back to spaces.
 REALPATH=`echo $REALPATH | sed -e 's;:; ;g'`
  
 # Change the current directory to the location of the script
 cd "`dirname "$REALPATH"`"
  
-chown $USERNAME $PIDDIR
- 
-# Process ID
-PIDFILE="$PIDDIR/$SERVICE.pid"
-pid=""
- 
+chown "$USERNAME" "$BASEDIR" || exit 1
+  
 # Resolve the location of the 'ps' command
 PSEXE="/usr/bin/ps"
 if [ ! -x $PSEXE ]
@@ -87,8 +86,8 @@ then
     PSEXE="/bin/ps"
     if [ ! -x $PSEXE ]
     then
-        echo "Unable to locate 'ps'."
-        echo "Please report this with the location on your system."
+        echo "Unable to locate 'ps'." >&2
+        echo "Please report this with the location on your system." >&2
         exit 1
     fi
 fi
@@ -100,7 +99,11 @@ then
 else
     CMDNICE="nice -$PRIORITY"
 fi
- 
+
+# Process ID
+PIDFILE="$BASEDIR/$SERVICE.pid"
+pid=""
+
 getpid() {
     if [ -f $PIDFILE ]
     then
@@ -133,29 +136,28 @@ testpid() {
         rm -f $PIDFILE
     fi
 }
- 
- 
+
 start() {
     echo "Starting $SERVICE..."
     getpid
     if [ "X$pid" = "X" ]
     then
-        PID=`$CMD > /dev/null 2>&1 & echo $!`
-        #echo "Saving PID" $PID " to " $PIDFILE
-        if [ -z $PID ]; then
+        # Run agent in background; it does not daemonize itself. 
+        $CMD -basedir "$BASEDIR" >> "$BASEDIR/$SERVICE.log" 2>&1 &
+        if [ $? -ne 0 ]; then
             printf "%s\n" "Fail"
             exit 1
         else
-            echo $PID > $PIDFILE
-            printf "%s\n" "Ok"
+            echo $! > "$PIDFILE"
+            printf "%s\n" "OK"
         fi
     else
         echo "$SERVICE is already running."
         exit 1
     fi
 }
- 
-stopit() {
+
+stop() {
     echo "Stopping $SERVICE..."
     getpid
     if [ "X$pid" = "X" ]
@@ -188,9 +190,6 @@ stopit() {
                     CNT=0
                 fi
                 TOTCNT=`expr $TOTCNT + 1`
- 
-                sleep 1
- 
                 testpid
             else
                 pid=
@@ -231,26 +230,21 @@ status() {
 }
  
 case "$1" in
- 
     'start')
         start
         ;;
- 
     'stop')
-        stopit
+        stop
         ;;
- 
     'restart')
-        stopit
+        stop
         start
         ;;
- 
     'status')
         status
         ;;
- 
     *)
-        echo "Usage: $0 {  start | stop | restart | status }"
+        echo "Usage: $0 start|stop|restart|status"
         exit 1
         ;;
 esac
