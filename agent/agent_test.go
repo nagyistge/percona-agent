@@ -387,7 +387,9 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
 	// Agent should be able to reply on status chan, indicating that it's
 	// still starting the service.
 	gotStatus := test.GetStatus(s.sendChan, s.recvChan)
-	t.Check(gotStatus["agent"], Equals, "Idle")
+	if !t.Check(gotStatus["agent"], Equals, "Idle") {
+		test.Dump(gotStatus)
+	}
 
 	// Make it seem like service has started now.
 	s.readyChan <- true

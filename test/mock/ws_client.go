@@ -3,6 +3,7 @@ package mock
 import (
 	"code.google.com/p/go.net/websocket"
 	"github.com/percona/cloud-protocol/proto"
+	"sync"
 )
 
 type WebsocketClient struct {
@@ -21,6 +22,8 @@ type WebsocketClient struct {
 	started          bool
 	RecvBytes        chan []byte
 	TraceChan        chan string
+	mux              *sync.Mutex
+	mux2             *sync.Mutex
 }
 
 func NewWebsocketClient(sendChan chan *proto.Cmd, recvChan chan *proto.Reply, sendDataChan chan interface{}, recvDataChan chan interface{}) *WebsocketClient {
@@ -36,14 +39,19 @@ func NewWebsocketClient(sendChan chan *proto.Cmd, recvChan chan *proto.Reply, se
 		connectChan:      make(chan bool, 1),
 		RecvBytes:        make(chan []byte, 1),
 		TraceChan:        make(chan string, 100),
+		mux:              &sync.Mutex{},
+		mux2:             &sync.Mutex{},
 	}
 	return c
 }
 
 func (c *WebsocketClient) Connect() {
 	c.TraceChan <- "Connect"
-
+	c.mux2.Lock()
+	unlocked := false
 	if c.testConnectChan != nil {
+		c.mux2.Unlock()
+		unlocked = true
 		// Wait for test to let user/agent connect.
 		select {
 		case c.testConnectChan <- true:
@@ -51,12 +59,19 @@ func (c *WebsocketClient) Connect() {
 		}
 		<-c.testConnectChan
 	}
+	if !unlocked {
+		c.mux2.Unlock()
+	}
 	c.connectChan <- true // to SUT
+	c.mux.Lock()
+	defer c.mux.Unlock()
 	c.connected = true
 }
 
 func (c *WebsocketClient) ConnectOnce() error {
 	c.TraceChan <- "ConnectOnce"
+	c.mux.Lock()
+	defer c.mux.Unlock()
 	c.connected = true
 	return nil
 }
@@ -64,6 +79,8 @@ func (c *WebsocketClient) ConnectOnce() error {
 func (c *WebsocketClient) Disconnect() error {
 	c.TraceChan <- "Disconnect"
 	c.connectChan <- false
+	c.mux.Lock()
+	defer c.mux.Unlock()
 	c.connected = false
 	return nil
 }
@@ -134,10 +151,14 @@ func (c *WebsocketClient) Conn() *websocket.Conn {
 }
 
 func (c *WebsocketClient) SetConnectChan(connectChan chan bool) {
+	c.mux2.Lock()
+	defer c.mux2.Unlock()
 	c.testConnectChan = connectChan
 }
 
 func (c *WebsocketClient) Status() map[string]string {
+	c.mux.Lock()
+	defer c.mux.Unlock()
 	wsStatus := ""
 	if c.connected {
 		wsStatus = "Connected"

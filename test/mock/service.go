@@ -3,6 +3,7 @@ package mock
 import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-tools/pct"
 )
 
 type MockServiceManager struct {
@@ -12,7 +13,7 @@ type MockServiceManager struct {
 	StartErr     error
 	StopErr      error
 	IsRunningVal bool
-	status       string
+	status       *pct.Status
 }
 
 func NewMockServiceManager(name string, readyChan chan bool, traceChan chan string) *MockServiceManager {
@@ -20,7 +21,7 @@ func NewMockServiceManager(name string, readyChan chan bool, traceChan chan stri
 		name:      name,
 		readyChan: readyChan,
 		traceChan: traceChan,
-		status:    "",
+		status:    pct.NewStatus([]string{name}),
 	}
 	return m
 }
@@ -28,26 +29,26 @@ func NewMockServiceManager(name string, readyChan chan bool, traceChan chan stri
 func (m *MockServiceManager) Start() error {
 	m.traceChan <- fmt.Sprintf("Start %s", m.name)
 	// Return when caller is ready.  This allows us to simulate slow starts.
-	m.status = "Starting"
+	m.status.Update(m.name, "Starting")
 	<-m.readyChan
 	m.IsRunningVal = true
-	m.status = "Ready"
+	m.status.Update(m.name, "Ready")
 	return m.StartErr
 }
 
 func (m *MockServiceManager) Stop() error {
 	m.traceChan <- "Stop " + m.name
 	// Return when caller is ready.  This allows us to simulate slow stops.
-	m.status = "Stopping"
+	m.status.Update(m.name, "Stopping")
 	<-m.readyChan
 	m.IsRunningVal = false
-	m.status = "Stopped"
+	m.status.Update(m.name, "Stopped")
 	return m.StopErr
 }
 
 func (m *MockServiceManager) Status() map[string]string {
 	m.traceChan <- "Status " + m.name
-	return map[string]string{m.name: m.status}
+	return m.status.All()
 }
 
 func (m *MockServiceManager) IsRunning() bool {
@@ -60,5 +61,5 @@ func (m *MockServiceManager) Handle(cmd *proto.Cmd) *proto.Reply {
 }
 
 func (m *MockServiceManager) Reset() {
-	m.status = ""
+	m.status.Update(m.name, "")
 }
