@@ -106,6 +106,7 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer file.Close()
 
 	// Create a slow log parser and run it.  It sends events log events
 	// via its channel.
