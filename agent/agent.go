@@ -46,7 +46,6 @@ type Agent struct {
 	logger    *pct.Logger
 	client    pct.WebsocketClient
 	api       pct.APIConnector
-	pidFile   *pct.PidFile
 	services  map[string]pct.ServiceManager
 	updater   *pct.Updater
 	// --
@@ -60,11 +59,10 @@ type Agent struct {
 	statusHandlerSync *pct.SyncChan
 }
 
-func NewAgent(config *Config, pidFile *pct.PidFile, logger *pct.Logger, api pct.APIConnector, client pct.WebsocketClient, services map[string]pct.ServiceManager) *Agent {
+func NewAgent(config *Config, logger *pct.Logger, api pct.APIConnector, client pct.WebsocketClient, services map[string]pct.ServiceManager) *Agent {
 	agent := &Agent{
 		config:    config,
 		api:       api,
-		pidFile:   pidFile,
 		configMux: &sync.RWMutex{},
 		logger:    logger,
 		client:    client,
@@ -493,16 +491,6 @@ func (agent *Agent) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 			errs = append(errs, errors.New("agent.api.Connect:ApiHostname:"+err.Error()))
 		} else {
 			finalConfig.ApiHostname = newConfig.ApiHostname
-		}
-	}
-
-	// Change the PID file: get new then remove old.
-	if newConfig.PidFile != finalConfig.PidFile {
-		agent.logger.Warn("Changing PID file from", finalConfig.PidFile, "to", newConfig.PidFile)
-		if err := agent.pidFile.Set(newConfig.PidFile); err != nil {
-			errs = append(errs, errors.New("agnet.pidFile.Set:"+err.Error()))
-		} else {
-			finalConfig.PidFile = newConfig.PidFile
 		}
 	}
 
