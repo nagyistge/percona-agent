@@ -77,8 +77,7 @@ func run() error {
 	if err := pct.WaitStartLock(); err != nil {
 		return err
 	}
-	// NOTE: This must run last, and defer if LIFO, so it must be declared first,
-	//       especially so it runs after removing the PID file.
+	// NOTE: This must run last, and defer if LIFO, so it must be declared first.
 	defer os.Remove(pct.Basedir.File("start-lock"))
 
 	/**
@@ -117,17 +116,6 @@ func run() error {
 			return nil
 		}
 	}
-
-	/**
-	 * PID file
-	 */
-
-	pidFile := pct.NewPidFile()
-	if err := pidFile.Set(agentConfig.PidFile); err != nil {
-		golog.Fatalln(err)
-	}
-	defer pidFile.Remove()
-	golog.Println("PidFile: " + agentConfig.PidFile)
 
 	/**
 	 * REST API
@@ -279,7 +267,6 @@ func run() error {
 
 	agent := agent.NewAgent(
 		agentConfig,
-		pidFile,
 		pct.NewLogger(logChan, "agent"),
 		api,
 		cmdClient,
