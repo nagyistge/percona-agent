@@ -14,6 +14,8 @@ import (
 	"encoding/json"
 	"regexp"
 	"io/ioutil"
+	"bytes"
+	_ "github.com/go-sql-driver/mysql"
 )
 
 const (
@@ -46,6 +48,7 @@ type Installer struct {
 	hostname    string
 	agentUuid   string
 	client      *http.Client
+	transport   *httpclient.Transport
 	entryLinks  map[string]string
 	agentLinks  map[string]string
 }
@@ -64,6 +67,8 @@ func NewInstaller() *Installer {
 		mysqlPort: "3306",
 		mysqlSocket: "",
 		client: &http.Client{Transport: transport},
+		entryLinks: make(map[string]string),
+		transport: transport,
 	}
 
 	return installer
@@ -72,8 +77,9 @@ func NewInstaller() *Installer {
 func main() {
 	installer := NewInstaller()
 
+	var err error
 	// Server
-	err := installer.GetHostname()
+	err = installer.GetHostname()
 	if err != nil {
 		golog.Fatalf("Unable to get hostname: %s", err)
 	}
@@ -81,18 +87,20 @@ func main() {
 	// Api key
 	for {
 		// Ask user for api key
-		err := installer.GetApiKey()
+		err = installer.GetApiKey()
 		if err != nil {
 			golog.Fatalf("Unable to get API key: %s", err)
 		}
 
 		// Check if api key is correct
-		err := installer.VerifyApiKey()
+		err = installer.VerifyApiKey()
 		if err == ErrApiUnauthorized {
 			fmt.Printf("Unauthorized, check if API key is correct and try again")
+			fmt.Println()
 			continue
 		} else if err != nil {
 			fmt.Printf("Unable to verify API key: %s. Contact Percona Support if this error persists.", err)
+			fmt.Println()
 			continue
 		}
 
@@ -112,15 +120,16 @@ func main() {
 	// Mysql connection details
 	for {
 		// Ask user for api key
-		err := installer.GetMysqlDsn()
+		err = installer.GetMysqlDsn()
 		if err != nil {
 			golog.Fatalf("An exception occured: %s", err)
 		}
 
 		// Check if api key is correct
-		err := installer.VerifyMysqlDsn()
+		err = installer.VerifyMysqlDsn()
 		if err != nil {
 			fmt.Printf("Unable to verify mysql dsn: %s", err)
+			fmt.Println()
 			continue
 		}
 
@@ -160,7 +169,7 @@ func (i *Installer) CreateAgent() (err error) {
 
 	data, err := json.Marshal(agentData)
 
-	req, err := http.NewRequest("POST", i.entryLinks["agents"], data)
+	req, err := http.NewRequest("POST", i.entryLinks["agents"], bytes.NewReader(data))
 	if err != nil {
 		return err
 	}
@@ -243,9 +252,11 @@ func (i *Installer) GetApiLinks() (err error) {
 		return errors.New(fmt.Sprintf("Error reading data: %s", err))
 	}
 
-	if err := json.Unmarshal(data, i.entryLinks); err != nil {
+	links := &proto.Links{}
+	if err := json.Unmarshal(data, links); err != nil {
 		return errors.New(fmt.Sprintf("Unable to unmarshal data: %s", err))
 	}
+	i.entryLinks = links.Links
 
 	return nil // success
 }
@@ -262,7 +273,7 @@ func (i *Installer) VerifyApiLinks() (err error) {
 }
 
 func (i *Installer) GetMysqlDsn() (err error) {
-	fmt.Print("Please provide mysql connection details")
+	fmt.Println("Please provide mysql connection details")
 
 	i.mysqlUser, err = AskUserWitDefaultAnswer("User", i.mysqlUser)
 	if err != nil {
@@ -297,9 +308,9 @@ func (i *Installer) GetMysqlDsn() (err error) {
 func (i *Installer) VerifyMysqlDsn() (err error) {
 	dsn := ""
 	if i.mysqlSocket != "" {
-		dsn = fmt.Sprintf("%s:%s@unix(%s)", i.mysqlUser, i.mysqlPass, i.mysqlSocket)
+		dsn = fmt.Sprintf("%s:%s@unix(%s)/", i.mysqlUser, i.mysqlPass, i.mysqlSocket)
 	} else {
-		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)", i.mysqlUser, i.mysqlPass, i.mysqlHost, i.mysqlPort)
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/", i.mysqlUser, i.mysqlPass, i.mysqlHost, i.mysqlPort)
 	}
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
@@ -315,13 +326,13 @@ func (i *Installer) VerifyMysqlDsn() (err error) {
 func (i *Installer) Close() {
 	// Example on https://github.com/mreiferson/go-httpclient#example
 	// says to Transport.Close(), though it does nothing currently
-	i.client.Transport.Close()
+	i.transport.Close()
 }
 
 func AskUserWitDefaultAnswer(question string, defaultAnswer string) (answer string, err error) {
 	scanner := bufio.NewScanner(os.Stdin)
 
-	fmt.Printf(question + "[default: %s]: ", defaultAnswer)
+	fmt.Printf(question + " [default: %s]: ", defaultAnswer)
 	scanner.Scan()
 	if err := scanner.Err(); err != nil {
 		return "", err
