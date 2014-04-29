@@ -2,20 +2,20 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
+	_ "github.com/go-sql-driver/mysql"
+	httpclient "github.com/mreiferson/go-httpclient"
+	"github.com/percona/cloud-protocol/proto"
+	"io/ioutil"
 	golog "log"
 	"net/http"
 	"os"
-	"github.com/percona/cloud-protocol/proto"
-	httpclient "github.com/mreiferson/go-httpclient"
-	"time"
-	"errors"
-	"database/sql"
-	"encoding/json"
 	"regexp"
-	"io/ioutil"
-	"bytes"
-	_ "github.com/go-sql-driver/mysql"
+	"time"
 )
 
 const (
@@ -25,7 +25,7 @@ const (
 
 var (
 	ErrApiUnauthorized = errors.New("Unauthorized")
-	ErrApiUnknown = errors.New("Unknown")
+	ErrApiUnknown      = errors.New("Unknown")
 )
 
 var requiredEntryLinks = []string{"agents", "instances", "download"}
@@ -45,30 +45,30 @@ type Installer struct {
 	mysqlPort   string
 	mysqlSocket string
 	// Server
-	hostname    string
-	agentUuid   string
-	client      *http.Client
-	transport   *httpclient.Transport
-	entryLinks  map[string]string
-	agentLinks  map[string]string
+	hostname   string
+	agentUuid  string
+	client     *http.Client
+	transport  *httpclient.Transport
+	entryLinks map[string]string
+	agentLinks map[string]string
 }
 
 func NewInstaller() *Installer {
 	transport := &httpclient.Transport{
-		ConnectTimeout:        1*time.Second,
-		RequestTimeout:        10*time.Second,
-		ResponseHeaderTimeout: 5*time.Second,
+		ConnectTimeout:        1 * time.Second,
+		RequestTimeout:        10 * time.Second,
+		ResponseHeaderTimeout: 5 * time.Second,
 	}
 
 	installer := &Installer{
-		mysqlUser: "root",
-		mysqlPass: "",
-		mysqlHost: "localhost",
-		mysqlPort: "3306",
+		mysqlUser:   "root",
+		mysqlPass:   "",
+		mysqlHost:   "localhost",
+		mysqlPort:   "3306",
 		mysqlSocket: "",
-		client: &http.Client{Transport: transport},
-		entryLinks: make(map[string]string),
-		transport: transport,
+		client:      &http.Client{Transport: transport},
+		entryLinks:  make(map[string]string),
+		transport:   transport,
 	}
 
 	return installer
@@ -159,7 +159,7 @@ func (i *Installer) CreateAgent() (err error) {
 		Hostname: i.hostname,
 		Configs: map[string]string{
 			"agent": "{ type: \"agent_inserted\"}", // @todo
-			"mm":    "{ type: \"mm_inserted\"}", // @todo
+			"mm":    "{ type: \"mm_inserted\"}",    // @todo
 		},
 		Versions: map[string]string{
 			"PerconaAgent": "1.0.0", // @todo
@@ -332,7 +332,7 @@ func (i *Installer) Close() {
 func AskUserWitDefaultAnswer(question string, defaultAnswer string) (answer string, err error) {
 	scanner := bufio.NewScanner(os.Stdin)
 
-	fmt.Printf(question + " [default: %s]: ", defaultAnswer)
+	fmt.Printf(question+" [default: %s]: ", defaultAnswer)
 	scanner.Scan()
 	if err := scanner.Err(); err != nil {
 		return "", err
@@ -359,4 +359,3 @@ func AskUser(question string) (answer string, err error) {
 
 	return answer, nil
 }
-
