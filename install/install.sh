@@ -2,6 +2,12 @@
 # Install from web
 # wget -qO- http://www.percona.com/downloads/TESTING/goagent/install |  bash /dev/stdin 
 
+# Check if script is run as root as we need write access to /etc, /usr/local
+if [[ $EUID -ne 0 ]]; then
+    echo "Please run as root"
+    exit
+fi
+
 # Check compatibility
 KERNEL=`uname -s`
 if [ "$KERNEL" != "Linux" ]; then
@@ -18,6 +24,8 @@ if [[ "$PLATFORM" != "x86_64" && "$PLATFORM" != "i686" ]]; then
 fi
 
 echo "Setup detected $KERNEL $PLATFORM" 
+
+
 
 #setup variables
 TARGZ_NAME="percona-agent.tar.gz"
@@ -79,6 +87,6 @@ else
 fi
 
 mkdir -p /etc/percona
-
+# ${INSTALL_DIR}/agent/bin/percona-agent -basedir ${INSTALL_DIR}/agent > ${INSTALL_DIR}/agent/agent.log 2>&1 &
 
 exit 0
