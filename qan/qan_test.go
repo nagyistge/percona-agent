@@ -27,7 +27,7 @@ import (
 	"github.com/percona/cloud-tools/qan"
 	"github.com/percona/cloud-tools/test"
 	"github.com/percona/cloud-tools/test/mock"
-	"github.com/percona/percona-go-mysql/test"
+	"github.com/percona/mysql-log-parser/test"
 	"io/ioutil"
 	. "launchpad.net/gocheck"
 	"os"
