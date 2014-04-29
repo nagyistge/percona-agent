@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
-	mysqlLog "github.com/percona/percona-go-mysql/log"
-	"github.com/percona/percona-go-mysql/log/parser"
+	mysqlLog "github.com/percona/mysql-log-parser/log"
+	"github.com/percona/mysql-log-parser/log/parser"
 	"os"
 	"time"
 )
@@ -106,6 +106,7 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer file.Close()
 
 	// Create a slow log parser and run it.  It sends events log events
 	// via its channel.

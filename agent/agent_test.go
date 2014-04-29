@@ -54,7 +54,6 @@ type AgentTestSuite struct {
 	recvDataChan chan interface{}
 	sendChan     chan *proto.Cmd
 	recvChan     chan *proto.Reply
-	pidFile      *pct.PidFile
 	api          *mock.API
 	// --
 	readyChan      chan bool
@@ -108,15 +107,13 @@ func (s *AgentTestSuite) SetUpTest(t *C) {
 	s.services["qan"] = mock.NewMockServiceManager("qan", s.readyChan, s.traceChan)
 	s.services["mm"] = mock.NewMockServiceManager("mm", s.readyChan, s.traceChan)
 
-	s.pidFile = pct.NewPidFile()
-
 	links := map[string]string{
 		"agent":     "http://localhost/agent",
 		"instances": "http://localhost/instances",
 	}
 	s.api = mock.NewAPI("http://localhost", s.config.ApiHostname, s.config.ApiKey, s.config.AgentUuid, links)
 
-	s.agent = agent.NewAgent(s.config, s.pidFile, s.logger, s.api, s.client, s.services)
+	s.agent = agent.NewAgent(s.config, s.logger, s.api, s.client, s.services)
 
 	// Run the agent.
 	go func() {
@@ -390,7 +387,9 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
 	// Agent should be able to reply on status chan, indicating that it's
 	// still starting the service.
 	gotStatus := test.GetStatus(s.sendChan, s.recvChan)
-	t.Check(gotStatus["agent"], Equals, "Idle")
+	if !t.Check(gotStatus["agent"], Equals, "Idle") {
+		test.Dump(gotStatus)
+	}
 
 	// Make it seem like service has started now.
 	s.readyChan <- true
@@ -480,7 +479,6 @@ func (s *AgentTestSuite) TestLoadConfig(t *C) {
 		ApiHostname: "agent hostname",
 		ApiKey:      "api key",
 		AgentUuid:   "agent uuid",
-		PidFile:     "pid file",
 	}
 	if same, diff := test.IsDeeply(got, expect); !same {
 		test.Dump(got)
@@ -677,72 +675,4 @@ func (s *AgentTestSuite) TestSetConfigApiHostname(t *C) {
 	gotCalled = test.WaitTrace(s.client.TraceChan)
 	expectCalled = []string{"Disconnect", "Connect"}
 	t.Check(gotCalled, DeepEquals, expectCalled)
-}
-
-func (s *AgentTestSuite) TestSetConfigPidFile(t *C) {
-	pidFile := s.tmpDir + "/agent.pid"
-	defer os.Remove(pidFile)
-
-	newConfig := *s.config
-	newConfig.PidFile = pidFile
-	data, err := json.Marshal(newConfig)
-	t.Assert(err, IsNil)
-
-	cmd := &proto.Cmd{
-		Ts:      time.Now(),
-		User:    "daniel",
-		Cmd:     "SetConfig",
-		Service: "agent",
-		Data:    data,
-	}
-	s.sendChan <- cmd
-
-	got := test.WaitReply(s.recvChan)
-	t.Assert(len(got), Equals, 1)
-	gotConfig := &agent.Config{}
-	if err := json.Unmarshal(got[0].Data, gotConfig); err != nil {
-		t.Fatal(err)
-	}
-
-	/**
-	 * Verify new agent config in memory.
-	 */
-	expect := *s.config
-	expect.PidFile = pidFile
-	expect.Links = nil
-	if ok, diff := test.IsDeeply(gotConfig, &expect); !ok {
-		t.Logf("%+v", gotConfig)
-		t.Error(diff)
-	}
-
-	/**
-	 * Verify new agent config in API connector.
-	 */
-	t.Check(s.api.ApiKey(), Equals, "789")                        // not changed
-	t.Check(s.api.Hostname(), Equals, agent.DEFAULT_API_HOSTNAME) // not changed
-
-	/**
-	 * Verify new agent config on disk.
-	 */
-	data, err = ioutil.ReadFile(s.configFile)
-	t.Assert(err, IsNil)
-	gotConfig = &agent.Config{}
-	if err := json.Unmarshal(data, gotConfig); err != nil {
-		t.Fatal(err)
-	}
-	if same, diff := test.IsDeeply(gotConfig, &expect); !same {
-		// @todo: if expect is not ptr, IsDeeply dies with "got ptr, expected struct"
-		t.Logf("%+v", gotConfig)
-		t.Error(diff)
-	}
-
-	// The agent ws should NOT reconnect.
-	gotCalled := test.WaitTrace(s.client.TraceChan)
-	expectCalled := []string{"Start", "Connect"}
-	t.Check(gotCalled, DeepEquals, expectCalled)
-
-	// The new PID file should exist.
-	if !test.FileExists(pidFile) {
-		t.Error("SetConfig creates new PID file")
-	}
 }

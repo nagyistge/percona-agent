@@ -29,54 +29,55 @@ type StatusReporter interface {
 
 type Status struct {
 	status map[string]string
-	mux    map[string]*sync.RWMutex
+	mux    *sync.RWMutex
 }
 
 func NewStatus(procs []string) *Status {
 	status := make(map[string]string)
-	mux := make(map[string]*sync.RWMutex)
 	for _, proc := range procs {
 		status[proc] = ""
-		mux[proc] = new(sync.RWMutex)
 	}
 	s := &Status{
 		status: status,
-		mux:    mux,
+		mux:    &sync.RWMutex{},
 	}
 	return s
 }
 
 func (s *Status) Update(proc string, status string) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
 	if _, ok := s.status[proc]; !ok {
 		return
 	}
-	s.mux[proc].Lock()
-	defer s.mux[proc].Unlock()
 	s.status[proc] = status
 }
 
 func (s *Status) UpdateRe(proc string, status string, cmd *proto.Cmd) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
 	if _, ok := s.status[proc]; !ok {
 		return
 	}
-	s.mux[proc].Lock()
-	defer s.mux[proc].Unlock()
 	s.status[proc] = fmt.Sprintf("%s %s", status, cmd)
 }
 
 func (s *Status) Get(proc string) string {
-	if _, ok := s.status[proc]; !ok {
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+	status, ok := s.status[proc]
+	if !ok {
 		return "ERROR: " + proc + " status not found"
 	}
-	s.mux[proc].RLock()
-	defer s.mux[proc].RUnlock()
-	return s.status[proc]
+	return status
 }
 
 func (s *Status) All() map[string]string {
 	all := make(map[string]string)
-	for proc, _ := range s.status {
-		all[proc] = s.Get(proc)
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+	for proc, status := range s.status {
+		all[proc] = status
 	}
 	return all
 }

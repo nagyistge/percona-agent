@@ -19,7 +19,7 @@ package qan
 
 import (
 	"github.com/percona/cloud-protocol/proto"
-	mysqlLog "github.com/percona/percona-go-mysql/log"
+	mysqlLog "github.com/percona/mysql-log-parser/log"
 	"sort"
 	"time"
 )

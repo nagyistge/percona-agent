@@ -27,7 +27,7 @@ import (
 	"github.com/percona/cloud-tools/qan"
 	"github.com/percona/cloud-tools/test"
 	"github.com/percona/cloud-tools/test/mock"
-	"github.com/percona/percona-go-mysql/test"
+	"github.com/percona/mysql-log-parser/test"
 	"io/ioutil"
 	. "launchpad.net/gocheck"
 	"os"
@@ -613,6 +613,18 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(t *C) {
 			os.Remove(file)
 		}
 	}()
+
+	// https://jira.percona.com/browse/PCT-466
+	// Old slow log removed but space not freed in filesystem
+	pid := fmt.Sprintf("%d", os.Getpid())
+	out, err := exec.Command("lsof", "-p", pid).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(out), "/tmp/"+slowlog+"-") {
+		t.Logf("%s\n", string(out))
+		t.Error("Old slow log removed but not freed in filesystem (PCT-466)")
+	}
 
 	// Stop manager
 	reply = m.Handle(&proto.Cmd{Cmd: "StopService"})
