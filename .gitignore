@@ -8,3 +8,4 @@ coverage.out
 bin/percona-agent/Godeps/Readme
 bin/percona-agent/Godeps/_workspace/
 bin/percona-agent/percona-agent.gz
+vendor
