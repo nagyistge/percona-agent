@@ -1,19 +1,17 @@
 package main
 
 import (
-	"bytes"
-	"database/sql"
-	"encoding/json"
+	"code.google.com/p/gopass"
 	"errors"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
-	httpclient "github.com/mreiferson/go-httpclient"
-	"github.com/percona/cloud-protocol/proto"
-	"io/ioutil"
-	"net/http"
-	"os"
-	"regexp"
-	"time"
+	"github.com/percona/cloud-tools/agent"
+	"github.com/percona/cloud-tools/mysql"
+	"github.com/percona/cloud-tools/pct"
+	"log"
+	"os/user"
+	"path/filepath"
+	"strings"
 )
 
 var (
@@ -24,226 +22,207 @@ var (
 var requiredEntryLinks = []string{"agents", "instances", "download"}
 
 type Installer struct {
-	// Api
-	apiHostname string
-	apiKey      string
-	// Mysql instance
-	mysqlUser   string
-	mysqlPass   string
-	mysqlHost   string
-	mysqlPort   string
-	mysqlSocket string
-	// Server
-	hostname   string
-	agentUuid  string
-	client     *http.Client
-	transport  *httpclient.Transport
-	entryLinks map[string]string
-	agentLinks map[string]string
+	term        *Terminal
+	api         pct.APIConnector
+	agentConfig *agent.Config
+	// --
+	dsn  *mysql.DSN
+	conn *mysql.Connection
 }
 
-func NewInstaller() *Installer {
-	transport := &httpclient.Transport{
-		ConnectTimeout:        1 * time.Second,
-		RequestTimeout:        10 * time.Second,
-		ResponseHeaderTimeout: 5 * time.Second,
+func NewInstaller(term *Terminal, api pct.APIConnector, agentConfig *agent.Config) *Installer {
+	if agentConfig.ApiHostname == "" {
+		agentConfig.ApiHostname = agent.DEFAULT_API_HOSTNAME
 	}
-
 	installer := &Installer{
-		mysqlUser:   "root",
-		mysqlPass:   "",
-		mysqlHost:   "localhost",
-		mysqlPort:   "3306",
-		mysqlSocket: "",
-		client:      &http.Client{Transport: transport},
-		entryLinks:  make(map[string]string),
-		transport:   transport,
+		term:        term,
+		api:         api,
+		agentConfig: agentConfig,
 	}
-
 	return installer
 }
 
-func (i *Installer) GetHostname() (err error) {
-	i.hostname, err = os.Hostname()
-	if err != nil {
-		return err
-	}
+func (i *Installer) Run() error {
 
-	return nil
-}
+	fmt.Printf("API host: %s\n", i.agentConfig.ApiHostname)
 
-func (i *Installer) CreateAgent() (err error) {
-	agentData := proto.AgentData{
-		Hostname: i.hostname,
-		Configs: map[string]string{
-			"agent": "{ type: \"agent_inserted\"}", // @todo
-			"mm":    "{ type: \"mm_inserted\"}",    // @todo
-		},
-		Versions: map[string]string{
-			"PerconaAgent": "1.0.0", // @todo
-			"MySQL":        "5.5.6", // @todo
-		},
-	}
+	/**
+	 * Get the API key.
+	 */
 
-	data, err := json.Marshal(agentData)
-
-	req, err := http.NewRequest("POST", i.entryLinks["agents"], bytes.NewReader(data))
-	if err != nil {
-		return err
-	}
-	req.Header.Add("X-Percona-API-Key", i.apiKey)
-
-	resp, err := i.client.Do(req)
-	if err != nil {
-		return err
-	}
-
-	if resp.StatusCode == http.StatusUnauthorized {
-		return ErrApiUnauthorized
-	} else if resp.StatusCode != http.StatusCreated {
-		return errors.New(fmt.Sprintf("Incorrect Api response: code=%d, status=%s", resp.StatusCode, resp.Status))
-	}
-
-	var validUuid = regexp.MustCompile(`[a-z0-9\-]+$`)
-	i.agentUuid = validUuid.FindString(resp.Header.Get("Location"))
-	if i.agentUuid == "" {
-		return errors.New("No uuid found in the Header Location")
-	}
-
-	return nil // success
-}
-
-func (i *Installer) GetApiKey() (err error) {
-	if i.apiKey == "" {
-		i.apiKey, err = AskUser("Please provide API key")
-	} else {
-		i.apiKey, err = AskUserWitDefaultAnswer("Please provide API key", i.apiKey)
-	}
-	return err
-}
-
-func (i *Installer) VerifyApiKey() (err error) {
-	url := CLOUD_API_HOSTNAME + "/ping"
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Add("X-Percona-API-Key", i.apiKey)
-
-	resp, err := i.client.Do(req)
-	if err != nil {
-		return err
-	}
-
-	if resp.StatusCode == http.StatusUnauthorized {
-		return ErrApiUnauthorized
-	} else if resp.StatusCode != http.StatusOK {
-		return errors.New(fmt.Sprintf("Incorrect Api response: code=%d, status=%s", resp.StatusCode, resp.Status))
-	}
-
-	return nil // success
-}
-
-func (i *Installer) GetApiLinks() (err error) {
-	url := CLOUD_API_HOSTNAME
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Add("X-Percona-API-Key", i.apiKey)
-
-	resp, err := i.client.Do(req)
-	if err != nil {
-		return err
-	}
-
-	if resp.StatusCode == http.StatusUnauthorized {
-		return ErrApiUnauthorized
-	} else if resp.StatusCode != http.StatusOK {
-		return errors.New(fmt.Sprintf("Incorrect Api response: code=%d, status=%s", resp.StatusCode, resp.Status))
-	}
-
-	data, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return errors.New(fmt.Sprintf("Error reading data: %s", err))
-	}
-
-	links := &proto.Links{}
-	if err := json.Unmarshal(data, links); err != nil {
-		return errors.New(fmt.Sprintf("Unable to unmarshal data: %s", err))
-	}
-	i.entryLinks = links.Links
-
-	return nil // success
-}
-
-func (i *Installer) VerifyApiLinks() (err error) {
-	for _, link := range requiredEntryLinks {
-		logLink, exist := i.entryLinks[link]
-		if !exist || logLink == "" {
-			return errors.New("Missing " + link + " link")
-		}
-	}
-
-	return nil // success
-}
-
-func (i *Installer) GetMysqlDsn() (err error) {
-	fmt.Println("Please provide mysql connection details")
-
-	i.mysqlUser, err = AskUserWitDefaultAnswer("User", i.mysqlUser)
-	if err != nil {
-		return err
-	}
-
-	i.mysqlPass, err = AskUserWitDefaultAnswer("Password", i.mysqlPass)
-	if err != nil {
-		return err
-	}
-
-	i.mysqlSocket, err = AskUserWitDefaultAnswer("Socket (leave blank if you want to connect using Hostname and Port)", i.mysqlSocket)
-	if err != nil {
-		return err
-	}
-
-	if i.mysqlSocket == "" {
-		i.mysqlHost, err = AskUserWitDefaultAnswer("Hostname", i.mysqlHost)
+	for i.agentConfig.ApiKey == "" {
+		apiKey, err := i.term.PromptString("API key", "")
 		if err != nil {
 			return err
 		}
+		if apiKey == "" {
+			fmt.Println("API key is required, please try again.")
+			continue
+		}
+		i.agentConfig.ApiKey = apiKey
+		break
+	}
 
-		i.mysqlPort, err = AskUserWitDefaultAnswer("Port", i.mysqlPort)
+	/**
+	 * Verify the API key by pinging the API.
+	 */
+
+VERIFY_API_KEY:
+	for {
+		fmt.Printf("Verifying API key %s...\n", i.agentConfig.ApiKey)
+		code, err := pct.Ping(i.agentConfig.ApiHostname, i.agentConfig.ApiKey)
+		if err != nil {
+			fmt.Printf("Error: %s\n", err)
+		}
+		if Debug {
+			log.Printf("code=%d\n", code)
+			log.Printf("err=%s\n", err)
+		}
+		ok := false
+		if code >= 500 {
+			fmt.Printf("Sorry, there's an API problem (status code %d). "+
+				"Please try to install again. If the problem continues, contact Percona.\n",
+				code)
+		} else if code == 401 {
+			return fmt.Errorf("Access denied.  Check the API key and try again.")
+		} else if code >= 300 {
+			fmt.Printf("Sorry, there's an installer problem (status code %d). "+
+				"Please try to install again. If the problem continues, contact Percona.\n",
+				code)
+		} else if code != 200 {
+			fmt.Printf("Sorry, there's an installer problem (status code %d). "+
+				"Please try to install again. If the problem continues, contact Percona.\n",
+				code)
+		} else {
+			ok = true
+		}
+
+		if !ok {
+			again, err := i.term.PromptBool("Try again?", "Y")
+			if err != nil {
+				return err
+			}
+			if !again {
+				return fmt.Errorf("Failed to verify API key")
+			}
+			continue VERIFY_API_KEY
+		}
+
+		fmt.Printf("API key %s is OK\n", i.agentConfig.ApiKey)
+		break
+	}
+
+	/**
+	 * Create a MySQL user for the agent, or use an existing one.
+	 */
+
+	agentDSN := mysql.DSN{}
+	newMySQLUser, err := i.term.PromptBool("Create new MySQL account for agent?", "Y")
+	if err != nil {
 		if err != nil {
 			return err
 		}
 	}
+	if newMySQLUser {
+		log.Println("Connect to MySQL to create new MySQL user for agent")
+		dsn, err := i.connectMySQL()
+		if err != nil {
+			return err
+		}
+		log.Println("Creating new MySQL user for agent...")
+		dsn, err = i.createMySQLUser(dsn)
+		if err != nil {
+			return err
+		}
+		agentDSN = dsn
+	} else {
+		// Let user specify the MySQL account to use for the agent.
+		log.Println("Use existing MySQL user for agent")
+		dsn, err := i.connectMySQL()
+		if err != nil {
+			return err
+		}
+		agentDSN = dsn
+	}
+	log.Println(agentDSN)
 
 	return nil
 }
 
-func (i *Installer) VerifyMysqlDsn() (err error) {
-	dsn := ""
-	if i.mysqlSocket != "" {
-		dsn = fmt.Sprintf("%s:%s@unix(%s)/", i.mysqlUser, i.mysqlPass, i.mysqlSocket)
-	} else {
-		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/", i.mysqlUser, i.mysqlPass, i.mysqlHost, i.mysqlPort)
+func (i *Installer) connectMySQL() (mysql.DSN, error) {
+	dsn := mysql.DSN{}
+	user, _ := user.Current()
+	if user != nil {
+		dsn.Username = user.Username
 	}
-	db, err := sql.Open("mysql", dsn)
-	if err != nil {
-		return err
-	}
-	if err := db.Ping(); err != nil {
-		return err
-	}
+	var conn *mysql.Connection
 
-	return nil // success
+CONNECT_MYSQL:
+	for conn == nil {
+		username, err := i.term.PromptStringRequired("MySQL username", dsn.Username)
+		if err != nil {
+			return dsn, err
+		}
+		dsn.Username = username
+
+		password, err := gopass.GetPass("MySQL password: ")
+		if err != nil {
+			return dsn, err
+		}
+		dsn.Password = password
+
+		hostname, err := i.term.PromptStringRequired("MySQL host[:port] or socket file", "localhost")
+		if err != nil {
+			return dsn, err
+		}
+		if filepath.IsAbs(hostname) {
+			dsn.Socket = hostname
+		} else {
+			f := strings.Split(hostname, ":")
+			dsn.Hostname = f[0]
+			if len(f) > 1 {
+				dsn.Port = f[1]
+			} else {
+				dsn.Port = "3306"
+			}
+		}
+
+		dsnString, err := dsn.DSN()
+		if err != nil {
+			return dsn, err // shouldn't happen
+		}
+
+		fmt.Printf("Connecting to MySQL %s...\n", dsn)
+		conn = mysql.NewConnection(dsnString)
+		if err := conn.Connect(1); err != nil {
+			conn = nil
+			log.Printf("Error connecting to MySQL %s: %s\n", dsn, err)
+			again, err := i.term.PromptBool("Try again?", "Y")
+			if err != nil {
+				return dsn, err
+			}
+			if !again {
+				return dsn, fmt.Errorf("Failed to connect to MySQL")
+			}
+			continue CONNECT_MYSQL
+		}
+		defer conn.Close()
+
+		fmt.Printf("MySQL connection OK\n")
+		break
+	}
+	return dsn, nil
 }
 
-func (i *Installer) Close() {
-	// Example on https://github.com/mreiferson/go-httpclient#example
-	// says to Transport.Close(), though it does nothing currently
-	i.transport.Close()
-}
+func (i *Installer) createMySQLUser(dsn mysql.DSN) (mysql.DSN, error) {
+	userDSN := mysql.DSN{}
 
+	dsnString, _ := dsn.DSN()
+	conn := mysql.NewConnection(dsnString)
+	if err := conn.Connect(1); err != nil {
+		return userDSN, err
+	}
+	defer conn.Close()
+
+	return userDSN, nil
+}

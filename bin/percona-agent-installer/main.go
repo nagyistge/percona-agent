@@ -1,87 +1,44 @@
 package main
 
 import (
+	"flag"
 	"fmt"
-	golog "log"
+	"github.com/percona/cloud-tools/agent"
+	"github.com/percona/cloud-tools/pct"
+	"log"
+	"os"
 )
 
-const (
-	//CLOUD_API_HOSTNAME = "https://cloud-api.percona.com"
-	CLOUD_API_HOSTNAME = "http://localhost:8000"
+var (
+	flagApiHostname string
+	flagApiKey      string
+	flagDebug       bool
 )
+
+var Debug = false
 
 func init() {
-	golog.SetFlags(golog.Ldate | golog.Ltime | golog.Lmicroseconds | golog.Lshortfile)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
+
+	flag.StringVar(&flagApiHostname, "api-host", "", "API host")
+	flag.StringVar(&flagApiKey, "api-key", "", "API key")
+	flag.BoolVar(&flagDebug, "debug", false, "Debug")
+	flag.Parse()
+
+	Debug = flagDebug
 }
 
 func main() {
-	installer := NewInstaller()
-
-	var err error
-	// Server
-	err = installer.GetHostname()
-	if err != nil {
-		golog.Fatalf("Unable to get hostname: %s", err)
+	agentConfig := &agent.Config{
+		ApiHostname: flagApiHostname,
+		ApiKey:      flagApiKey,
 	}
-
-	// Api key
-	for {
-		// Ask user for api key
-		err = installer.GetApiKey()
-		if err != nil {
-			golog.Fatalf("Unable to get API key: %s", err)
-		}
-
-		// Check if api key is correct
-		err = installer.VerifyApiKey()
-		if err == ErrApiUnauthorized {
-			fmt.Printf("Unauthorized, check if API key is correct and try again")
-			fmt.Println()
-			continue
-		} else if err != nil {
-			fmt.Printf("Unable to verify API key: %s. Contact Percona Support if this error persists.", err)
-			fmt.Println()
-			continue
-		}
-
-		break // success
+	installer := NewInstaller(NewTerminal(os.Stdin), pct.NewAPI(), agentConfig)
+	fmt.Println("CTRL-C at any time to quit")
+	// todo: catch SIGINT and clean up
+	if err := installer.Run(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
-
-	// Api entry Links
-	err = installer.GetApiLinks()
-	if err != nil {
-		golog.Fatalf("Unable to get API entry links: %s", err)
-	}
-	err = installer.VerifyApiLinks()
-	if err != nil {
-		golog.Fatalf("Bad API entry links: %s", err)
-	}
-
-	// Mysql connection details
-	for {
-		// Ask user for api key
-		err = installer.GetMysqlDsn()
-		if err != nil {
-			golog.Fatalf("An exception occured: %s", err)
-		}
-
-		// Check if api key is correct
-		err = installer.VerifyMysqlDsn()
-		if err != nil {
-			fmt.Printf("Unable to verify mysql dsn: %s", err)
-			fmt.Println()
-			continue
-		}
-
-		break // success
-	}
-
-	// Create agent
-	err = installer.CreateAgent()
-	if err != nil {
-		golog.Fatalf("Unable to create agent: %s", err)
-	}
-
-	installer.Close()
+	os.Exit(0)
 }
-

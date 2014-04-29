@@ -9,7 +9,6 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -52,7 +51,7 @@ func NewAPI() *API {
 	return a
 }
 
-func PingAPI(hostname, apiKey string) (bool, *http.Response) {
+func Ping(hostname, apiKey string) (int, error) {
 	schema := "https://"
 	if strings.HasPrefix(hostname, "localhost") || strings.HasPrefix(hostname, "127.0.0.1") {
 		schema = "http://"
@@ -61,28 +60,21 @@ func PingAPI(hostname, apiKey string) (bool, *http.Response) {
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Printf("Ping %s error: http.NewRequest: %s", url, err)
-		return false, nil
+		return 0, fmt.Errorf("Ping %s error: http.NewRequest: %s", url, err)
 	}
 	req.Header.Add("X-Percona-API-Key", apiKey)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("Ping %s error: client.Do: %s", url, err)
-		return false, resp
+		return 0, fmt.Errorf("Ping %s error: client.Do: %s", url, err)
 	}
 	_, err = ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
-		log.Printf("Ping %s error: ioutil.ReadAll: %s", url, err)
-		return false, resp
+		return resp.StatusCode, fmt.Errorf("Ping %s error: ioutil.ReadAll: %s", url, err)
 	}
-	if resp.StatusCode != 200 {
-		return false, resp
-	}
-
-	return true, resp // success
+	return resp.StatusCode, nil
 }
 
 func (a *API) Connect(hostname, apiKey, agentUuid string) error {
