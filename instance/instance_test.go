@@ -105,7 +105,10 @@ func (s *RepoTestSuite) TestInit(t *C) {
 		Distro:   "Percona Server",
 		Version:  "5.6.16",
 	}
+
 	if same, diff := test.IsDeeply(mysqlIt, expect); !same {
+		test.Dump(mysqlIt)
+		test.Dump(expect)
 		t.Error(diff)
 	}
 }

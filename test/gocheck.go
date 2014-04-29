@@ -212,6 +212,15 @@ func checkPrimitives(got reflect.Value, expect reflect.Value) (bool, string) {
 				expect.String())
 			return false, err
 		}
+	case reflect.Invalid: // nil pointer
+		// For example: T{x: *X} and T.x is nil.
+		if got.IsValid() && !expect.IsValid() {
+			err := fmt.Sprintf("     got: pointer\nexpected: nil\n")
+			return false, err
+		} else if !got.IsValid() && expect.IsValid() {
+			err := fmt.Sprintf("     got: nil\nexpected: pointer\n")
+			return false, err
+		}
 	default:
 		return false, fmt.Sprintf("checkPrimitives() cannot handle %s", expect.Kind())
 	}
