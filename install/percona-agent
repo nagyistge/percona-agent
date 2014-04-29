@@ -20,23 +20,33 @@ export LANG=en_US
 
 SERVICE="percona-agent"
 
+# Agent needs to run as root to read MySQL slow log for Query Analytics (QAN).
+# If not running QAN, a normal user will work.
+USERNAME="root"
+
 # Agent uses a single base directory for all its files and data.
-BASEDIR="/usr/local/percona/percona-agent"
+BASEDIR="/usr/local/percona/$SERVICE"
 if [ ! -d "$BASEDIR" ]; then
    mkdir -p "$BASEDIR" || exit 1
 fi
-
-# Agent needs to run as root to read MySQL slow log.
-USERNAME="root"
+chown "$USERNAME" "$BASEDIR" || exit 1
 
 # Make sure the percona-agent binary exists.
-CMD="/usr/local/percona/percona-agent/bin/percona-agent"
+CMD="/usr/local/percona/$SERVICE/bin/$SERVICE"
 if [ ! -x "$CMD" ]; then
-   echo "$CMD does not exist or is not executable. Check that percona-agent" \
+   echo "$CMD does not exist or is not executable. Check that $SERVICE" \
         "has been installed correctly." >&2
    exit 1
 fi
- 
+
+# Agent may use a different log file, or no log file (online logging only),
+# but we should capture any output, e.g. in case it crashes.
+LOGFILE="$BASEDIR/$SERVICE.log"
+
+# Agent does not manager its own PID file; system is expected to manager this.
+PIDFILE="$BASEDIR/$SERVICE.pid"
+pid=""
+
 # Allow configuration overrides in /etc/sysconfig/$SERVICE
 CONFIGFILE="/etc/sysconfig/$SERVICE"
 [ -x $CONFIGFILE ] && . $CONFIGFILE
@@ -76,8 +86,6 @@ REALPATH=`echo $REALPATH | sed -e 's;:; ;g'`
  
 # Change the current directory to the location of the script
 cd "`dirname "$REALPATH"`"
- 
-chown "$USERNAME" "$BASEDIR" || exit 1
   
 # Resolve the location of the 'ps' command
 PSEXE="/usr/bin/ps"
@@ -99,10 +107,6 @@ then
 else
     CMDNICE="nice -$PRIORITY"
 fi
-
-# Process ID
-PIDFILE="$BASEDIR/$SERVICE.pid"
-pid=""
 
 getpid() {
     if [ -f $PIDFILE ]
@@ -143,13 +147,17 @@ start() {
     if [ "X$pid" = "X" ]
     then
         # Run agent in background; it does not daemonize itself. 
-        $CMD -basedir "$BASEDIR" >> "$BASEDIR/$SERVICE.log" 2>&1 &
-        if [ $? -ne 0 ]; then
-            printf "%s\n" "Fail"
+        $CMD -basedir "$BASEDIR" >> "$LOGFILE" 2>&1 &
+
+        # Process is started in background so $? does not have its exit status.
+        # Instead, check that it's running by trying to get its PID.
+        getpid
+         if [ "X$pid" = "X" ]; then
+            echo "Fail.  Check $LOGFILE for details."
             exit 1
         else
             echo $! > "$PIDFILE"
-            printf "%s\n" "OK"
+            echo "OK"
         fi
     else
         echo "$SERVICE is already running."

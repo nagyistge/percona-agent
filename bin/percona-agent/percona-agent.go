@@ -324,6 +324,7 @@ func ConnectAPI(agentConfig *agent.Config) (*pct.API, error) {
 func main() {
 	if err := run(); err != nil {
 		golog.Fatal(err) // non-zero exit
+		os.Exit(1)
 	}
 	os.Exit(0)
 }
