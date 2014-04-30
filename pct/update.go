@@ -150,7 +150,7 @@ func (u *Updater) download(url string) ([]byte, error) {
 	u.logger.Debug("download:call:" + url)
 	defer u.logger.Debug("download:call")
 
-	code, data, err := u.api.Get(url)
+	code, data, err := u.api.Get(u.api.ApiKey(), url)
 	u.logger.Debug(fmt.Sprintf("download:code:%d", code))
 	if err != nil {
 		return nil, fmt.Errorf("GET %s error: %s", err)

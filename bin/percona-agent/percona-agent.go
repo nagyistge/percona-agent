@@ -106,11 +106,10 @@ func run() error {
 
 	if flagPing {
 		t0 := time.Now()
-		ok, resp := pct.PingAPI(agentConfig.ApiHostname, agentConfig.ApiKey)
+		code, err := pct.Ping(agentConfig.ApiHostname, agentConfig.ApiKey)
 		d := time.Now().Sub(t0)
-		golog.Printf("%+v\n", resp)
-		if !ok {
-			return fmt.Errorf("Ping FAIL (%s)", d)
+		if err != nil || code != 200 {
+			return fmt.Errorf("Ping FAIL (%d %d %s)", d, code, err)
 		} else {
 			golog.Printf("Ping OK (%s)", d)
 			return nil

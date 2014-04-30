@@ -18,11 +18,13 @@ func (e InvalidResponseError) Error() string {
 
 type Terminal struct {
 	stdin *bufio.Reader
+	flags Flags
 }
 
-func NewTerminal(stdin io.Reader) *Terminal {
+func NewTerminal(stdin io.Reader, flags Flags) *Terminal {
 	t := &Terminal{
 		stdin: bufio.NewReader(stdin),
+		flags: flags,
 	}
 	return t
 }
@@ -37,14 +39,14 @@ func (t *Terminal) PromptString(question string, defaultAnswer string) (string, 
 	if err != nil {
 		return "", err
 	}
-	if Debug {
+	if t.flags["debug"] {
 		log.Printf("raw answer='%s'\n", string(bytes))
 	}
 	answer := strings.TrimSpace(string(bytes))
 	if answer == "" {
 		answer = defaultAnswer
 	}
-	if Debug {
+	if t.flags["debug"] {
 		log.Printf("final answer='%s'\n", answer)
 	}
 	return answer, nil
@@ -69,7 +71,7 @@ func (t *Terminal) PromptStringRequired(question string, defaultAnswer string) (
 func (t *Terminal) PromptBool(question string, defaultAnswer string) (bool, error) {
 	for {
 		answer, err := t.PromptString(question, defaultAnswer)
-		if Debug {
+		if t.flags["debug"] {
 			log.Printf("again=%t\n", answer)
 			log.Printf("err=%s\n", err)
 		}

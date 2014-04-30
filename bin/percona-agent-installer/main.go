@@ -13,9 +13,8 @@ var (
 	flagApiHostname string
 	flagApiKey      string
 	flagDebug       bool
+	flagSkipMySQL   bool
 )
-
-var Debug = false
 
 func init() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
@@ -23,9 +22,8 @@ func init() {
 	flag.StringVar(&flagApiHostname, "api-host", "", "API host")
 	flag.StringVar(&flagApiKey, "api-key", "", "API key")
 	flag.BoolVar(&flagDebug, "debug", false, "Debug")
+	flag.BoolVar(&flagSkipMySQL, "skip-mysql", false, "Skip MySQL steps")
 	flag.Parse()
-
-	Debug = flagDebug
 }
 
 func main() {
@@ -33,7 +31,11 @@ func main() {
 		ApiHostname: flagApiHostname,
 		ApiKey:      flagApiKey,
 	}
-	installer := NewInstaller(NewTerminal(os.Stdin), pct.NewAPI(), agentConfig)
+	flags := Flags{
+		"debug":      flagDebug,
+		"skip-mysql": flagSkipMySQL,
+	}
+	installer := NewInstaller(NewTerminal(os.Stdin, flags), pct.NewAPI(), agentConfig, flags)
 	fmt.Println("CTRL-C at any time to quit")
 	// todo: catch SIGINT and clean up
 	if err := installer.Run(); err != nil {
