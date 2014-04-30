@@ -8,18 +8,25 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/agent"
 	"github.com/percona/cloud-tools/instance"
+	mmMySQL "github.com/percona/cloud-tools/mm/mysql"
+	mmServer "github.com/percona/cloud-tools/mm/system"
 	"github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
+	"github.com/percona/cloud-tools/qan"
+	sysconfigMySQL "github.com/percona/cloud-tools/sysconfig/mysql"
 	"log"
 	"math/rand"
 	"net/http"
 	"os"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
 type Flags map[string]bool
+
+var portNumberRe = regexp.MustCompile(`\.\d+$`)
 
 type Installer struct {
 	term        *Terminal
@@ -28,8 +35,6 @@ type Installer struct {
 	flags       Flags
 	// --
 	hostname string
-	//dsn  *mysql.DSN
-	//conn *mysql.Connection
 }
 
 func NewInstaller(term *Terminal, api pct.APIConnector, agentConfig *agent.Config, flags Flags) *Installer {
@@ -130,17 +135,18 @@ VERIFY_API_KEY:
 		}
 		agentDSN = dsn
 	} else {
-		log.Printf("Skip creating MySQL user (-skip-mysql)")
+		fmt.Println("Skip creating MySQL user (-skip-mysql)")
 	}
 
 	/**
-	* Create new API resources.
+	 * Create new API resources.
 	 */
+
 	si, err := i.createServerInstance()
 	if err != nil {
 		return err
 	}
-	log.Printf("Created server instance: hostname=%s id=%d\n", si.Hostname, si.Id)
+	fmt.Printf("Created server instance: hostname=%s id=%d\n", si.Hostname, si.Id)
 
 	var mi *proto.MySQLInstance
 	if !i.flags["skip-mysql"] {
@@ -148,21 +154,56 @@ VERIFY_API_KEY:
 		if err != nil {
 			return err
 		}
-		log.Printf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mi.DSN, mi.Hostname, si.Id)
+		fmt.Printf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mi.DSN, mi.Hostname, si.Id)
 	} else {
-		log.Printf("Skip creating MySQL instance (-skip-mysql)")
+		fmt.Println("Skip creating MySQL instance (-skip-mysql)")
 	}
 
-	agentUuid := ""
-	if !i.flags["skip-agent"] {
-		agentUuid, err := i.createAgent()
+	/**
+	 * Get default configs for all services.
+	 */
+
+	mmServerConfig, err := i.getMmServerConfig()
+	if err != nil {
+		return err
+	}
+	mmServerConfig.Service = "server"
+	mmServerConfig.InstanceId = si.Id
+
+	mmMySQLConfig, err := i.getMmMySQLConfig()
+	if err != nil {
+		return err
+	}
+
+	sysconfigMySQLConfig, err := i.getSysconfigMySQLConfig()
+	if err != nil {
+		return err
+	}
+
+	// MySQL is local if the server hostname == MySQL hostname without port number.
+	mysqlIsLocal := i.hostname == portNumberRe.ReplaceAllLiteralString(i.hostname, "")
+	var qanConfig *qan.Config
+	if mysqlIsLocal {
+		qanConfig, err = i.getQanConfig()
 		if err != nil {
 			return err
 		}
-		log.Printf("Created agent: uuid=%s\n", agentUuid)
-	} else {
-		log.Printf("Skip creating agent (-skip-agent)")
 	}
+
+	/**
+	 * Create agent with initial service configs.
+	 */
+
+	agentUuid, err := i.createAgent(
+		mmServerConfig,
+		mmMySQLConfig,
+		sysconfigMySQLConfig,
+		qanConfig,
+	)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Created agent: uuid=%s\n", agentUuid)
 
 	return nil
 }
@@ -174,25 +215,25 @@ func (i *Installer) doMySQL() (dsn mysql.DSN, err error) {
 		return
 	}
 	if newMySQLUser {
-		log.Println("Connect to MySQL to create new MySQL user for agent")
+		fmt.Println("Connect to MySQL to create new MySQL user for agent")
 		dsn, err = i.connectMySQL()
 		if err != nil {
 			return
 		}
-		log.Println("Creating new MySQL user for agent...")
+		fmt.Println("Creating new MySQL user for agent...")
 		dsn, err = i.createMySQLUser(dsn)
 		if err != nil {
 			return
 		}
 	} else {
 		// Let user specify the MySQL account to use for the agent.
-		log.Println("Use existing MySQL user for agent")
+		fmt.Println("Use existing MySQL user for agent")
 		dsn, err = i.connectMySQL()
 		if err != nil {
 			return
 		}
 	}
-	log.Printf("Agent MySQL user: %s\n", dsn)
+	fmt.Printf("Agent MySQL user: %s\n", dsn)
 	return
 }
 
@@ -243,7 +284,7 @@ CONNECT_MYSQL:
 		conn = mysql.NewConnection(dsnString)
 		if err := conn.Connect(1); err != nil {
 			conn = nil
-			log.Printf("Error connecting to MySQL %s: %s\n", dsn, err)
+			fmt.Printf("Error connecting to MySQL %s: %s\n", dsn, err)
 			again, err := i.term.PromptBool("Try again?", "Y")
 			if err != nil {
 				return dsn, err
@@ -389,6 +430,20 @@ func (i *Installer) createMySQLInstance(dsn mysql.DSN) (*proto.MySQLInstance, er
 	return mi, nil
 }
 
-func (i *Installer) createAgent() (string, error) {
+func (i *Installer) getMmServerConfig() (*mmServer.Config, error) {
+	return nil, nil
+}
+func (i *Installer) getMmMySQLConfig() (*mmMySQL.Config, error) {
+	return nil, nil
+}
+func (i *Installer) getSysconfigMySQLConfig() (*sysconfigMySQL.Config, error) {
+	return nil, nil
+}
+func (i *Installer) getQanConfig() (*qan.Config, error) {
+	return nil, nil
+}
+
+func (i *Installer) createAgent(mmserver *mmServer.Config, mmmysql *mmMySQL.Config, cfgmysql *sysconfigMySQL.Config, qan *qan.Config) (string, error) {
+	// todo
 	return "", nil
 }
