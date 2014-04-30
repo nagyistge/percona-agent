@@ -200,7 +200,7 @@ func (s *TestSuite) TestCollectInnoDBStats(t *C) {
 			Report:  60,
 		},
 		Status: map[string]string{},
-		InnoDB: "dml_%", // same as above ^
+		InnoDB: []string{"dml_%"}, // same as above ^
 	}
 
 	// Start a monitor with InnoDB metrics.

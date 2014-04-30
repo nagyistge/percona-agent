@@ -134,12 +134,11 @@ func (agent *Agent) Run() error {
 			if cmd.Cmd == "Abort" {
 				panic(cmd)
 			}
-
-			agent.status.UpdateRe("agent", "Handling", cmd)
-			logger.Debug("recv: ", cmd)
-
 			switch cmd.Cmd {
 			case "Restart":
+				logger.Debug("cmd:restart")
+				agent.status.UpdateRe("agent", "Restarting", cmd)
+
 				// Secure the start-lock file.  This lets us start our self but
 				// wait until this process has exited, at which time the start-lock
 				// is removed and the 2nd self continues starting.
@@ -170,9 +169,12 @@ func (agent *Agent) Run() error {
 				logger.Debug("Restart:done")
 				return nil
 			case "Stop":
+				logger.Debug("cmd:stop")
+				agent.status.UpdateRe("agent", "Stopping", cmd)
 				agent.reply(cmd.Reply(nil))
 				return nil
 			case "Status":
+				logger.Debug("cmd:status")
 				agent.status.UpdateRe("agent", "Queueing", cmd)
 				select {
 				case agent.statusChan <- cmd: // to statusHandler
@@ -181,6 +183,7 @@ func (agent *Agent) Run() error {
 					agent.reply(cmd.Reply(nil, err))
 				}
 			default:
+				logger.Debug("cmd")
 				agent.status.UpdateRe("agent", "Queueing", cmd)
 				select {
 				case agent.cmdChan <- cmd: // to cmdHandler

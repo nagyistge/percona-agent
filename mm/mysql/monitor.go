@@ -148,10 +148,12 @@ func (m *Monitor) connect(err error) {
 
 		// Set global vars we need.  If these fail, that's ok: they won't work,
 		// but don't let that stop us from collecting other metrics.
-		if m.config.InnoDB != "" {
-			sql := `SET GLOBAL innodb_monitor_enable = "` + m.config.InnoDB + `"`
-			if _, err := m.conn.DB().Exec(sql); err != nil {
-				m.logger.Error(sql, err)
+		if len(m.config.InnoDB) > 0 {
+			for _, module := range m.config.InnoDB {
+				sql := "SET GLOBAL innodb_monitor_enable = '" + module + "'"
+				if _, err := m.conn.DB().Exec(sql); err != nil {
+					m.logger.Error(sql, err)
+				}
 			}
 		}
 
@@ -215,7 +217,7 @@ func (m *Monitor) run() {
 			}
 
 			// SELECT NAME, ... FROM INFORMATION_SCHEMA.INNODB_METRICS
-			if m.config.InnoDB != "" {
+			if len(m.config.InnoDB) > 0 {
 				if err := m.GetInnoDBMetrics(conn, c); err != nil {
 					m.logger.Warn(err)
 				}
