@@ -14,6 +14,7 @@ var (
 	flagApiKey      string
 	flagDebug       bool
 	flagSkipMySQL   bool
+	flagSkipAgent   bool
 )
 
 func init() {
@@ -23,6 +24,7 @@ func init() {
 	flag.StringVar(&flagApiKey, "api-key", "", "API key")
 	flag.BoolVar(&flagDebug, "debug", false, "Debug")
 	flag.BoolVar(&flagSkipMySQL, "skip-mysql", false, "Skip MySQL steps")
+	flag.BoolVar(&flagSkipAgent, "skip-agent", false, "Skip agent steps")
 	flag.Parse()
 }
 
@@ -31,9 +33,11 @@ func main() {
 		ApiHostname: flagApiHostname,
 		ApiKey:      flagApiKey,
 	}
+	// todo: do flags a better way
 	flags := Flags{
 		"debug":      flagDebug,
 		"skip-mysql": flagSkipMySQL,
+		"skip-agent": flagSkipAgent,
 	}
 	installer := NewInstaller(NewTerminal(os.Stdin, flags), pct.NewAPI(), agentConfig, flags)
 	fmt.Println("CTRL-C at any time to quit")

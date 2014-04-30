@@ -7,6 +7,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/agent"
+	"github.com/percona/cloud-tools/instance"
 	"github.com/percona/cloud-tools/mysql"
 	"github.com/percona/cloud-tools/pct"
 	"log"
@@ -26,19 +27,23 @@ type Installer struct {
 	agentConfig *agent.Config
 	flags       Flags
 	// --
-	dsn  *mysql.DSN
-	conn *mysql.Connection
+	hostname string
+	//dsn  *mysql.DSN
+	//conn *mysql.Connection
 }
 
 func NewInstaller(term *Terminal, api pct.APIConnector, agentConfig *agent.Config, flags Flags) *Installer {
 	if agentConfig.ApiHostname == "" {
 		agentConfig.ApiHostname = agent.DEFAULT_API_HOSTNAME
 	}
+	hostname, _ := os.Hostname()
 	installer := &Installer{
 		term:        term,
 		api:         api,
 		agentConfig: agentConfig,
 		flags:       flags,
+		// --
+		hostname: hostname,
 	}
 	return installer
 }
@@ -137,20 +142,27 @@ VERIFY_API_KEY:
 	}
 	log.Printf("Created server instance: hostname=%s id=%d\n", si.Hostname, si.Id)
 
+	var mi *proto.MySQLInstance
 	if !i.flags["skip-mysql"] {
-		_, err = i.createMySQLInstance(agentDSN)
+		mi, err = i.createMySQLInstance(agentDSN)
 		if err != nil {
 			return err
 		}
+		log.Printf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mi.DSN, mi.Hostname, si.Id)
 	} else {
 		log.Printf("Skip creating MySQL instance (-skip-mysql)")
 	}
 
-	agentUuid, err := i.createAgent()
-	if err != nil {
-		return err
+	agentUuid := ""
+	if !i.flags["skip-agent"] {
+		agentUuid, err := i.createAgent()
+		if err != nil {
+			return err
+		}
+		log.Printf("Created agent: uuid=%s\n", agentUuid)
+	} else {
+		log.Printf("Skip creating agent (-skip-agent)")
 	}
-	log.Printf("Agent UUID: %s\n", agentUuid)
 
 	return nil
 }
@@ -272,9 +284,8 @@ func (i *Installer) createServerInstance() (*proto.ServerInstance, error) {
 	// todo: handle duplicate server
 
 	// POST <api>/instances/server
-	hostname, _ := os.Hostname()
 	si := &proto.ServerInstance{
-		Hostname: hostname,
+		Hostname: i.hostname,
 	}
 	data, err := json.Marshal(si)
 	if err != nil {
@@ -321,7 +332,61 @@ func (i *Installer) createServerInstance() (*proto.ServerInstance, error) {
 }
 
 func (i *Installer) createMySQLInstance(dsn mysql.DSN) (*proto.MySQLInstance, error) {
-	return nil, nil
+	// todo: handle duplicate instance
+
+	// First use instance.Manager to fill in details about the MySQL server.
+	dsnString, _ := dsn.DSN()
+	mi := &proto.MySQLInstance{
+		Hostname: i.hostname,
+		DSN:      dsnString,
+	}
+	if err := instance.GetMySQLInfo(mi); err != nil {
+		return nil, err
+	}
+
+	// POST <api>/instances/mysql
+	data, err := json.Marshal(mi)
+	if err != nil {
+		return nil, err
+	}
+	url := pct.URL(i.agentConfig.ApiHostname, "instances", "mysql")
+	if i.flags["debug"] {
+		log.Println(url)
+	}
+	resp, _, err := i.api.Post(i.agentConfig.ApiKey, url, data)
+	if i.flags["debug"] {
+		log.Printf("resp=%#v\n", resp)
+		log.Printf("err=%s\n", err)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("Failed to create MySQL instance (status code %d)", resp.StatusCode)
+	}
+
+	// API returns URI of new resource in Location header
+	uri := resp.Header.Get("Location")
+	if uri == "" {
+		return nil, fmt.Errorf("API did not return location of new MySQL instance")
+	}
+
+	// GET <api>/instances/mysql/id (URI)
+	code, data, err := i.api.Get(i.agentConfig.ApiKey, uri)
+	if i.flags["debug"] {
+		log.Printf("code=%d\n", code)
+		log.Printf("err=%s\n", err)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if code != http.StatusOK {
+		return nil, fmt.Errorf("Failed to get new MySQL instance (status code %d)", code)
+	}
+	if err := json.Unmarshal(data, mi); err != nil {
+		return nil, err
+	}
+	return mi, nil
 }
 
 func (i *Installer) createAgent() (string, error) {
