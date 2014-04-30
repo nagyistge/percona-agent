@@ -322,8 +322,6 @@ func (i *Installer) createMySQLUser(dsn mysql.DSN) (mysql.DSN, error) {
 }
 
 func (i *Installer) createServerInstance() (*proto.ServerInstance, error) {
-	// todo: handle duplicate server
-
 	// POST <api>/instances/server
 	si := &proto.ServerInstance{
 		Hostname: i.hostname,
@@ -344,7 +342,9 @@ func (i *Installer) createServerInstance() (*proto.ServerInstance, error) {
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode != http.StatusCreated {
+	// Create new instance, if it already exist then just use it
+	// todo: better handling of duplicate instance
+	if resp.StatusCode != http.StatusCreated  && resp.StatusCode != http.StatusConflict {
 		return nil, fmt.Errorf("Failed to create server instance (status code %d)", resp.StatusCode)
 	}
 
@@ -373,8 +373,6 @@ func (i *Installer) createServerInstance() (*proto.ServerInstance, error) {
 }
 
 func (i *Installer) createMySQLInstance(dsn mysql.DSN) (*proto.MySQLInstance, error) {
-	// todo: handle duplicate instance
-
 	// First use instance.Manager to fill in details about the MySQL server.
 	dsnString, _ := dsn.DSN()
 	mi := &proto.MySQLInstance{
@@ -382,6 +380,9 @@ func (i *Installer) createMySQLInstance(dsn mysql.DSN) (*proto.MySQLInstance, er
 		DSN:      dsnString,
 	}
 	if err := instance.GetMySQLInfo(mi); err != nil {
+		if i.flags["debug"] {
+			log.Printf("err=%s\n", err)
+		}
 		return nil, err
 	}
 
@@ -402,7 +403,9 @@ func (i *Installer) createMySQLInstance(dsn mysql.DSN) (*proto.MySQLInstance, er
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode != http.StatusCreated {
+	// Create new instance, if it already exist then just use it
+	// todo: better handling of duplicate instance
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusConflict {
 		return nil, fmt.Errorf("Failed to create MySQL instance (status code %d)", resp.StatusCode)
 	}
 
