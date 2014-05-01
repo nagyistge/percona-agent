@@ -163,19 +163,17 @@ VERIFY_API_KEY:
 	 * Get default configs for all services.
 	 */
 
-	mmServerConfig, err := i.getMmServerConfig()
-	if err != nil {
-		return err
-	}
-	mmServerConfig.Service = "server"
-	mmServerConfig.InstanceId = si.Id
-
-	mmMySQLConfig, err := i.getMmMySQLConfig()
+	mmServerConfig, err := i.getMmServerConfig(si)
 	if err != nil {
 		return err
 	}
 
-	sysconfigMySQLConfig, err := i.getSysconfigMySQLConfig()
+	mmMySQLConfig, err := i.getMmMySQLConfig(mi)
+	if err != nil {
+		return err
+	}
+
+	sysconfigMySQLConfig, err := i.getSysconfigMySQLConfig(mi)
 	if err != nil {
 		return err
 	}
@@ -194,6 +192,9 @@ VERIFY_API_KEY:
 	 * Create agent with initial service configs.
 	 */
 
+	 configs := make(map[string]AgentConfig)
+	 configs[""]
+
 	agentUuid, err := i.createAgent(
 		mmServerConfig,
 		mmMySQLConfig,
@@ -207,6 +208,8 @@ VERIFY_API_KEY:
 
 	return nil
 }
+
+// --------------------------------------------------------------------------
 
 func (i *Installer) doMySQL() (dsn mysql.DSN, err error) {
 	// XXX Using implicit return
@@ -344,7 +347,7 @@ func (i *Installer) createServerInstance() (*proto.ServerInstance, error) {
 	}
 	// Create new instance, if it already exist then just use it
 	// todo: better handling of duplicate instance
-	if resp.StatusCode != http.StatusCreated  && resp.StatusCode != http.StatusConflict {
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusConflict {
 		return nil, fmt.Errorf("Failed to create server instance (status code %d)", resp.StatusCode)
 	}
 
@@ -433,20 +436,95 @@ func (i *Installer) createMySQLInstance(dsn mysql.DSN) (*proto.MySQLInstance, er
 	return mi, nil
 }
 
-func (i *Installer) getMmServerConfig() (*mmServer.Config, error) {
-	return nil, nil
-}
-func (i *Installer) getMmMySQLConfig() (*mmMySQL.Config, error) {
-	return nil, nil
-}
-func (i *Installer) getSysconfigMySQLConfig() (*sysconfigMySQL.Config, error) {
-	return nil, nil
-}
-func (i *Installer) getQanConfig() (*qan.Config, error) {
-	return nil, nil
+func (i *Installer) getMmServerConfig(si *proto.ServerInstance) (*mmServer.Config, error) {
+	url := i.agentConfig.ApiHostname + "/configs/mm/default-server"
+	code, data, err := i.api.Get(i.agentConfig.ApiKey, url)
+	if i.flags["debug"] {
+		log.Printf("code=%d\n", code)
+		log.Printf("err=%s\n", err)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if code != http.StatusOK {
+		return nil, fmt.Errorf("Failed to get default server monitor config (status code %d)", code)
+	}
+	config := &mmServer.Config{}
+	if err := json.Unmarshal(data, config); err != nil {
+		return nil, err
+	}
+	config.Service = "server"
+	config.InstanceId = si.Id
+	return config, nil
 }
 
-func (i *Installer) createAgent(mmserver *mmServer.Config, mmmysql *mmMySQL.Config, cfgmysql *sysconfigMySQL.Config, qan *qan.Config) (string, error) {
+func (i *Installer) getMmMySQLConfig(mi *proto.MySQLInstance) (*mmMySQL.Config, error) {
+	url := i.agentConfig.ApiHostname + "/configs/mm/default-mysql"
+	code, data, err := i.api.Get(i.agentConfig.ApiKey, url)
+	if i.flags["debug"] {
+		log.Printf("code=%d\n", code)
+		log.Printf("err=%s\n", err)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if code != http.StatusOK {
+		return nil, fmt.Errorf("Failed to get default MySQL monitor config (status code %d)", code)
+	}
+	config := &mmMySQL.Config{}
+	if err := json.Unmarshal(data, config); err != nil {
+		return nil, err
+	}
+	config.Service = "mysql"
+	config.InstanceId = mi.Id
+	return config, nil
+}
+
+func (i *Installer) getSysconfigMySQLConfig(mi *proto.MySQLInstance) (*sysconfigMySQL.Config, error) {
+	url := i.agentConfig.ApiHostname + "/configs/sysconfig/default-mysql"
+	code, data, err := i.api.Get(i.agentConfig.ApiKey, url)
+	if i.flags["debug"] {
+		log.Printf("code=%d\n", code)
+		log.Printf("err=%s\n", err)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if code != http.StatusOK {
+		return nil, fmt.Errorf("Failed to get default MySQL sysconfig config (status code %d)", code)
+	}
+	config := &sysconfigMySQL.Config{}
+	if err := json.Unmarshal(data, config); err != nil {
+		return nil, err
+	}
+	config.Service = "mysql"
+	config.InstanceId = mi.Id
+	return config, nil
+}
+
+func (i *Installer) getQanConfig(mi *proto.MySQLInstance) (*qan.Config, error) {
+	url := i.agentConfig.ApiHostname + "/configs/qan/default"
+	code, data, err := i.api.Get(i.agentConfig.ApiKey, url)
+	if i.flags["debug"] {
+		log.Printf("code=%d\n", code)
+		log.Printf("err=%s\n", err)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if code != http.StatusOK {
+		return nil, fmt.Errorf("Failed to get default Query Analytics config (status code %d)", code)
+	}
+	config := &qan.Config{}
+	if err := json.Unmarshal(data, config); err != nil {
+		return nil, err
+	}
+	config.Service = "mysql"
+	config.InstanceId = si.Id
+	return config, nil
+}
+
+func (i *Installer) createAgent(configs map[string]proto.AgentConfig) (string, error) {
 	// todo
 	return "", nil
 }
