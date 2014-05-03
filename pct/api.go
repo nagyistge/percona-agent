@@ -95,7 +95,11 @@ func URL(hostname string, paths ...string) string {
 	if strings.HasPrefix(hostname, "localhost") || strings.HasPrefix(hostname, "127.0.0.1") {
 		schema = "http://"
 	}
-	url := schema + hostname + "/" + strings.Join(paths, "/")
+	slash := "/"
+	if len(paths) > 0 && paths[0][0] == 0x2F {
+		slash = ""
+	}
+	url := schema + hostname + slash + strings.Join(paths, "/")
 	return url
 }
 

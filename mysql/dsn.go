@@ -3,6 +3,7 @@ package mysql
 import (
 	"fmt"
 	"os/user"
+	"strings"
 )
 
 type DSN struct {
@@ -12,6 +13,10 @@ type DSN struct {
 	Port     string
 	Socket   string
 }
+
+const (
+	dsnSuffix = "/?parseTime=true"
+)
 
 func (dsn DSN) DSN() (string, error) {
 	if dsn.Hostname != "" && dsn.Socket != "" {
@@ -28,14 +33,14 @@ func (dsn DSN) DSN() (string, error) {
 		if dsn.Port == "" {
 			dsn.Port = "3306"
 		}
-		dsnString = fmt.Sprintf("%s%s@tcp(%s:%s)/",
+		dsnString = fmt.Sprintf("%s%s@tcp(%s:%s)",
 			dsn.Username,
 			dsn.Password,
 			dsn.Hostname,
 			dsn.Port,
 		)
 	} else if dsn.Socket != "" {
-		dsnString = fmt.Sprintf("%s%s@unix(%s)/",
+		dsnString = fmt.Sprintf("%s%s@unix(%s)",
 			dsn.Username,
 			dsn.Password,
 			dsn.Socket,
@@ -45,13 +50,14 @@ func (dsn DSN) DSN() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		dsnString = fmt.Sprintf("%s@/", user.Username)
+		dsnString = fmt.Sprintf("%s@", user.Username)
 	}
-	return dsnString, nil
+	return dsnString + dsnSuffix, nil
 }
 
 func (dsn DSN) String() string {
 	dsn.Password = "..."
 	dsnString, _ := dsn.DSN()
+	dsnString = strings.TrimSuffix(dsnString, dsnSuffix)
 	return dsnString
 }
