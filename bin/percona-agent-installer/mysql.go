@@ -15,27 +15,39 @@ func (i *Installer) doMySQL() (dsn mysql.DSN, err error) {
 	if err != nil {
 		return
 	}
-	if newMySQLUser {
-		fmt.Println("Connect to MySQL to create new MySQL user for agent")
-		dsn, err = i.connectMySQL()
-		if err != nil {
-			return
+	for {
+		if newMySQLUser {
+			fmt.Println("Connect to MySQL to create new MySQL user for agent")
+			dsn, err = i.connectMySQL()
+			if err == nil {
+				fmt.Println("Creating new MySQL user for agent...")
+				dsn, err = i.createMySQLUser(dsn)
+				if err == nil {
+					break // success
+				}
+			}
+			fmt.Println(err)
+		} else {
+			// Let user specify the MySQL account to use for the agent.
+			fmt.Println("Use existing MySQL user for agent")
+			dsn, err = i.connectMySQL()
+			if err == nil {
+				break // success
+			}
+			fmt.Println(err)
 		}
-		fmt.Println("Creating new MySQL user for agent...")
-		dsn, err = i.createMySQLUser(dsn)
+
+		again, err := i.term.PromptBool("Try again?", "Y")
 		if err != nil {
-			return
+			return dsn, err
 		}
-	} else {
-		// Let user specify the MySQL account to use for the agent.
-		fmt.Println("Use existing MySQL user for agent")
-		dsn, err = i.connectMySQL()
-		if err != nil {
-			return
+		if !again {
+			return dsn, fmt.Errorf("Failed to create new MySQL account for agent")
 		}
 	}
-	fmt.Printf("Agent MySQL user: %s\n", dsn)
-	return
+	dsnString, _ := dsn.DSN()
+	fmt.Printf("Agent MySQL user: %s\n", dsnString)
+	return // implicit
 }
 
 func (i *Installer) connectMySQL() (mysql.DSN, error) {

@@ -84,7 +84,9 @@ rm -rf "$TMP_DIR" \
 # Install percona-agent (percona-agent-setup install)
 # ###########################################################################
 
-"$BASEDIR/bin/$BIN-installer" -basedir "$BASEDIR"
+INSTALL_OPTIONS="${INSTALL_OPTIONS:-""}"  # dev and debug
+
+"$BASEDIR/bin/$BIN-installer" -basedir "$BASEDIR" $INSTALL_OPTIONS
 if [ $? -ne 0 ]; then
    error "Failed to install $BIN"
 fi
@@ -99,7 +101,7 @@ fi
 # ###########################################################################
 
 if [ "$KERNEL" != "Darwin" ]; then
-   cp -f "$INSTALL_DIR/$BIN/sys-init/$BIN" "/etc/init.d"
+   cp -f "$INSTALL_DIR/$BIN/init.d/$BIN" "/etc/init.d/"
    chmod a+x "/etc/init.d/$BIN"
 
    # Check if the system has chkconfig or update-rc.d.

@@ -47,6 +47,7 @@ import (
 var (
 	flagPing    bool
 	flagBasedir string
+	flagPidFile string
 	flagVersion bool
 )
 
@@ -54,8 +55,9 @@ func init() {
 	golog.SetFlags(golog.Ldate | golog.Ltime | golog.Lmicroseconds | golog.Lshortfile)
 
 	flag.BoolVar(&flagPing, "ping", false, "Ping API")
-	flag.StringVar(&flagBasedir, "basedir", pct.DEFAULT_BASEDIR, "Set basedir")
-	flag.BoolVar(&flagVersion, "version", false, "Stop percona-agent")
+	flag.StringVar(&flagBasedir, "basedir", pct.DEFAULT_BASEDIR, "Agent basedir")
+	flag.StringVar(&flagPidFile, "pidfile", "", "PID file")
+	flag.BoolVar(&flagVersion, "version", false, "percona-agent version")
 	flag.Parse()
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
@@ -114,6 +116,18 @@ func run() error {
 			golog.Printf("Ping OK (%s)", d)
 			return nil
 		}
+	}
+
+	/**
+	 * PID file
+	 */
+
+	if flagPidFile != "" {
+		pidFile := pct.NewPidFile()
+		if err := pidFile.Set(flagPidFile); err != nil {
+			golog.Fatalln(err)
+		}
+		defer pidFile.Remove()
 	}
 
 	/**

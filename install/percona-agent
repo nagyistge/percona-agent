@@ -29,7 +29,6 @@ BASEDIR="/usr/local/percona/$SERVICE"
 if [ ! -d "$BASEDIR" ]; then
    mkdir -p "$BASEDIR" || exit 1
 fi
-chown "$USERNAME" "$BASEDIR" || exit 1
 
 # Make sure the percona-agent binary exists.
 CMD="$BASEDIR/bin/$SERVICE"
@@ -108,32 +107,33 @@ else
     CMDNICE="nice -$PRIORITY"
 fi
 
-getpid() {
-    if [ -f $PIDFILE ]
-    then
-        if [ -r $PIDFILE ]
-        then
-            pid=`cat $PIDFILE`
-            if [ "X$pid" != "X" ]
-            then
-                # Verify that a process with this pid is still running.
-                pid=`$PSEXE -p $pid | grep $pid | grep -v grep | awk '{print $1}' | tail -1`
-                if [ "X$pid" = "X" ]
-                then
-                    # This is a stale pid file.
-                    rm -f $PIDFILE
-                    echo "Removed stale pid file: $PIDFILE"
-                fi
-            fi
-        else
-            echo "Cannot read $PIDFILE."
-            exit 1
-        fi
-    fi
+# seq N, return 1, ..., 5
+_seq() {
+   local i="$1"
+   awk "BEGIN { for(i=1; i<=$i; i++) print i; }"
 }
- 
+
+getpid() {
+   if [ -f $PIDFILE ]; then
+      if [ ! -f $PIDFILE ]; then
+         echo "Cannot read $PIDFILE." >&2
+         exit 1
+      fi
+      pid=`cat $PIDFILE`
+      # Verify that a process with this pid is still running.
+      pid=`$PSEXE -p $pid | grep $pid | grep -v grep | tail -1 | awk '{print $1}'`
+      if [ -z "$pid" ]; then
+         # This is a stale pid file.
+         rm -f $PIDFILE
+         echo "Removed stale pid file: $PIDFILE"
+      fi
+   elif [ "$(pidof $SERVICE 2>/dev/null)" ]; then
+      pid=`pidof $SERVICE`
+   fi
+}
+
 testpid() {
-    pid=`$PSEXE -p $pid | grep $pid | grep -v grep | awk '{print $1}' | tail -1`
+    pid=`$PSEXE -p $pid | grep $pid | grep -v grep | tail -1 | awk '{print $1}'`
     if [ "X$pid" = "X" ]
     then
         # Process is gone so remove the pid file.
@@ -142,27 +142,28 @@ testpid() {
 }
 
 start() {
-    echo "Starting $SERVICE..."
-    getpid
-    if [ "X$pid" = "X" ]
-    then
-        # Run agent in background; it does not daemonize itself. 
-        $CMD -basedir "$BASEDIR" >> "$LOGFILE" 2>&1 &
+   chown "$USERNAME" "$BASEDIR" || exit 1
 
-        # Process is started in background so $? does not have its exit status.
-        # Instead, check that it's running by trying to get its PID.
-        getpid
-         if [ "X$pid" = "X" ]; then
-            echo "Fail.  Check $LOGFILE for details."
-            exit 1
-        else
-            echo $! > "$PIDFILE"
-            echo "OK"
-        fi
-    else
-        echo "$SERVICE is already running."
-        exit 1
-    fi
+   echo "Starting $SERVICE..."
+   getpid
+   if [ "$pid" ]; then
+      echo "$SERVICE is already running."
+      exit 0
+   fi
+
+   # Run agent in background; it does not daemonize itself. 
+   $CMD -basedir "$BASEDIR" -pidfile "$PIDFILE" >> "$LOGFILE" 2>&1 &
+
+   # Process is started in background so $? does not have its exit status.
+   # Instead, check that it's running by trying to get its PID.
+   getpid
+   if [ -z "$pid" ]; then
+      echo "Fail.  Check $LOGFILE for details."
+      exit 1
+   else
+      echo $! > "$PIDFILE"
+      echo "OK"
+   fi
 }
 
 stop() {
@@ -170,7 +171,8 @@ stop() {
     getpid
     if [ "X$pid" = "X" ]
     then
-        echo "$SERVICE was not running."
+        echo "$SERVICE is not running."
+        exit 0
     else
          # Running so try to stop it.
         su --command="kill $pid" $USERNAME
@@ -182,34 +184,21 @@ stop() {
         fi
  
         #  Loop until it does.
+        echo "Waiting for $SERVICE to exit..."
         savepid=$pid
-        CNT=0
-        TOTCNT=0
-        while [ "X$pid" != "X" ]
-        do
-            # Loop for up to 5 minutes
-            if [ "$TOTCNT" -lt "300" ]
-            then
-                if [ "$CNT" -lt "5" ]
-                then
-                    CNT=`expr $CNT + 1`
-                else
-                    echo "Waiting for $SERVICE to exit..."
-                    CNT=0
-                fi
-                TOTCNT=`expr $TOTCNT + 1`
-                testpid
-            else
-                pid=
+        for x in $(_seq 60); do
+            testpid
+            if [ -z "$pid" ]; then
+                break
             fi
+            sleep 1
         done
  
         pid=$savepid
         testpid
         if [ "X$pid" != "X" ]
         then
-            echo "Timed out waiting for $SERVICE to exit."
-            echo "  Attempting a forced exit..."
+            echo "Time out waiting for $SERVICE to exit.  Trying kill -9 $pid..."
             kill -9 $pid
         fi
  
@@ -226,15 +215,14 @@ stop() {
 }
  
 status() {
-    getpid
-    if [ "X$pid" = "X" ]
-    then
-        echo "$SERVICE is not running."
-        exit 1
-    else
-        echo "$SERVICE is running ($pid)."
-        exit 0
-    fi
+   getpid
+   if [ "$pid" ]; then
+      echo "$SERVICE is running ($pid)."
+      exit 0
+   else
+      echo "$SERVICE is not running."
+      exit 1
+   fi
 }
  
 case "$1" in
