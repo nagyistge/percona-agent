@@ -1,92 +1,96 @@
 #!/bin/bash
+
 # Install from web
-# wget -qO- http://www.percona.com/downloads/TESTING/goagent/install |  bash /dev/stdin 
+# wget -qO- http://www.percona.com/downloads/TESTING/percona-agent/install | sudo bash
+
+error() {
+   echo "ERROR: $1" >&2
+   exit 1
+}
+
+# ###########################################################################
+# Sanity checks and setup
+# ###########################################################################
 
 # Check if script is run as root as we need write access to /etc, /usr/local
-if [[ $EUID -ne 0 ]]; then
-    echo "Please run as root"
-    exit
+if [ $EUID -ne 0 ]; then
+   error "percona-agent install requires root user; detected effective user ID $EUID"
 fi
 
 # Check compatibility
 KERNEL=`uname -s`
-if [ "$KERNEL" != "Linux" ]; then
-    echo "Error: Percona-agent supports Linux only" >&2
-    echo "Error: Detected $KERNEL" >&2
-    exit 1
+if [ "$KERNEL" != "Linux" -a "$KERNAL" != "Darwin" ]; then
+   error "percona-agent only runs on Linxu; detected $KERNEL"
 fi
 
 PLATFORM=`uname -m`
-if [[ "$PLATFORM" != "x86_64" && "$PLATFORM" != "i686" ]]; then
-    echo "Error:  Percona-agent supports only x86_64 and i686 platforms" >&2
-    echo "Error: Detected $PLATFORM" >&2
-    exit 1
+if [ "$PLATFORM" != "x86_64" -a "$PLATFORM" != "i686" -a "$PLATFORM" != "i386" ]; then
+   error "percona-agent only support x86_64 and i686 platforms; detected $PLATFORM"
 fi
 
-echo "Setup detected $KERNEL $PLATFORM" 
+echo "percona-agent install detected $KERNEL $PLATFORM" 
 
-
-
-#setup variables
+# Set up variables
 TARGZ_NAME="percona-agent.tar.gz"
-DOWNLOADPATH="http://www.percona.com/downloads/TESTING/goagent/$TARGZ_NAME"
-INSTALL_DIR=/usr/local/percona/
+DOWNLOADPATH="http://www.percona.com/downloads/TESTING/percona-agent/$TARGZ_NAME"
+INSTALL_DIR="/usr/local/percona/"
+BASEDIR="$INSTALL_DIR/percona-agent"
 
-TMP_PATH=`mktemp -d /tmp/percona-agent.XXXX` || exit 1
-TMP_FILENAME=$TMP_PATH"/$TARGZ_NAME"
+TMP_PATH="$(mktemp -d /tmp/percona-agent.XXXXXX)" || exit 1
+TMP_FILENAME="$TMP_PATH/$TARGZ_NAME"
 
-#INIT_FILE=/usr/local/sealion-agent/etc/sealion
+mkdir -p "$BASEDIR" \
+   || error "'mkdir -p $BASEDIR' failed"
 
-echo "Downloading $DOWNLOADPATH to $TMP_FILENAME ..."
+# ###########################################################################
+# Download and extract package
+# ###########################################################################
 
-wget $DOWNLOADPATH -O $TMP_FILENAME
+echo "Downloading $DOWNLOADPATH to $TMP_FILENAME..."
+wget "$DOWNLOADPATH" -O "$TMP_FILENAME"
 if [ $? -ne 0 ] ; then
-    echo "Error: Downloading source file failed" >&2
-    exit 117
-fi
-
-
-mkdir -p $INSTALL_DIR
-if [ $? -ne 0 ] ; then
-    echo "Error: Can't create directory $INSTALL_DIR!" >&2
-    exit 1
+   error "'wget $DOWNLOADPATH' failed"
 fi
 
 echo "Extracting $TMP_FILENAME to $INSTALL_DIR..."
+tar -xzf "$TMP_FILENAME" -C "$INSTALL_DIR" --overwrite \
+   || error "Failed to extract $TMP_FILENAME"
 
-tar -xzf $TMP_FILENAME -C $INSTALL_DIR --overwrite
-if [ $? -ne 0 ] ; then
-    echo "Error: Installation failed" >&2
-    exit 1
+rm -rf "$TMP_PATH" \
+   || error "Failed to remove $TMP_PATH"
+
+# ###########################################################################
+# Install percona-agent (percona-agent-setup install)
+# ###########################################################################
+
+"$TMP_PATH/percona-agent-installer" -basedir "$BASEDIR"
+if [ $? -ne 0 ]; then
+   error "Failed to install percona-agent"
 fi
 
-echo "Files extracted successfully" 
+# ###########################################################################
+# Install sys-int script
+# ###########################################################################
 
-rm -rf $TMP_PATH
-if [ $? -ne 0 ] ; then
-    echo "Error: Failed to delete $TMP_PATH" >&2
-    echo "Continue setup anyway" >&2
-fi
+cp -f "$INSTALL_DIR/percona-agent/sys-init/percona-agent" "/etc/init.d"
+chmod a+x "/etc/init.d/percona-agent"
 
-cp -f $INSTALL_DIR/percona-agent/percona-agentd /etc/init.d
-chmod a+x /etc/init.d/percona-agentd
-
-# check if the system  has chkconfig or update-rc.d
-
+# Check if the system has chkconfig or update-rc.d.
 if hash update-rc.d 2>/dev/null; then
-        echo "Using update-rc.d to install service" 
-        update-rc.d  percona-agentd defaults
+        echo "Using update-rc.d to install percona-agent service" 
+        update-rc.d  percona-agent defaults
 elif hash chkconfig 2>/dev/null; then
-        echo "Using chkconfig to install service" 
-        chkconfig percona-agentd on
+        echo "Using chkconfig to install percona-agent service" 
+        chkconfig percona-agent on
 else
-        echo "Error: No chkconfig nor update-rc.d found " >&2
-        echo "Report following output to cloud-tools@percona.com: " >&2
-        cat /etc/*release >&2 
-        exit 1
+   error "Cannot find chkconfig or update-rc.d.  Please email the follow to cloud-tools@percona.com:
+$(cat /etc/*release)
+"
 fi
 
-mkdir -p /etc/percona
-# ${INSTALL_DIR}/agent/bin/percona-agent -basedir ${INSTALL_DIR}/agent > ${INSTALL_DIR}/agent/agent.log 2>&1 &
+# ###########################################################################
+# Cleanup
+# ###########################################################################
 
+echo "percona-agent install successful"
 exit 0
