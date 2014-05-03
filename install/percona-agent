@@ -32,7 +32,7 @@ fi
 chown "$USERNAME" "$BASEDIR" || exit 1
 
 # Make sure the percona-agent binary exists.
-CMD="/usr/local/percona/$SERVICE/bin/$SERVICE"
+CMD="$BASEDIR/bin/$SERVICE"
 if [ ! -x "$CMD" ]; then
    echo "$CMD does not exist or is not executable. Check that $SERVICE" \
         "has been installed correctly." >&2

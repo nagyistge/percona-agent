@@ -1,12 +1,22 @@
 #!/bin/bash
 
-# Install from web
-# wget -qO- http://www.percona.com/downloads/TESTING/percona-agent/install | sudo bash
+# You can run this script locally, but it's main purpose is to be ran from
+# percona.com like:
+#
+#   wget -qO- percona.com/downloads/TESTING/percona-agent/install | sudo bash
+#
+# This script is mostly a wrapper around the percona-agent-installer binary
+# which does the heay lifting: creating API resources, configuring service, etc.
+
+set -u
 
 error() {
    echo "ERROR: $1" >&2
    exit 1
 }
+
+# To avoid typos for the most repeated and important word in the script:
+BIN="percona-agent"
 
 # ###########################################################################
 # Sanity checks and setup
@@ -14,31 +24,38 @@ error() {
 
 # Check if script is run as root as we need write access to /etc, /usr/local
 if [ $EUID -ne 0 ]; then
-   error "percona-agent install requires root user; detected effective user ID $EUID"
+   error "$BIN install requires root user; detected effective user ID $EUID"
 fi
 
 # Check compatibility
 KERNEL=`uname -s`
-if [ "$KERNEL" != "Linux" -a "$KERNAL" != "Darwin" ]; then
-   error "percona-agent only runs on Linxu; detected $KERNEL"
+if [ "$KERNEL" != "Linux" -a "$KERNEL" != "Darwin" ]; then
+   error "$BIN only runs on Linxu; detected $KERNEL"
 fi
 
 PLATFORM=`uname -m`
 if [ "$PLATFORM" != "x86_64" -a "$PLATFORM" != "i686" -a "$PLATFORM" != "i386" ]; then
-   error "percona-agent only support x86_64 and i686 platforms; detected $PLATFORM"
+   error "$BIN only support x86_64 and i686 platforms; detected $PLATFORM"
 fi
 
-echo "percona-agent install detected $KERNEL $PLATFORM" 
+WGET="$(which wget)"
+CURL="$(which curl)"
+if [ -z "$WGET" -a -z "$CURL" ]; then
+   error "Neither wget nor curl is installed or in PATH"
+fi
 
-# Set up variables
-TARGZ_NAME="percona-agent.tar.gz"
-DOWNLOADPATH="http://www.percona.com/downloads/TESTING/percona-agent/$TARGZ_NAME"
-INSTALL_DIR="/usr/local/percona/"
-BASEDIR="$INSTALL_DIR/percona-agent"
+echo "Detected $KERNEL $PLATFORM" 
 
-TMP_PATH="$(mktemp -d /tmp/percona-agent.XXXXXX)" || exit 1
-TMP_FILENAME="$TMP_PATH/$TARGZ_NAME"
+# Set up variables.
+PKG="$BIN.tar.gz"
+DOWNLOAD_URL="${DOWNLOAD_URL:-"http://www.percona.com/downloads/TESTING/$BIN/$PKG"}"
+INSTALL_DIR="/usr/local/percona"
 
+TMP_DIR="$(mktemp -d /tmp/$BIN.XXXXXX)" || exit 1
+TMP_PKG="$TMP_DIR/$PKG"
+
+# BASEDIR here must match BASEDIR in percona-agent sys-init script.
+BASEDIR="$INSTALL_DIR/$BIN" 
 mkdir -p "$BASEDIR" \
    || error "'mkdir -p $BASEDIR' failed"
 
@@ -46,51 +63,71 @@ mkdir -p "$BASEDIR" \
 # Download and extract package
 # ###########################################################################
 
-echo "Downloading $DOWNLOADPATH to $TMP_FILENAME..."
-wget "$DOWNLOADPATH" -O "$TMP_FILENAME"
+echo "Downloading $DOWNLOAD_URL to $TMP_PKG..."
+if [ "$WGET" ]; then 
+   "$WGET" "$DOWNLOAD_URL" -O "$TMP_PKG"
+else
+   "$CURL" -L "$DOWNLOAD_URL" -o "$TMP_PKG"
+fi
 if [ $? -ne 0 ] ; then
-   error "'wget $DOWNLOADPATH' failed"
+   error "Failed to download $DOWNLOAD_URL"
 fi
 
-echo "Extracting $TMP_FILENAME to $INSTALL_DIR..."
-tar -xzf "$TMP_FILENAME" -C "$INSTALL_DIR" --overwrite \
-   || error "Failed to extract $TMP_FILENAME"
+echo "Extracting $TMP_PKG to $INSTALL_DIR..."
+tar -xzf "$TMP_PKG" -C "$INSTALL_DIR" --overwrite \
+   || error "Failed to extract $TMP_PKG"
 
-rm -rf "$TMP_PATH" \
-   || error "Failed to remove $TMP_PATH"
+rm -rf "$TMP_DIR" \
+   || echo "Cannot remove $TMP_DIR (ignoring)"
 
 # ###########################################################################
 # Install percona-agent (percona-agent-setup install)
 # ###########################################################################
 
-"$TMP_PATH/percona-agent-installer" -basedir "$BASEDIR"
+"$BASEDIR/bin/$BIN-installer" -basedir "$BASEDIR"
 if [ $? -ne 0 ]; then
-   error "Failed to install percona-agent"
+   error "Failed to install $BIN"
+fi
+
+"$BASEDIR/bin/$BIN" -ping
+if [ $? -ne 0 ]; then
+   error "Installed $BIN but ping test failed"
 fi
 
 # ###########################################################################
 # Install sys-int script
 # ###########################################################################
 
-cp -f "$INSTALL_DIR/percona-agent/sys-init/percona-agent" "/etc/init.d"
-chmod a+x "/etc/init.d/percona-agent"
+if [ "$KERNEL" != "Darwin" ]; then
+   cp -f "$INSTALL_DIR/$BIN/sys-init/$BIN" "/etc/init.d"
+   chmod a+x "/etc/init.d/$BIN"
 
-# Check if the system has chkconfig or update-rc.d.
-if hash update-rc.d 2>/dev/null; then
-        echo "Using update-rc.d to install percona-agent service" 
-        update-rc.d  percona-agent defaults
-elif hash chkconfig 2>/dev/null; then
-        echo "Using chkconfig to install percona-agent service" 
-        chkconfig percona-agent on
+   # Check if the system has chkconfig or update-rc.d.
+   if hash update-rc.d 2>/dev/null; then
+           echo "Using update-rc.d to install $BIN service" 
+           update-rc.d  $BIN defaults
+   elif hash chkconfig 2>/dev/null; then
+           echo "Using chkconfig to install $BIN service" 
+           chkconfig $BIN on
+   else
+      echo "Cannot find chkconfig or update-rc.d.  $BIN is installed but"
+      echo "it will not restart automatically with the server on reboot.  Please"
+      echo "email the follow to cloud-tools@percona.com:"
+      cat /etc/*release
+   fi
+
+   /etc/init.d/$BIN start
+   if [ $? -ne 0 ]; then
+      error "Failed to start $BIN"
+   fi
 else
-   error "Cannot find chkconfig or update-rc.d.  Please email the follow to cloud-tools@percona.com:
-$(cat /etc/*release)
-"
+   echo "Mac OS detected, not installing sys-init script.  To start $BIN:"
+   echo "$BASEDIR/bin/$BIN -basedir $BASEDIR"
 fi
 
 # ###########################################################################
 # Cleanup
 # ###########################################################################
 
-echo "percona-agent install successful"
+echo "$BIN install successful"
 exit 0
