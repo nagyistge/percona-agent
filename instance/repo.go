@@ -187,7 +187,7 @@ func (r *Repo) get(service string, id uint, info interface{}) error {
 		}
 		url := fmt.Sprintf("%s/%s/%d", link, service, id)
 		r.logger.Info("GET", url)
-		code, data, err := r.api.Get(url)
+		code, data, err := r.api.Get(r.api.ApiKey(), url)
 		if err != nil {
 			return fmt.Errorf("Failed to get %s instance from %s: %s", name, link, err)
 		} else if code != 200 {

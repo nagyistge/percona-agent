@@ -15,15 +15,31 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package log
+package mysql_test
 
-const (
-	DEFAULT_LOG_FILE  = ""
-	DEFAULT_LOG_LEVEL = "info"
+import (
+	"fmt"
+	"github.com/percona/cloud-tools/mysql"
+	. "launchpad.net/gocheck"
 )
 
-type Config struct {
-	Level   string
-	File    string
-	Offline bool
+type DSNTestSuite struct {
+}
+
+var _ = Suite(&DSNTestSuite{})
+
+func (s *DSNTestSuite) TestAllFields(t *C) {
+	dsn := mysql.DSN{
+		Username: "user",
+		Password: "pass",
+		Hostname: "host.example.com",
+		Port:     "3306",
+	}
+	str, err := dsn.DSN()
+	t.Check(err, IsNil)
+	t.Check(str, Equals, "user:pass@tcp(host.example.com:3306)/")
+
+	// Stringify DSN removes password, e.g. makes it safe to print log, etc.
+	str = fmt.Sprintf("%s", dsn)
+	t.Check(str, Equals, "user:...@tcp(host.example.com:3306)/")
 }
