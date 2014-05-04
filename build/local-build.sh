@@ -19,6 +19,7 @@ if [ -d $BIN ]; then
 fi
 mkdir -p "$BIN/bin" "$BIN/init.d"
 
+cp ../install/install.sh $BIN/install
 cp ../COPYING ../README.md ../Changelog.md $BIN/
 cp ../bin/$BIN/$BIN ../bin/$BIN-installer/$BIN-installer $BIN/bin
 cp ../install/$BIN $BIN/init.d
