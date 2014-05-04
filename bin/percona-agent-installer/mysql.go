@@ -9,6 +9,14 @@ import (
 	"strings"
 )
 
+func MakeGrant(dsn mysql.DSN) string {
+	host := "%"
+	if dsn.Socket != "" || dsn.Hostname == "localhost" {
+		host = "localhost"
+	}
+	return "GRANT SUPER, PROCESS, USAGE ON *.* TO '%s'@'" + host + "' IDENTIFIED BY '%s'"
+}
+
 func (i *Installer) doMySQL() (dsn mysql.DSN, err error) {
 	// XXX Using implicit return
 	newMySQLUser, err := i.term.PromptBool("Create new MySQL account for agent?", "Y")

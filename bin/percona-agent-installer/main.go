@@ -27,10 +27,11 @@ func init() {
 	flag.BoolVar(&flagDebug, "debug", false, "Debug")
 	flag.BoolVar(&flagSkipMySQL, "skip-mysql", false, "Skip MySQL steps")
 	flag.BoolVar(&flagSkipAgent, "skip-agent", false, "Skip agent steps")
-	flag.Parse()
 }
 
 func main() {
+	flag.Parse()
+
 	agentConfig := &agent.Config{
 		ApiHostname: flagApiHostname,
 		ApiKey:      flagApiKey,
