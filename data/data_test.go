@@ -456,6 +456,9 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 		Encoding:     "",
 		SendInterval: 1,
 	}
+	bytes, _ := json.Marshal(config)
+	// Write config to disk because manager reads it on start,
+	// else it uses default config.
 	pct.Basedir.WriteConfig("data", config)
 
 	err := m.Start()
@@ -474,10 +477,22 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 		Cmd:     "GetConfig",
 	}
 
-	gotReply := m.Handle(cmd)
-	expectReply := cmd.Reply(config)
-	if same, diff := test.IsDeeply(gotReply, expectReply); !same {
-		test.Dump(gotReply)
+	reply := m.Handle(cmd)
+	t.Assert(reply.Error, Equals, "")
+	t.Assert(reply.Data, NotNil)
+	gotConfig := []proto.AgentConfig{}
+	if err := json.Unmarshal(reply.Data, &gotConfig); err != nil {
+		t.Fatal(err)
+	}
+	expectConfig := []proto.AgentConfig{
+		{
+			InternalService: "data",
+			Config:          string(bytes),
+			Running:         true,
+		},
+	}
+	if same, diff := test.IsDeeply(gotConfig, expectConfig); !same {
+		test.Dump(gotConfig)
 		t.Error(diff)
 	}
 
@@ -489,6 +504,19 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	status := m.Status()
 	t.Check(status["data-spooler"], Equals, "Stopped")
 	t.Check(status["data-sender"], Equals, "Stopped")
+
+	// Config should report Running: false.
+	reply = m.Handle(cmd)
+	t.Assert(reply.Error, Equals, "")
+	t.Assert(reply.Data, NotNil)
+	if err := json.Unmarshal(reply.Data, &gotConfig); err != nil {
+		t.Fatal(err)
+	}
+	expectConfig[0].Running = false
+	if same, diff := test.IsDeeply(gotConfig, expectConfig); !same {
+		test.Dump(gotConfig)
+		t.Error(diff)
+	}
 }
 
 func (s *ManagerTestSuite) TestSetConfig(t *C) {
@@ -528,13 +556,22 @@ func (s *ManagerTestSuite) TestSetConfig(t *C) {
 		Service: "data",
 		Cmd:     "GetConfig",
 	}
-	gotReply = m.Handle(cmd)
-	gotNewConfig := &data.Config{}
-	err = json.Unmarshal(gotReply.Data, gotNewConfig)
-	t.Assert(err, IsNil)
-	t.Check(gotNewConfig.SendInterval, Equals, 5)
-	if same, diff := test.IsDeeply(gotNewConfig, config); !same {
-		test.Dump(gotNewConfig)
+	reply := m.Handle(cmd)
+	t.Assert(reply.Error, Equals, "")
+	t.Assert(reply.Data, NotNil)
+	gotConfigRes := []proto.AgentConfig{}
+	if err := json.Unmarshal(reply.Data, &gotConfigRes); err != nil {
+		t.Fatal(err)
+	}
+	expectConfigRes := []proto.AgentConfig{
+		{
+			InternalService: "data",
+			Config:          string(configData),
+			Running:         true,
+		},
+	}
+	if same, diff := test.IsDeeply(gotConfigRes, expectConfigRes); !same {
+		test.Dump(gotConfigRes)
 		t.Error(diff)
 	}
 
@@ -571,13 +608,21 @@ func (s *ManagerTestSuite) TestSetConfig(t *C) {
 		Service: "data",
 		Cmd:     "GetConfig",
 	}
-	gotReply = m.Handle(cmd)
-	gotNewConfig = &data.Config{}
-	err = json.Unmarshal(gotReply.Data, gotNewConfig)
-	t.Assert(err, IsNil)
-	t.Check(gotNewConfig.Encoding, Equals, "gzip")
-	if same, diff := test.IsDeeply(gotNewConfig, config); !same {
-		test.Dump(gotNewConfig)
+	reply = m.Handle(cmd)
+	t.Assert(reply.Error, Equals, "")
+	t.Assert(reply.Data, NotNil)
+	if err := json.Unmarshal(reply.Data, &gotConfigRes); err != nil {
+		t.Fatal(err)
+	}
+	expectConfigRes = []proto.AgentConfig{
+		{
+			InternalService: "data",
+			Config:          string(configData),
+			Running:         true,
+		},
+	}
+	if same, diff := test.IsDeeply(gotConfigRes, expectConfigRes); !same {
+		test.Dump(gotConfigRes)
 		t.Error(diff)
 	}
 

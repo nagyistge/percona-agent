@@ -278,6 +278,29 @@ func LoadConfig() ([]byte, error) {
 	return data, nil
 }
 
+func (agent *Agent) GetConfig() ([]proto.AgentConfig, error) {
+	agent.configMux.RLock()
+	defer agent.configMux.RUnlock()
+
+	// Copy config so we can clear the Links which are internal only,
+	// not really part of the agent config.  Then convert to JSON string.
+	config := *agent.config
+	config.Links = nil
+	bytes, err := json.Marshal(config)
+	if err != nil {
+		return nil, err
+	}
+
+	// Configs are always returned as array of AgentConfig resources.
+	agentConfig := proto.AgentConfig{
+		InternalService: "agent",
+		// no external service
+		Config:  string(bytes),
+		Running: true,
+	}
+	return []proto.AgentConfig{agentConfig}, nil
+}
+
 // --------------------------------------------------------------------------
 // Command handler
 // --------------------------------------------------------------------------
@@ -380,6 +403,8 @@ func (agent *Agent) Handle(cmd *proto.Cmd) *proto.Reply {
 		data, err = agent.handleStopService(cmd)
 	case "GetConfig":
 		data, err = agent.handleGetConfig(cmd)
+	case "GetAllConfig":
+		data, err = agent.handleGetAllConfig(cmd)
 	case "SetConfig":
 		data, errs = agent.handleSetConfig(cmd)
 	case "Update":
@@ -454,14 +479,28 @@ func (agent *Agent) handleStopService(cmd *proto.Cmd) (interface{}, error) {
 func (agent *Agent) handleGetConfig(cmd *proto.Cmd) (interface{}, error) {
 	agent.status.UpdateRe("agent-cmd-handler", "GetConfig", cmd)
 	agent.logger.Info(cmd)
+	return agent.GetConfig()
+}
 
-	agent.configMux.RLock()
-	defer agent.configMux.RUnlock()
-
-	config := *agent.config
-	config.Links = nil // not saved, not reported
-
-	return config, nil
+// Handle:@goroutine[3]
+func (agent *Agent) handleGetAllConfig(cmd *proto.Cmd) (interface{}, error) {
+	configs, err := agent.GetConfig()
+	if err != nil {
+		return nil, err
+	}
+	for service, manager := range agent.services {
+		if manager == nil { // should not happen
+			agent.logger.Error("Nil manager:", service)
+			continue
+		}
+		config, err := manager.GetConfig()
+		if err != nil {
+			agent.logger.Error("Cannot get", service, "configs:", err)
+			continue
+		}
+		configs = append(configs, config...)
+	}
+	return configs, nil
 }
 
 // Handle:@goroutine[3]
@@ -474,7 +513,10 @@ func (agent *Agent) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 		return nil, []error{err}
 	}
 
+	agent.configMux.RLock()
 	finalConfig := *agent.config // copy current config
+	agent.configMux.RUnlock()
+
 	errs := []error{}
 
 	// Change the API key.
