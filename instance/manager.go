@@ -98,6 +98,10 @@ func (m *Manager) Status() map[string]string {
 	return m.status.All()
 }
 
+func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
+	return nil, nil
+}
+
 func (m *Manager) Repo() *Repo {
 	return m.repo
 }

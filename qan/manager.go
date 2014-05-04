@@ -41,8 +41,9 @@ type Manager struct {
 	spool         data.Spooler
 	im            *instance.Repo
 	// --
-	config         *Config // nil if not running
-	mux            *sync.RWMutex
+	config         *Config
+	running        bool
+	mux            *sync.RWMutex // guards config and running
 	tickChan       chan time.Time
 	mysqlConn      mysql.Connector
 	iter           IntervalIter
@@ -108,6 +109,7 @@ func (m *Manager) Start() error {
 		return err
 	}
 	m.config = config
+	m.running = true
 
 	m.logger.Info("Started")
 	return nil // success
@@ -116,27 +118,23 @@ func (m *Manager) Start() error {
 func (m *Manager) Stop() error {
 	m.mux.Lock()
 	defer m.mux.Unlock()
-
-	if m.config == nil {
+	if !m.running {
 		return nil
 	}
-
 	m.status.Update("qan", "Stopping")
-	defer m.status.Update("qan", "Stopped")
-
 	if err := m.stop(); err != nil {
 		m.logger.Error(err)
 	}
-	m.config = nil
-
+	m.running = false
 	m.logger.Info("Stopped")
+	m.status.Update("qan", "Stopped")
 	return nil
 }
 
 func (m *Manager) Status() map[string]string {
 	m.mux.RLock()
 	defer m.mux.RUnlock()
-	if m.config != nil {
+	if m.running {
 		m.status.Update("qan-next-interval", fmt.Sprintf("%.1fs", m.clock.ETA(m.tickChan)))
 	} else {
 		m.status.Update("qan-next-interval", "")
@@ -156,12 +154,11 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	m.status.UpdateRe("qan", "Handling", cmd)
 	defer m.status.Update("qan", "Running")
 
-	m.mux.Lock()
-	defer m.mux.Unlock()
-
 	switch cmd.Cmd {
 	case "StartService":
-		if m.config != nil {
+		m.mux.Lock()
+		defer m.mux.Unlock()
+		if m.running {
 			return cmd.Reply(nil, pct.ServiceIsRunningError{Service: "qan"})
 		}
 
@@ -174,6 +171,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		if err := m.start(config); err != nil {
 			return cmd.Reply(nil, err)
 		}
+		m.running = true
 
 		// Save the config.
 		m.config = config
@@ -183,25 +181,45 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 		return cmd.Reply(nil) // success
 	case "StopService":
-		if m.config == nil {
+		m.mux.Lock()
+		defer m.mux.Unlock()
+		if !m.running {
 			return cmd.Reply(nil)
 		}
 		errs := []error{}
 		if err := m.stop(); err != nil {
 			errs = append(errs, err)
 		}
-		m.config = nil
+		m.running = false
 		if err := pct.Basedir.RemoveConfig("qan"); err != nil {
 			errs = append(errs, err)
 		}
 		return cmd.Reply(nil, errs...)
 	case "GetConfig":
-		return cmd.Reply(m.config)
+		config, errs := m.GetConfig()
+		return cmd.Reply(config, errs...)
 	default:
 		// SetConfig does not work by design.  To re-configure QAN,
 		// stop it then start it again with the new config.
 		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
+}
+
+func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
+	m.mux.RLock()
+	defer m.mux.RUnlock()
+	bytes, err := json.Marshal(m.config)
+	if err != nil {
+		return nil, []error{err}
+	}
+	// Configs are always returned as array of AgentConfig resources.
+	config := proto.AgentConfig{
+		InternalService: "qan",
+		// no external service
+		Config:  string(bytes),
+		Running: m.running,
+	}
+	return []proto.AgentConfig{config}, nil
 }
 
 /////////////////////////////////////////////////////////////////////////////

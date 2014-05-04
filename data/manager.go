@@ -61,6 +61,9 @@ func NewManager(logger *pct.Logger, dataDir string, hostname string, client pct.
 
 // @goroutine[0]
 func (m *Manager) Start() error {
+	m.mux.Lock()
+	defer m.mux.Unlock()
+
 	if m.config != nil {
 		return pct.ServiceIsRunningError{Service: "data"}
 	}
@@ -112,8 +115,6 @@ func (m *Manager) Start() error {
 	}
 	m.sender = sender
 
-	m.mux.Lock()
-	defer m.mux.Unlock()
 	m.config = config
 	m.running = true
 
@@ -149,8 +150,8 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 	switch cmd.Cmd {
 	case "GetConfig":
-		config, err := m.GetConfig()
-		return cmd.Reply(config, err)
+		config, errs := m.GetConfig()
+		return cmd.Reply(config, errs...)
 	case "SetConfig":
 		newConfig, errs := m.handleSetConfig(cmd)
 		return cmd.Reply(newConfig, errs...)
@@ -164,12 +165,12 @@ func (m *Manager) Status() map[string]string {
 	return m.status.Merge(m.client.Status(), m.spooler.Status(), m.sender.Status())
 }
 
-func (m *Manager) GetConfig() ([]proto.AgentConfig, error) {
+func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 	m.mux.Lock()
 	defer m.mux.Unlock()
 	bytes, err := json.Marshal(m.config)
 	if err != nil {
-		return nil, err
+		return nil, []error{err}
 	}
 	// Configs are always returned as array of AgentConfig resources.
 	config := proto.AgentConfig{

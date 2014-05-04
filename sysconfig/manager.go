@@ -44,12 +44,12 @@ type Manager struct {
 	spool   data.Spooler
 	im      *instance.Repo
 	// --
-	reportChan     chan *Report // <- Report from monitor
 	monitors       map[string]Monitor
-	status         *pct.Status
 	running        bool
+	mux            *sync.RWMutex // guards monitors and running
+	reportChan     chan *Report  // <- Report from monitor
 	spoolerRunning bool
-	mux            *sync.RWMutex
+	status         *pct.Status
 }
 
 func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager, spool data.Spooler, im *instance.Repo) *Manager {
@@ -63,7 +63,7 @@ func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager
 		reportChan: make(chan *Report, 3),
 		monitors:   make(map[string]Monitor),
 		status:     pct.NewStatus([]string{"sysconfig", "sysconfig-spooler"}),
-		mux:        new(sync.RWMutex),
+		mux:        &sync.RWMutex{},
 	}
 	return m
 }
@@ -214,18 +214,8 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		m.mux.Unlock()
 		return cmd.Reply(nil) // success
 	case "GetConfig":
-		configs := make(map[string]string)
-		m.mux.RLock()
-		for name, monitor := range m.monitors {
-			config := monitor.Config()
-			bytes, err := json.Marshal(config)
-			if err != nil {
-				m.logger.Error(err)
-			}
-			configs[name] = string(bytes)
-		}
-		m.mux.RUnlock()
-		return cmd.Reply(configs)
+		config, errs := m.GetConfig()
+		return cmd.Reply(config, errs...)
 	default:
 		// SetConfig does not work by design.  To re-configure a monitor,
 		// stop it then start it again with the new config.
@@ -245,6 +235,44 @@ func (m *Manager) Status() map[string]string {
 		}
 	}
 	return status
+}
+
+func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
+	m.mux.RLock()
+	defer m.mux.RUnlock()
+
+	// Manager does not have its own config.  It returns all monitors' configs instead.
+
+	// Configs are always returned as array of AgentConfig resources.
+	configs := []proto.AgentConfig{}
+	errs := []error{}
+	for _, monitor := range m.monitors {
+		monitorConfig := monitor.Config()
+		// Full monitor config as JSON string.
+		bytes, err := json.Marshal(monitorConfig)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		// Just the monitor's ServiceInstance, aka ExternalService.
+		mmConfig := &Config{}
+		if err := json.Unmarshal(bytes, mmConfig); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		config := proto.AgentConfig{
+			InternalService: "sysconfig",
+			ExternalService: proto.ServiceInstance{
+				Service:    mmConfig.Service,
+				InstanceId: mmConfig.InstanceId,
+			},
+			Config:  string(bytes),
+			Running: true, // config removed if stopped, so it must be running
+		}
+		configs = append(configs, config)
+	}
+
+	return configs, errs
 }
 
 // --------------------------------------------------------------------------

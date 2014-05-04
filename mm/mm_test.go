@@ -702,17 +702,33 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	reply = m.Handle(cmd)
 	t.Assert(reply, NotNil)
 	t.Assert(reply.Error, Equals, "")
-
-	configs := make(map[string]string)
-	if err := json.Unmarshal(reply.Data, &configs); err != nil {
+	t.Assert(reply.Data, NotNil)
+	gotConfig := []proto.AgentConfig{}
+	if err := json.Unmarshal(reply.Data, &gotConfig); err != nil {
 		t.Fatal(err)
 	}
-	expect := map[string]string{
-		"mm-mysql-1":  string(mysqlData),
-		"mm-server-1": string(systemData),
+	expectConfig := []proto.AgentConfig{
+		{
+			InternalService: "mm",
+			ExternalService: proto.ServiceInstance{
+				Service:    "mysql",
+				InstanceId: 1,
+			},
+			Config:  string(mysqlData),
+			Running: true,
+		},
+		{
+			InternalService: "mm",
+			ExternalService: proto.ServiceInstance{
+				Service:    "server",
+				InstanceId: 1,
+			},
+			Config:  string(systemData),
+			Running: true,
+		},
 	}
-	if same, diff := test.IsDeeply(configs, expect); !same {
-		test.Dump(configs)
+	if same, diff := test.IsDeeply(gotConfig, expectConfig); !same {
+		test.Dump(gotConfig)
 		t.Error(diff)
 	}
 }

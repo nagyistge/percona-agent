@@ -278,7 +278,7 @@ func LoadConfig() ([]byte, error) {
 	return data, nil
 }
 
-func (agent *Agent) GetConfig() ([]proto.AgentConfig, error) {
+func (agent *Agent) GetConfig() ([]proto.AgentConfig, []error) {
 	agent.configMux.RLock()
 	defer agent.configMux.RUnlock()
 
@@ -288,7 +288,7 @@ func (agent *Agent) GetConfig() ([]proto.AgentConfig, error) {
 	config.Links = nil
 	bytes, err := json.Marshal(config)
 	if err != nil {
-		return nil, err
+		return nil, []error{err}
 	}
 
 	// Configs are always returned as array of AgentConfig resources.
@@ -298,7 +298,7 @@ func (agent *Agent) GetConfig() ([]proto.AgentConfig, error) {
 		Config:  string(bytes),
 		Running: true,
 	}
-	return []proto.AgentConfig{agentConfig}, nil
+	return []proto.AgentConfig{agentConfig}, []error{}
 }
 
 // --------------------------------------------------------------------------
@@ -402,9 +402,9 @@ func (agent *Agent) Handle(cmd *proto.Cmd) *proto.Reply {
 	case "StopService":
 		data, err = agent.handleStopService(cmd)
 	case "GetConfig":
-		data, err = agent.handleGetConfig(cmd)
+		data, errs = agent.handleGetConfig(cmd)
 	case "GetAllConfig":
-		data, err = agent.handleGetAllConfig(cmd)
+		data, errs = agent.handleGetAllConfig(cmd)
 	case "SetConfig":
 		data, errs = agent.handleSetConfig(cmd)
 	case "Update":
@@ -476,18 +476,15 @@ func (agent *Agent) handleStopService(cmd *proto.Cmd) (interface{}, error) {
 }
 
 // Handle:@goroutine[3]
-func (agent *Agent) handleGetConfig(cmd *proto.Cmd) (interface{}, error) {
+func (agent *Agent) handleGetConfig(cmd *proto.Cmd) (interface{}, []error) {
 	agent.status.UpdateRe("agent-cmd-handler", "GetConfig", cmd)
 	agent.logger.Info(cmd)
 	return agent.GetConfig()
 }
 
 // Handle:@goroutine[3]
-func (agent *Agent) handleGetAllConfig(cmd *proto.Cmd) (interface{}, error) {
-	configs, err := agent.GetConfig()
-	if err != nil {
-		return nil, err
-	}
+func (agent *Agent) handleGetAllConfig(cmd *proto.Cmd) (interface{}, []error) {
+	configs, errs := agent.GetConfig()
 	for service, manager := range agent.services {
 		if manager == nil { // should not happen
 			agent.logger.Error("Nil manager:", service)
@@ -495,12 +492,15 @@ func (agent *Agent) handleGetAllConfig(cmd *proto.Cmd) (interface{}, error) {
 		}
 		config, err := manager.GetConfig()
 		if err != nil {
-			agent.logger.Error("Cannot get", service, "configs:", err)
+			errs = append(errs, err...)
 			continue
 		}
-		configs = append(configs, config...)
+		if config != nil {
+			// Not all services have a config.
+			configs = append(configs, config...)
+		}
 	}
-	return configs, nil
+	return configs, errs
 }
 
 // Handle:@goroutine[3]

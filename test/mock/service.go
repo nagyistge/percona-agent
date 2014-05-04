@@ -51,7 +51,7 @@ func (m *MockServiceManager) Status() map[string]string {
 	return m.status.All()
 }
 
-func (m *MockServiceManager) GetConfig() ([]proto.AgentConfig, error) {
+func (m *MockServiceManager) GetConfig() ([]proto.AgentConfig, []error) {
 	return nil, nil
 }
 
