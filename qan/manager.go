@@ -206,6 +206,8 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 }
 
 func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
+	m.logger.Debug("GetConfig:call")
+	defer m.logger.Debug("GetConfig:return")
 	m.mux.RLock()
 	defer m.mux.RUnlock()
 	bytes, err := json.Marshal(m.config)

@@ -115,7 +115,7 @@ func (m *Manager) Start() error {
 		}
 		reply := m.Handle(cmd)
 		if reply.Error != "" {
-			m.logger.Error("Start " + configFile + ": " + err.Error())
+			m.logger.Error("Start " + configFile + ": " + reply.Error)
 			continue
 		}
 		m.logger.Info("Started " + configFile)
@@ -266,6 +266,9 @@ func (m *Manager) Status() map[string]string {
 }
 
 func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
+	m.logger.Debug("GetConfig:call")
+	defer m.logger.Debug("GetConfig:return")
+
 	m.mux.RLock()
 	defer m.mux.RUnlock()
 

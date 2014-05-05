@@ -279,6 +279,9 @@ func LoadConfig() ([]byte, error) {
 }
 
 func (agent *Agent) GetConfig() ([]proto.AgentConfig, []error) {
+	agent.logger.Debug("GetConfig:call")
+	defer agent.logger.Debug("GetConfig:return")
+
 	agent.configMux.RLock()
 	defer agent.configMux.RUnlock()
 
@@ -491,7 +494,7 @@ func (agent *Agent) handleGetAllConfigs(cmd *proto.Cmd) (interface{}, []error) {
 			continue
 		}
 		config, err := manager.GetConfig()
-		if err != nil {
+		if err != nil && len(err) > 0 {
 			errs = append(errs, err...)
 			continue
 		}
