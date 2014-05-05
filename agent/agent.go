@@ -403,8 +403,8 @@ func (agent *Agent) Handle(cmd *proto.Cmd) *proto.Reply {
 		data, err = agent.handleStopService(cmd)
 	case "GetConfig":
 		data, errs = agent.handleGetConfig(cmd)
-	case "GetAllConfig":
-		data, errs = agent.handleGetAllConfig(cmd)
+	case "GetAllConfigs":
+		data, errs = agent.handleGetAllConfigs(cmd)
 	case "SetConfig":
 		data, errs = agent.handleSetConfig(cmd)
 	case "Update":
@@ -483,7 +483,7 @@ func (agent *Agent) handleGetConfig(cmd *proto.Cmd) (interface{}, []error) {
 }
 
 // Handle:@goroutine[3]
-func (agent *Agent) handleGetAllConfig(cmd *proto.Cmd) (interface{}, []error) {
+func (agent *Agent) handleGetAllConfigs(cmd *proto.Cmd) (interface{}, []error) {
 	configs, errs := agent.GetConfig()
 	for service, manager := range agent.services {
 		if manager == nil { // should not happen
