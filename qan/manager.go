@@ -101,13 +101,16 @@ func (m *Manager) Start() error {
 			m.logger.Info("Not enabled")
 			return nil
 		}
-		return err
+		m.logger.Error("Read qan config:", err)
+		return nil
 	}
 
 	// Start run()/qan-log-parser.
 	if err := m.start(config); err != nil {
-		return err
+		m.logger.Error("Start qan:", err)
+		return nil
 	}
+
 	m.config = config
 	m.running = true
 
@@ -210,6 +213,9 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 	defer m.logger.Debug("GetConfig:return")
 	m.mux.RLock()
 	defer m.mux.RUnlock()
+	if m.config == nil {
+		return nil, nil
+	}
 	bytes, err := json.Marshal(m.config)
 	if err != nil {
 		return nil, []error{err}
