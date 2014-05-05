@@ -23,6 +23,7 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/cloud-tools/pct"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -33,6 +34,8 @@ type Manager struct {
 	client   pct.WebsocketClient
 	// --
 	config  *Config
+	running bool
+	mux     *sync.Mutex // guards config and running
 	sz      Serializer
 	spooler Spooler
 	sender  *Sender
@@ -47,6 +50,7 @@ func NewManager(logger *pct.Logger, dataDir string, hostname string, client pct.
 		client:   client,
 		// --
 		status: pct.NewStatus([]string{"data"}),
+		mux:    &sync.Mutex{},
 	}
 	return m
 }
@@ -57,6 +61,9 @@ func NewManager(logger *pct.Logger, dataDir string, hostname string, client pct.
 
 // @goroutine[0]
 func (m *Manager) Start() error {
+	m.mux.Lock()
+	defer m.mux.Unlock()
+
 	if m.config != nil {
 		return pct.ServiceIsRunningError{Service: "data"}
 	}
@@ -109,6 +116,8 @@ func (m *Manager) Start() error {
 	m.sender = sender
 
 	m.config = config
+	m.running = true
+
 	m.logger.Info("Started")
 	m.status.Update("data", "Running")
 	return nil
@@ -124,6 +133,11 @@ func (m *Manager) Stop() error {
 
 	m.logger.Info("data", "Stopped")
 	m.status.Update("data", "Stopped")
+
+	m.mux.Lock()
+	defer m.mux.Unlock()
+	m.running = false
+
 	return nil
 }
 
@@ -136,8 +150,8 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 	switch cmd.Cmd {
 	case "GetConfig":
-		// proto.Cmd[Service:data, Cmd:GetConfig]
-		return cmd.Reply(m.config)
+		config, errs := m.GetConfig()
+		return cmd.Reply(config, errs...)
 	case "SetConfig":
 		newConfig, errs := m.handleSetConfig(cmd)
 		return cmd.Reply(newConfig, errs...)
@@ -149,6 +163,23 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 // @goroutine[0:1]
 func (m *Manager) Status() map[string]string {
 	return m.status.Merge(m.client.Status(), m.spooler.Status(), m.sender.Status())
+}
+
+func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
+	m.mux.Lock()
+	defer m.mux.Unlock()
+	bytes, err := json.Marshal(m.config)
+	if err != nil {
+		return nil, []error{err}
+	}
+	// Configs are always returned as array of AgentConfig resources.
+	config := proto.AgentConfig{
+		InternalService: "data",
+		// no external service
+		Config:  string(bytes),
+		Running: m.running,
+	}
+	return []proto.AgentConfig{config}, nil
 }
 
 func (m *Manager) Spooler() Spooler {
@@ -186,7 +217,10 @@ func (m *Manager) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 		return nil, []error{err}
 	}
 
+	m.mux.Lock()
+	defer m.mux.Unlock()
 	finalConfig := *m.config // copy current config
+
 	errs := []error{}
 
 	/**

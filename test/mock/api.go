@@ -61,7 +61,7 @@ func (a *API) AgentUuid() string {
 	return a.agentUuid
 }
 
-func (a *API) Get(url string) (int, []byte, error) {
+func (a *API) Get(string, string) (int, []byte, error) {
 	code := 200
 	var data []byte
 	var err error
@@ -78,4 +78,12 @@ func (a *API) Get(url string) (int, []byte, error) {
 		a.GetError = a.GetError[1:len(a.GetError)]
 	}
 	return code, data, err
+}
+
+func (a *API) Post(apiKey, url string, data []byte) (*http.Response, []byte, error) {
+	return nil, nil, nil
+}
+
+func (a *API) Put(apiKey, url string, data []byte) (*http.Response, []byte, error) {
+	return nil, nil, nil
 }

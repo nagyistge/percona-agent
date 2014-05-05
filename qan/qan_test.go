@@ -942,14 +942,20 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 		Service: "qan",
 	}
 	reply = m.Handle(cmd)
-	t.Assert(reply, NotNil)
 	t.Assert(reply.Error, Equals, "")
-
-	gotConfig := &qan.Config{}
-	if err := json.Unmarshal(reply.Data, gotConfig); err != nil {
+	t.Assert(reply.Data, NotNil)
+	gotConfig := []proto.AgentConfig{}
+	if err := json.Unmarshal(reply.Data, &gotConfig); err != nil {
 		t.Fatal(err)
 	}
-	if same, diff := test.IsDeeply(gotConfig, config); !same {
+	expectConfig := []proto.AgentConfig{
+		{
+			InternalService: "qan",
+			Config:          string(qanConfig),
+			Running:         true,
+		},
+	}
+	if same, diff := test.IsDeeply(gotConfig, expectConfig); !same {
 		test.Dump(gotConfig)
 		t.Error(diff)
 	}

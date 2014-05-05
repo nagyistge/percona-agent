@@ -31,11 +31,12 @@ type Manager struct {
 	client  pct.WebsocketClient
 	logChan chan *proto.LogEntry
 	// --
-	mux    *sync.RWMutex
-	config *Config
-	logger *pct.Logger
-	relay  *Relay
-	status *pct.Status
+	config  *Config
+	running bool
+	mux     *sync.RWMutex // guards config and running
+	logger  *pct.Logger
+	relay   *Relay
+	status  *pct.Status
 }
 
 func NewManager(client pct.WebsocketClient, logChan chan *proto.LogEntry) *Manager {
@@ -44,7 +45,7 @@ func NewManager(client pct.WebsocketClient, logChan chan *proto.LogEntry) *Manag
 		logChan: logChan,
 		// --
 		status: pct.NewStatus([]string{"log"}),
-		mux:    new(sync.RWMutex),
+		mux:    &sync.RWMutex{},
 	}
 	return m
 }
@@ -76,6 +77,7 @@ func (m *Manager) Start() error {
 
 	m.logger = pct.NewLogger(m.relay.LogChan(), "log")
 	m.config = config
+	m.running = true
 
 	m.logger.Info("Started")
 	m.status.Update("log", "Running")
@@ -92,11 +94,11 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	m.status.UpdateRe("log", "Handling", cmd)
 	defer m.status.Update("log", "Running")
 
-	m.mux.Lock()
-	defer m.mux.Unlock()
-
 	switch cmd.Cmd {
 	case "SetConfig":
+		m.mux.Lock()
+		defer m.mux.Unlock()
+
 		// proto.Cmd[Service:log, Cmd:SetConfig, Data:log.Config]
 		newConfig := &Config{}
 		if err := json.Unmarshal(cmd.Data, newConfig); err != nil {
@@ -133,8 +135,8 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 		return cmd.Reply(m.config, errs...)
 	case "GetConfig":
-		// proto.Cmd[Service:log, Cmd:GetConfig]
-		return cmd.Reply(m.config)
+		config, errs := m.GetConfig()
+		return cmd.Reply(config, errs...)
 	case "Reconnect":
 		err := m.client.Disconnect()
 		return cmd.Reply(nil, err)
@@ -146,6 +148,23 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 // @goroutine[0]
 func (m *Manager) Status() map[string]string {
 	return m.status.Merge(m.client.Status(), m.relay.Status())
+}
+
+func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
+	m.mux.Lock()
+	defer m.mux.Unlock()
+	bytes, err := json.Marshal(m.config)
+	if err != nil {
+		return nil, []error{err}
+	}
+	// Configs are always returned as array of AgentConfig resources.
+	config := proto.AgentConfig{
+		InternalService: "log",
+		// no external service
+		Config:  string(bytes),
+		Running: m.running,
+	}
+	return []proto.AgentConfig{config}, nil
 }
 
 // @goroutine[0]

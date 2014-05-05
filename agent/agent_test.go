@@ -497,15 +497,23 @@ func (s *AgentTestSuite) TestGetConfig(t *C) {
 
 	got := test.WaitReply(s.recvChan)
 	t.Assert(len(got), Equals, 1)
-	gotConfig := &agent.Config{}
-	if err := json.Unmarshal(got[0].Data, gotConfig); err != nil {
+	gotConfig := []proto.AgentConfig{}
+	if err := json.Unmarshal(got[0].Data, &gotConfig); err != nil {
 		t.Fatal(err)
 	}
 
-	expect := *s.config
-	expect.Links = nil
+	config := *s.config
+	config.Links = nil
+	bytes, _ := json.Marshal(config)
+	expect := []proto.AgentConfig{
+		{
+			InternalService: "agent",
+			Config:          string(bytes),
+			Running:         true,
+		},
+	}
 
-	if ok, diff := test.IsDeeply(gotConfig, &expect); !ok {
+	if ok, diff := test.IsDeeply(gotConfig, expect); !ok {
 		t.Logf("%+v", gotConfig)
 		t.Error(diff)
 	}

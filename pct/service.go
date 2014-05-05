@@ -25,5 +25,6 @@ type ServiceManager interface {
 	Start() error
 	Stop() error
 	Status() map[string]string
+	GetConfig() ([]proto.AgentConfig, []error)
 	Handle(cmd *proto.Cmd) *proto.Reply
 }
