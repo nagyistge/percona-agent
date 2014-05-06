@@ -274,7 +274,7 @@ func run() error {
 		"data":      dataManager,
 		"qan":       qanManager,
 		"mm":        mmManager,
-		"it":        itManager,
+		"instance":  itManager,
 		"sysconfig": sysconfigManager,
 	}
 
