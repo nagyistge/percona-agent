@@ -422,7 +422,7 @@ func (agent *Agent) Handle(cmd *proto.Cmd) *proto.Reply {
 		errs = append(errs, err)
 	}
 	if len(errs) > 0 {
-		for err := range errs {
+		for _, err := range errs {
 			agent.logger.Error(err)
 		}
 	}
@@ -578,9 +578,9 @@ func (agent *Agent) handleVersion(cmd *proto.Cmd) (interface{}, []error) {
 func (agent *Agent) handleUpdate(cmd *proto.Cmd) (interface{}, []error) {
 	agent.status.UpdateRe("agent-cmd-handler", "Update", cmd)
 	agent.logger.Info(cmd)
-	version := ""
-	if err := json.Unmarshal(cmd.Data, &version); err != nil {
-		return nil, []error{err}
+	version := string(cmd.Data)
+	if version == "" {
+		return nil, []error{fmt.Errorf("Invalid version: '%s'", version)}
 	}
 	err := agent.updater.Update(version)
 	return nil, []error{err}

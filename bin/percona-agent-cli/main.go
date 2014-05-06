@@ -222,7 +222,7 @@ func (cli *Cli) send(args []string) {
 		fmt.Println("Agent UUID not set.  Use 'agent' command.")
 		return
 	}
-	if len(args) != 3 {
+	if len(args) < 3 {
 		fmt.Printf("ERROR: Invalid number of args: got %d, expected 3\n", len(args))
 		fmt.Println("Usage: send cmd service")
 		fmt.Println("Exmaple: send Stop agent")
@@ -234,6 +234,12 @@ func (cli *Cli) send(args []string) {
 		AgentUuid: cli.agentUuid,
 		Cmd:       args[1],
 		Service:   args[2],
+	}
+	if len(args) == 4 {
+		switch args[1] {
+		case "Update":
+			cmd.Data = []byte(args[3])
+		}
 	}
 	reply, err := cli.Put(cli.agentLinks["self"]+"/cmd", cmd)
 	if err != nil {
