@@ -92,15 +92,7 @@ func (agent *Agent) Run() error {
 	client := agent.client
 	client.Start()
 	cmdChan := client.RecvChan()
-
 	go agent.connect()
-
-	defer func() {
-		agent.stop()
-		logger.Info("Stopped")
-		client.Disconnect()
-		client.Stop()
-	}()
 
 	/*
 	 * Start the status and cmd handlers.  Most messages must be serialized because,
@@ -152,14 +144,19 @@ func (agent *Agent) Run() error {
 				if err != nil {
 					agent.reply(cmd.Reply(nil, err))
 				}
-				sh := fmt.Sprintf("#!/bin/sh\ncd %s\n%s %s >> %s/percona-agent.log 2>&1 &\n",
+				comment := fmt.Sprintf(
+					"This script was created by percona-agent in response to this Restart command:\n"+
+						"# %s\n"+
+						"# It is safe to delete.", cmd)
+				sh := fmt.Sprintf("#!/bin/sh\n# %s\ncd %s\n./%s %s >> %s/percona-agent.log 2>&1 &\n",
+					comment,
 					cwd,
 					os.Args[0],
 					strings.Join(os.Args[1:len(os.Args)], " "),
 					pct.Basedir.Path(),
 				)
 				startScript := filepath.Join(pct.Basedir.Path(), "start")
-				if err := ioutil.WriteFile(startScript, []byte(sh), os.FileMode(0554)); err != nil {
+				if err := ioutil.WriteFile(startScript, []byte(sh), os.FileMode(0754)); err != nil {
 					agent.reply(cmd.Reply(nil, err))
 				}
 				logger.Debug("Restart:sh")
@@ -170,8 +167,12 @@ func (agent *Agent) Run() error {
 				return nil
 			case "Stop":
 				logger.Debug("cmd:stop")
+				logger.Info("Stopping", cmd)
 				agent.status.UpdateRe("agent", "Stopping", cmd)
+				agent.stop()
 				agent.reply(cmd.Reply(nil))
+				logger.Info("Stopped", cmd)
+				agent.status.UpdateRe("agent", "Stopped", cmd)
 				return nil
 			case "Status":
 				logger.Debug("cmd:status")
