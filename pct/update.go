@@ -33,15 +33,19 @@ import (
 	"strings"
 )
 
-// todo: use real key, this is the test key
 var PublicKey = []byte(`-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnkM3amaGKrr5uflqIPYO
-NNrjxU0a5AOXkR50TW4uLAwsFoz02Ro2MWjEoTP+G4sIFi5NCxwQpzXjrj7LEVj6
-7pYjlpbZhb3w4lWU7HBul9v1wDVnr6jf4OgJX8DGzeyCztP2pcgwgSGjAvXJzUfM
-2dwnJylRdnQ1W+Id6y3iTiQBP6hA0n+bFw08xkh/pX2nEYEFyvdVf05fBGv/adnU
-AaKmZZx3FF/XE5z7Uw90e78u+a7acE1yKkiW9vAR/7/G5VnGIKduMoFSJLcEc/Ox
-DHFwESunrPT0WZnsoJpTWpKkTu0mYzEwoRZ8v4L5UfuxNWVhyWUVsDrAq5vFs6Ii
-sQIDAQAB
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA3Ks0r5mrqcxOj95VLyCC
+JGkilUyyqIwK9YANtf1qOghQHM4qR1g22c+4iLalzcKuf7fRFWyEOmthUMJEdaPN
+k3bHTvqBOVsKigq1Yjydlrk3uIvCBLA37HbHKqM7Uq3vPG25GGxv3wI6NbS1fJOO
+VnX0gUYTEiQrbv5OjSBBX/A1mj2RBbSVmHbRSwogFGrxEcz+cn8ulDp+8BOtUHmj
+/4FY4IXjeLHihBv/q4TQrO3m0CSig3hmfPJiGpWFdxO5dldb8HN1L+P2EsI6xSxo
+5Rk48UbIRBgZjZKQcRCacM0V4Co+HxmtXQkrNIf7jdX6iYXPUD/c8+k7rM1eLgEQ
+5jNKQEAiLBdB8ZhDtA4MgFHu8ygwEdYtydo0zLqU0EmtpdmUqnVidudaqVFSiC2Q
+KAlH5+r/arnC47cwxa4XletbFzEUcw8sC8ZeqWRSC4EGBJI3fgxoikXsarDQ+uoo
+9Hy7jB6XbSGgOJE8Spw3q39DQsB2l7sBliEvi5cl1svRMwrNrTd4A2juAze/GQ+B
+tqLJb/FMM1F7LaCl8nLDTf1jPav1/BN5u2y893gX8e48MyUaDtzdiT5HMzMaGkIc
+IaY4e/7W5A+S1qCWV0AXTawBgcorRCnUucIjrq6canVZj7BdZpADysRzMib8fS8O
+3ca1+bu7FtdcwOTpZusdRfUCAwEAAQ==
 -----END PUBLIC KEY-----`)
 
 type Updater struct {
@@ -103,12 +107,12 @@ func (u *Updater) Update(version string) error {
 	u.logger.Info("Updating to", version)
 
 	// Download and decompress the gzipped bin and its signature.
-	url := u.api.EntryLink("download")
-	data, err := u.download(url + "/percona-agent-" + version + ".gz")
+	url := fmt.Sprintf("%s/%s/percona-agent-%s", u.api.EntryLink("download"), version, version)
+	data, err := u.download(url + ".gz")
 	if err != nil {
 		return err
 	}
-	sig, err := u.download(url + "/percona-agent-" + version + ".sig")
+	sig, err := u.download(url + ".sig")
 	if err != nil {
 		return err
 	}
@@ -149,6 +153,8 @@ func (u *Updater) Update(version string) error {
 func (u *Updater) download(url string) ([]byte, error) {
 	u.logger.Debug("download:call:" + url)
 	defer u.logger.Debug("download:call")
+
+	u.logger.Info("Downloading", url)
 
 	code, data, err := u.api.Get(u.api.ApiKey(), url)
 	u.logger.Debug(fmt.Sprintf("download:code:%d", code))
