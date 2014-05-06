@@ -152,14 +152,14 @@ func (agent *Agent) Run() error {
 				if err != nil {
 					agent.reply(cmd.Reply(nil, err))
 				}
-				sh := fmt.Sprintf("#!/bin/sh\ncd %s\n%s %s >> %s/nohup-percona-agent.log 2>&1 &\n",
+				sh := fmt.Sprintf("#!/bin/sh\ncd %s\n%s %s >> %s/percona-agent.log 2>&1 &\n",
 					cwd,
 					os.Args[0],
 					strings.Join(os.Args[1:len(os.Args)], " "),
 					pct.Basedir.Path(),
 				)
 				startScript := filepath.Join(pct.Basedir.Path(), "start")
-				if err := ioutil.WriteFile(startScript, []byte(sh), os.FileMode(0770)); err != nil {
+				if err := ioutil.WriteFile(startScript, []byte(sh), os.FileMode(0554)); err != nil {
 					agent.reply(cmd.Reply(nil, err))
 				}
 				logger.Debug("Restart:sh")

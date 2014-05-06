@@ -4,7 +4,7 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -180,10 +180,10 @@ func Sign(file string) ([]byte, []byte, error) {
 		return nil, nil, fmt.Errorf("privkey: %s", err)
 	}
 
-	h := sha1.New()
+	h := sha256.New()
 	h.Write(data)
 
-	sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA1, h.Sum(nil))
+	sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, h.Sum(nil))
 	if err != nil {
 		return nil, nil, err
 	}

@@ -20,7 +20,7 @@ package pct
 import (
 	"crypto"
 	"crypto/rsa"
-	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -173,9 +173,9 @@ func (u *Updater) download(url string) ([]byte, error) {
 func (u *Updater) checkSignature(data, sig []byte) error {
 	u.logger.Debug("checkSignature:call")
 	defer u.logger.Debug("checkSignature:return")
-	hash := sha1.New()
+	hash := sha256.New()
 	hash.Write(data)
-	return rsa.VerifyPKCS1v15(u.rsaPubKey, crypto.SHA1, hash.Sum(nil), sig)
+	return rsa.VerifyPKCS1v15(u.rsaPubKey, crypto.SHA256, hash.Sum(nil), sig)
 }
 
 func VersionStringToInts(version string) (int64, int64, int64) {
