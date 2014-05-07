@@ -169,8 +169,13 @@ func (i *Installer) createAgent(configs []proto.AgentConfig) (*proto.Agent, erro
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusConflict {
-		return nil, fmt.Errorf("Failed to create server instance (status code %d)", resp.StatusCode)
+
+	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusConflict {
+		// agent was created or already exist - either is ok, continue
+	} else if resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-Percona-Agents-Limit") != "" {
+		return nil, fmt.Errorf("Maximum number of %s agents exceeded. Remove unused agents or contact Percona to increase limit.", resp.Header.Get("X-Percona-Agents-Limit"))
+	} else {
+		return nil, fmt.Errorf("Failed to create agent instance (status code %d)", resp.StatusCode)
 	}
 
 	// API returns URI of new resource in Location header
