@@ -26,19 +26,20 @@ import (
 )
 
 const (
-	DEFAULT_BASEDIR    = "/var/lib/percona-agent"
+	DEFAULT_BASEDIR    = "/usr/local/percona/percona-agent"
 	CONFIG_FILE_SUFFIX = ".conf"
 	// Relative to Basedir.path:
 	CONFIG_DIR      = "config"
 	DATA_DIR        = "data"
+	BIN_DIR         = "bin"
 	START_LOCK_FILE = "start.lock"
-	PID_FILE        = "percona-agent.pid"
 )
 
 type basedir struct {
 	path      string
 	configDir string
 	dataDir   string
+	binDir    string
 }
 
 var Basedir basedir
@@ -50,19 +51,22 @@ func (b *basedir) Init(path string) error {
 		return err
 	}
 
-	if !FileExists(b.path) {
-		if err := MakeDir(b.path); err != nil {
-			return err
-		}
+	if err := MakeDir(b.path); err != nil && !os.IsExist(err) {
+		return err
 	}
 
 	b.configDir = filepath.Join(b.path, CONFIG_DIR)
-	if err := MakeDir(b.configDir); err != nil {
+	if err := MakeDir(b.configDir); err != nil && !os.IsExist(err) {
 		return err
 	}
 
 	b.dataDir = filepath.Join(b.path, DATA_DIR)
-	if err := MakeDir(b.dataDir); err != nil {
+	if err := MakeDir(b.dataDir); err != nil && !os.IsExist(err) {
+		return err
+	}
+
+	b.binDir = filepath.Join(b.path, BIN_DIR)
+	if err := MakeDir(b.binDir); err != nil && !os.IsExist(err) {
 		return err
 	}
 
@@ -79,6 +83,8 @@ func (b *basedir) Dir(service string) string {
 		return b.configDir
 	case "data":
 		return b.dataDir
+	case "bin":
+		return b.binDir
 	default:
 		log.Panic("Invalid service: " + service)
 	}
@@ -111,6 +117,11 @@ func (b *basedir) WriteConfig(service string, config interface{}) error {
 	return ioutil.WriteFile(configFile, data, 0644)
 }
 
+func (b *basedir) WriteConfigString(service, config string) error {
+	configFile := filepath.Join(b.configDir, service+CONFIG_FILE_SUFFIX)
+	return ioutil.WriteFile(configFile, []byte(config), 0644)
+}
+
 func (b *basedir) RemoveConfig(service string) error {
 	configFile := filepath.Join(b.configDir, service+CONFIG_FILE_SUFFIX)
 	return RemoveFile(configFile)
@@ -120,8 +131,6 @@ func (b *basedir) File(file string) string {
 	switch file {
 	case "start-lock":
 		file = START_LOCK_FILE
-	case "pid":
-		file = PID_FILE
 	default:
 		log.Panicf("Unknown basedir file: %s", file)
 	}

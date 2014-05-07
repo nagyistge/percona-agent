@@ -15,16 +15,31 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package pct
+package mysql_test
 
 import (
-	"github.com/percona/cloud-protocol/proto"
+	"fmt"
+	"github.com/percona/cloud-tools/mysql"
+	. "launchpad.net/gocheck"
 )
 
-type ServiceManager interface {
-	Start() error
-	Stop() error
-	Status() map[string]string
-	GetConfig() ([]proto.AgentConfig, []error)
-	Handle(cmd *proto.Cmd) *proto.Reply
+type DSNTestSuite struct {
+}
+
+var _ = Suite(&DSNTestSuite{})
+
+func (s *DSNTestSuite) TestAllFields(t *C) {
+	dsn := mysql.DSN{
+		Username: "user",
+		Password: "pass",
+		Hostname: "host.example.com",
+		Port:     "3306",
+	}
+	str, err := dsn.DSN()
+	t.Check(err, IsNil)
+	t.Check(str, Equals, "user:pass@tcp(host.example.com:3306)/?parseTime=true")
+
+	// Stringify DSN removes password, e.g. makes it safe to print log, etc.
+	str = fmt.Sprintf("%s", dsn)
+	t.Check(str, Equals, "user:...@tcp(host.example.com:3306)")
 }

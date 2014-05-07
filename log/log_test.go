@@ -571,11 +571,22 @@ func (s *ManagerTestSuite) TestLogService(t *C) {
 		Service: "log",
 		Cmd:     "GetConfig",
 	}
-
-	gotReply = m.Handle(cmd)
-	expectReply = cmd.Reply(config)
-	if same, diff := test.IsDeeply(gotReply, expectReply); !same {
-		t.Logf("%+v", gotReply)
+	reply := m.Handle(cmd)
+	t.Assert(reply.Error, Equals, "")
+	t.Assert(reply.Data, NotNil)
+	gotConfigRes := []proto.AgentConfig{}
+	if err := json.Unmarshal(reply.Data, &gotConfigRes); err != nil {
+		t.Fatal(err)
+	}
+	expectConfigRes := []proto.AgentConfig{
+		{
+			InternalService: "log",
+			Config:          string(configData),
+			Running:         true,
+		},
+	}
+	if same, diff := test.IsDeeply(gotConfigRes, expectConfigRes); !same {
+		test.Dump(gotConfigRes)
 		t.Error(diff)
 	}
 

@@ -260,7 +260,7 @@ func (s *ManagerTestSuite) TestHandleGetInfoMySQL(t *C) {
 	m := instance.NewManager(s.logger, s.configDir, s.api)
 	t.Assert(m, NotNil)
 
-	// API sends Cmd[Service:"it", Cmd:"GetInfo",
+	// API sends Cmd[Service:"instance", Cmd:"GetInfo",
 	//               Data:proto.ServiceInstance[Service:"mysql",
 	//                                          Data:proto.MySQLInstance[]]]
 	// Only DSN is needed.  We set Id just to test that it's not changed.

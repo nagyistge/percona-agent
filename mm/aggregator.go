@@ -111,7 +111,7 @@ func (a *Aggregator) run() {
 				a.logger.Info("Lost collection for interval", t, "; current interval is", startTs)
 			}
 
-			// Each collection is from a specific service instance ("it").
+			// Each collection is from a specific service instance.
 			// Find the stats for this instance, create if they don't exist.
 			var is *InstanceStats
 			for _, i := range cur {

@@ -51,6 +51,10 @@ func (m *MockServiceManager) Status() map[string]string {
 	return m.status.All()
 }
 
+func (m *MockServiceManager) GetConfig() ([]proto.AgentConfig, []error) {
+	return nil, nil
+}
+
 func (m *MockServiceManager) IsRunning() bool {
 	m.traceChan <- "IsRunning " + m.name
 	return m.IsRunningVal

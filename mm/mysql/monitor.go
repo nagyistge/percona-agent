@@ -148,10 +148,12 @@ func (m *Monitor) connect(err error) {
 
 		// Set global vars we need.  If these fail, that's ok: they won't work,
 		// but don't let that stop us from collecting other metrics.
-		if m.config.InnoDB != "" {
-			sql := `SET GLOBAL innodb_monitor_enable = "` + m.config.InnoDB + `"`
-			if _, err := m.conn.DB().Exec(sql); err != nil {
-				m.logger.Error(sql, err)
+		if len(m.config.InnoDB) > 0 {
+			for _, module := range m.config.InnoDB {
+				sql := "SET GLOBAL innodb_monitor_enable = '" + module + "'"
+				if _, err := m.conn.DB().Exec(sql); err != nil {
+					m.logger.Error(sql, err)
+				}
 			}
 		}
 
@@ -188,13 +190,20 @@ func (m *Monitor) run() {
 	m.status.Update(m.name, "Ready")
 
 	var lastTs int64
+	var lastError string
 	for {
-		m.status.Update(m.name, fmt.Sprintf("Idle (last collected at %s)", time.Unix(lastTs, 0)))
+		t := time.Unix(lastTs, 0)
+		if lastError == "" {
+			m.status.Update(m.name, fmt.Sprintf("Idle (last collected at %s)", t))
+		} else {
+			m.status.Update(m.name, fmt.Sprintf("Idle (last collected at %s, error: %s)", t, lastError))
+		}
 		select {
 		case now := <-m.tickChan:
 			m.logger.Debug("run:collect:start")
 			if !m.connected {
 				m.logger.Debug("run:collect:disconnected")
+				lastError = "Not connected to MySQL"
 				continue
 			}
 			m.status.Update(m.name, "Running")
@@ -215,7 +224,7 @@ func (m *Monitor) run() {
 			}
 
 			// SELECT NAME, ... FROM INFORMATION_SCHEMA.INNODB_METRICS
-			if m.config.InnoDB != "" {
+			if len(m.config.InnoDB) > 0 {
 				if err := m.GetInnoDBMetrics(conn, c); err != nil {
 					m.logger.Warn(err)
 				}
@@ -238,12 +247,15 @@ func (m *Monitor) run() {
 				select {
 				case m.collectionChan <- c:
 					lastTs = c.Ts
+					lastError = ""
 				case <-time.After(500 * time.Millisecond):
 					// lost collection
 					m.logger.Debug("Lost MySQL metrics; timeout spooling after 500ms")
+					lastError = "Spool timeout"
 				}
 			} else {
 				m.logger.Debug("run:no metrics") // shouldn't happen
+				lastError = "No metrics"
 			}
 
 			m.logger.Debug("run:collect:stop")

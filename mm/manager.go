@@ -18,9 +18,8 @@
 package mm
 
 /**
- * mm is a proxy manager for monitors.  It implements the service manager
- * interface (pct/service.go), but it's always running.  Its main job is
- * done in Handle(): keeping track of the monitors it starts and stops.
+ * mm is a proxy manager for monitors.  It doesn't have its own config,
+ * it's job is to start and stop monitors, mostly done in Handle().
  */
 
 import (
@@ -47,9 +46,6 @@ type Binding struct {
 	collectionChan chan *Collection // <- metrics from monitors
 }
 
-// todo: remember originating cmd for start service and start monitor,
-//       return with ServiceIsRunningError
-
 type Manager struct {
 	logger  *pct.Logger
 	factory MonitorFactory
@@ -58,10 +54,10 @@ type Manager struct {
 	im      *instance.Repo
 	// --
 	monitors    map[string]Monitor
+	running     bool
+	mux         *sync.RWMutex // guards monitors and running
 	status      *pct.Status
 	aggregators map[uint]*Binding
-	mux         *sync.RWMutex
-	running     bool
 }
 
 func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager, spool data.Spooler, im *instance.Repo) *Manager {
@@ -75,7 +71,7 @@ func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager
 		monitors:    make(map[string]Monitor),
 		status:      pct.NewStatus([]string{"mm"}),
 		aggregators: make(map[uint]*Binding),
-		mux:         new(sync.RWMutex),
+		mux:         &sync.RWMutex{},
 	}
 	return m
 }
@@ -86,6 +82,10 @@ func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager
 
 // @goroutine[0]
 func (m *Manager) Start() error {
+	// todo: should lock here but we call Handle() which also locks
+	//m.mux.Lock()
+	//defer m.mux.Unlock()
+
 	if m.running {
 		return pct.ServiceIsRunningError{Service: "mm"}
 	}
@@ -115,7 +115,7 @@ func (m *Manager) Start() error {
 		}
 		reply := m.Handle(cmd)
 		if reply.Error != "" {
-			m.logger.Error("Start " + configFile + ": " + err.Error())
+			m.logger.Error("Start " + configFile + ": " + reply.Error)
 			continue
 		}
 		m.logger.Info("Started " + configFile)
@@ -242,18 +242,8 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		m.mux.Unlock()
 		return cmd.Reply(nil) // success
 	case "GetConfig":
-		configs := make(map[string]string)
-		m.mux.RLock()
-		for name, monitor := range m.monitors {
-			config := monitor.Config()
-			bytes, err := json.Marshal(config)
-			if err != nil {
-				m.logger.Error(err)
-			}
-			configs[name] = string(bytes)
-		}
-		m.mux.RUnlock()
-		return cmd.Reply(configs)
+		config, errs := m.GetConfig()
+		return cmd.Reply(config, errs...)
 	default:
 		// SetConfig does not work by design.  To re-configure a monitor,
 		// stop it then start it again with the new config.
@@ -273,6 +263,47 @@ func (m *Manager) Status() map[string]string {
 		}
 	}
 	return status
+}
+
+func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
+	m.logger.Debug("GetConfig:call")
+	defer m.logger.Debug("GetConfig:return")
+
+	m.mux.RLock()
+	defer m.mux.RUnlock()
+
+	// Manager does not have its own config.  It returns all monitors' configs instead.
+
+	// Configs are always returned as array of AgentConfig resources.
+	configs := []proto.AgentConfig{}
+	errs := []error{}
+	for _, monitor := range m.monitors {
+		monitorConfig := monitor.Config()
+		// Full monitor config as JSON string.
+		bytes, err := json.Marshal(monitorConfig)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		// Just the monitor's ServiceInstance, aka ExternalService.
+		mmConfig := &Config{}
+		if err := json.Unmarshal(bytes, mmConfig); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		config := proto.AgentConfig{
+			InternalService: "mm",
+			ExternalService: proto.ServiceInstance{
+				Service:    mmConfig.Service,
+				InstanceId: mmConfig.InstanceId,
+			},
+			Config:  string(bytes),
+			Running: true, // config removed if stopped, so it must be running
+		}
+		configs = append(configs, config)
+	}
+
+	return configs, errs
 }
 
 func (m *Manager) getMonitorConfig(cmd *proto.Cmd) (*Config, string, error) {

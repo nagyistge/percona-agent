@@ -92,15 +92,7 @@ func (agent *Agent) Run() error {
 	client := agent.client
 	client.Start()
 	cmdChan := client.RecvChan()
-
 	go agent.connect()
-
-	defer func() {
-		agent.stop()
-		logger.Info("Stopped")
-		client.Disconnect()
-		client.Stop()
-	}()
 
 	/*
 	 * Start the status and cmd handlers.  Most messages must be serialized because,
@@ -134,12 +126,11 @@ func (agent *Agent) Run() error {
 			if cmd.Cmd == "Abort" {
 				panic(cmd)
 			}
-
-			agent.status.UpdateRe("agent", "Handling", cmd)
-			logger.Debug("recv: ", cmd)
-
 			switch cmd.Cmd {
 			case "Restart":
+				logger.Debug("cmd:restart")
+				agent.status.UpdateRe("agent", "Restarting", cmd)
+
 				// Secure the start-lock file.  This lets us start our self but
 				// wait until this process has exited, at which time the start-lock
 				// is removed and the 2nd self continues starting.
@@ -153,14 +144,19 @@ func (agent *Agent) Run() error {
 				if err != nil {
 					agent.reply(cmd.Reply(nil, err))
 				}
-				sh := fmt.Sprintf("#!/bin/sh\ncd %s\n%s %s >> %s/nohup-percona-agent.log 2>&1 &\n",
+				comment := fmt.Sprintf(
+					"This script was created by percona-agent in response to this Restart command:\n"+
+						"# %s\n"+
+						"# It is safe to delete.", cmd)
+				sh := fmt.Sprintf("#!/bin/sh\n# %s\ncd %s\n./%s %s >> %s/percona-agent.log 2>&1 &\n",
+					comment,
 					cwd,
 					os.Args[0],
 					strings.Join(os.Args[1:len(os.Args)], " "),
 					pct.Basedir.Path(),
 				)
 				startScript := filepath.Join(pct.Basedir.Path(), "start")
-				if err := ioutil.WriteFile(startScript, []byte(sh), os.FileMode(0770)); err != nil {
+				if err := ioutil.WriteFile(startScript, []byte(sh), os.FileMode(0754)); err != nil {
 					agent.reply(cmd.Reply(nil, err))
 				}
 				logger.Debug("Restart:sh")
@@ -170,9 +166,16 @@ func (agent *Agent) Run() error {
 				logger.Debug("Restart:done")
 				return nil
 			case "Stop":
+				logger.Debug("cmd:stop")
+				logger.Info("Stopping", cmd)
+				agent.status.UpdateRe("agent", "Stopping", cmd)
+				agent.stop()
 				agent.reply(cmd.Reply(nil))
+				logger.Info("Stopped", cmd)
+				agent.status.UpdateRe("agent", "Stopped", cmd)
 				return nil
 			case "Status":
+				logger.Debug("cmd:status")
 				agent.status.UpdateRe("agent", "Queueing", cmd)
 				select {
 				case agent.statusChan <- cmd: // to statusHandler
@@ -181,6 +184,7 @@ func (agent *Agent) Run() error {
 					agent.reply(cmd.Reply(nil, err))
 				}
 			default:
+				logger.Debug("cmd")
 				agent.status.UpdateRe("agent", "Queueing", cmd)
 				select {
 				case agent.cmdChan <- cmd: // to cmdHandler
@@ -273,6 +277,32 @@ func LoadConfig() ([]byte, error) {
 		return nil, err
 	}
 	return data, nil
+}
+
+func (agent *Agent) GetConfig() ([]proto.AgentConfig, []error) {
+	agent.logger.Debug("GetConfig:call")
+	defer agent.logger.Debug("GetConfig:return")
+
+	agent.configMux.RLock()
+	defer agent.configMux.RUnlock()
+
+	// Copy config so we can clear the Links which are internal only,
+	// not really part of the agent config.  Then convert to JSON string.
+	config := *agent.config
+	config.Links = nil
+	bytes, err := json.Marshal(config)
+	if err != nil {
+		return nil, []error{err}
+	}
+
+	// Configs are always returned as array of AgentConfig resources.
+	agentConfig := proto.AgentConfig{
+		InternalService: "agent",
+		// no external service
+		Config:  string(bytes),
+		Running: true,
+	}
+	return []proto.AgentConfig{agentConfig}, []error{}
 }
 
 // --------------------------------------------------------------------------
@@ -376,7 +406,9 @@ func (agent *Agent) Handle(cmd *proto.Cmd) *proto.Reply {
 	case "StopService":
 		data, err = agent.handleStopService(cmd)
 	case "GetConfig":
-		data, err = agent.handleGetConfig(cmd)
+		data, errs = agent.handleGetConfig(cmd)
+	case "GetAllConfigs":
+		data, errs = agent.handleGetAllConfigs(cmd)
 	case "SetConfig":
 		data, errs = agent.handleSetConfig(cmd)
 	case "Update":
@@ -391,7 +423,7 @@ func (agent *Agent) Handle(cmd *proto.Cmd) *proto.Reply {
 		errs = append(errs, err)
 	}
 	if len(errs) > 0 {
-		for err := range errs {
+		for _, err := range errs {
 			agent.logger.Error(err)
 		}
 	}
@@ -448,17 +480,31 @@ func (agent *Agent) handleStopService(cmd *proto.Cmd) (interface{}, error) {
 }
 
 // Handle:@goroutine[3]
-func (agent *Agent) handleGetConfig(cmd *proto.Cmd) (interface{}, error) {
+func (agent *Agent) handleGetConfig(cmd *proto.Cmd) (interface{}, []error) {
 	agent.status.UpdateRe("agent-cmd-handler", "GetConfig", cmd)
 	agent.logger.Info(cmd)
+	return agent.GetConfig()
+}
 
-	agent.configMux.RLock()
-	defer agent.configMux.RUnlock()
-
-	config := *agent.config
-	config.Links = nil // not saved, not reported
-
-	return config, nil
+// Handle:@goroutine[3]
+func (agent *Agent) handleGetAllConfigs(cmd *proto.Cmd) (interface{}, []error) {
+	configs, errs := agent.GetConfig()
+	for service, manager := range agent.services {
+		if manager == nil { // should not happen
+			agent.logger.Error("Nil manager:", service)
+			continue
+		}
+		config, err := manager.GetConfig()
+		if err != nil && len(err) > 0 {
+			errs = append(errs, err...)
+			continue
+		}
+		if config != nil {
+			// Not all services have a config.
+			configs = append(configs, config...)
+		}
+	}
+	return configs, errs
 }
 
 // Handle:@goroutine[3]
@@ -471,7 +517,10 @@ func (agent *Agent) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 		return nil, []error{err}
 	}
 
+	agent.configMux.RLock()
 	finalConfig := *agent.config // copy current config
+	agent.configMux.RUnlock()
+
 	errs := []error{}
 
 	// Change the API key.
@@ -530,9 +579,9 @@ func (agent *Agent) handleVersion(cmd *proto.Cmd) (interface{}, []error) {
 func (agent *Agent) handleUpdate(cmd *proto.Cmd) (interface{}, []error) {
 	agent.status.UpdateRe("agent-cmd-handler", "Update", cmd)
 	agent.logger.Info(cmd)
-	version := ""
-	if err := json.Unmarshal(cmd.Data, &version); err != nil {
-		return nil, []error{err}
+	version := string(cmd.Data)
+	if version == "" {
+		return nil, []error{fmt.Errorf("Invalid version: '%s'", version)}
 	}
 	err := agent.updater.Update(version)
 	return nil, []error{err}

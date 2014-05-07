@@ -9,11 +9,12 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 	"io"
 	"io/ioutil"
-	"log"
+	"net"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 var requiredEntryLinks = []string{"agents", "instances", "download"}
@@ -21,7 +22,9 @@ var requiredAgentLinks = []string{"cmd", "log", "data"}
 
 type APIConnector interface {
 	Connect(hostname, apiKey, agentUuid string) error
-	Get(url string) (int, []byte, error)
+	Get(apiKey, url string) (int, []byte, error)
+	Post(apiKey, url string, data []byte) (*http.Response, []byte, error)
+	Put(apiKey, url string, data []byte) (*http.Response, []byte, error)
 	EntryLink(resource string) string
 	AgentLink(resource string) string
 	Origin() string
@@ -41,48 +44,63 @@ type API struct {
 	client     *http.Client
 }
 
+type TimeoutClientConfig struct {
+	ConnectTimeout   time.Duration
+	ReadWriteTimeout time.Duration
+}
+
 func NewAPI() *API {
 	hostname, _ := os.Hostname()
+	config := &TimeoutClientConfig{
+		ConnectTimeout:   5 * time.Second,
+		ReadWriteTimeout: 5 * time.Second,
+	}
+	client := &http.Client{
+		Transport: &http.Transport{
+			Dial: TimeoutDialer(config),
+		},
+	}
 	a := &API{
 		origin:     "http://" + hostname,
 		agentLinks: make(map[string]string),
 		mux:        new(sync.RWMutex),
-		client:     &http.Client{},
+		client:     client,
 	}
 	return a
 }
 
-func PingAPI(hostname, apiKey string) (bool, *http.Response) {
-	schema := "https://"
-	if strings.HasPrefix(hostname, "localhost") || strings.HasPrefix(hostname, "127.0.0.1") {
-		schema = "http://"
-	}
-	url := schema + hostname + "/ping"
-
+func Ping(hostname, apiKey string) (int, error) {
+	url := URL(hostname, "ping")
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Printf("Ping %s error: http.NewRequest: %s", url, err)
-		return false, nil
+		return 0, fmt.Errorf("Ping %s error: http.NewRequest: %s", url, err)
 	}
 	req.Header.Add("X-Percona-API-Key", apiKey)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("Ping %s error: client.Do: %s", url, err)
-		return false, resp
+		return 0, fmt.Errorf("Ping %s error: client.Do: %s", url, err)
 	}
 	_, err = ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
-		log.Printf("Ping %s error: ioutil.ReadAll: %s", url, err)
-		return false, resp
+		return resp.StatusCode, fmt.Errorf("Ping %s error: ioutil.ReadAll: %s", url, err)
 	}
-	if resp.StatusCode != 200 {
-		return false, resp
-	}
+	return resp.StatusCode, nil
+}
 
-	return true, resp // success
+func URL(hostname string, paths ...string) string {
+	schema := "https://"
+	if strings.HasPrefix(hostname, "localhost") || strings.HasPrefix(hostname, "127.0.0.1") {
+		schema = "http://"
+	}
+	slash := "/"
+	if len(paths) > 0 && paths[0][0] == 0x2F {
+		slash = ""
+	}
+	url := schema + hostname + slash + strings.Join(paths, "/")
+	return url
 }
 
 func (a *API) Connect(hostname, apiKey, agentUuid string) error {
@@ -131,7 +149,7 @@ func (a *API) checkLinks(links map[string]string, req ...string) error {
 }
 
 func (a *API) getLinks(apiKey, url string) (map[string]string, error) {
-	code, data, err := a.get(apiKey, url)
+	code, data, err := a.Get(apiKey, url)
 	if err != nil {
 		return nil, err
 	}
@@ -149,14 +167,7 @@ func (a *API) getLinks(apiKey, url string) (map[string]string, error) {
 	return links.Links, nil
 }
 
-func (a *API) Get(url string) (int, []byte, error) {
-	if a.apiKey == "" {
-		return 0, nil, errors.New("API key not set")
-	}
-	return a.get(a.apiKey, url)
-}
-
-func (a *API) get(apiKey, url string) (int, []byte, error) {
+func (a *API) Get(apiKey, url string) (int, []byte, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return 0, nil, err
@@ -224,4 +235,41 @@ func (a *API) AgentUuid() string {
 	a.mux.RLock()
 	defer a.mux.RUnlock()
 	return a.agentUuid
+}
+
+func (a *API) Post(apiKey, url string, data []byte) (*http.Response, []byte, error) {
+	return a.send("POST", apiKey, url, data)
+}
+
+func (a *API) Put(apiKey, url string, data []byte) (*http.Response, []byte, error) {
+	return a.send("PUT", apiKey, url, data)
+}
+
+func (a *API) send(method, apiKey, url string, data []byte) (*http.Response, []byte, error) {
+	req, err := http.NewRequest(method, url, bytes.NewReader(data))
+	header := http.Header{}
+	header.Set("X-Percona-API-Key", apiKey)
+	req.Header = header
+
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return resp, nil, err
+	}
+	content, err := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return resp, nil, err
+	}
+	return resp, content, nil
+}
+
+func TimeoutDialer(config *TimeoutClientConfig) func(net, addr string) (c net.Conn, err error) {
+	return func(netw, addr string) (net.Conn, error) {
+		conn, err := net.DialTimeout(netw, addr, config.ConnectTimeout)
+		if err != nil {
+			return nil, err
+		}
+		conn.SetDeadline(time.Now().Add(config.ReadWriteTimeout))
+		return conn, nil
+	}
 }

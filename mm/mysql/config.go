@@ -24,7 +24,7 @@ import (
 type Config struct {
 	mm.Config
 	Status            map[string]string // SHOW STATUS variables to collect, case-sensitive
-	InnoDB            string            // SET GLOBAL innodb_monitor_enable="<value>"
+	InnoDB            []string          // SET GLOBAL innodb_monitor_enable="<value>"
 	UserStats         bool              // SET GLOBAL userstat=ON|OFF
 	UserStatsIgnoreDb string
 }

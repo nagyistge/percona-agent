@@ -41,7 +41,7 @@ func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector) *Man
 		logger:    logger,
 		configDir: configDir,
 		// --
-		status: pct.NewStatus([]string{"instances", "instances-repo"}),
+		status: pct.NewStatus([]string{"instance", "instance-repo"}),
 		repo:   repo,
 	}
 	return m
@@ -53,12 +53,12 @@ func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector) *Man
 
 // @goroutine[0]
 func (m *Manager) Start() error {
-	m.status.Update("instances", "Starting")
+	m.status.Update("instance", "Starting")
 	if err := m.repo.Init(); err != nil {
 		return err
 	}
 	m.logger.Info("Started")
-	m.status.Update("instances", "Running")
+	m.status.Update("instance", "Running")
 	return nil
 }
 
@@ -70,8 +70,8 @@ func (m *Manager) Stop() error {
 
 // @goroutine[0]
 func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
-	m.status.UpdateRe("instances", "Handling", cmd)
-	defer m.status.Update("instances", "Running")
+	m.status.UpdateRe("instance", "Handling", cmd)
+	defer m.status.Update("instance", "Running")
 
 	it := &proto.ServiceInstance{}
 	if err := json.Unmarshal(cmd.Data, it); err != nil {
@@ -94,8 +94,12 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 }
 
 func (m *Manager) Status() map[string]string {
-	m.status.Update("instances-repo", strings.Join(m.repo.List(), " "))
+	m.status.Update("instance-repo", strings.Join(m.repo.List(), " "))
 	return m.status.All()
+}
+
+func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
+	return nil, nil
 }
 
 func (m *Manager) Repo() *Repo {
