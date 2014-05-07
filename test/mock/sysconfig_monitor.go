@@ -2,7 +2,7 @@ package mock
 
 import (
 	"fmt"
-	"github.com/percona/cloud-tools/sysconfig"
+	"github.com/percona/percona-agent/sysconfig"
 	"time"
 )
 

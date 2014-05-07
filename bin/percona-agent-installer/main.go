@@ -3,8 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/percona/cloud-tools/agent"
-	"github.com/percona/cloud-tools/pct"
+	"github.com/percona/percona-agent/agent"
+	"github.com/percona/percona-agent/pct"
 	"log"
 	"os"
 )

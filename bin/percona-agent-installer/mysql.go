@@ -3,7 +3,7 @@ package main
 import (
 	"code.google.com/p/gopass"
 	"fmt"
-	"github.com/percona/cloud-tools/mysql"
+	"github.com/percona/percona-agent/mysql"
 	"os/user"
 	"path/filepath"
 	"strings"

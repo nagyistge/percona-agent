@@ -1,8 +1,8 @@
 package mock
 
 import (
-	"github.com/percona/cloud-tools/pct"
-	"github.com/percona/cloud-tools/qan"
+	"github.com/percona/percona-agent/pct"
+	"github.com/percona/percona-agent/qan"
 	"time"
 )
 

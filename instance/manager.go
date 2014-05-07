@@ -22,8 +22,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/cloud-tools/mysql"
-	"github.com/percona/cloud-tools/pct"
+	"github.com/percona/percona-agent/mysql"
+	"github.com/percona/percona-agent/pct"
 	"strings"
 )
 

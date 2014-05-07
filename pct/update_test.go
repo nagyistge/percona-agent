@@ -20,9 +20,9 @@ package pct_test
 import (
 	"bytes"
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/cloud-tools/pct"
-	"github.com/percona/cloud-tools/test"
-	"github.com/percona/cloud-tools/test/mock"
+	"github.com/percona/percona-agent/pct"
+	"github.com/percona/percona-agent/test"
+	"github.com/percona/percona-agent/test/mock"
 	"io/ioutil"
 	. "launchpad.net/gocheck"
 	"os"

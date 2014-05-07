@@ -18,7 +18,7 @@
 package pct_test
 
 import (
-	"github.com/percona/cloud-tools/pct"
+	"github.com/percona/percona-agent/pct"
 	. "launchpad.net/gocheck"
 	"os"
 )

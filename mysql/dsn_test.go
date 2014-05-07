@@ -19,7 +19,7 @@ package mysql_test
 
 import (
 	"fmt"
-	"github.com/percona/cloud-tools/mysql"
+	"github.com/percona/percona-agent/mysql"
 	. "launchpad.net/gocheck"
 )
 

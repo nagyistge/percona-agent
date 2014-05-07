@@ -1,7 +1,7 @@
 package mock
 
 import (
-	"github.com/percona/cloud-tools/data"
+	"github.com/percona/percona-agent/data"
 )
 
 type Spooler struct {

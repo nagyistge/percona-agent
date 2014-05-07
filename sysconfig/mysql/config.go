@@ -18,7 +18,7 @@
 package mysql
 
 import (
-	"github.com/percona/cloud-tools/sysconfig"
+	"github.com/percona/percona-agent/sysconfig"
 )
 
 type Config struct {

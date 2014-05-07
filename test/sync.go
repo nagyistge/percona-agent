@@ -3,9 +3,9 @@ package test
 import (
 	"encoding/json"
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/cloud-tools/mm"
-	"github.com/percona/cloud-tools/pct"
-	"github.com/percona/cloud-tools/sysconfig"
+	"github.com/percona/percona-agent/mm"
+	"github.com/percona/percona-agent/pct"
+	"github.com/percona/percona-agent/sysconfig"
 	"io/ioutil"
 	"log"
 	"os"

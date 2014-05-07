@@ -21,7 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/cloud-tools/pct"
+	"github.com/percona/percona-agent/pct"
 	"os"
 	"sync"
 	"time"

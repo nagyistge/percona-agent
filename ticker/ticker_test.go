@@ -18,9 +18,9 @@
 package ticker_test
 
 import (
-	"github.com/percona/cloud-tools/test"
-	"github.com/percona/cloud-tools/test/mock"
-	"github.com/percona/cloud-tools/ticker"
+	"github.com/percona/percona-agent/test"
+	"github.com/percona/percona-agent/test/mock"
+	"github.com/percona/percona-agent/ticker"
 	"launchpad.net/gocheck"
 	"testing"
 	"time"

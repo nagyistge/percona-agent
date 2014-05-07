@@ -2,7 +2,7 @@ package mock
 
 import (
 	"fmt"
-	"github.com/percona/cloud-tools/mm"
+	"github.com/percona/percona-agent/mm"
 	"time"
 )
 

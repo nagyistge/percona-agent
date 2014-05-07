@@ -2,7 +2,7 @@ package mock
 
 import (
 	"database/sql"
-	"github.com/percona/cloud-tools/mysql"
+	"github.com/percona/percona-agent/mysql"
 )
 
 type NullMySQL struct {

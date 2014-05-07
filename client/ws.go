@@ -22,7 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/cloud-tools/pct"
+	"github.com/percona/percona-agent/pct"
 	"sync"
 	"time"
 )

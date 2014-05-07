@@ -1,7 +1,7 @@
 package mock
 
 import (
-	"github.com/percona/cloud-tools/mysql"
+	"github.com/percona/percona-agent/mysql"
 )
 
 type ConnectionFactory struct {

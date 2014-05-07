@@ -19,10 +19,10 @@ package client_test
 
 import (
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/cloud-tools/client"
-	"github.com/percona/cloud-tools/pct"
-	"github.com/percona/cloud-tools/test"
-	"github.com/percona/cloud-tools/test/mock"
+	"github.com/percona/percona-agent/client"
+	"github.com/percona/percona-agent/pct"
+	"github.com/percona/percona-agent/test"
+	"github.com/percona/percona-agent/test/mock"
 	. "launchpad.net/gocheck"
 	"testing"
 	"time"

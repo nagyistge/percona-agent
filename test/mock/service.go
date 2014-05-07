@@ -3,7 +3,7 @@ package mock
 import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/cloud-tools/pct"
+	"github.com/percona/percona-agent/pct"
 )
 
 type MockServiceManager struct {

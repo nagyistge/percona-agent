@@ -20,8 +20,8 @@ package system
 import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/cloud-tools/mm"
-	"github.com/percona/cloud-tools/pct"
+	"github.com/percona/percona-agent/mm"
+	"github.com/percona/percona-agent/pct"
 	"io/ioutil"
 	"strconv"
 	"strings"

@@ -22,7 +22,7 @@ import (
 	"errors"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/percona/cloud-tools/pct"
+	"github.com/percona/percona-agent/pct"
 	"time"
 )
 

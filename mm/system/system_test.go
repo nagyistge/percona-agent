@@ -19,10 +19,10 @@ package system_test
 
 import (
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/cloud-tools/mm"
-	"github.com/percona/cloud-tools/mm/system"
-	"github.com/percona/cloud-tools/pct"
-	"github.com/percona/cloud-tools/test"
+	"github.com/percona/percona-agent/mm"
+	"github.com/percona/percona-agent/mm/system"
+	"github.com/percona/percona-agent/pct"
+	"github.com/percona/percona-agent/test"
 	"io/ioutil"
 	. "launchpad.net/gocheck"
 	"path/filepath"

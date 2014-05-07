@@ -17,7 +17,7 @@
 package system
 
 import (
-	"github.com/percona/cloud-tools/mm"
+	"github.com/percona/percona-agent/mm"
 )
 
 type Config struct {

@@ -1,8 +1,8 @@
 package main_test
 
 import (
-	i "github.com/percona/cloud-tools/bin/percona-agent-installer"
-	"github.com/percona/cloud-tools/mysql"
+	i "github.com/percona/percona-agent/bin/percona-agent-installer"
+	"github.com/percona/percona-agent/mysql"
 	. "launchpad.net/gocheck"
 )
 

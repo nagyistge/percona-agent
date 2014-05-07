@@ -18,7 +18,7 @@
 package ticker
 
 import (
-	"github.com/percona/cloud-tools/pct"
+	"github.com/percona/percona-agent/pct"
 	"time"
 )
 

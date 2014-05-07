@@ -19,11 +19,11 @@ package mysql_test
 
 import (
 	"github.com/percona/cloud-protocol/proto"
-	mysqlConn "github.com/percona/cloud-tools/mysql"
-	"github.com/percona/cloud-tools/pct"
-	"github.com/percona/cloud-tools/sysconfig"
-	"github.com/percona/cloud-tools/sysconfig/mysql"
-	"github.com/percona/cloud-tools/test"
+	mysqlConn "github.com/percona/percona-agent/mysql"
+	"github.com/percona/percona-agent/pct"
+	"github.com/percona/percona-agent/sysconfig"
+	"github.com/percona/percona-agent/sysconfig/mysql"
+	"github.com/percona/percona-agent/test"
 	. "launchpad.net/gocheck"
 	"os"
 	"testing"

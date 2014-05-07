@@ -1,7 +1,7 @@
 package mock
 
 import (
-	"github.com/percona/cloud-tools/ticker"
+	"github.com/percona/percona-agent/ticker"
 )
 
 type TickerFactory struct {

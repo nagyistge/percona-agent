@@ -19,8 +19,8 @@ package mm
 
 import (
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/cloud-tools/data"
-	"github.com/percona/cloud-tools/pct"
+	"github.com/percona/percona-agent/data"
+	"github.com/percona/percona-agent/pct"
 	"math"
 	"time"
 )

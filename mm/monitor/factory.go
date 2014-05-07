@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/cloud-tools/instance"
-	"github.com/percona/cloud-tools/mm"
-	"github.com/percona/cloud-tools/mm/mysql"
-	"github.com/percona/cloud-tools/mm/system"
-	mysqlConn "github.com/percona/cloud-tools/mysql"
-	"github.com/percona/cloud-tools/pct"
+	"github.com/percona/percona-agent/instance"
+	"github.com/percona/percona-agent/mm"
+	"github.com/percona/percona-agent/mm/mysql"
+	"github.com/percona/percona-agent/mm/system"
+	mysqlConn "github.com/percona/percona-agent/mysql"
+	"github.com/percona/percona-agent/pct"
 )
 
 type Factory struct {
