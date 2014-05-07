@@ -79,6 +79,8 @@ func (cli *Cli) doCmd(args []string) {
 		cli.config(args)
 	case "send":
 		cli.send(args)
+	case "info":
+		cli.info(args)
 	default:
 		fmt.Println("Unknown command: " + args[0])
 		return
@@ -239,8 +241,17 @@ func (cli *Cli) send(args []string) {
 		switch args[1] {
 		case "Update":
 			cmd.Data = []byte(args[3])
+		case "GetInfo":
+			si := &proto.ServiceInstance{}
+			if err := json.Unmarshal([]byte(args[3]), si); err != nil {
+				fmt.Printf("ERROR: %s\n", err)
+				return
+			}
+			bytes, _ := json.Marshal(si)
+			cmd.Data = bytes
 		}
 	}
+	fmt.Printf("%#v\n", cmd)
 	reply, err := cli.Put(cli.agentLinks["self"]+"/cmd", cmd)
 	if err != nil {
 		golog.Println(err)
@@ -259,6 +270,72 @@ func (cli *Cli) send(args []string) {
 			return
 		}
 		fmt.Printf("%#v\n", v)
+	}
+}
+
+func (cli *Cli) info(args []string) {
+	if !cli.connected {
+		fmt.Println("Not connected to API.  Use 'connect' command.")
+		return
+	}
+	if cli.agentUuid == "" {
+		fmt.Println("Agent UUID not set.  Use 'agent' command.")
+		return
+	}
+	if len(args) < 2 {
+		fmt.Printf("ERROR: Invalid number of args: got %d, expected 2\n", len(args))
+		fmt.Println("Usage: info service [data]")
+		fmt.Println("Exmaple: info mysql user:pass@tcp")
+		return
+	}
+	cmd := &proto.Cmd{
+		Ts:        time.Now(),
+		User:      "percona-agent-cli",
+		AgentUuid: cli.agentUuid,
+		Cmd:       "GetInfo",
+		Service:   "instance",
+	}
+	if len(args) == 3 {
+		switch args[1] {
+		case "mysql":
+			mi := &proto.MySQLInstance{
+				DSN: args[2],
+			}
+			bytes, err := json.Marshal(mi)
+			if err != nil {
+				fmt.Printf("ERROR: %s\n", err)
+				return
+			}
+			si := &proto.ServiceInstance{
+				Service: "mysql",
+				Instance: bytes,
+			}
+			bytes, err = json.Marshal(si)
+			if err != nil {
+				fmt.Printf("ERROR: %s\n", err)
+				return
+			}
+			cmd.Data = bytes
+		}
+	}
+	reply, err := cli.Put(cli.agentLinks["self"]+"/cmd", cmd)
+	if err != nil {
+		golog.Println(err)
+		return
+	}
+	if reply.Error != "" {
+		fmt.Printf("ERROR: %s\n", reply.Error)
+		return
+	}
+	fmt.Println("OK")
+	switch args[1] {
+	case "mysql":
+		mi := &proto.MySQLInstance{}
+		if err := json.Unmarshal(reply.Data, mi); err != nil {
+			fmt.Printf("Invalid reply: %s\n", err)
+			return
+		}
+		fmt.Printf("%#v\n", mi)
 	}
 }
 
