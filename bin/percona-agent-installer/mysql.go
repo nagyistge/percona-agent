@@ -9,12 +9,12 @@ import (
 	"strings"
 )
 
-func MakeGrant(dsn mysql.DSN) string {
+func MakeGrant(dsn mysql.DSN, user string, pass string) string {
 	host := "%"
-	if dsn.Socket != "" || dsn.Hostname == "localhost" {
+	if dsn.Socket != "" || dsn.Hostname == "localhost"  || dsn.Hostname == "127.0.0.1" {
 		host = "localhost"
 	}
-	return "GRANT SUPER, PROCESS, USAGE ON *.* TO '%s'@'" + host + "' IDENTIFIED BY '%s'"
+	return fmt.Sprintf("GRANT SUPER, PROCESS, USAGE ON *.* TO '%s'@'%s' IDENTIFIED BY '%s'", user, host, pass)
 }
 
 func (i *Installer) doMySQL() (dsn mysql.DSN, err error) {

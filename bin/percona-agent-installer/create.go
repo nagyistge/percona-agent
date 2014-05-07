@@ -27,11 +27,10 @@ func (i *Installer) createMySQLUser(dsn mysql.DSN) (mysql.DSN, error) {
 	}
 	defer conn.Close()
 
-	grant := MakeGrant(dsn)
+	sql := MakeGrant(dsn, userDSN.Username, userDSN.Password)
 	if i.flags["debug"] {
-		log.Println(grant)
+		log.Println(sql)
 	}
-	sql := fmt.Sprintf(grant, userDSN.Username, userDSN.Password)
 	_, err := conn.DB().Exec(sql)
 	return userDSN, err
 }
