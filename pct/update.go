@@ -28,7 +28,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 )
@@ -107,7 +106,7 @@ func (u *Updater) Update(version string) error {
 	u.logger.Info("Updating to", version)
 
 	// Download and decompress the gzipped bin and its signature.
-	url := fmt.Sprintf("%s/%s/percona-agent-%s", u.api.EntryLink("download"), version, version)
+	url := fmt.Sprintf("%s/percona-agent-%s", u.api.EntryLink("download"), version)
 	data, err := u.download(url + ".gz")
 	if err != nil {
 		return err
@@ -123,7 +122,7 @@ func (u *Updater) Update(version string) error {
 	}
 
 	// Write binary to disk as /tmp/percona-agent-<version>.
-	newBin := filepath.Join(os.TempDir(), fmt.Sprintf("percona-agent-%s-%s", version, runtime.GOARCH))
+	newBin := filepath.Join(os.TempDir(), fmt.Sprintf("percona-agent-%s", version))
 	u.logger.Debug("Update:write:" + newBin)
 	if err := ioutil.WriteFile(newBin, data, os.FileMode(0755)); err != nil {
 		return err
