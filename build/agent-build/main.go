@@ -2,102 +2,148 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
-	"os"
 	"io/ioutil"
+	"log"
+	"os"
 	"os/exec"
-	"regexp"
+	"path/filepath"
+	"runtime"
 	"strings"
 )
 
-func runCmd(name string, arg ...string) {
-		cmd := exec.Command(name, arg...)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		cmd.Stdin = os.Stdin
-		fmt.Printf("Running command: %s\n", name + " " + strings.Join(arg, " "))
-		err := cmd.Run()
-		if err != nil {
-			fmt.Printf("cmd.Run error: %s\n", err)
-			os.Exit(1)
+var (
+	rootDir    string
+	currentDir string
+)
+
+type Dep struct {
+	Pkg string
+	Rev string
+}
+
+type Godeps struct {
+	GoVersion string
+	Deps      []Dep
+}
+
+var (
+	flagDeps bool
+)
+
+func init() {
+	flag.BoolVar(&flagDeps, "deps", true, "Process Godeps.json")
+
+	log.SetFlags(log.Ltime | log.Lmicroseconds | log.Lshortfile)
+
+	_, filename, _, _ := runtime.Caller(1)
+	dir := filepath.Dir(filename)
+
+	for i := 0; i < 3; i++ {
+		dir = dir + "/../"
+		if FileExists(dir+"COPYING") && FileExists(dir+".git") {
+			rootDir = filepath.Clean(dir)
+			break
 		}
+	}
+	if rootDir == "" {
+		log.Panic("Cannot find repo root dir")
+	}
+	log.Printf("Root dir: %s\n", rootDir)
+
+	currentDir, _ = os.Getwd()
+}
+
+func runCmd(name string, arg ...string) error {
+	fmt.Printf("%s\n", name+" "+strings.Join(arg, " "))
+	out, err := exec.Command(name, arg...).CombinedOutput()
+	if err != nil {
+		log.Println(string(out))
+	}
+	return err
 }
 
 func chDir(dir string) {
-	fmt.Printf("Changing dir to: %s\n", dir)
 	err := os.Chdir(dir)
 	if err != nil {
-		fmt.Printf("os.Chdir error: %s\n", err)
-		os.Exit(1)
+		log.Fatal(err)
 	}
-	pwd, err := os.Getwd()
-	if err != nil {
-		fmt.Printf("os.Getwd error: %s\n", err)
-		os.Exit(1)
-	}
-	fmt.Printf("Currend dir: %s\n", pwd)
 }
 
 func main() {
-	jsonContent, err := ioutil.ReadFile("../Godeps.json")
+	flag.Parse()
+
+	// Parse Godeps.json file.
+	godepsContent, err := ioutil.ReadFile(rootDir + "/Godeps.json")
 	if err != nil {
-		fmt.Printf("ioutil.ReadFile error: %s\n", err)
-		os.Exit(1)
+		log.Fatalf("ioutil.ReadFile error: %s\n", err)
 	}
-	type jsonStruct struct {
-		ImportPath string
-		GoVersion string
-		Deps []map[string]string
-	}
-	var parsedJson jsonStruct
-	err = json.Unmarshal(jsonContent, &parsedJson)
+	godeps := &Godeps{}
+	err = json.Unmarshal(godepsContent, godeps)
 	if err != nil {
-		fmt.Printf("json.Unmarshal error: %s\n", err)
-		os.Exit(1)
+		log.Fatalf("json.Unmarshal error: %s\n", err)
 	}
-	currentDir, err := os.Getwd()
-	if err != nil {
-		fmt.Printf("os.Getwd error: %s\n", err)
-		os.Exit(1)
+
+	// Prefix GOPATH with vendor dir.
+	vendorDir := filepath.Join(rootDir, "vendor")
+	gopath := os.Getenv("GOPATH")
+	if gopath == "" {
+		log.Fatal("GOPATH not set")
 	}
-	path := "./vendor"
-	gopath := regexp.MustCompile("^" + currentDir + "/" + path)
-	if gopath.FindStringIndex(os.Getenv("GOPATH")) == nil {
-		if err = os.Setenv("GOPATH", currentDir + "/" + path + string(os.PathListSeparator) + os.Getenv("GOPATH")); err != nil {
-			fmt.Printf("os.Setenv error: %s\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("GOPATH set to: %s\n", os.Getenv("GOPATH"))
+	if err := os.Setenv("GOPATH", vendorDir+string(os.PathListSeparator)+gopath); err != nil {
+		log.Fatal(err)
 	}
-	site := regexp.MustCompile("^[^/]+")
-	dir := regexp.MustCompile("^.+?/[^/]+")
-	uri := regexp.MustCompile("^.+?/[^/]+/[^/]+")
-	DEPSLOOP:
-	for _, value := range parsedJson.Deps {
-		url := uri.FindStringSubmatch(value["ImportPath"])
-		if _, err = os.Stat(currentDir + "/" + path + "/src/" + url[0]); err != nil {
-			if !os.IsNotExist(err) {
-				// permission error?
-				fmt.Printf("os.Stat error: %s\n", err)
-				os.Exit(1)
+	fmt.Printf("GOPATH: %s\n", os.Getenv("GOPATH"))
+
+	// Checkout the required revision of dep.
+	if flagDeps {
+		for _, dep := range godeps.Deps {
+			fmt.Printf("%s %s\n", dep.Pkg, dep.Rev)
+			pkgDir := filepath.Join(vendorDir, "src", dep.Pkg)
+			if !FileExists(pkgDir) {
+				if err := runCmd("mkdir", "-p", pkgDir); err != nil {
+					log.Fatal(err)
+				}
 			}
-		} else {
-			// folder exists
-			continue DEPSLOOP
-		}
-		folder := dir.FindStringSubmatch(value["ImportPath"])
-		domain := site.FindStringSubmatch(value["ImportPath"])
-		runCmd("mkdir", "-p", currentDir + "/" + path + "/src/" + folder[0])
-		switch domain[0] {
+			p := strings.Split(dep.Pkg, "/")
+			switch p[0] {
 			case "code.google.com":
-				runCmd("hg", "clone", "-r", value["Rev"], "https://" + url[0], path + "/src/" + url[0])
+				chDir(rootDir)
+				if err := os.RemoveAll(pkgDir); err != nil {
+					log.Fatal(err)
+				}
+				runCmd("hg", "clone", "-r", dep.Rev, "https://"+dep.Pkg, pkgDir)
 			case "github.com":
-				chDir(currentDir + "/" + path + "/src/" + folder[0])
-				runCmd("git", "clone", "https://" + url[0])
-				chDir(currentDir + "/" + path + "/src/" + url[0])
-				runCmd("git", "checkout", value["Rev"])
+				chDir(pkgDir)
+				if !FileExists(".git") {
+					runCmd("git", "clone", "https://"+dep.Pkg, ".")
+				} else {
+					runCmd("git", "checkout", "master")
+					runCmd("git", "pull")
+				}
+				runCmd("git", "checkout", dep.Rev)
+			}
 		}
 	}
-	chDir(currentDir + "/../bin/percona-agent/")
-	runCmd("go", "build", "percona-agent.go")
+
+	// Build percona-agent.
+	log.Println("Building percona-agent...")
+	chDir(rootDir + "/bin/percona-agent")
+	if err := runCmd("go", "build"); err != nil {
+		log.Fatal(err)
+	}
+
+	chDir(currentDir)
+}
+
+func FileExists(file string) bool {
+	_, err := os.Stat(file)
+	if err == nil {
+		return true
+	}
+	if os.IsNotExist(err) {
+		return false
+	}
+	return true
 }

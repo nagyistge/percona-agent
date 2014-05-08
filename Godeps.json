@@ -1,31 +1,31 @@
 {
-	"ImportPath": "github.com/percona/cloud-tools/bin/percona-agent",
 	"GoVersion": "go1.2",
-	"Deps": [
+	"Deps":
+	[
 		{
-			"ImportPath": "code.google.com/p/go.net/websocket",
+			"Pkg": "code.google.com/p/go.net",
 			"Comment": "null-117",
 			"Rev": "c17ad62118ea511e1051721b429779fa40bddc74"
 		},
 		{
-			"ImportPath": "github.com/go-sql-driver/mysql",
+			"Pkg": "github.com/go-sql-driver/mysql",
 			"Comment": "v1.0-217-g0b11020",
 			"Rev": "0b11020cec264915fd090256a3b23256f96cc3ae"
 		},
 		{
-			"ImportPath": "github.com/percona/cloud-protocol/proto",
-			"Rev": "68a70ee158968dfdd1f9ebdda30a80420e987076"
+			"Pkg": "github.com/percona/cloud-protocol",
+			"Rev": "0e0b634d18b76ee39c155de3a6b057d21e2db8ed"
 		},
 		{
-			"ImportPath": "github.com/percona/mysql-log-parser/log",
-			"Rev": "bc685013706585ea4ac62f3d21ab4d584bc77114"
+			"Pkg": "github.com/percona/mysql-log-parser",
+			"Rev": "7ba0b741046ac2c6a24b9f97e36aa2d37db870bc"
 		},
 		{
-			"ImportPath": "github.com/petar/GoLLRB/llrb",
+			"Pkg": "github.com/petar/GoLLRB",
 			"Rev": "53be0d36a84c2a886ca057d34b6aa4468df9ccb4"
 		},
 		{
-			"ImportPath": "github.com/peterbourgon/diskv",
+			"Pkg": "github.com/peterbourgon/diskv",
 			"Rev": "76403dd2469f77ad100a10d955a73592066a2660"
 		}
 	]
