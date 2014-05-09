@@ -218,3 +218,33 @@ func (i *Installer) createAgent(configs []proto.AgentConfig) (*proto.Agent, erro
 	}
 	return agent, nil
 }
+
+func (i *Installer) updateAgent(uuid string) (*proto.Agent, error) {
+	agent := &proto.Agent{
+		Uuid:     uuid,
+		Hostname: i.hostname,
+		Alias:    i.hostname,
+		Version:  agent.VERSION,
+	}
+	data, err := json.Marshal(agent)
+	if err != nil {
+		return nil, err
+	}
+	url := pct.URL(i.agentConfig.ApiHostname, "agents", uuid)
+	if i.flags["debug"] {
+		log.Println(url)
+	}
+	resp, _, err := i.api.Put(i.agentConfig.ApiKey, url, data)
+	if i.flags["debug"] {
+		log.Printf("resp=%#v\n", resp)
+		log.Printf("err=%s\n", err)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Failed to update agent via API (status code %d)", resp.StatusCode)
+	}
+	return agent, nil
+}

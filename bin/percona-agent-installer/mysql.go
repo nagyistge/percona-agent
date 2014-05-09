@@ -65,7 +65,7 @@ func (i *Installer) doMySQL(def *mysql.DSN) (dsn mysql.DSN, err error) {
 			fmt.Println(err)
 		} else {
 			// Let user specify the MySQL account to use for the agent.
-			dsn, err = i.connectMySQL(def, false)
+			dsn, err = i.connectMySQL(&dsn, false)
 			if err == nil {
 				break // success
 			}
@@ -91,7 +91,7 @@ func (i *Installer) connectMySQL(def *mysql.DSN, creating bool) (mysql.DSN, erro
 		fmt.Println("Specify a root/super MySQL user to create a user for the agent")
 	} else if def != nil {
 		fmt.Println("Verify the existing MySQL user to use for the agent")
-		dsn := *def
+		dsn = *def
 		if dsn.Username == "" {
 			user, _ := user.Current()
 			if user != nil {

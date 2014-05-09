@@ -46,7 +46,7 @@ func SameFile(file1, file2 string) (bool, error) {
 }
 
 func MakeDir(dir string) error {
-	err := os.Mkdir(dir, 0755)
+	err := os.MkdirAll(dir, 0755)
 	if os.IsExist(err) {
 		return nil
 	}

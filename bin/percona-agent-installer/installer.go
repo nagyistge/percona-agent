@@ -75,11 +75,11 @@ func (i *Installer) Run() error {
 
 		// Stop pt-agent
 		if err := StopPTAgent(); err != nil {
-			return fmt.Errorf("Error stopping pt-agent: %s", err)
+			fmt.Printf("Error stopping pt-agent: %s\n\n", err)
 			fmt.Println("WARNING: pt-agent must be stopped before installing percona-agent.  " +
-				"Please verify that pt-agent has stopped and has been removed from cron.  " +
-				"Enter 'Y' to confirm and continue installing percona-agent")
-			ok, err := i.term.PromptBool("pt-agent has stopped?", "Y")
+				"Please verify that pt-agent is not running and has been removed from cron.  " +
+				"Enter 'Y' to confirm and continue installing percona-agent.")
+			ok, err := i.term.PromptBool("pt-agent has stopped?", "N")
 			if err != nil {
 				return err
 			}
@@ -97,8 +97,8 @@ func (i *Installer) Run() error {
 			i.agentConfig.ApiKey = agent.ApiKey
 		}
 		if agent.AgentUuid != "" {
-			fmt.Printf("Upgrading pt-agent %s...\n", agent.AgentUuid)
 			i.agentConfig.AgentUuid = agent.AgentUuid
+			fmt.Printf("Upgrading pt-agent %s...\n", agent.AgentUuid)
 		}
 		ptagentDSN = dsn
 	}
@@ -216,7 +216,7 @@ VERIFY_API_KEY:
 
 	configs := []proto.AgentConfig{}
 
-	if !i.flags["start-services"] {
+	if i.flags["start-services"] {
 		config, err := i.getMmServerConfig(si)
 		if err != nil {
 			fmt.Println(err)
@@ -262,7 +262,16 @@ VERIFY_API_KEY:
 	 * Create agent with initial service configs.
 	 */
 
-	if !i.flags["create-agent"] {
+	if ptagentUpgrade {
+		agent, err := i.updateAgent(i.agentConfig.AgentUuid)
+		if err != nil {
+			return err
+		}
+		fmt.Println("pt-agent upgraded to percona-agent");
+		if err := i.writeConfigs(agent, configs); err != nil {
+			return fmt.Errorf("Upgraded pt-agent but failed to write percona-agent configs: %s", err)
+		}
+	} else if i.flags["create-agent"] {
 		agent, err := i.createAgent(configs)
 		if err != nil {
 			return err
@@ -270,7 +279,7 @@ VERIFY_API_KEY:
 		fmt.Printf("Created agent: uuid=%s\n", agent.Uuid)
 
 		if err := i.writeConfigs(agent, configs); err != nil {
-			return fmt.Errorf("Created agent but failed to write its config: %s", err)
+			return fmt.Errorf("Created agent but failed to write configs: %s", err)
 		}
 	} else {
 		fmt.Println("Not creating agent (-create-agent=false)")
@@ -278,6 +287,7 @@ VERIFY_API_KEY:
 
 	if ptagentUpgrade {
 		RemovePTAgent(ptagentConf)
+		fmt.Println("pt-agent removed")
 	}
 
 	return nil // success

@@ -35,6 +35,7 @@ func GetPTAgentSettings(ptagentConf string) (*agent.Config, *mysql.DSN, error) {
 	if libDir == "" {
 		libDir = "/var/lib/pt-agent"
 	}
+	fmt.Printf("pt-agent lib dir: %s\n", libDir)
 
 	/**
 	 * Parse <libDir>/agent to get agent's UUID.
@@ -68,7 +69,7 @@ func StopPTAgent() error {
 	if err != nil {
 		fmt.Println(string(out))
 	}
-	return nil
+	return err
 }
 
 func ParsePTAgentConf(content string, agent *agent.Config, dsn *mysql.DSN) (string, error) {
@@ -81,18 +82,21 @@ func ParsePTAgentConf(content string, agent *agent.Config, dsn *mysql.DSN) (stri
 	m := libDirRe.FindStringSubmatch(content)
 	if len(m) > 1 {
 		libDir = m[1]
+		fmt.Printf("pt-agent lib dir: %s\n", libDir)
 	}
 
 	apiKeyRe := regexp.MustCompile(`^\s*api-key\s*=(\S+)`)
 	m = apiKeyRe.FindStringSubmatch(content)
 	if len(m) > 1 {
 		agent.ApiKey = m[1]
+		fmt.Printf("pt-agent API key: %s\n", agent.ApiKey)
 	}
 
 	socketRe := regexp.MustCompile(`socket\s*=(\S+)`)
 	m = socketRe.FindStringSubmatch(content)
 	if len(m) > 1 {
 		dsn.Socket = m[1]
+		fmt.Printf("pt-agent socket: %s\n", dsn.Socket)
 	}
 
 	return libDir, nil
@@ -107,6 +111,7 @@ func ParsePTAgentResource(content []byte, agent *agent.Config) error {
 		return err
 	}
 	agent.AgentUuid = config.Uuid
+	fmt.Printf("pt-agent UUID: %s\n", agent.AgentUuid)
 	return nil
 }
 
@@ -118,11 +123,13 @@ func ParseMyCnf(content string, dsn *mysql.DSN) error {
 	m := userRe.FindStringSubmatch(content)
 	if len(m) > 1 {
 		dsn.Username = m[1]
+		fmt.Printf("pt-agent MySQL user: %s\n", dsn.Username)
 	}
 	passRe := regexp.MustCompile(`pass\s*=(\S+)`)
 	m = passRe.FindStringSubmatch(content)
 	if len(m) > 1 {
 		dsn.Password = m[1]
+		fmt.Printf("pt-agent MySQL user pass: %s\n", dsn.Password)
 	}
 	return nil
 }
