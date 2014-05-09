@@ -29,5 +29,5 @@ func main() {
 	if os.Args[1] != "-version" {
 		os.Exit(1)
 	}
-	fmt.Println("percona-agent 1.0.1")
+	fmt.Println("percona-agent 1.0.1 rev 19b6b2ede12bfd2a012d40ac572a660be7aff1e7")
 }

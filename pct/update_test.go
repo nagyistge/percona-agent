@@ -132,5 +132,5 @@ func (s *UpdateTestSuite) TestCheck(t *C) {
 	// get "1.0.1" if we run it with -version:
 	out, err := exec.Command(curBin, "-version").Output()
 	t.Assert(err, IsNil)
-	t.Check(strings.TrimSpace(string(out)), Equals, "percona-agent 1.0.1")
+	t.Check(strings.TrimSpace(string(out)), Equals, "percona-agent 1.0.1 rev 19b6b2ede12bfd2a012d40ac572a660be7aff1e7")
 }

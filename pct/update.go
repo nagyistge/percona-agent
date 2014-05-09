@@ -135,7 +135,7 @@ func (u *Updater) Update(version string) error {
 		return err
 	}
 	u.logger.Debug("Update:exec:" + string(out))
-	if strings.TrimSpace(string(out)) != "percona-agent "+version {
+	if !strings.HasPrefix(strings.TrimSpace(string(out)), "percona-agent "+version) {
 		return fmt.Errorf("%s -version returns %s, expected %s", newBin, out, version)
 	}
 

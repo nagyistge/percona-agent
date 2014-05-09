@@ -1,0 +1,4 @@
+[client]
+user=pt_agent
+pass=foobar
+host=localhost

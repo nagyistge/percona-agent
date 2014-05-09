@@ -1,0 +1,15 @@
+{
+    "alias": "prod", 
+    "hostname": "host01", 
+    "uuid": "00000000-0000-0000-0000-000000000001", 
+    "versions": {
+        "DBD::mysql": "4.020", 
+        "IO::Socket::SSL": "1.53", 
+        "JSON": "2.53", 
+        "LWP": "6.03", 
+        "MySQL": "Percona Server (GPL), Release 62.0 5.6.14-62.0-log", 
+        "OS": "Ubuntu 12.04.3 LTS", 
+        "Percona::Toolkit": "2.2.6", 
+        "Perl": "5.14.2"
+    }
+}
