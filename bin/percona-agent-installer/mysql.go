@@ -30,6 +30,8 @@ func MakeGrant(dsn mysql.DSN, user string, pass string) string {
 	host := "%"
 	if dsn.Socket != "" || dsn.Hostname == "localhost" {
 		host = "localhost"
+	} else if dsn.Hostname == "127.0.0.1" {
+		host = "127.0.0.1"
 	}
 	return fmt.Sprintf("GRANT SUPER, PROCESS, USAGE ON *.* TO '%s'@'%s' IDENTIFIED BY '%s'", user, host, pass)
 }

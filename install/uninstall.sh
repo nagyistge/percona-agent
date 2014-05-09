@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# This script is mostly a wrapper around the percona-agent-installer binary
-# which does the heay lifting: creating API resources, configuring service, etc.
-
 set -u
 
 error() {
@@ -19,7 +16,7 @@ BIN="percona-agent"
 
 # Check if script is run as root as we need write access to /etc, /usr/local
 if [ $EUID -ne 0 ]; then
-   error "$BIN install requires root user; detected effective user ID $EUID"
+   error "$BIN uninstall requires root user; detected effective user ID $EUID"
 fi
 
 # Check compatibility
@@ -36,50 +33,29 @@ fi
 echo "Detected $KERNEL $PLATFORM"
 
 # Set up variables.
-INSTALLER_DIR=$(dirname $0)
 INSTALL_DIR="/usr/local/percona"
 
 # ###########################################################################
-# Install percona-agent
+# Stop agent and uninstall sys-int script
 # ###########################################################################
-
-# BASEDIR here must match BASEDIR in percona-agent sys-init script.
-BASEDIR="$INSTALL_DIR/$BIN"
-mkdir -p "$BASEDIR/"{bin,init.d} \
-   || error "'mkdir -p $BASEDIR/{bin,init.d}' failed"
-
-# Install agent binary
-cp -f "$INSTALLER_DIR/bin/$BIN" "$BASEDIR/bin/"
-
-# Copy init script (for backup, as we are going to install it in /etc/init.d)
-cp -f "$INSTALLER_DIR/init.d/$BIN" "$BASEDIR/init.d/"
-
-# Run installer and forward all remaining parameters to it with "$@"
-"$INSTALLER_DIR/bin/$BIN-installer" -basedir "$BASEDIR" "$@"
-if [ $? -ne 0 ]; then
-   error "Failed to install $BIN"
-fi
-
-"$BASEDIR/bin/$BIN" -ping
-if [ $? -ne 0 ]; then
-   error "Installed $BIN but ping test failed"
-fi
-
-# ###########################################################################
-# Install sys-int script
-# ###########################################################################
-
+INIT_SCRIPT="/etc/init.d/$BIN"
 if [ "$KERNEL" != "Darwin" ]; then
-   cp -f "$INSTALL_DIR/$BIN/init.d/$BIN" "/etc/init.d/"
-   chmod a+x "/etc/init.d/$BIN"
+   if [ -x "$INIT_SCRIPT" ]; then
+       echo "Stopping agent ..."
+       ${INIT_SCRIPT} stop
+       if [ $? -ne 0 ]; then
+          error "Failed to stop $BIN"
+       fi
+   fi
 
+   echo "Uninstalling sys-init script ..."
    # Check if the system has chkconfig or update-rc.d.
    if hash update-rc.d 2>/dev/null; then
-           echo "Using update-rc.d to install $BIN service" 
-           update-rc.d  $BIN defaults
+           echo "Using update-rc.d to uninstall $BIN service"
+           update-rc.d -f "$BIN" remove
    elif hash chkconfig 2>/dev/null; then
            echo "Using chkconfig to install $BIN service" 
-           chkconfig $BIN on
+           chkconfig --del "$BIN"
    else
       echo "Cannot find chkconfig or update-rc.d.  $BIN is installed but"
       echo "it will not restart automatically with the server on reboot.  Please"
@@ -87,18 +63,27 @@ if [ "$KERNEL" != "Darwin" ]; then
       cat /etc/*release
    fi
 
-   /etc/init.d/$BIN start
-   if [ $? -ne 0 ]; then
-      error "Failed to start $BIN"
-   fi
+   # Remove init script
+   echo "Removing $INIT_SCRIPT ..."
+   rm -f "$INIT_SCRIPT"
 else
-   echo "Mac OS detected, not installing sys-init script.  To start $BIN:"
-   echo "$BASEDIR/bin/$BIN -basedir $BASEDIR"
+   echo "Mac OS detected, no sys-init script. To stop $BIN:"
+   echo "killall $BIN"
 fi
+
+
+# ###########################################################################
+# Uninstall percona-agent
+# ###########################################################################
+
+# BASEDIR here must match BASEDIR in percona-agent sys-init script.
+BASEDIR="$INSTALL_DIR/$BIN"
+echo "Removing dir $BASEDIR ..."
+rm -rf "$BASEDIR"
 
 # ###########################################################################
 # Cleanup
 # ###########################################################################
 
-echo "$BIN install successful"
+echo "$BIN uninstall successful"
 exit 0

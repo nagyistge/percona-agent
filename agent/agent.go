@@ -148,7 +148,7 @@ func (agent *Agent) Run() error {
 					"This script was created by percona-agent in response to this Restart command:\n"+
 						"# %s\n"+
 						"# It is safe to delete.", cmd)
-				sh := fmt.Sprintf("#!/bin/sh\n# %s\ncd %s\n./%s %s >> %s/percona-agent.log 2>&1 &\n",
+				sh := fmt.Sprintf("#!/bin/sh\n# %s\ncd %s\n%s %s >> %s/percona-agent.log 2>&1 &\n",
 					comment,
 					cwd,
 					os.Args[0],
