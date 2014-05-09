@@ -1,10 +1,5 @@
 #!/bin/bash
 
-# You can run this script locally, but it's main purpose is to be ran from
-# percona.com like:
-#
-#   wget -qO- percona.com/downloads/TESTING/percona-agent/install | sudo bash
-#
 # This script is mostly a wrapper around the percona-agent-installer binary
 # which does the heay lifting: creating API resources, configuring service, etc.
 
