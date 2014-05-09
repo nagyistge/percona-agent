@@ -47,10 +47,12 @@ type Godeps struct {
 
 var (
 	flagDeps bool
+	flagBuild bool
 )
 
 func init() {
 	flag.BoolVar(&flagDeps, "deps", true, "Process Godeps.json")
+	flag.BoolVar(&flagBuild, "build", true, "Build percona-agent")
 
 	log.SetFlags(log.Ltime | log.Lmicroseconds | log.Lshortfile)
 
@@ -145,10 +147,12 @@ func main() {
 	}
 
 	// Build percona-agent.
-	log.Println("Building percona-agent...")
-	chDir(rootDir + "/bin/percona-agent")
-	if err := runCmd("go", "build"); err != nil {
-		log.Fatal(err)
+	if flagBuild {
+		log.Println("Building percona-agent...")
+		chDir(rootDir + "/bin/percona-agent")
+		if err := runCmd("go", "build"); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	chDir(currentDir)

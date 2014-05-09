@@ -65,7 +65,7 @@ func init() {
 
 func run() error {
 	if flagVersion {
-		fmt.Printf("percona-agent %s\n", agent.VERSION)
+		fmt.Printf("percona-agent %s rev %s\n", agent.VERSION, agent.REVISION)
 		return nil
 	}
 
