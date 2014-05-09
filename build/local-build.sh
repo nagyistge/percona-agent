@@ -36,14 +36,16 @@ go build
 # Build the package
 cd $CWD
 [ -f $BIN.tar.gz ] && rm -f $BIN.tar.gz
-if [ -d $BIN ]; then
-   rm -rf $BIN/*
+
+PKG_DIR="$BIN-$VER"
+if [ -d $PKG_DIR ]; then
+   rm -rf $PKG_DIR/*
 fi
-mkdir -p "$BIN/bin" "$BIN/init.d"
+mkdir -p "$PKG_DIR/bin" "$PKG_DIR/init.d"
 
-cp ../install/install.sh $BIN/install
-cp ../COPYING ../README.md ../Changelog.md ../Authors $BIN/
-cp ../bin/$BIN/$BIN ../bin/$BIN-installer/$BIN-installer $BIN/bin
-cp ../install/$BIN $BIN/init.d
+cp ../install/install.sh $PKG_DIR/install
+cp ../COPYING ../README.md ../Changelog.md ../Authors $PKG_DIR/
+cp ../bin/$BIN/$BIN ../bin/$BIN-installer/$BIN-installer $PKG_DIR/bin
+cp ../install/$BIN $PKG_DIR/init.d
 
-tar cvfz $BIN-$VER.tar.gz $BIN/
+tar cvfz $BIN-$VER.tar.gz $PKG_DIR/

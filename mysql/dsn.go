@@ -36,17 +36,19 @@ const (
 )
 
 func (dsn DSN) DSN() (string, error) {
-	if dsn.Hostname != "" && dsn.Socket != "" {
-		return "", fmt.Errorf("Hostname and Socket are mutually exclusive")
-	}
-
 	// Make Sprintf format easier; password doesn't really start with ":".
 	if dsn.Password != "" {
 		dsn.Password = ":" + dsn.Password
 	}
 
 	dsnString := ""
-	if dsn.Hostname != "" {
+	if dsn.Socket != "" {
+		dsnString = fmt.Sprintf("%s%s@unix(%s)",
+			dsn.Username,
+			dsn.Password,
+			dsn.Socket,
+		)
+	} else if dsn.Hostname != "" {
 		if dsn.Port == "" {
 			dsn.Port = "3306"
 		}
@@ -55,12 +57,6 @@ func (dsn DSN) DSN() (string, error) {
 			dsn.Password,
 			dsn.Hostname,
 			dsn.Port,
-		)
-	} else if dsn.Socket != "" {
-		dsnString = fmt.Sprintf("%s%s@unix(%s)",
-			dsn.Username,
-			dsn.Password,
-			dsn.Socket,
 		)
 	} else {
 		user, err := user.Current()
