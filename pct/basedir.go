@@ -59,6 +59,9 @@ func (b *basedir) Init(path string) error {
 	if err := MakeDir(b.configDir); err != nil && !os.IsExist(err) {
 		return err
 	}
+	if err := os.Chmod(b.configDir, 0700); err != nil {
+		return err
+	}
 
 	b.dataDir = filepath.Join(b.path, DATA_DIR)
 	if err := MakeDir(b.dataDir); err != nil && !os.IsExist(err) {
@@ -114,12 +117,12 @@ func (b *basedir) WriteConfig(service string, config interface{}) error {
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(configFile, data, 0644)
+	return ioutil.WriteFile(configFile, data, 0600)
 }
 
 func (b *basedir) WriteConfigString(service, config string) error {
 	configFile := filepath.Join(b.configDir, service+CONFIG_FILE_SUFFIX)
-	return ioutil.WriteFile(configFile, []byte(config), 0644)
+	return ioutil.WriteFile(configFile, []byte(config), 0600)
 }
 
 func (b *basedir) RemoveConfig(service string) error {
