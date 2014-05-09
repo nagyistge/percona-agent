@@ -129,6 +129,7 @@ CONNECT_MYSQL:
 		}
 		if filepath.IsAbs(hostname) {
 			dsn.Socket = hostname
+			dsn.Hostname = ""
 		} else {
 			f := strings.Split(hostname, ":")
 			dsn.Hostname = f[0]
@@ -137,6 +138,7 @@ CONNECT_MYSQL:
 			} else {
 				dsn.Port = "3306"
 			}
+			dsn.Socket = ""
 		}
 
 		if err := TestMySQLConnection(dsn); err != nil {

@@ -42,7 +42,7 @@ func (s *MySQLTestSuite) TestMakeGrant(t *C) {
 	t.Check(i.MakeGrant(dsn, user, pass), Equals, "GRANT SUPER, PROCESS, USAGE ON *.* TO 'new-user'@'localhost' IDENTIFIED BY 'some pass'")
 
 	dsn.Hostname = "127.0.0.1"
-	t.Check(i.MakeGrant(dsn, user, pass), Equals, "GRANT SUPER, PROCESS, USAGE ON *.* TO 'new-user'@'%' IDENTIFIED BY 'some pass'")
+	t.Check(i.MakeGrant(dsn, user, pass), Equals, "GRANT SUPER, PROCESS, USAGE ON *.* TO 'new-user'@'127.0.0.1' IDENTIFIED BY 'some pass'")
 
 	dsn.Hostname = "10.1.1.1"
 	t.Check(i.MakeGrant(dsn, user, pass), Equals, "GRANT SUPER, PROCESS, USAGE ON *.* TO 'new-user'@'%' IDENTIFIED BY 'some pass'")

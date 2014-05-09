@@ -53,6 +53,15 @@ func (s *PTAgentTestSuite) TestParseMyCnf001(t *C) {
 	t.Assert(err, IsNil)
 	t.Check(dsn.Username, Equals, "pt_agent")
 	t.Check(dsn.Password, Equals, "foobar")
+
+	// First #pass=is commented out like this, real pass comes after.
+	content, err = ioutil.ReadFile(test.RootDir + "/installer/my.cnf-002")
+	t.Assert(err, IsNil)
+	dsn = &mysql.DSN{}
+	err = i.ParseMyCnf(string(content), dsn)
+	t.Assert(err, IsNil)
+	t.Check(dsn.Username, Equals, "pt_agent")
+	t.Check(dsn.Password, Equals, "correctpass")
 }
 
 func (s *PTAgentTestSuite) TestParsePTAgentResource(t *C) {

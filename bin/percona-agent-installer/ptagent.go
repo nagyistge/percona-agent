@@ -119,13 +119,13 @@ func ParseMyCnf(content string, dsn *mysql.DSN) error {
 	if content == "" {
 		return nil
 	}
-	userRe := regexp.MustCompile(`user\s*=(\S+)`)
+	userRe := regexp.MustCompile(`(?m)^user\s*=(\S+)`)
 	m := userRe.FindStringSubmatch(content)
 	if len(m) > 1 {
 		dsn.Username = m[1]
 		fmt.Printf("pt-agent MySQL user: %s\n", dsn.Username)
 	}
-	passRe := regexp.MustCompile(`pass\s*=(\S+)`)
+	passRe := regexp.MustCompile(`(?m)^\s*pass\s*=(\S+)`)
 	m = passRe.FindStringSubmatch(content)
 	if len(m) > 1 {
 		dsn.Password = m[1]
