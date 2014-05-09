@@ -30,7 +30,7 @@ fi
 # Check compatibility
 KERNEL=`uname -s`
 if [ "$KERNEL" != "Linux" -a "$KERNEL" != "Darwin" ]; then
-   error "$BIN only runs on Linxu; detected $KERNEL"
+   error "$BIN only runs on Linux; detected $KERNEL"
 fi
 
 PLATFORM=`uname -m`
@@ -38,55 +38,29 @@ if [ "$PLATFORM" != "x86_64" -a "$PLATFORM" != "i686" -a "$PLATFORM" != "i386" ]
    error "$BIN only support x86_64 and i686 platforms; detected $PLATFORM"
 fi
 
-WGET="$(which wget)"
-CURL="$(which curl)"
-if [ -z "$WGET" -a -z "$CURL" ]; then
-   error "Neither wget nor curl is installed or in PATH"
-fi
-
-echo "Detected $KERNEL $PLATFORM" 
+echo "Detected $KERNEL $PLATFORM"
 
 # Set up variables.
-PKG="$BIN.tar.gz"
-DOWNLOAD_URL="${DOWNLOAD_URL:-"http://www.percona.com/downloads/TESTING/$BIN/$PKG"}"
+INSTALLER_DIR=$(dirname $0)
 INSTALL_DIR="/usr/local/percona"
 
-TMP_DIR="$(mktemp -d /tmp/$BIN.XXXXXX)" || exit 1
-TMP_PKG="$TMP_DIR/$PKG"
+# ###########################################################################
+# Install percona-agent
+# ###########################################################################
 
 # BASEDIR here must match BASEDIR in percona-agent sys-init script.
-BASEDIR="$INSTALL_DIR/$BIN" 
-mkdir -p "$BASEDIR" \
-   || error "'mkdir -p $BASEDIR' failed"
+BASEDIR="$INSTALL_DIR/$BIN"
+mkdir -p "$BASEDIR/"{bin,init.d} \
+   || error "'mkdir -p $BASEDIR/{bin,init.d}' failed"
 
-# ###########################################################################
-# Download and extract package
-# ###########################################################################
+# Install agent binary
+cp -f "$INSTALLER_DIR/bin/$BIN" "$BASEDIR/bin/"
 
-echo "Downloading $DOWNLOAD_URL to $TMP_PKG..."
-if [ "$WGET" ]; then 
-   "$WGET" "$DOWNLOAD_URL" -O "$TMP_PKG"
-else
-   "$CURL" -L "$DOWNLOAD_URL" -o "$TMP_PKG"
-fi
-if [ $? -ne 0 ] ; then
-   error "Failed to download $DOWNLOAD_URL"
-fi
+# Copy init script (for backup, as we are going to install it in /etc/init.d)
+cp -f "$INSTALLER_DIR/init.d/$BIN" "$BASEDIR/init.d/"
 
-echo "Extracting $TMP_PKG to $INSTALL_DIR..."
-tar -xzf "$TMP_PKG" -C "$INSTALL_DIR" --overwrite \
-   || error "Failed to extract $TMP_PKG"
-
-rm -rf "$TMP_DIR" \
-   || echo "Cannot remove $TMP_DIR (ignoring)"
-
-# ###########################################################################
-# Install percona-agent (percona-agent-setup install)
-# ###########################################################################
-
-INSTALL_OPTIONS="${INSTALL_OPTIONS:-""}"  # dev and debug
-
-"$BASEDIR/bin/$BIN-installer" -basedir "$BASEDIR" $INSTALL_OPTIONS
+# Run installer and forward all remaining parameters to it with "$@"
+"$INSTALLER_DIR/bin/$BIN-installer" -basedir "$BASEDIR" "$@"
 if [ $? -ne 0 ]; then
    error "Failed to install $BIN"
 fi
