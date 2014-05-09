@@ -34,28 +34,38 @@ func MakeGrant(dsn mysql.DSN, user string, pass string) string {
 	return fmt.Sprintf("GRANT SUPER, PROCESS, USAGE ON *.* TO '%s'@'%s' IDENTIFIED BY '%s'", user, host, pass)
 }
 
-func (i *Installer) doMySQL() (dsn mysql.DSN, err error) {
+func (i *Installer) doMySQL(def *mysql.DSN) (dsn mysql.DSN, err error) {
 	// XXX Using implicit return
-	newMySQLUser, err := i.term.PromptBool("Create new MySQL account for agent?", "Y")
-	if err != nil {
-		return
+
+	var createUser bool
+	if def != nil {
+		createUser = false
+		dsn = *def
+	} else {
+		createUser, err = i.term.PromptBool("Create MySQL user for agent? ('N' to use existing user)", "Y")
+		if err != nil {
+			return
+		}
 	}
 	for {
-		if newMySQLUser {
-			fmt.Println("Connect to MySQL to create new MySQL user for agent")
-			dsn, err = i.connectMySQL()
+		if createUser {
+			dsn, err = i.connectMySQL(nil, true)
 			if err == nil {
-				fmt.Println("Creating new MySQL user for agent...")
-				dsn, err = i.createMySQLUser(dsn)
-				if err == nil {
+				if i.flags["create-mysql-user"] {
+					fmt.Println("Creating new MySQL user for agent...")
+					dsn, err = i.createMySQLUser(dsn)
+					if err == nil {
+						break // success
+					}
+				} else {
+					fmt.Println("Skip creating MySQL user (-create-mysql-user=false)")
 					break // success
 				}
 			}
 			fmt.Println(err)
 		} else {
 			// Let user specify the MySQL account to use for the agent.
-			fmt.Println("Use existing MySQL user for agent")
-			dsn, err = i.connectMySQL()
+			dsn, err = i.connectMySQL(def, false)
 			if err == nil {
 				break // success
 			}
@@ -75,29 +85,43 @@ func (i *Installer) doMySQL() (dsn mysql.DSN, err error) {
 	return // implicit
 }
 
-func (i *Installer) connectMySQL() (mysql.DSN, error) {
+func (i *Installer) connectMySQL(def *mysql.DSN, creating bool) (mysql.DSN, error) {
 	dsn := mysql.DSN{}
-	user, _ := user.Current()
-	if user != nil {
-		dsn.Username = user.Username
+	if creating {
+		fmt.Println("Specify a root/super MySQL user to create a user for the agent")
+	} else if def != nil {
+		fmt.Println("Verify the existing MySQL user to use for the agent")
+		dsn := *def
+		if dsn.Username == "" {
+			user, _ := user.Current()
+			if user != nil {
+				dsn.Username = user.Username
+			}
+		}
+	} else {
+		fmt.Println("Specify an existing MySQL user to use for the agent")
 	}
-	var conn *mysql.Connection
 
 CONNECT_MYSQL:
-	for conn == nil {
+	for {
 		username, err := i.term.PromptStringRequired("MySQL username", dsn.Username)
 		if err != nil {
 			return dsn, err
 		}
 		dsn.Username = username
 
-		password, err := gopass.GetPass("MySQL password: ")
+		var password string
+		if creating {
+			password, err = gopass.GetPass("MySQL password: ")
+		} else {
+			password, err = i.term.PromptStringRequired("MySQL password", dsn.Password)
+		}
 		if err != nil {
 			return dsn, err
 		}
 		dsn.Password = password
 
-		hostname, err := i.term.PromptStringRequired("MySQL host[:port] or socket file", "localhost")
+		hostname, err := i.term.PromptStringRequired("MySQL host[:port] or socket file", dsn.To())
 		if err != nil {
 			return dsn, err
 		}
@@ -113,15 +137,7 @@ CONNECT_MYSQL:
 			}
 		}
 
-		dsnString, err := dsn.DSN()
-		if err != nil {
-			return dsn, err // shouldn't happen
-		}
-
-		fmt.Printf("Connecting to MySQL %s...\n", dsn)
-		conn = mysql.NewConnection(dsnString)
-		if err := conn.Connect(1); err != nil {
-			conn = nil
+		if err := TestMySQLConnection(dsn); err != nil {
 			fmt.Printf("Error connecting to MySQL %s: %s\n", dsn, err)
 			again, err := i.term.PromptBool("Try again?", "Y")
 			if err != nil {
@@ -132,10 +148,23 @@ CONNECT_MYSQL:
 			}
 			continue CONNECT_MYSQL
 		}
-		defer conn.Close()
-
 		fmt.Printf("MySQL connection OK\n")
 		break
 	}
 	return dsn, nil
+}
+
+func TestMySQLConnection(dsn mysql.DSN) error {
+	dsnString, err := dsn.DSN()
+	if err != nil {
+		return err // shouldn't happen
+	}
+
+	fmt.Printf("Testing MySQL connection %s...\n", dsn)
+	conn := mysql.NewConnection(dsnString)
+	if err := conn.Connect(1); err != nil {
+		return err
+	}
+	defer conn.Close()
+	return nil
 }

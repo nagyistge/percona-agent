@@ -1,0 +1,8 @@
+api-key=10000000000000000000000000000001
+check-interval=60
+defaults-file=/etc/percona/agent/my.cnf
+lib=/var/lib/pt-agent
+log=/var/log/pt-agent.log
+pid=/var/run/pt-agent.pid
+socket=/var/lib/mysql/mysql.sock
+spool=/var/spool/pt-agent

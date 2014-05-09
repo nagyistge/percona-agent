@@ -72,6 +72,18 @@ func (dsn DSN) DSN() (string, error) {
 	return dsnString + dsnSuffix, nil
 }
 
+func (dsn DSN) To() string {
+	if dsn.Socket != "" {
+		return dsn.Socket
+	} else if dsn.Hostname != "" {
+		if dsn.Port == "" {
+			dsn.Port = "3306"
+		}
+		return fmt.Sprintf(dsn.Hostname + ":" + dsn.Port)
+	}
+	return "localhost"
+}
+
 func (dsn DSN) String() string {
 	dsn.Password = "..."
 	dsnString, _ := dsn.DSN()

@@ -63,6 +63,47 @@ func NewInstaller(term *Terminal, basedir string, api pct.APIConnector, agentCon
 func (i *Installer) Run() error {
 
 	/**
+	 * Check for pt-agent, upgrade if found.
+	 */
+
+	var ptagentDSN *mysql.DSN
+	ptagentUpgrade := false
+	ptagentConf := "/root/.pt-agent.conf"
+	if pct.FileExists(ptagentConf) {
+		fmt.Println("Found pt-agent, upgrading and removing because it is no longer supported...")
+		ptagentUpgrade = true
+
+		// Stop pt-agent
+		if err := StopPTAgent(); err != nil {
+			return fmt.Errorf("Error stopping pt-agent: %s", err)
+			fmt.Println("WARNING: pt-agent must be stopped before installing percona-agent.  " +
+				"Please verify that pt-agent has stopped and has been removed from cron.  " +
+				"Enter 'Y' to confirm and continue installing percona-agent")
+			ok, err := i.term.PromptBool("pt-agent has stopped?", "Y")
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return fmt.Errorf("Failed to stop pt-agent")
+			}
+		}
+
+		// Get its settings (API key, UUID, etc.).
+		agent, dsn, err := GetPTAgentSettings(ptagentConf)
+		if err != nil {
+			return fmt.Errorf("Error upgrading pt-agent: %s", err)
+		}
+		if agent.ApiKey != "" {
+			i.agentConfig.ApiKey = agent.ApiKey
+		}
+		if agent.AgentUuid != "" {
+			fmt.Printf("Upgrading pt-agent %s...\n", agent.AgentUuid)
+			i.agentConfig.AgentUuid = agent.AgentUuid
+		}
+		ptagentDSN = dsn
+	}
+
+	/**
 	 * Get the API key.
 	 */
 
@@ -134,36 +175,35 @@ VERIFY_API_KEY:
 	 * Create a MySQL user for the agent, or use an existing one.
 	 */
 
-	agentDSN := mysql.DSN{}
-	if !i.flags["skip-mysql"] {
-		dsn, err := i.doMySQL()
-		if err != nil {
-			return err
-		}
-		agentDSN = dsn
-	} else {
-		fmt.Println("Skip creating MySQL user (-skip-mysql)")
+	agentDSN, err := i.doMySQL(ptagentDSN)
+	if err != nil {
+		return err
 	}
 
 	/**
 	 * Create new API resources.
 	 */
 
-	si, err := i.createServerInstance()
-	if err != nil {
-		return err
+	var si *proto.ServerInstance
+	if i.flags["create-server-instance"] {
+		si, err = i.createServerInstance()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Created server instance: hostname=%s id=%d\n", si.Hostname, si.Id)
+	} else {
+		fmt.Println("Not creating server instance (-create-server-instance=false)")
 	}
-	fmt.Printf("Created server instance: hostname=%s id=%d\n", si.Hostname, si.Id)
 
 	var mi *proto.MySQLInstance
-	if !i.flags["skip-mysql"] {
+	if i.flags["create-mysql-instance"] {
 		mi, err = i.createMySQLInstance(agentDSN)
 		if err != nil {
 			return err
 		}
 		fmt.Printf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mi.DSN, mi.Hostname, si.Id)
 	} else {
-		fmt.Println("Skip creating MySQL instance (-skip-mysql)")
+		fmt.Println("Not creating MySQL instance (-create-mysql-instance=false)")
 	}
 
 	if err := i.writeInstances(si, mi); err != nil {
@@ -176,56 +216,68 @@ VERIFY_API_KEY:
 
 	configs := []proto.AgentConfig{}
 
-	config, err := i.getMmServerConfig(si)
-	if err != nil {
-		fmt.Println(err)
-		fmt.Println("WARNING: cannot server metrics monitor")
-	} else {
-		configs = append(configs, *config)
-	}
-
-	config, err = i.getMmMySQLConfig(mi)
-	if err != nil {
-		fmt.Println(err)
-		fmt.Println("WARNING: cannot start MySQL metrics monitor")
-	} else {
-		configs = append(configs, *config)
-	}
-
-	config, err = i.getSysconfigMySQLConfig(mi)
-	if err != nil {
-		fmt.Println(err)
-		fmt.Println("WARNING: cannot start MySQL configuration monitor")
-	} else {
-		configs = append(configs, *config)
-	}
-
-	// MySQL is local if the server hostname == MySQL hostname without port number.
-	if i.hostname == portNumberRe.ReplaceAllLiteralString(mi.Hostname, "") {
-		if i.flags["debug"] {
-			log.Printf("MySQL is local")
-		}
-		config, err := i.getQanConfig(mi)
+	if !i.flags["start-services"] {
+		config, err := i.getMmServerConfig(si)
 		if err != nil {
 			fmt.Println(err)
-			fmt.Println("WARNING: cannot start Query Analytics")
+			fmt.Println("WARNING: cannot start server metrics monitor")
 		} else {
 			configs = append(configs, *config)
 		}
+
+		config, err = i.getMmMySQLConfig(mi)
+		if err != nil {
+			fmt.Println(err)
+			fmt.Println("WARNING: cannot start MySQL metrics monitor")
+		} else {
+			configs = append(configs, *config)
+		}
+
+		config, err = i.getSysconfigMySQLConfig(mi)
+		if err != nil {
+			fmt.Println(err)
+			fmt.Println("WARNING: cannot start MySQL configuration monitor")
+		} else {
+			configs = append(configs, *config)
+		}
+
+		// MySQL is local if the server hostname == MySQL hostname without port number.
+		if i.hostname == portNumberRe.ReplaceAllLiteralString(mi.Hostname, "") {
+			if i.flags["debug"] {
+				log.Printf("MySQL is local")
+			}
+			config, err := i.getQanConfig(mi)
+			if err != nil {
+				fmt.Println(err)
+				fmt.Println("WARNING: cannot start Query Analytics")
+			} else {
+				configs = append(configs, *config)
+			}
+		}
+	} else {
+		fmt.Println("Not starting default services (-start-services=false)")
 	}
 
 	/**
 	 * Create agent with initial service configs.
 	 */
 
-	agent, err := i.createAgent(configs)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("Created agent: uuid=%s\n", agent.Uuid)
+	if !i.flags["create-agent"] {
+		agent, err := i.createAgent(configs)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Created agent: uuid=%s\n", agent.Uuid)
 
-	if err := i.writeConfigs(agent, configs); err != nil {
-		return fmt.Errorf("Created agent but failed to write its config: %s", err)
+		if err := i.writeConfigs(agent, configs); err != nil {
+			return fmt.Errorf("Created agent but failed to write its config: %s", err)
+		}
+	} else {
+		fmt.Println("Not creating agent (-create-agent=false)")
+	}
+
+	if ptagentUpgrade {
+		RemovePTAgent(ptagentConf)
 	}
 
 	return nil // success

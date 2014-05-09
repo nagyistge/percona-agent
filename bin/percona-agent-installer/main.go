@@ -27,12 +27,15 @@ import (
 )
 
 var (
-	flagApiHostname string
-	flagApiKey      string
-	flagBasedir     string
-	flagDebug       bool
-	flagSkipMySQL   bool
-	flagSkipAgent   bool
+	flagApiHostname          string
+	flagApiKey               string
+	flagBasedir              string
+	flagDebug                bool
+	flagCreateMySQLUser      bool
+	flagCreateMySQLInstance  bool
+	flagCreateServerInstance bool
+	flagStartServices        bool
+	flagCreateAgent          bool
 )
 
 func init() {
@@ -42,8 +45,12 @@ func init() {
 	flag.StringVar(&flagApiKey, "api-key", "", "API key")
 	flag.StringVar(&flagBasedir, "basedir", pct.DEFAULT_BASEDIR, "Agent basedir")
 	flag.BoolVar(&flagDebug, "debug", false, "Debug")
-	flag.BoolVar(&flagSkipMySQL, "skip-mysql", false, "Skip MySQL steps")
-	flag.BoolVar(&flagSkipAgent, "skip-agent", false, "Skip agent steps")
+	// --
+	flag.BoolVar(&flagCreateMySQLUser, "create-mysql-user", true, "Create MySQL user for agent")
+	flag.BoolVar(&flagCreateMySQLInstance, "create-mysql-instance", true, "Create MySQL instance")
+	flag.BoolVar(&flagCreateServerInstance, "create-server-instance", true, "Create server instance")
+	flag.BoolVar(&flagStartServices, "start-services", true, "Start all default services")
+	flag.BoolVar(&flagCreateAgent, "create-agent", true, "Create agent")
 }
 
 func main() {
@@ -55,9 +62,12 @@ func main() {
 	}
 	// todo: do flags a better way
 	flags := Flags{
-		"debug":      flagDebug,
-		"skip-mysql": flagSkipMySQL,
-		"skip-agent": flagSkipAgent,
+		"debug":                  flagDebug,
+		"create-mysql-user":      flagCreateMySQLUser,
+		"create-mysql-instance":  flagCreateMySQLInstance,
+		"create-server-instance": flagCreateServerInstance,
+		"start-services":         flagStartServices,
+		"create-agent":           flagCreateAgent,
 	}
 
 	// Agent stores all its files in the basedir.  This must be called first
