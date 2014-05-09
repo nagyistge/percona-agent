@@ -49,7 +49,27 @@ func (i *Installer) createMySQLUser(dsn mysql.DSN) (mysql.DSN, error) {
 		log.Println(sql)
 	}
 	_, err := conn.DB().Exec(sql)
-	return userDSN, err
+	if err != nil {
+		return userDSN, err
+	}
+
+	// Go MySQL driver resolves localhost to 127.0.0.1 but localhost is a special
+	// value for MySQL, so 127.0.0.1 may not work with a grant @localhost, so we
+	// add a 2nd grant @127.0.0.1 to be sure.
+	if dsn.Hostname == "localhost" {
+		dsn2 := dsn
+		dsn2.Hostname = "127.0.0.1"
+		sql := MakeGrant(dsn2, userDSN.Username, userDSN.Password)
+		if i.flags["debug"] {
+			log.Println(sql)
+		}
+		_, err := conn.DB().Exec(sql)
+		if err != nil {
+			return userDSN, err
+		}
+	}
+
+	return userDSN, nil
 }
 
 func (i *Installer) createServerInstance() (*proto.ServerInstance, error) {
