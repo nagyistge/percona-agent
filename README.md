@@ -15,7 +15,7 @@ percona-agent must be installed _and_ ran as root.
 Upgrading from pt-agent
 -----------------------
 
-If you're already using Percona Cloud Tools by running pt-agent, the percona-agent installer will automatically detect, upgrade, and remvoe pt-agent.  percona-agent does everything pt-agent does and a lot more.
+If you're already using Percona Cloud Tools by running pt-agent, the percona-agent installer will automatically detect, upgrade, and remove `pt-agent`.  `percona-agent` does everything `pt-agent` does and a lot more.
 
 Help and Support
 ----------------
