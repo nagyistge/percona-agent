@@ -428,7 +428,9 @@ func (agent *Agent) Handle(cmd *proto.Cmd) *proto.Reply {
 	}
 	if len(errs) > 0 {
 		for _, err := range errs {
-			agent.logger.Error(err)
+			if err != nil {
+				agent.logger.Error(err)
+			}
 		}
 	}
 
@@ -568,9 +570,6 @@ func (agent *Agent) handleVersion(cmd *proto.Cmd) (interface{}, []error) {
 	bin, err := filepath.Abs(os.Args[0])
 	if err != nil {
 		return v, []error{err}
-	}
-	if strings.HasSuffix(bin, "percona-agent") {
-		return v, nil
 	}
 	out, err := exec.Command(bin, "-version").Output()
 	if err != nil {

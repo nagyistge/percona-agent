@@ -86,8 +86,8 @@ func (s *Sender) run() {
 	}()
 
 	s.logger.Info("Start")
+	s.status.Update("data-sender", "Idle")
 	for {
-		s.status.Update("data-sender", "Idle")
 		select {
 		case <-s.tickerChan:
 			s.send()
@@ -103,7 +103,9 @@ func (s *Sender) send() {
 	defer s.logger.Debug("send:return")
 
 	// Try a few times to connect to the API.
+	sentOK := 0
 	s.status.Update("data-sender", "Connecting")
+	defer s.status.Update("data-sender", fmt.Sprintf("Idle (last sent %d files at %s)", sentOK, time.Now()))
 	connected := false
 	var apiErr error
 	for i := 1; i <= 3; i++ {
@@ -134,9 +136,6 @@ func (s *Sender) send() {
 	n500Err := 0
 
 	// Send all files.
-	s.logger.Info("Start sending")
-	defer s.logger.Info("Done sending") // todo: log basic numbers: number of files sent, errors, time, etc.
-
 	s.status.Update("data-sender", "Running")
 	filesChan := s.spool.Files()
 	for file := range filesChan {
@@ -174,7 +173,7 @@ func (s *Sender) send() {
 			if resp.Code >= 400 && resp.Code < 500 {
 				// Something on our side is broken.
 				if n400Err < maxWarnErr {
-					s.logger.Warn(resp)
+					s.logger.Error(resp)
 				}
 				n400Err++
 			} else if resp.Code >= 500 {
@@ -184,16 +183,19 @@ func (s *Sender) send() {
 				}
 				n500Err++
 			} else {
-				s.logger.Warn(resp)
+				s.logger.Warn(fmt.Sprintf("Unknown response from API: %s", resp))
 			}
 			continue
 		}
 
 		s.status.Update("data-sender", "Removing "+file)
 		s.spool.Remove(file)
-		s.logger.Info("Sent and removed", file)
+		sentOK++
 	}
 
+	if sentOK == 0 {
+		s.logger.Warn(fmt.Sprintf("No data sent"))
+	}
 	if n400Err > maxWarnErr {
 		s.logger.Warn(fmt.Sprintf("%d more 4xx errors", n400Err-maxWarnErr))
 	}
