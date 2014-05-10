@@ -103,9 +103,11 @@ func (s *Sender) send() {
 	defer s.logger.Debug("send:return")
 
 	// Try a few times to connect to the API.
-	sentOK := 0
 	s.status.Update("data-sender", "Connecting")
-	defer s.status.Update("data-sender", fmt.Sprintf("Idle (last sent %d files at %s)", sentOK, time.Now()))
+	sentOK := 0
+	defer func() {
+		s.status.Update("data-sender", fmt.Sprintf("Idle (last sent %d files at %s)", sentOK, time.Now()))
+	}()
 	connected := false
 	var apiErr error
 	for i := 1; i <= 3; i++ {
