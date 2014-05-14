@@ -47,17 +47,19 @@ type QanWorker struct {
 	stopChan chan bool
 	result   *qan.Result
 	err      error
+	crash    bool
 	// --
 	runningChan chan bool
 	Job         *qan.Job
 }
 
-func NewQanWorker(name string, stopChan chan bool, result *qan.Result, err error) *QanWorker {
+func NewQanWorker(name string, stopChan chan bool, result *qan.Result, err error, crash bool) *QanWorker {
 	w := &QanWorker{
 		name:        name,
 		stopChan:    stopChan,
 		result:      result,
 		err:         err,
+		crash:       crash,
 		runningChan: make(chan bool, 1),
 	}
 	return w
@@ -74,6 +76,10 @@ func (w *QanWorker) Status() string {
 func (w *QanWorker) Run(job *qan.Job) (*qan.Result, error) {
 	w.Job = job
 	w.runningChan <- true
+
+	if w.crash {
+		panic(w.name)
+	}
 
 	// Pretend like we're running until test says to stop.
 	<-w.stopChan
