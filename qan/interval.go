@@ -35,6 +35,10 @@ type Interval struct {
 	EndOffset   int64     // bytes @ StopTime
 }
 
+func (i *Interval) String() string {
+	return fmt.Sprintf("%d %s %s-%s/%d-%d", i.Number, i.Filename, i.StartTime, i.StopTime, i.StartOffset, i.EndOffset)
+}
+
 // Returns slow_query_log_file, or error:
 type FilenameFunc func() (string, error)
 

@@ -304,11 +304,15 @@ func (m *Manager) run(config Config) {
 			m.workers[w] = interval
 			m.workersMux.Unlock()
 
+			// Run a worker to parse this slice of the slow log.
 			go func(interval *Interval) {
 				m.logger.Debug(fmt.Sprintf("run:interval:%d:start", interval.Number))
 				defer func() {
 					m.logger.Debug(fmt.Sprintf("run:interval:%d:done", interval.Number))
 					m.workerDoneChan <- w
+					if err := recover(); err != nil {
+						m.logger.Error(fmt.Sprintf("Lost interval %s: %s", interval, err))
+					}
 				}()
 				t0 := time.Now()
 				result, err := w.Run(job)
