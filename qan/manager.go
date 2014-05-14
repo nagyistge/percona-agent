@@ -309,11 +309,13 @@ func (m *Manager) run(config Config) {
 				m.logger.Debug(fmt.Sprintf("run:interval:%d:start", interval.Number))
 				defer func() {
 					m.logger.Debug(fmt.Sprintf("run:interval:%d:done", interval.Number))
-					m.workerDoneChan <- w
 					if err := recover(); err != nil {
+						// Worker caused panic.  Log it as error because this shouldn't happen.
 						m.logger.Error(fmt.Sprintf("Lost interval %s: %s", interval, err))
 					}
+					m.workerDoneChan <- w
 				}()
+
 				t0 := time.Now()
 				result, err := w.Run(job)
 				t1 := time.Now()
