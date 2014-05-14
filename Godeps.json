@@ -18,7 +18,7 @@
 		},
 		{
 			"Pkg": "github.com/percona/mysql-log-parser",
-			"Rev": "7ba0b741046ac2c6a24b9f97e36aa2d37db870bc"
+			"Rev": "62801481029ada1d8c8b361dfce7a263625145ec"
 		},
 		{
 			"Pkg": "github.com/petar/GoLLRB",
