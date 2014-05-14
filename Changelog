@@ -2,6 +2,7 @@ percona-agent Changelog
 
 v1.0.1
 
+  * Fixed PCT-552: percona-agent does not parse entire slow log
   * Fixed PCT-553: percona-agent crashes with "panic: No Query_time in event"
 
 v1.0.0 released 2014-05-08
