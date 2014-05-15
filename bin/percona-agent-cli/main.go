@@ -31,10 +31,6 @@ import (
 	"time"
 )
 
-const (
-	VERSION = "1.0.0"
-)
-
 func init() {
 	golog.SetFlags(golog.Ldate | golog.Ltime | golog.Lmicroseconds | golog.Lshortfile)
 }
@@ -56,7 +52,7 @@ func main() {
 }
 
 func (cli *Cli) Run() {
-	fmt.Printf("percona-agent-cli %s\nType '?' for help.\nUse 'connect' to get started.\n\n", VERSION)
+	fmt.Printf("percona-agent-cli\nType '?' for help.\nUse 'connect' to get started.\n\n")
 
 	bio := bufio.NewReader(os.Stdin)
 	for {
@@ -258,14 +254,9 @@ func (cli *Cli) send(args []string) {
 		switch args[1] {
 		case "Update":
 			cmd.Data = []byte(args[3])
-		case "GetInfo":
-			si := &proto.ServiceInstance{}
-			if err := json.Unmarshal([]byte(args[3]), si); err != nil {
-				fmt.Printf("ERROR: %s\n", err)
-				return
-			}
-			bytes, _ := json.Marshal(si)
-			cmd.Data = bytes
+		default:
+			fmt.Printf("Unknown arg: %s\n", args[3])
+			return
 		}
 	}
 	fmt.Printf("%#v\n", cmd)
@@ -333,6 +324,25 @@ func (cli *Cli) info(args []string) {
 				return
 			}
 			cmd.Data = bytes
+		case "server":
+			mi := &proto.ServerInstance{
+				Hostname: args[2],
+			}
+			bytes, err := json.Marshal(mi)
+			if err != nil {
+				fmt.Printf("ERROR: %s\n", err)
+				return
+			}
+			si := &proto.ServiceInstance{
+				Service: "server",
+				Instance: bytes,
+			}
+			bytes, err = json.Marshal(si)
+			if err != nil {
+				fmt.Printf("ERROR: %s\n", err)
+				return
+			}
+			cmd.Data = bytes
 		}
 	}
 	reply, err := cli.Put(cli.agentLinks["self"]+"/cmd", cmd)
@@ -348,6 +358,13 @@ func (cli *Cli) info(args []string) {
 	switch args[1] {
 	case "mysql":
 		mi := &proto.MySQLInstance{}
+		if err := json.Unmarshal(reply.Data, mi); err != nil {
+			fmt.Printf("Invalid reply: %s\n", err)
+			return
+		}
+		fmt.Printf("%#v\n", mi)
+	case "server":
+		mi := &proto.ServerInstance{}
 		if err := json.Unmarshal(reply.Data, mi); err != nil {
 			fmt.Printf("Invalid reply: %s\n", err)
 			return

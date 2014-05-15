@@ -13,7 +13,7 @@ CWD="$PWD"
 PLATFORM=`uname -m`
 if [ "$PLATFORM" = "x86_64" ]; then
    ARCH="amd64"
-elif [ "$PLATFORM" = "i686" -o "$PLATFORM" != "i386" ]; then
+elif [ "$PLATFORM" = "i686" -o "$PLATFORM" = "i386" ]; then
    ARCH="386"
 else
    error "Unknown platform: $PLATFORM"
@@ -29,10 +29,10 @@ export GOPATH="$VENDOR_DIR:$GOPATH"
 
 # Build percona-agent
 cd bin/percona-agent
-if [ -n "$1" ]; then
+if [ -n "${1:-""}" ]; then
    VER="$1"
 else
-   VER="$(awk '/VERSION[ ]+=/ {print $3}' ../../agent/agent.go | sed 's/"//g')"
+   VER="$(awk '/var VERSION/ {print $5}' ../../agent/agent.go | sed 's/"//g')"
 fi
 REV="$(git rev-parse HEAD)"
 go build -ldflags "-X github.com/percona/percona-agent/agent.REVISION $REV"

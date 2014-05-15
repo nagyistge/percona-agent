@@ -21,13 +21,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/mysql-log-parser/test"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/qan"
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
-	"github.com/percona/mysql-log-parser/test"
 	"io/ioutil"
 	. "launchpad.net/gocheck"
 	"os"
@@ -759,13 +759,13 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(t *C) {
 	// test that slow log is not removed until previous workers are done.
 	// Mock worker factory will return our mock workers when manager calls Make().
 	w1StopChan := make(chan bool)
-	w1 := mock.NewQanWorker("qan-worker-1", w1StopChan, nil, nil)
+	w1 := mock.NewQanWorker("qan-worker-1", w1StopChan, nil, nil, false)
 
 	w2StopChan := make(chan bool)
-	w2 := mock.NewQanWorker("qan-worker-2", w2StopChan, nil, nil)
+	w2 := mock.NewQanWorker("qan-worker-2", w2StopChan, nil, nil, false)
 
 	// Let's take this time to also test that MaxWorkers is enforced.
-	w3 := mock.NewQanWorker("qan-worker-3", nil, nil, nil)
+	w3 := mock.NewQanWorker("qan-worker-3", nil, nil, nil, false)
 
 	f := mock.NewQanWorkerFactory([]*mock.QanWorker{w1, w2, w3})
 
@@ -898,6 +898,74 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(t *C) {
 	if _, err := os.Stat(files[0]); !os.IsNotExist(err) {
 		t.Errorf("w1 done running so old slow log removed")
 	}
+
+	// Stop manager
+	reply = m.Handle(&proto.Cmd{Cmd: "StopService"})
+	t.Assert(reply.Error, Equals, "")
+}
+
+func (s *ManagerTestSuite) TestRecoverWorkerPanic(t *C) {
+	// Create and start manager with mock workers.
+	w1StopChan := make(chan bool)
+	w1 := mock.NewQanWorker("qan-worker-1", w1StopChan, nil, nil, true)
+	f := mock.NewQanWorkerFactory([]*mock.QanWorker{w1})
+	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
+	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, f, s.spool, s.im)
+	t.Assert(m, NotNil)
+
+	config := &qan.Config{
+		ServiceInstance: s.mysqlInstance,
+		MaxSlowLogSize:  1000,
+		MaxWorkers:      2,
+		Interval:        60,
+		WorkerRunTime:   60,
+		Start: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+		},
+		Stop: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+		},
+	}
+	qanConfig, _ := json.Marshal(config)
+	cmd := &proto.Cmd{
+		Ts:   time.Now(),
+		Cmd:  "StartService",
+		Data: qanConfig,
+	}
+	reply := m.Handle(cmd)
+	t.Assert(reply.Error, Equals, "")
+
+	test.WaitStatusPrefix(1, m, "qan-log-parser", "Idle")
+	test.DrainLogChan(s.logChan)
+
+	// Start mock worker.  All it does is panic, much like fipar.
+	now := time.Now()
+	i1 := &qan.Interval{
+		Filename:    "slow.log",
+		StartOffset: 0,
+		EndOffset:   100,
+		StartTime:   now,
+		StopTime:    now,
+	}
+	s.intervalChan <- i1
+	<-w1.Running() // wait for manager to run worker
+
+	// For now, worker panic only results in error to log.
+	var gotError *proto.LogEntry
+	timeout := time.After(200 * time.Millisecond)
+GET_LOG:
+	for {
+		select {
+		case l := <-s.logChan:
+			if l.Level == 3 && strings.HasPrefix(l.Msg, "Lost interval 0 slow.log") {
+				gotError = l
+				break GET_LOG
+			}
+		case <-timeout:
+			break GET_LOG
+		}
+	}
+	t.Check(gotError, NotNil)
 
 	// Stop manager
 	reply = m.Handle(&proto.Cmd{Cmd: "StopService"})
