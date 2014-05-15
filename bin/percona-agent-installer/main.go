@@ -36,7 +36,7 @@ var (
 	flagCreateServerInstance bool
 	flagStartServices        bool
 	flagCreateAgent          bool
-	flagSkipMySQL            bool
+	flagStartMySQLServices   bool
 )
 
 func init() {
@@ -50,9 +50,9 @@ func init() {
 	flag.BoolVar(&flagCreateMySQLUser, "create-mysql-user", true, "Create MySQL user for agent")
 	flag.BoolVar(&flagCreateMySQLInstance, "create-mysql-instance", true, "Create MySQL instance")
 	flag.BoolVar(&flagCreateServerInstance, "create-server-instance", true, "Create server instance")
-	flag.BoolVar(&flagStartServices, "start-services", true, "Start all default services")
+	flag.BoolVar(&flagStartServices, "start-services", true, "Start all services")
+	flag.BoolVar(&flagStartMySQLServices, "start-mysql-services", true, "Start MySQL services")
 	flag.BoolVar(&flagCreateAgent, "create-agent", true, "Create agent")
-	flag.BoolVar(&flagSkipMySQL, "skip-mysql", false, "Do not install MySQL services")
 }
 
 func main() {
@@ -70,7 +70,7 @@ func main() {
 		"create-server-instance": flagCreateServerInstance,
 		"start-services":         flagStartServices,
 		"create-agent":           flagCreateAgent,
-		"skip-mysql":             flagSkipMySQL,
+		"start-mysql-services":   flagStartMySQLServices,
 	}
 
 	// Agent stores all its files in the basedir.  This must be called first

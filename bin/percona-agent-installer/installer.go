@@ -175,7 +175,7 @@ VERIFY_API_KEY:
 	var mi *proto.MySQLInstance
 
 	/**
-	 * Create new API resources.
+	 * Create new service instances.
 	 */
 
 	var err error
@@ -190,29 +190,19 @@ VERIFY_API_KEY:
 		fmt.Println("Not creating server instance (-create-server-instance=false)")
 	}
 
-	log.Println("si: ", si)
-
-	if !i.flags["skip-mysql"] {
-
-		/**
-		 * Create a MySQL user for the agent, or use an existing one.
-		 */
-
+	if i.flags["create-mysql-instance"] {
+		// Create MySQL user for agent, or using existing one, then verify MySQL connection.
 		agentDSN, err := i.doMySQL(ptagentDSN)
 		if err != nil {
 			return err
 		}
-
-		if i.flags["create-mysql-instance"] {
-			mi, err = i.createMySQLInstance(agentDSN)
-			if err != nil {
-				return err
-			}
-			fmt.Printf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mi.DSN, mi.Hostname, si.Id)
-		} else {
-			fmt.Println("Not creating MySQL instance (-create-mysql-instance=false)")
+		mi, err = i.createMySQLInstance(agentDSN)
+		if err != nil {
+			return err
 		}
-
+		fmt.Printf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mi.DSN, mi.Hostname, si.Id)
+	} else {
+		fmt.Println("Not creating MySQL instance (-create-mysql-instance=false)")
 	}
 
 	if err := i.writeInstances(si, mi); err != nil {
@@ -234,8 +224,7 @@ VERIFY_API_KEY:
 			configs = append(configs, *config)
 		}
 
-		if !i.flags["skip-mysql"] {
-
+		if i.flags["start-mysql-services"] {
 			config, err = i.getMmMySQLConfig(mi)
 			if err != nil {
 				fmt.Println(err)
@@ -265,6 +254,8 @@ VERIFY_API_KEY:
 					configs = append(configs, *config)
 				}
 			}
+		} else {
+			fmt.Println("Not starting MySQL services (-start-mysql-services=false)")
 		}
 	} else {
 		fmt.Println("Not starting default services (-start-services=false)")
@@ -296,6 +287,10 @@ VERIFY_API_KEY:
 	} else {
 		fmt.Println("Not creating agent (-create-agent=false)")
 	}
+
+	/**
+	 * Remove pt-agent if upgrading.
+	 */
 
 	if ptagentUpgrade {
 		RemovePTAgent(ptagentConf)
