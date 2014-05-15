@@ -29,7 +29,7 @@ export GOPATH="$VENDOR_DIR:$GOPATH"
 
 # Build percona-agent
 cd bin/percona-agent
-if [ -n "$1" ]; then
+if [ -n "${1:-""}" ]; then
    VER="$1"
 else
    VER="$(awk '/VERSION[ ]+=/ {print $3}' ../../agent/agent.go | sed 's/"//g')"
