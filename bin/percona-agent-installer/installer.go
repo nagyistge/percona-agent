@@ -196,6 +196,7 @@ VERIFY_API_KEY:
 		if err != nil {
 			return err
 		}
+		// Create MySQL instance in API.
 		mi, err = i.createMySQLInstance(agentDSN)
 		if err != nil {
 			return err
@@ -216,6 +217,7 @@ VERIFY_API_KEY:
 	configs := []proto.AgentConfig{}
 
 	if i.flags["start-services"] {
+		// Server metrics monitor
 		config, err := i.getMmServerConfig(si)
 		if err != nil {
 			fmt.Println(err)
@@ -225,6 +227,7 @@ VERIFY_API_KEY:
 		}
 
 		if i.flags["start-mysql-services"] {
+			// MySQL metrics tracker
 			config, err = i.getMmMySQLConfig(mi)
 			if err != nil {
 				fmt.Println(err)
@@ -233,6 +236,7 @@ VERIFY_API_KEY:
 				configs = append(configs, *config)
 			}
 
+			// MySQL config tracker
 			config, err = i.getSysconfigMySQLConfig(mi)
 			if err != nil {
 				fmt.Println(err)
@@ -241,6 +245,7 @@ VERIFY_API_KEY:
 				configs = append(configs, *config)
 			}
 
+			// QAN
 			// MySQL is local if the server hostname == MySQL hostname without port number.
 			if i.hostname == portNumberRe.ReplaceAllLiteralString(mi.Hostname, "") {
 				if i.flags["debug"] {
