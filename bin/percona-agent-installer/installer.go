@@ -178,43 +178,42 @@ VERIFY_API_KEY:
 	 * Create new API resources.
 	 */
 
-    var err error
+	var err error
 
 	if i.flags["create-server-instance"] {
-        si, err = i.createServerInstance()
+		si, err = i.createServerInstance()
 		if err != nil {
 			return err
 		}
 		fmt.Printf("Created server instance: hostname=%s id=%d\n", si.Hostname, si.Id)
 	} else {
 		fmt.Println("Not creating server instance (-create-server-instance=false)")
-    }
+	}
 
-    log.Println("si: ",si)
+	log.Println("si: ", si)
 
-    if !i.flags["skip-mysql"] {
+	if !i.flags["skip-mysql"] {
 
-        /**
-        * Create a MySQL user for the agent, or use an existing one.
-        */
+		/**
+		 * Create a MySQL user for the agent, or use an existing one.
+		 */
 
-        agentDSN, err := i.doMySQL(ptagentDSN)
-        if err != nil {
-            return err
-        }
+		agentDSN, err := i.doMySQL(ptagentDSN)
+		if err != nil {
+			return err
+		}
 
+		if i.flags["create-mysql-instance"] {
+			mi, err = i.createMySQLInstance(agentDSN)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mi.DSN, mi.Hostname, si.Id)
+		} else {
+			fmt.Println("Not creating MySQL instance (-create-mysql-instance=false)")
+		}
 
-        if i.flags["create-mysql-instance"] {
-            mi, err = i.createMySQLInstance(agentDSN)
-            if err != nil {
-                return err
-            }
-            fmt.Printf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mi.DSN, mi.Hostname, si.Id)
-        } else {
-            fmt.Println("Not creating MySQL instance (-create-mysql-instance=false)")
-        }
-
-    }
+	}
 
 	if err := i.writeInstances(si, mi); err != nil {
 		return fmt.Errorf("Created agent but failed to write service instances: %s", err)
@@ -235,38 +234,38 @@ VERIFY_API_KEY:
 			configs = append(configs, *config)
 		}
 
-        if !i.flags["skip-mysql"] {
+		if !i.flags["skip-mysql"] {
 
-            config, err = i.getMmMySQLConfig(mi)
-            if err != nil {
-                fmt.Println(err)
-                fmt.Println("WARNING: cannot start MySQL metrics monitor")
-            } else {
-                configs = append(configs, *config)
-            }
+			config, err = i.getMmMySQLConfig(mi)
+			if err != nil {
+				fmt.Println(err)
+				fmt.Println("WARNING: cannot start MySQL metrics monitor")
+			} else {
+				configs = append(configs, *config)
+			}
 
-            config, err = i.getSysconfigMySQLConfig(mi)
-            if err != nil {
-                fmt.Println(err)
-                fmt.Println("WARNING: cannot start MySQL configuration monitor")
-            } else {
-                configs = append(configs, *config)
-            }
+			config, err = i.getSysconfigMySQLConfig(mi)
+			if err != nil {
+				fmt.Println(err)
+				fmt.Println("WARNING: cannot start MySQL configuration monitor")
+			} else {
+				configs = append(configs, *config)
+			}
 
-            // MySQL is local if the server hostname == MySQL hostname without port number.
-            if i.hostname == portNumberRe.ReplaceAllLiteralString(mi.Hostname, "") {
-                if i.flags["debug"] {
-                    log.Printf("MySQL is local")
-                }
-                config, err := i.getQanConfig(mi)
-                if err != nil {
-                    fmt.Println(err)
-                    fmt.Println("WARNING: cannot start Query Analytics")
-                } else {
-                    configs = append(configs, *config)
-                }
-            }
-        }
+			// MySQL is local if the server hostname == MySQL hostname without port number.
+			if i.hostname == portNumberRe.ReplaceAllLiteralString(mi.Hostname, "") {
+				if i.flags["debug"] {
+					log.Printf("MySQL is local")
+				}
+				config, err := i.getQanConfig(mi)
+				if err != nil {
+					fmt.Println(err)
+					fmt.Println("WARNING: cannot start Query Analytics")
+				} else {
+					configs = append(configs, *config)
+				}
+			}
+		}
 	} else {
 		fmt.Println("Not starting default services (-start-services=false)")
 	}
@@ -280,7 +279,7 @@ VERIFY_API_KEY:
 		if err != nil {
 			return err
 		}
-		fmt.Println("pt-agent upgraded to percona-agent");
+		fmt.Println("pt-agent upgraded to percona-agent")
 		if err := i.writeConfigs(agent, configs); err != nil {
 			return fmt.Errorf("Upgraded pt-agent but failed to write percona-agent configs: %s", err)
 		}
