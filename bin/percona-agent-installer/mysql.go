@@ -116,7 +116,7 @@ CONNECT_MYSQL:
 		if creating {
 			password, err = gopass.GetPass("MySQL password: ")
 		} else {
-			password, err = i.term.PromptStringRequired("MySQL password", dsn.Password)
+			password, err = i.term.PromptString("MySQL password", dsn.Password)
 		}
 		if err != nil {
 			return dsn, err
