@@ -57,17 +57,19 @@ func init() {
 	flag.BoolVar(&flagPing, "ping", false, "Ping API")
 	flag.StringVar(&flagBasedir, "basedir", pct.DEFAULT_BASEDIR, "Agent basedir")
 	flag.StringVar(&flagPidFile, "pidfile", "", "PID file")
-	flag.BoolVar(&flagVersion, "version", false, "percona-agent version")
+	flag.BoolVar(&flagVersion, "version", false, "Print version")
 	flag.Parse()
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
 }
 
 func run() error {
+	version := fmt.Sprintf("percona-agent %s rev %s", agent.VERSION, agent.REVISION)
 	if flagVersion {
-		fmt.Printf("percona-agent %s rev %s\n", agent.VERSION, agent.REVISION)
+		fmt.Println(version)
 		return nil
 	}
+	golog.Printf("Running %s pid %d\n", version, os.Getpid())
 
 	if err := pct.Basedir.Init(flagBasedir); err != nil {
 		return err
