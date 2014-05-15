@@ -253,6 +253,7 @@ func (i *Installer) updateAgent(uuid string) (*proto.Agent, error) {
 	url := pct.URL(i.agentConfig.ApiHostname, "agents", uuid)
 	if i.flags["debug"] {
 		log.Println(url)
+		log.Println(string(data))
 	}
 	resp, _, err := i.api.Put(i.agentConfig.ApiKey, url, data)
 	if i.flags["debug"] {

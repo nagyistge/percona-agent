@@ -171,20 +171,15 @@ VERIFY_API_KEY:
 		break
 	}
 
-	/**
-	 * Create a MySQL user for the agent, or use an existing one.
-	 */
-
-	agentDSN, err := i.doMySQL(ptagentDSN)
-	if err != nil {
-		return err
-	}
-
-	/**
-	 * Create new API resources.
-	 */
-
 	var si *proto.ServerInstance
+	var mi *proto.MySQLInstance
+
+	/**
+	 * Create new service instances.
+	 */
+
+	var err error
+
 	if i.flags["create-server-instance"] {
 		si, err = i.createServerInstance()
 		if err != nil {
@@ -195,8 +190,13 @@ VERIFY_API_KEY:
 		fmt.Println("Not creating server instance (-create-server-instance=false)")
 	}
 
-	var mi *proto.MySQLInstance
 	if i.flags["create-mysql-instance"] {
+		// Create MySQL user for agent, or using existing one, then verify MySQL connection.
+		agentDSN, err := i.doMySQL(ptagentDSN)
+		if err != nil {
+			return err
+		}
+		// Create MySQL instance in API.
 		mi, err = i.createMySQLInstance(agentDSN)
 		if err != nil {
 			return err
@@ -217,6 +217,7 @@ VERIFY_API_KEY:
 	configs := []proto.AgentConfig{}
 
 	if i.flags["start-services"] {
+		// Server metrics monitor
 		config, err := i.getMmServerConfig(si)
 		if err != nil {
 			fmt.Println(err)
@@ -225,34 +226,41 @@ VERIFY_API_KEY:
 			configs = append(configs, *config)
 		}
 
-		config, err = i.getMmMySQLConfig(mi)
-		if err != nil {
-			fmt.Println(err)
-			fmt.Println("WARNING: cannot start MySQL metrics monitor")
-		} else {
-			configs = append(configs, *config)
-		}
-
-		config, err = i.getSysconfigMySQLConfig(mi)
-		if err != nil {
-			fmt.Println(err)
-			fmt.Println("WARNING: cannot start MySQL configuration monitor")
-		} else {
-			configs = append(configs, *config)
-		}
-
-		// MySQL is local if the server hostname == MySQL hostname without port number.
-		if i.hostname == portNumberRe.ReplaceAllLiteralString(mi.Hostname, "") {
-			if i.flags["debug"] {
-				log.Printf("MySQL is local")
-			}
-			config, err := i.getQanConfig(mi)
+		if i.flags["start-mysql-services"] {
+			// MySQL metrics tracker
+			config, err = i.getMmMySQLConfig(mi)
 			if err != nil {
 				fmt.Println(err)
-				fmt.Println("WARNING: cannot start Query Analytics")
+				fmt.Println("WARNING: cannot start MySQL metrics monitor")
 			} else {
 				configs = append(configs, *config)
 			}
+
+			// MySQL config tracker
+			config, err = i.getSysconfigMySQLConfig(mi)
+			if err != nil {
+				fmt.Println(err)
+				fmt.Println("WARNING: cannot start MySQL configuration monitor")
+			} else {
+				configs = append(configs, *config)
+			}
+
+			// QAN
+			// MySQL is local if the server hostname == MySQL hostname without port number.
+			if i.hostname == portNumberRe.ReplaceAllLiteralString(mi.Hostname, "") {
+				if i.flags["debug"] {
+					log.Printf("MySQL is local")
+				}
+				config, err := i.getQanConfig(mi)
+				if err != nil {
+					fmt.Println(err)
+					fmt.Println("WARNING: cannot start Query Analytics")
+				} else {
+					configs = append(configs, *config)
+				}
+			}
+		} else {
+			fmt.Println("Not starting MySQL services (-start-mysql-services=false)")
 		}
 	} else {
 		fmt.Println("Not starting default services (-start-services=false)")
@@ -267,7 +275,7 @@ VERIFY_API_KEY:
 		if err != nil {
 			return err
 		}
-		fmt.Println("pt-agent upgraded to percona-agent");
+		fmt.Println("pt-agent upgraded to percona-agent")
 		if err := i.writeConfigs(agent, configs); err != nil {
 			return fmt.Errorf("Upgraded pt-agent but failed to write percona-agent configs: %s", err)
 		}
@@ -284,6 +292,10 @@ VERIFY_API_KEY:
 	} else {
 		fmt.Println("Not creating agent (-create-agent=false)")
 	}
+
+	/**
+	 * Remove pt-agent if upgrading.
+	 */
 
 	if ptagentUpgrade {
 		RemovePTAgent(ptagentConf)

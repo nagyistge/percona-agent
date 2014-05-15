@@ -2,9 +2,10 @@ percona-agent Changelog
 
 v1.0.1
 
-  * Fixed PCT-546: Installer does not accept empty MySQL password
-  * Fixed PCT-552: percona-agent does not parse entire slow log
-  * Fixed PCT-553: percona-agent crashes with "panic: No Query_time in event"
+  * PCT-574: Add -mysql option to percona-agent-installer to skip MySQL steps
+  * PCT-546: Installer does not accept empty MySQL password
+  * PCT-552: percona-agent does not parse entire slow log
+  * PCT-553: percona-agent crashes with "panic: No Query_time in event"
 
 v1.0.0 released 2014-05-08
 
