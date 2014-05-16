@@ -38,6 +38,10 @@ type Job struct {
 	ZeroRunTime bool // testing
 }
 
+func (j *Job) String() string {
+	return fmt.Sprintf("%s %d-%d", j.SlowLogFile, j.StartOffset, j.EndOffset)
+}
+
 type Result struct {
 	StopOffset int64
 	RunTime    float64
@@ -100,6 +104,7 @@ func (w *SlowLogWorker) Status() string {
 
 func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 	w.status.Update(w.name, "Starting job "+job.Id)
+	result := &Result{}
 
 	// Open the slow log file.
 	file, err := os.Open(job.SlowLogFile)
@@ -108,9 +113,11 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 	}
 	defer file.Close()
 
-	// Create a slow log parser and run it.  It sends events log events
-	// via its channel.
+	// Create a slow log parser and run it.  It sends events log events via its channel.
+	// Be sure to stop it when done, else we'll leak goroutines.  stopChan must be buffered
+	// so we don't block on send if parser crashes.
 	stopChan := make(chan bool, 1)
+	defer func() { stopChan <- true }()
 	opts := parser.Options{
 		StartOffset: uint64(job.StartOffset),
 		FilterAdminCommand: map[string]bool{
@@ -119,33 +126,44 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 		},
 	}
 	p := parser.NewSlowLogParser(file, stopChan, opts)
-	go p.Run()
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				errMsg := fmt.Sprintf("Error parsing %s: %s", job, r)
+				w.logger.Error(errMsg)
+				result.Error = errMsg
+			}
+		}()
+		p.Run()
+	}()
 
 	// The global class has info and stats for all events.
 	// Each query has its own class, defined by the checksum of its fingerprint.
-	result := &Result{}
 	global := mysqlLog.NewGlobalClass()
 	queries := make(map[string]*mysqlLog.QueryClass)
-	t0 := time.Now()
 	jobSize := job.EndOffset - job.StartOffset
 	var runtime time.Duration
+	var progress string
+	t0 := time.Now()
 
 EVENT_LOOP:
 	for event := range p.EventChan {
-		// Check run time, stop if exceeded.
 		runtime = time.Now().Sub(t0)
+		progress = fmt.Sprintf("%.1f%% %d/%d %d %.1fs",
+			float64(event.Offset)/float64(job.EndOffset)*100, event.Offset, job.EndOffset, jobSize, runtime.Seconds())
+		w.status.Update(w.name, fmt.Sprintf("Parsing %s: %s", job.SlowLogFile, progress))
+
+		// Check runtime, stop if exceeded.
 		if runtime >= job.RunTime {
-			result.Error = "Run-time timeout: " + job.RunTime.String()
-			stopChan <- true
+			errMsg := fmt.Sprintf("Timeout parsing %s: %s", progress)
+			w.logger.Warn(errMsg)
+			result.Error = errMsg
 			break EVENT_LOOP
 		}
 
-		w.status.Update(w.name, fmt.Sprintf("Parsing %s: %.1f%% %d/%d %d %.1fs",
-			job.SlowLogFile, float64(event.Offset)/float64(job.EndOffset)*100, event.Offset, job.EndOffset, jobSize, runtime.Seconds()))
-
 		if int64(event.Offset) >= job.EndOffset {
 			result.StopOffset = int64(event.Offset)
-			break
+			break EVENT_LOOP
 		}
 
 		// Add the event to the global class.
@@ -153,7 +171,6 @@ EVENT_LOOP:
 		switch err.(type) {
 		case mysqlLog.MixedRateLimitsError:
 			result.Error = err.Error()
-			stopChan <- true
 			break EVENT_LOOP
 		}
 
@@ -183,8 +200,8 @@ EVENT_LOOP:
 	}
 	global.Finalize(uint64(len(queries)))
 
+	// Sort the results, keep the top and combine the rest into a single class: Low-Ranking Queries (LRQ).
 	w.status.Update(w.name, "Combining LRQ job "+job.Id)
-
 	nQueries := len(queries)
 	classes := make([]*mysqlLog.QueryClass, nQueries)
 	for _, class := range queries {
@@ -201,5 +218,6 @@ EVENT_LOOP:
 	}
 
 	w.status.Update(w.name, "Done job "+job.Id)
+	w.logger.Info(fmt.Sprintf("Parsed %s: %s", job, progress))
 	return result, nil
 }
