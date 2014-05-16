@@ -12,9 +12,9 @@ CWD="$PWD"
 
 PLATFORM=`uname -m`
 if [ "$PLATFORM" = "x86_64" ]; then
-   ARCH="amd64"
+   ARCH="x86_64"  # no change
 elif [ "$PLATFORM" = "i686" -o "$PLATFORM" = "i386" ]; then
-   ARCH="386"
+   ARCH="i386"
 else
    error "Unknown platform: $PLATFORM"
 fi
