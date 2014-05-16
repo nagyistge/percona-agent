@@ -36,6 +36,8 @@ var (
 	flagCreateServerInstance bool
 	flagStartServices        bool
 	flagCreateAgent          bool
+	flagStartMySQLServices   bool
+	flagMySQL                bool
 )
 
 func init() {
@@ -46,10 +48,12 @@ func init() {
 	flag.StringVar(&flagBasedir, "basedir", pct.DEFAULT_BASEDIR, "Agent basedir")
 	flag.BoolVar(&flagDebug, "debug", false, "Debug")
 	// --
+	flag.BoolVar(&flagMySQL, "mysql", true, "Install for MySQL")
 	flag.BoolVar(&flagCreateMySQLUser, "create-mysql-user", true, "Create MySQL user for agent")
 	flag.BoolVar(&flagCreateMySQLInstance, "create-mysql-instance", true, "Create MySQL instance")
 	flag.BoolVar(&flagCreateServerInstance, "create-server-instance", true, "Create server instance")
-	flag.BoolVar(&flagStartServices, "start-services", true, "Start all default services")
+	flag.BoolVar(&flagStartServices, "start-services", true, "Start all services")
+	flag.BoolVar(&flagStartMySQLServices, "start-mysql-services", true, "Start MySQL services")
 	flag.BoolVar(&flagCreateAgent, "create-agent", true, "Create agent")
 }
 
@@ -61,12 +65,18 @@ func main() {
 		ApiKey:      flagApiKey,
 	}
 	// todo: do flags a better way
+	if !flagMySQL {
+		flagCreateMySQLUser = false
+		flagCreateMySQLInstance = false
+		flagStartMySQLServices = false
+	}
 	flags := Flags{
 		"debug":                  flagDebug,
-		"create-mysql-user":      flagCreateMySQLUser,
-		"create-mysql-instance":  flagCreateMySQLInstance,
 		"create-server-instance": flagCreateServerInstance,
 		"start-services":         flagStartServices,
+		"create-mysql-user":      flagCreateMySQLUser,
+		"create-mysql-instance":  flagCreateMySQLInstance,
+		"start-mysql-services":   flagStartMySQLServices,
 		"create-agent":           flagCreateAgent,
 	}
 

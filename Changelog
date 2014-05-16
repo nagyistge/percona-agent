@@ -1,0 +1,15 @@
+percona-agent Changelog
+
+v1.0.1 release 2014-05-16
+
+  * PCT-543: Installing percona-agent fails with 500 error
+  * PCT-546: Installer does not accept empty MySQL password
+  * PCT-552: percona-agent does not parse entire slow log
+  * PCT-553: percona-agent crashes with "panic: No Query_time in event"
+  * PCT-566: MySQL monitor logs "Error 1227: Access denied" as warning
+  * PCT-574: Add -mysql option to percona-agent-installer to skip MySQL steps
+  * PCT-576: goroutine leak in qan.Worker
+
+v1.0.0 released 2014-05-08
+
+  * First release

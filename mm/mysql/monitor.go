@@ -220,24 +220,30 @@ func (m *Monitor) run() {
 			// SHOW GLOBAL STATUS
 			conn := m.conn.DB()
 			if err := m.GetShowStatusMetrics(conn, c); err != nil {
-				m.logger.Warn(err)
+				m.collectError(err)
 			}
 
 			// SELECT NAME, ... FROM INFORMATION_SCHEMA.INNODB_METRICS
 			if len(m.config.InnoDB) > 0 {
 				if err := m.GetInnoDBMetrics(conn, c); err != nil {
-					m.logger.Warn(err)
+					if disable := m.collectError(err); disable {
+						m.config.InnoDB = []string{}
+					}
 				}
 			}
 
 			if m.config.UserStats {
 				// SELECT ... FROM INFORMATION_SCHEMA.TABLE_STATISTICS
 				if err := m.getTableUserStats(conn, c, m.config.UserStatsIgnoreDb); err != nil {
-					m.logger.Warn(err)
+					if disable := m.collectError(err); disable {
+						m.config.UserStats = false
+					}
 				}
 				// SELECT ... FROM INFORMATION_SCHEMA.INDEX_STATISTICS
 				if err := m.getIndexUserStats(conn, c, m.config.UserStatsIgnoreDb); err != nil {
-					m.logger.Warn(err)
+					if disable := m.collectError(err); disable {
+						m.config.UserStats = false
+					}
 				}
 			}
 
@@ -470,4 +476,15 @@ func (m *Monitor) getIndexUserStats(conn *sql.DB, c *mm.Collection, ignoreDb str
 		return err
 	}
 	return nil
+}
+
+func (m *Monitor) collectError(err error) bool {
+	switch {
+	case mysql.MySQLErrorCode(err) == mysql.ER_SPECIFIC_ACCESS_DENIED_ERROR:
+		m.logger.Error(fmt.Sprintf("Cannot collect InnoDB stats: %s", err))
+		return true
+	default:
+		m.logger.Warn(err)
+		return false
+	}
 }
