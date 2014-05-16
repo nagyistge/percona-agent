@@ -218,6 +218,6 @@ EVENT_LOOP:
 	}
 
 	w.status.Update(w.name, "Done job "+job.Id)
-	w.logger.Info("Parsed %s: %s", job, progress)
+	w.logger.Info(fmt.Sprintf("Parsed %s: %s", job, progress))
 	return result, nil
 }
