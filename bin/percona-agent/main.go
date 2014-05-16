@@ -235,7 +235,7 @@ func run() error {
 		&mysql.RealConnectionFactory{},
 		clock,
 		qan.NewFileIntervalIterFactory(logChan),
-		&qan.SlowLogWorkerFactory{},
+		qan.NewSlowLogWorkerFactory(logChan),
 		dataManager.Spooler(),
 		itManager.Repo(),
 	)
