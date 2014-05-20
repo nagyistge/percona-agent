@@ -24,15 +24,17 @@ import (
 )
 
 type DSN struct {
-	Username string
-	Password string
-	Hostname string
-	Port     string
-	Socket   string
+	Username      string
+	Password      string
+	Hostname      string
+	Port          string
+	Socket        string
+	OldPasswords  bool
 }
 
 const (
 	dsnSuffix = "/?parseTime=true"
+	allowOldPasswords = "&allowOldPasswords=1"
 )
 
 func (dsn DSN) DSN() (string, error) {
@@ -65,7 +67,11 @@ func (dsn DSN) DSN() (string, error) {
 		}
 		dsnString = fmt.Sprintf("%s@", user.Username)
 	}
-	return dsnString + dsnSuffix, nil
+	dsnString = dsnString + dsnSuffix
+	if dsn.OldPasswords {
+		dsnString = dsnString + allowOldPasswords
+	}
+	return dsnString, nil
 }
 
 func (dsn DSN) To() string {
@@ -83,6 +89,7 @@ func (dsn DSN) To() string {
 func (dsn DSN) String() string {
 	dsn.Password = "..."
 	dsnString, _ := dsn.DSN()
+	dsnString = strings.TrimSuffix(dsnString, allowOldPasswords)
 	dsnString = strings.TrimSuffix(dsnString, dsnSuffix)
 	return dsnString
 }

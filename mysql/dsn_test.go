@@ -30,14 +30,15 @@ var _ = Suite(&DSNTestSuite{})
 
 func (s *DSNTestSuite) TestAllFields(t *C) {
 	dsn := mysql.DSN{
-		Username: "user",
-		Password: "pass",
-		Hostname: "host.example.com",
-		Port:     "3306",
+		Username:     "user",
+		Password:     "pass",
+		Hostname:     "host.example.com",
+		Port:         "3306",
+		OldPasswords: true,
 	}
 	str, err := dsn.DSN()
 	t.Check(err, IsNil)
-	t.Check(str, Equals, "user:pass@tcp(host.example.com:3306)/?parseTime=true")
+	t.Check(str, Equals, "user:pass@tcp(host.example.com:3306)/?parseTime=true&allowOldPasswords=1")
 
 	// Stringify DSN removes password, e.g. makes it safe to print log, etc.
 	str = fmt.Sprintf("%s", dsn)

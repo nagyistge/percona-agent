@@ -36,6 +36,9 @@ func (i *Installer) createMySQLUser(dsn mysql.DSN) (mysql.DSN, error) {
 	userDSN := dsn
 	userDSN.Username = "percona-agent"
 	userDSN.Password = fmt.Sprintf("%p%d", &dsn, rand.Uint32())
+	if i.flags["old-passwords"] {
+		userDSN.OldPasswords = true
+	}
 
 	dsnString, _ := dsn.DSN()
 	conn := mysql.NewConnection(dsnString)
