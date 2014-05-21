@@ -12,6 +12,20 @@ percona-agent must be installed _and_ ran as root.
 1. Extract the tarball.
 1. Run the `install` script.
 
+System Requirements
+-------------------
+
+* Linux OS
+* root access
+* Outbound network access to `*.percona.com`, ports 80 and 443
+* MySQL 5.1 or newer, any distro (Percona Server, MariaDB, etc.)
+
+Supported Platforms and Versions
+--------------------------------
+
+* Any 32-bit (i386) or 64-bit (x86_64) Linux OS
+* MySQL 5.1 through 5.6, any distro
+
 Upgrading from pt-agent
 -----------------------
 
