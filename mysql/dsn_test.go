@@ -30,10 +30,10 @@ var _ = Suite(&DSNTestSuite{})
 
 func (s *DSNTestSuite) TestAllFields(t *C) {
 	dsn := mysql.DSN{
-		Username:     "user",
-		Password:     "pass",
-		Hostname:     "host.example.com",
-		Port:         "3306",
+		Username: "user",
+		Password: "pass",
+		Hostname: "host.example.com",
+		Port:     "3306",
 	}
 	str, err := dsn.DSN()
 	t.Check(err, IsNil)
