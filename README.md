@@ -20,11 +20,24 @@ System Requirements
 * Outbound network access to `*.percona.com`, ports 80 and 443
 * MySQL 5.1 or newer, any distro (Percona Server, MariaDB, etc.)
 
+### MySQL monitor
+ * Local or remote access to MySQL
+ * MySQL user account with `PROCESS` and `USAGE` privileges
+
+### Server monitor
+ * `/proc` filesystem
+ * Agent running on server
+
+### Query Analytics
+ * Agent and MySQL running on the same server
+ * MySQL user account with `SUPER` and `USAGE` privileges
+
 Supported Platforms and Versions
 --------------------------------
 
 * Any 32-bit (i386) or 64-bit (x86_64) Linux OS
 * MySQL 5.1 through 5.6, any distro
+  * Amazon RDS (MySQL monitor only)
 
 Upgrading from pt-agent
 -----------------------
