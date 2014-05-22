@@ -1,5 +1,9 @@
 percona-agent Changelog
 
+v1.0.2
+
+  * PCT-540: Agent does not support old password authentication
+
 v1.0.1 release 2014-05-16
 
   * PCT-543: Installing percona-agent fails with 500 error
