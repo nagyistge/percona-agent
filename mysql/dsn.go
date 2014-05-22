@@ -24,17 +24,17 @@ import (
 )
 
 type DSN struct {
-	Username      string
-	Password      string
-	Hostname      string
-	Port          string
-	Socket        string
-	OldPasswords  bool
+	Username     string
+	Password     string
+	Hostname     string
+	Port         string
+	Socket       string
+	OldPasswords bool
 }
 
 const (
-	dsnSuffix = "/?parseTime=true"
-	allowOldPasswords = "&allowOldPasswords=1"
+	dsnSuffix         = "/?parseTime=true"
+	allowOldPasswords = "&allowOldPasswords=true"
 )
 
 func (dsn DSN) DSN() (string, error) {

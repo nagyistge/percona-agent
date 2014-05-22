@@ -54,7 +54,7 @@ func (s *DSNTestSuite) TestOldPasswords(t *C) {
 	}
 	str, err := dsn.DSN()
 	t.Check(err, IsNil)
-	t.Check(str, Equals, "user:pass@tcp(host.example.com:3306)/?parseTime=true&allowOldPasswords=1")
+	t.Check(str, Equals, "user:pass@tcp(host.example.com:3306)/?parseTime=true&allowOldPasswords=true")
 
 	// Stringify DSN removes password, e.g. makes it safe to print log, etc.
 	str = fmt.Sprintf("%s", dsn)
