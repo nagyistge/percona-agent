@@ -41,7 +41,7 @@ const (
 	allowOldPasswords = "&allowOldPasswords=true"
 )
 
-var ErrNoSocket error = errors.New("Cannot find MySQL socket")
+var ErrNoSocket error = errors.New("Cannot find MySQL socket (localhost implies socket).  Specify socket or use 127.0.0.1 instead of localhost.")
 
 func (dsn DSN) DSN() (string, error) {
 	// Make Sprintf format easier; password doesn't really start with ":".
@@ -54,7 +54,7 @@ func (dsn DSN) DSN() (string, error) {
 	if dsn.Hostname == "localhost" && (dsn.Protocol == "" || dsn.Protocol == "socket") {
 		if dsn.Socket == "" {
 			// Try to auto-detect MySQL socket from netstat output.
-			out, err := exec.Command("netstat", "-lx").Output()
+			out, err := exec.Command("netstat", "-anp").Output()
 			if err != nil {
 				return "", ErrNoSocket
 			}
@@ -120,7 +120,7 @@ func (dsn DSN) String() string {
 func ParseSocketFromNetstat(out string) string {
 	lines := strings.Split(out, "\n")
 	for _, line := range lines {
-		if strings.Contains(line, "unix") && strings.Contains(line, "mysql") {
+		if strings.HasPrefix(line, "unix") && strings.Contains(line, "mysql") {
 			fields := strings.Fields(line)
 			socket := fields[len(fields)-1]
 			if path.IsAbs(socket) {
