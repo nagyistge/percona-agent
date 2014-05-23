@@ -161,7 +161,7 @@ CONNECT_MYSQL:
 func TestMySQLConnection(dsn mysql.DSN) error {
 	dsnString, err := dsn.DSN()
 	if err != nil {
-		return err // shouldn't happen
+		return err
 	}
 
 	fmt.Printf("Testing MySQL connection %s...\n", dsn)
