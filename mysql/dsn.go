@@ -18,8 +18,11 @@
 package mysql
 
 import (
+	"errors"
 	"fmt"
+	"os/exec"
 	"os/user"
+	"path"
 	"strings"
 )
 
@@ -30,6 +33,7 @@ type DSN struct {
 	Port         string
 	Socket       string
 	OldPasswords bool
+	Protocol     string
 }
 
 const (
@@ -37,10 +41,29 @@ const (
 	allowOldPasswords = "&allowOldPasswords=true"
 )
 
+var ErrNoSocket error = errors.New("Cannot find MySQL socket")
+
 func (dsn DSN) DSN() (string, error) {
 	// Make Sprintf format easier; password doesn't really start with ":".
 	if dsn.Password != "" {
 		dsn.Password = ":" + dsn.Password
+	}
+
+	// http://dev.mysql.com/doc/refman/5.0/en/connecting.html#option_general_protocol:
+	// "connections on Unix to localhost are made using a Unix socket file by default"
+	if dsn.Hostname == "localhost" && (dsn.Protocol == "" || dsn.Protocol == "socket") {
+		if dsn.Socket == "" {
+			// Try to auto-detect MySQL socket from netstat output.
+			out, err := exec.Command("netstat", "-lx").Output()
+			if err != nil {
+				return "", ErrNoSocket
+			}
+			socket := ParseSocketFromNetstat(string(out))
+			if socket == "" {
+				return "", ErrNoSocket
+			}
+			dsn.Socket = socket
+		}
 	}
 
 	dsnString := ""
@@ -92,4 +115,18 @@ func (dsn DSN) String() string {
 	dsnString = strings.TrimSuffix(dsnString, allowOldPasswords)
 	dsnString = strings.TrimSuffix(dsnString, dsnSuffix)
 	return dsnString
+}
+
+func ParseSocketFromNetstat(out string) string {
+	lines := strings.Split(out, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "unix") && strings.Contains(line, "mysql") {
+			fields := strings.Fields(line)
+			socket := fields[len(fields)-1]
+			if path.IsAbs(socket) {
+				return socket
+			}
+		}
+	}
+	return ""
 }
