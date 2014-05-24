@@ -4,8 +4,11 @@
 	[
 		{
 			"Pkg": "code.google.com/p/go.net",
-			"Comment": "null-117",
 			"Rev": "c17ad62118ea511e1051721b429779fa40bddc74"
+		},
+		{
+			"Pkg": "github.com/mewpkg/gopass",
+			"Rev": "3b39664481b57ad99d34c86bd64090c28eacc7a1"
 		},
 		{
 			"Pkg": "github.com/go-sql-driver/mysql",

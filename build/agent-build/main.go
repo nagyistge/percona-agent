@@ -46,7 +46,7 @@ type Godeps struct {
 }
 
 var (
-	flagDeps bool
+	flagDeps  bool
 	flagBuild bool
 )
 
@@ -132,16 +132,26 @@ func main() {
 				if err := os.RemoveAll(pkgDir); err != nil {
 					log.Fatal(err)
 				}
-				runCmd("hg", "clone", "-r", dep.Rev, "https://"+dep.Pkg, pkgDir)
+				if err := runCmd("hg", "clone", "-r", dep.Rev, "https://"+dep.Pkg, pkgDir); err != nil {
+					log.Fatal(err)
+				}
 			case "github.com":
 				chDir(pkgDir)
 				if !FileExists(".git") {
-					runCmd("git", "clone", "https://"+dep.Pkg, ".")
+					if err := runCmd("git", "clone", "https://"+dep.Pkg, "."); err != nil {
+						log.Fatal(err)
+					}
 				} else {
-					runCmd("git", "checkout", "master")
-					runCmd("git", "pull")
+					if err := runCmd("git", "checkout", "master"); err != nil {
+						log.Fatal(err)
+					}
+					if err := runCmd("git", "pull"); err != nil {
+						log.Fatal(err)
+					}
 				}
-				runCmd("git", "checkout", dep.Rev)
+				if err := runCmd("git", "checkout", dep.Rev); err != nil {
+					log.Fatal(err)
+				}
 			}
 		}
 	}

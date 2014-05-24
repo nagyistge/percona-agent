@@ -18,8 +18,8 @@
 package main
 
 import (
-	"code.google.com/p/gopass"
 	"fmt"
+	"github.com/mewpkg/gopass"
 	"github.com/percona/percona-agent/mysql"
 	"os/user"
 	"path/filepath"

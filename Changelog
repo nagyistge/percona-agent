@@ -3,6 +3,7 @@ percona-agent Changelog
 v1.0.2
 
   * PCT-540: Agent does not support old password authentication
+  * PCT-559: Make installer emulate how standard MySQL clients use localhost
 
 v1.0.1 release 2014-05-16
 
