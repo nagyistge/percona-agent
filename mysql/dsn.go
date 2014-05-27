@@ -18,27 +18,52 @@
 package mysql
 
 import (
+	"errors"
 	"fmt"
+	"os/exec"
 	"os/user"
+	"path"
 	"strings"
 )
 
 type DSN struct {
-	Username string
-	Password string
-	Hostname string
-	Port     string
-	Socket   string
+	Username     string
+	Password     string
+	Hostname     string
+	Port         string
+	Socket       string
+	OldPasswords bool
+	Protocol     string
 }
 
 const (
-	dsnSuffix = "/?parseTime=true"
+	dsnSuffix         = "/?parseTime=true"
+	allowOldPasswords = "&allowOldPasswords=true"
 )
+
+var ErrNoSocket error = errors.New("Cannot find MySQL socket (localhost implies socket).  Specify socket or use 127.0.0.1 instead of localhost.")
 
 func (dsn DSN) DSN() (string, error) {
 	// Make Sprintf format easier; password doesn't really start with ":".
 	if dsn.Password != "" {
 		dsn.Password = ":" + dsn.Password
+	}
+
+	// http://dev.mysql.com/doc/refman/5.0/en/connecting.html#option_general_protocol:
+	// "connections on Unix to localhost are made using a Unix socket file by default"
+	if dsn.Hostname == "localhost" && (dsn.Protocol == "" || dsn.Protocol == "socket") {
+		if dsn.Socket == "" {
+			// Try to auto-detect MySQL socket from netstat output.
+			out, err := exec.Command("netstat", "-anp").Output()
+			if err != nil {
+				return "", ErrNoSocket
+			}
+			socket := ParseSocketFromNetstat(string(out))
+			if socket == "" {
+				return "", ErrNoSocket
+			}
+			dsn.Socket = socket
+		}
 	}
 
 	dsnString := ""
@@ -65,7 +90,11 @@ func (dsn DSN) DSN() (string, error) {
 		}
 		dsnString = fmt.Sprintf("%s@", user.Username)
 	}
-	return dsnString + dsnSuffix, nil
+	dsnString = dsnString + dsnSuffix
+	if dsn.OldPasswords {
+		dsnString = dsnString + allowOldPasswords
+	}
+	return dsnString, nil
 }
 
 func (dsn DSN) To() string {
@@ -83,6 +112,21 @@ func (dsn DSN) To() string {
 func (dsn DSN) String() string {
 	dsn.Password = "..."
 	dsnString, _ := dsn.DSN()
+	dsnString = strings.TrimSuffix(dsnString, allowOldPasswords)
 	dsnString = strings.TrimSuffix(dsnString, dsnSuffix)
 	return dsnString
+}
+
+func ParseSocketFromNetstat(out string) string {
+	lines := strings.Split(out, "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "unix") && strings.Contains(line, "mysql") {
+			fields := strings.Fields(line)
+			socket := fields[len(fields)-1]
+			if path.IsAbs(socket) {
+				return socket
+			}
+		}
+	}
+	return ""
 }

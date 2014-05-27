@@ -18,8 +18,8 @@
 package main
 
 import (
-	"code.google.com/p/gopass"
 	"fmt"
+	"github.com/mewpkg/gopass"
 	"github.com/percona/percona-agent/mysql"
 	"os/user"
 	"path/filepath"
@@ -161,7 +161,7 @@ CONNECT_MYSQL:
 func TestMySQLConnection(dsn mysql.DSN) error {
 	dsnString, err := dsn.DSN()
 	if err != nil {
-		return err // shouldn't happen
+		return err
 	}
 
 	fmt.Printf("Testing MySQL connection %s...\n", dsn)

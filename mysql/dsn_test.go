@@ -20,6 +20,8 @@ package mysql_test
 import (
 	"fmt"
 	"github.com/percona/percona-agent/mysql"
+	"github.com/percona/percona-agent/test"
+	"io/ioutil"
 	. "launchpad.net/gocheck"
 )
 
@@ -42,4 +44,31 @@ func (s *DSNTestSuite) TestAllFields(t *C) {
 	// Stringify DSN removes password, e.g. makes it safe to print log, etc.
 	str = fmt.Sprintf("%s", dsn)
 	t.Check(str, Equals, "user:...@tcp(host.example.com:3306)")
+}
+
+func (s *DSNTestSuite) TestOldPasswords(t *C) {
+	dsn := mysql.DSN{
+		Username:     "user",
+		Password:     "pass",
+		Hostname:     "host.example.com",
+		Port:         "3306",
+		OldPasswords: true,
+	}
+	str, err := dsn.DSN()
+	t.Check(err, IsNil)
+	t.Check(str, Equals, "user:pass@tcp(host.example.com:3306)/?parseTime=true&allowOldPasswords=true")
+
+	// Stringify DSN removes password, e.g. makes it safe to print log, etc.
+	str = fmt.Sprintf("%s", dsn)
+	t.Check(str, Equals, "user:...@tcp(host.example.com:3306)")
+}
+
+func (s *DSNTestSuite) TestParseSocketFromNetstat(t *C) {
+	out, err := ioutil.ReadFile(test.RootDir + "/mysql/netstat001")
+	t.Assert(err, IsNil)
+	t.Check(mysql.ParseSocketFromNetstat(string(out)), Equals, "/var/run/mysqld/mysqld.sock")
+
+	out, err = ioutil.ReadFile(test.RootDir + "/mysql/netstat002")
+	t.Assert(err, IsNil)
+	t.Check(mysql.ParseSocketFromNetstat(string(out)), Equals, "/var/lib/mysql/mysql.sock")
 }
