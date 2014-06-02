@@ -25,8 +25,11 @@ import (
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"log"
+	"net"
+	"net/url"
 	"os"
 	"regexp"
+	"time"
 )
 
 type Flags map[string]bool
@@ -128,17 +131,33 @@ func (i *Installer) Run() error {
 
 VERIFY_API_KEY:
 	for {
+		startTime := time.Now()
 		fmt.Printf("Verifying API key %s...\n", i.agentConfig.ApiKey)
 		code, err := pct.Ping(i.agentConfig.ApiHostname, i.agentConfig.ApiKey)
-		if err != nil {
-			fmt.Printf("Error: %s\n", err)
+		elapsedTime := time.Since(startTime)
+		elapsedTimeInSeconds := elapsedTime / time.Second
+
+		timeout := false
+		if urlErr, ok := err.(*url.Error); ok {
+			if netOpErr, ok := urlErr.Err.(*net.OpError); ok && netOpErr.Timeout() {
+				timeout = true
+			}
 		}
 		if i.flags["debug"] {
 			log.Printf("code=%d\n", code)
 			log.Printf("err=%s\n", err)
 		}
 		ok := false
-		if code >= 500 {
+		if timeout {
+			fmt.Printf(
+				"Error: API connection timeout (%ds): %s\n"+
+					"Before you try again, please check your connection and DNS configuration.\n",
+				elapsedTimeInSeconds,
+				err,
+			)
+		} else if err != nil {
+			fmt.Printf("Error: %s\n", err)
+		} else if code >= 500 {
 			fmt.Printf("Sorry, there's an API problem (status code %d). "+
 				"Please try to install again. If the problem continues, contact Percona.\n",
 				code)
@@ -168,6 +187,25 @@ VERIFY_API_KEY:
 		}
 
 		fmt.Printf("API key %s is OK\n", i.agentConfig.ApiKey)
+
+		if elapsedTimeInSeconds >= 0 {
+			fmt.Printf(
+				"WARNING: We have detected that request to api took %d second(-s) while usually it shouldn't take more than 1s.\n"+
+					"This might be due to connection problems or slow DNS resolution.\n"+
+					"Before you continue please check your connection and DNS configuration as this might impact performance of percona-agent.\n"+
+					"If you are using CentOS or Fedora 19+ in a vagrant box then you might be interested in this bug report:\n"+
+					"https://github.com/mitchellh/vagrant/issues/1172\n",
+				elapsedTimeInSeconds,
+			)
+			proceed, err := i.term.PromptBool("Continue anyway?", "Y")
+			if err != nil {
+				return err
+			}
+			if !proceed {
+				return fmt.Errorf("Failed because of slow connection")
+			}
+		}
+
 		break
 	}
 
