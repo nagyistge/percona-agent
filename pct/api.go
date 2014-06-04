@@ -36,6 +36,10 @@ import (
 
 var requiredEntryLinks = []string{"agents", "instances", "download"}
 var requiredAgentLinks = []string{"cmd", "log", "data"}
+var timeoutClientConfig = &TimeoutClientConfig{
+	ConnectTimeout:   10 * time.Second,
+	ReadWriteTimeout: 10 * time.Second,
+}
 
 type APIConnector interface {
 	Connect(hostname, apiKey, agentUuid string) error
@@ -68,13 +72,9 @@ type TimeoutClientConfig struct {
 
 func NewAPI() *API {
 	hostname, _ := os.Hostname()
-	config := &TimeoutClientConfig{
-		ConnectTimeout:   5 * time.Second,
-		ReadWriteTimeout: 5 * time.Second,
-	}
 	client := &http.Client{
 		Transport: &http.Transport{
-			Dial: TimeoutDialer(config),
+			Dial: TimeoutDialer(timeoutClientConfig),
 		},
 	}
 	a := &API{
@@ -94,10 +94,14 @@ func Ping(hostname, apiKey string) (int, error) {
 	}
 	req.Header.Add("X-Percona-API-Key", apiKey)
 
-	client := &http.Client{}
+	client := &http.Client{
+		Transport: &http.Transport{
+			Dial: TimeoutDialer(timeoutClientConfig),
+		},
+	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("Ping %s error: client.Do: %s", url, err)
+		return 0, err
 	}
 	_, err = ioutil.ReadAll(resp.Body)
 	resp.Body.Close()

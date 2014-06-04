@@ -1,5 +1,10 @@
 percona-agent Changelog
 
+v1.0.3 released 2014-06-04
+
+  * PCT-617: Installer fails with "dial tcp: i/o timeout" error on CentOS and Fedora
+  * PCT-635: Query Plan metrics are equal to query count
+
 v1.0.2 released 2014-05-26
 
   * PCT-540: Agent does not support old password authentication

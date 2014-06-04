@@ -12,8 +12,7 @@
 		},
 		{
 			"Pkg": "github.com/go-sql-driver/mysql",
-			"Comment": "v1.0-217-g0b11020",
-			"Rev": "0b11020cec264915fd090256a3b23256f96cc3ae"
+			"Rev": "a732e14c62dde3285440047bba97581bc472ae18"
 		},
 		{
 			"Pkg": "github.com/percona/cloud-protocol",
@@ -21,7 +20,7 @@
 		},
 		{
 			"Pkg": "github.com/percona/mysql-log-parser",
-			"Rev": "24e82c74bc6fab4b0089a908cac2ef2e91b31594"
+			"Rev": "eda1895c9615e968b9cd8d51147f388ed22c121c"
 		},
 		{
 			"Pkg": "github.com/petar/GoLLRB",
