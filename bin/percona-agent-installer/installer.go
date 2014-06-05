@@ -188,16 +188,19 @@ VERIFY_API_KEY:
 
 		fmt.Printf("API key %s is OK\n", i.agentConfig.ApiKey)
 
-		if elapsedTimeInSeconds >= 0 {
+		// https://jira.percona.com/browse/PCT-617
+		// Warn user if request took at least 5s
+		if elapsedTimeInSeconds >= 5 {
 			fmt.Printf(
-				"WARNING: We have detected that request to api took %d second(-s) while usually it shouldn't take more than 1s.\n"+
-					"This might be due to connection problems or slow DNS resolution.\n"+
-					"Before you continue please check your connection and DNS configuration as this might impact performance of percona-agent.\n"+
-					"If you are using CentOS or Fedora 19+ in a vagrant box then you might be interested in this bug report:\n"+
-					"https://github.com/mitchellh/vagrant/issues/1172\n",
+				"WARNING: Requset to API took %d seconds but it should have taken < 1 second."+
+					" There might be a connection problem, or resolving DNS is very slow."+
+					" Before continuing, please check the connection and DNS configuration"+
+					" as this could prevent percona-agent from installing or working properly."+
+					" If running CentOS or Fedora 19+ in a Vagrant VirtualBox, see this bug:\n"+
+					" https://github.com/mitchellh/vagrant/issues/1172\n",
 				elapsedTimeInSeconds,
 			)
-			proceed, err := i.term.PromptBool("Continue anyway?", "Y")
+			proceed, err := i.term.PromptBool("Continue?", "Y")
 			if err != nil {
 				return err
 			}
