@@ -188,7 +188,9 @@ VERIFY_API_KEY:
 
 		fmt.Printf("API key %s is OK\n", i.agentConfig.ApiKey)
 
-		if elapsedTimeInSeconds >= 0 {
+		// https://jira.percona.com/browse/PCT-617
+		// Warn user if request took at least 5s
+		if elapsedTimeInSeconds >= 5 {
 			fmt.Printf(
 				"WARNING: We have detected that request to api took %d second(-s) while usually it shouldn't take more than 1s.\n"+
 					"This might be due to connection problems or slow DNS resolution.\n"+
