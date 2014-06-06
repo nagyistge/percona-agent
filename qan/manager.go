@@ -45,7 +45,9 @@ type Manager struct {
 	running        bool
 	mux            *sync.RWMutex // guards config and running
 	tickChan       chan time.Time
+	tickCheckChan  chan time.Time // used to initiate periodical mysql checks
 	mysqlConn      mysql.Connector
+	previousUptime uint
 	iter           IntervalIter
 	workers        map[Worker]*Interval
 	workersMux     *sync.RWMutex
@@ -67,6 +69,7 @@ func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock 
 		// --
 		mux:            new(sync.RWMutex),
 		tickChan:       make(chan time.Time),
+		tickCheckChan:  make(chan time.Time),
 		workers:        make(map[Worker]*Interval),
 		workersMux:     new(sync.RWMutex),
 		workerDoneChan: make(chan Worker, 2),
@@ -363,12 +366,75 @@ func (m *Manager) run(config Config) {
 					m.oldSlowLogs[file] = cnt - 1
 				}
 			}
+		case <-m.tickCheckChan:
+			restarted, err := m.checkIfMysqlRestarted()
+			if err != nil {
+				m.logger.Warn("Unable to check if mysql was restarted: %s", err)
+				continue
+			}
+
+			if restarted {
+				// Set global vars to config/enable slow log.
+				if err := m.configureMysql(config.Start); err != nil {
+					m.logger.Error("Unable to configure mysql: %s", err)
+				}
+			}
 		case <-m.sync.StopChan:
 			m.logger.Debug("run:stop")
 			m.sync.Graceful()
 			return
 		}
 	}
+}
+
+func (m *Manager) createMysqlConnection(service string, instanceId uint) error {
+	// Get MySQL instance info from service instance database (SID).
+	mysqlIt := &proto.MySQLInstance{}
+	if err := m.im.Get(service, instanceId, mysqlIt); err != nil {
+		return err
+	}
+
+	// Connect to MySQL and set global vars to config/enable slow log.
+	m.mysqlConn = m.mysqlFactory.Make(mysqlIt.DSN)
+
+	return nil // success
+}
+
+func (m *Manager) configureMysql(queries []mysql.Query) error {
+	// Connect to MySQL
+	if err := m.mysqlConn.Connect(2); err != nil {
+		return err
+	}
+	defer m.mysqlConn.Close()
+
+	// Set global vars to config/enable slow log.
+	if err := m.mysqlConn.Set(queries); err != nil {
+		return err
+	}
+
+	return nil // success
+}
+
+func (m *Manager) checkIfMysqlRestarted() (bool, error) {
+	// Connect to MySQL
+	if err := m.mysqlConn.Connect(2); err != nil {
+		return false, err
+	}
+	defer m.mysqlConn.Close()
+
+	previousUptime := m.previousUptime
+	currentUptime := m.mysqlConn.Uptime()
+
+	// Save uptime from last check
+	m.previousUptime = currentUptime
+
+	// If current server uptime is lower than last registered uptime
+	// then we can assume that server was restarted
+	if currentUptime < previousUptime {
+		return true, nil
+	}
+
+	return false, nil
 }
 
 // @goroutine[1]
@@ -455,25 +521,22 @@ func (m *Manager) start(config *Config) error {
 		return err
 	}
 
-	// Get MySQL instance info from service instance database (SID).
-	mysqlIt := &proto.MySQLInstance{}
-	if err := m.im.Get(config.Service, config.InstanceId, mysqlIt); err != nil {
+	// Create mysql connection which is needed for enabling slow log
+	// and for slow log rotation
+	if err := m.createMysqlConnection(config.Service, config.InstanceId); err != nil {
 		return err
 	}
 
-	// Connect to MySQL and set global vars to config/enable slow log.
-	m.mysqlConn = m.mysqlFactory.Make(mysqlIt.DSN)
-	if err := m.mysqlConn.Connect(2); err != nil {
-		return err
-	}
-	defer m.mysqlConn.Close()
-
-	if err := m.mysqlConn.Set(config.Start); err != nil {
+	// Set global vars to config/enable slow log.
+	if err := m.configureMysql(config.Start); err != nil {
 		return err
 	}
 
 	// Add a tickChan to the clock so it receives ticks at intervals.
 	m.clock.Add(m.tickChan, config.Interval, true)
+
+	// Add a tickCheckChan to the clock so it receives ticks at intervals.
+	m.clock.Add(m.tickCheckChan, config.Interval, true)
 
 	// Make an iterator for the slow log file at interval ticks.
 	filenameFunc := func() (string, error) {
@@ -507,6 +570,7 @@ func (m *Manager) stop() error {
 	m.iter.Stop()
 	m.iter = nil
 	m.clock.Remove(m.tickChan)
+	m.clock.Remove(m.tickCheckChan)
 
 	// Stop run()/qan-log-parser.
 	m.sync.Stop()

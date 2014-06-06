@@ -33,6 +33,7 @@ type Connector interface {
 	Close()
 	Set([]Query) error
 	GetGlobalVarString(varName string) string
+	Uptime() (uptime uint)
 }
 
 type Connection struct {
@@ -125,4 +126,13 @@ func (c *Connection) GetGlobalVarNumber(varName string) float64 {
 	var varValue float64
 	c.conn.QueryRow("SELECT @@GLOBAL." + varName).Scan(&varValue)
 	return varValue
+}
+
+func (c *Connection) Uptime() (uptime uint) {
+	if c.conn == nil {
+		return 0
+	}
+	var blackhole string
+	c.conn.QueryRow("SHOW STATUS LIKE 'uptime'").Scan(&blackhole, &uptime)
+	return uptime
 }

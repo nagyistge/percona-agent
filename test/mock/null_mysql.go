@@ -67,3 +67,7 @@ func (n *NullMySQL) Reset() {
 func (n *NullMySQL) GetGlobalVarString(varName string) string {
 	return ""
 }
+
+func (n *NullMySQL) Uptime() uint {
+	return 0
+}

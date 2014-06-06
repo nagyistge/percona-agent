@@ -359,8 +359,9 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	reply = m.Handle(cmd)
 	t.Check(reply.Error, Not(Equals), "")
 
-	// It should add a tickChan for the interval iter.
-	t.Check(s.clock.Added, HasLen, 1)
+	// It should add a tickChan for the interval iter
+	// and tickCheckChan for periodical mysql checks (e.g. if it was restarted)
+	t.Check(s.clock.Added, HasLen, 2)
 	t.Check(s.clock.Removed, HasLen, 0)
 
 	/**
@@ -414,9 +415,9 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	longQueryTime = s.realmysql.GetGlobalVarNumber("long_query_time")
 	t.Assert(longQueryTime, Equals, 10.0)
 
-	// It should remove the tickChan (and not have added others).
-	t.Check(s.clock.Added, HasLen, 1)
-	t.Check(s.clock.Removed, HasLen, 1)
+	// It should remove the tickChan and tickCheckChan (and not have added others).
+	t.Check(s.clock.Added, HasLen, 2)
+	t.Check(s.clock.Removed, HasLen, 2)
 
 	// qan still running, but qan-log-parser stopped.
 	test.WaitStatus(1, m, "qan-log-parser", "Stopped")
