@@ -233,6 +233,10 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 	return []proto.AgentConfig{config}, nil
 }
 
+func (m *Manager) GetTickCheckChan() chan time.Time {
+	return m.tickCheckChan
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // Implementation
 /////////////////////////////////////////////////////////////////////////////
@@ -367,17 +371,9 @@ func (m *Manager) run(config Config) {
 				}
 			}
 		case <-m.tickCheckChan:
-			restarted, err := m.checkIfMysqlRestarted()
-			if err != nil {
-				m.logger.Warn("Unable to check if mysql was restarted: %s", err)
+			if err := m.mysqlPeriodicalSetup(config); err != nil {
+				m.logger.Warn("Periodical MySQL setup failed: %s", err)
 				continue
-			}
-
-			if restarted {
-				// Set global vars to config/enable slow log.
-				if err := m.configureMysql(config.Start); err != nil {
-					m.logger.Error("Unable to configure mysql: %s", err)
-				}
 			}
 		case <-m.sync.StopChan:
 			m.logger.Debug("run:stop")
@@ -387,7 +383,7 @@ func (m *Manager) run(config Config) {
 	}
 }
 
-func (m *Manager) createMysqlConnection(service string, instanceId uint) error {
+func (m *Manager) createMysqlConn(service string, instanceId uint) error {
 	// Get MySQL instance info from service instance database (SID).
 	mysqlIt := &proto.MySQLInstance{}
 	if err := m.im.Get(service, instanceId, mysqlIt); err != nil {
@@ -400,28 +396,52 @@ func (m *Manager) createMysqlConnection(service string, instanceId uint) error {
 	return nil // success
 }
 
-func (m *Manager) configureMysql(queries []mysql.Query) error {
-	// Connect to MySQL
-	if err := m.mysqlConn.Connect(2); err != nil {
-		return err
-	}
-	defer m.mysqlConn.Close()
-
+func (m *Manager) mysqlSetup(config Config) error {
 	// Set global vars to config/enable slow log.
-	if err := m.mysqlConn.Set(queries); err != nil {
+	if err := m.mysqlConn.Set(config.Start); err != nil {
+		m.logger.Error("Unable to configure MySQL: %s", err)
 		return err
 	}
 
 	return nil // success
 }
 
-func (m *Manager) checkIfMysqlRestarted() (bool, error) {
-	// Connect to MySQL
+func (m *Manager) mysqlPeriodicalSetup(config Config) error {
 	if err := m.mysqlConn.Connect(2); err != nil {
-		return false, err
+		m.logger.Warn("Unable to connect to MySQL: %s", err)
+		return err
 	}
 	defer m.mysqlConn.Close()
 
+	restarted, err := m.checkIfMysqlRestarted()
+	if err != nil {
+		m.logger.Warn("Unable to check if MySQL was restarted: %s", err)
+		return err
+	}
+
+	if restarted {
+		// Configure MySQL to enable QAN
+		return m.mysqlSetup(config)
+	}
+
+	return nil
+}
+
+func (m *Manager) mysqlStartSetup(config Config) error {
+	if err := m.mysqlConn.Connect(2); err != nil {
+		m.logger.Warn("Unable to connect to MySQL: %s", err)
+		return err
+	}
+	defer m.mysqlConn.Close()
+
+	// Get current MySQL uptime - this is later used to detect if MySQL was restarted
+	m.previousUptime = m.mysqlConn.Uptime()
+
+	// Configure MySQL to enable QAN
+	return m.mysqlSetup(config)
+}
+
+func (m *Manager) checkIfMysqlRestarted() (bool, error) {
 	previousUptime := m.previousUptime
 	currentUptime := m.mysqlConn.Uptime()
 
@@ -523,14 +543,12 @@ func (m *Manager) start(config *Config) error {
 
 	// Create mysql connection which is needed for enabling slow log
 	// and for slow log rotation
-	if err := m.createMysqlConnection(config.Service, config.InstanceId); err != nil {
+	if err := m.createMysqlConn(config.Service, config.InstanceId); err != nil {
 		return err
 	}
 
-	// Set global vars to config/enable slow log.
-	if err := m.configureMysql(config.Start); err != nil {
-		return err
-	}
+	// Configure mysql to enable slow log monitoring
+	m.mysqlStartSetup(*config)
 
 	// Add a tickChan to the clock so it receives ticks at intervals.
 	m.clock.Add(m.tickChan, config.Interval, true)

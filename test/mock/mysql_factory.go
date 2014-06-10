@@ -22,7 +22,7 @@ import (
 )
 
 type ConnectionFactory struct {
-	Conn *NullMySQL
+	Conn mysql.Connector
 }
 
 func (f *ConnectionFactory) Make(dsn string) mysql.Connector {

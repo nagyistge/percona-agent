@@ -495,6 +495,164 @@ func (s *ManagerTestSuite) TestStartServiceFast(t *C) {
 	t.Assert(reply.Error, Equals, "")
 }
 
+func (s *ManagerTestSuite) TestMySQLRestart(t *C) {
+
+	/**
+	 * Create and start manager.
+	 */
+
+	setChan := make(chan []mysql.Query, 1)
+	mockConn := &mock.ConnectorMock{
+		ConnectMock: func(tries uint) error {
+			return nil
+		},
+		CloseMock: func() {
+		},
+		SetMock: func(queries []mysql.Query) error {
+			setChan <- queries
+			return nil
+		},
+		UptimeMock: func() uint {
+			return uint(time.Now().Unix())
+		},
+	}
+	mockConnFactory := &mock.ConnectionFactory{
+		Conn: mockConn,
+	}
+	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im)
+	t.Assert(m, NotNil)
+
+	// Create the qan config.
+	tmpFile := fmt.Sprintf("/tmp/qan_test.TestStartService.%d", os.Getpid())
+	defer func() { os.Remove(tmpFile) }()
+	config := &qan.Config{
+		ServiceInstance: s.mysqlInstance,
+		Start: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=0.123"},
+			mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+		},
+		Stop: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
+		},
+		Interval:          300,        // 5 min
+		MaxSlowLogSize:    1073741824, // 1 GiB
+		RemoveOldSlowLogs: true,
+		ExampleQueries:    true,
+		MaxWorkers:        2,
+		WorkerRunTime:     600, // 10 min
+	}
+
+	// Create the StartService cmd which contains the qan config.
+	now := time.Now()
+	qanConfig, _ := json.Marshal(config)
+	cmd := &proto.Cmd{
+		Ts:        now,
+		AgentUuid: "123",
+		Service:   "agent",
+		Cmd:       "StartService",
+		Data:      qanConfig,
+	}
+
+	// Have the service manager start the qa service
+	reply := m.Handle(cmd)
+
+	// It should start without error.
+	t.Assert(reply.Error, Equals, "")
+
+	// And status should be "Running" and "Idle".
+	test.WaitStatus(1, m, "qan-log-parser", "Idle (0 of 2 running)")
+	status := m.Status()
+	t.Check(status["qan"], Equals, "Running")
+	t.Check(status["qan-log-parser"], Equals, "Idle (0 of 2 running)")
+
+	/**
+	 * QAN should configure mysql at startup
+	 */
+	expectedQueries := [][]mysql.Query{
+		[]mysql.Query{
+			mysql.Query{
+				Set:    "SET GLOBAL slow_query_log=OFF",
+				Verify: "",
+				Expect: "",
+			},
+			mysql.Query{
+				Set:    "SET GLOBAL long_query_time=0.123",
+				Verify: "",
+				Expect: "",
+			},
+			mysql.Query{
+				Set:    "SET GLOBAL slow_query_log=ON",
+				Verify: "",
+				Expect: "",
+			},
+		},
+	}
+	var obtainedQueries [][]mysql.Query
+LOOP1:
+	for {
+		select {
+		case q := <-setChan:
+			obtainedQueries = append(obtainedQueries, q)
+		default:
+			break LOOP1
+		}
+	}
+	t.Assert(obtainedQueries, DeepEquals, expectedQueries)
+
+	/**
+	 * QAN should also check periodically if MySQL was restarted
+	 * if so then it should configure it again
+	 */
+	obtainedQueries = nil
+	mockConn.UptimeMock = func() uint {
+		return 0 // reset timestamp to imitate mysql restart
+	}
+	m.GetTickCheckChan() <- time.Now()
+	timeout := time.After(200 * time.Millisecond)
+LOOP2:
+	for {
+		select {
+		case q := <-setChan:
+			obtainedQueries = append(obtainedQueries, q)
+		case <-timeout:
+			break LOOP2
+		}
+	}
+	t.Assert(obtainedQueries, DeepEquals, expectedQueries)
+
+	/**
+	 * If MySQL was not restarted then QAN should not configure MySQL again
+	 */
+	obtainedQueries = nil
+	mockConn.UptimeMock = func() uint {
+		return uint(time.Now().Unix())
+	}
+	m.GetTickCheckChan() <- time.Now()
+	timeout = time.After(200 * time.Millisecond)
+LOOP3:
+	for {
+		select {
+		case q := <-setChan:
+			obtainedQueries = append(obtainedQueries, q)
+		case <-timeout:
+			break LOOP3
+		}
+	}
+	t.Assert(obtainedQueries, IsNil)
+
+	// Stop QAN.
+	cmd = &proto.Cmd{
+		Ts:        now,
+		AgentUuid: "123",
+		Service:   "",
+		Cmd:       "StopService",
+	}
+	reply = m.Handle(cmd)
+	t.Assert(reply.Error, Equals, "")
+}
+
 func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(t *C) {
 
 	// Clean up files that may interfere with test.
