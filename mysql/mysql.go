@@ -132,7 +132,9 @@ func (c *Connection) Uptime() (uptime uint) {
 	if c.conn == nil {
 		return 0
 	}
-	var blackhole string
-	c.conn.QueryRow("SHOW STATUS LIKE 'uptime'").Scan(&blackhole, &uptime)
+	// Result from SHOW STATUS includes two columns,
+	// Variable_name and Value, we ignore the first one as we need only Value
+	var varName string
+	c.conn.QueryRow("SHOW STATUS LIKE 'Uptime'").Scan(&varName, &uptime)
 	return uptime
 }

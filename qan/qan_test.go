@@ -589,23 +589,23 @@ func (s *ManagerTestSuite) TestMySQLRestart(t *C) {
 			},
 		},
 	}
-	var obtainedQueries [][]mysql.Query
+	var gotQueries [][]mysql.Query
 LOOP1:
 	for {
 		select {
 		case q := <-setChan:
-			obtainedQueries = append(obtainedQueries, q)
+			gotQueries = append(gotQueries, q)
 		default:
 			break LOOP1
 		}
 	}
-	t.Assert(obtainedQueries, DeepEquals, expectedQueries)
+	t.Assert(gotQueries, DeepEquals, expectedQueries)
 
 	/**
 	 * QAN should also check periodically if MySQL was restarted
 	 * if so then it should configure it again
 	 */
-	obtainedQueries = nil
+	gotQueries = nil
 	mockConn.UptimeMock = func() uint {
 		return 0 // reset timestamp to imitate mysql restart
 	}
@@ -615,17 +615,17 @@ LOOP2:
 	for {
 		select {
 		case q := <-setChan:
-			obtainedQueries = append(obtainedQueries, q)
+			gotQueries = append(gotQueries, q)
 		case <-timeout:
 			break LOOP2
 		}
 	}
-	t.Assert(obtainedQueries, DeepEquals, expectedQueries)
+	t.Assert(gotQueries, DeepEquals, expectedQueries)
 
 	/**
 	 * If MySQL was not restarted then QAN should not configure MySQL again
 	 */
-	obtainedQueries = nil
+	gotQueries = nil
 	mockConn.UptimeMock = func() uint {
 		return uint(time.Now().Unix())
 	}
@@ -635,12 +635,12 @@ LOOP3:
 	for {
 		select {
 		case q := <-setChan:
-			obtainedQueries = append(obtainedQueries, q)
+			gotQueries = append(gotQueries, q)
 		case <-timeout:
 			break LOOP3
 		}
 	}
-	t.Assert(obtainedQueries, IsNil)
+	t.Assert(gotQueries, IsNil)
 
 	// Stop QAN.
 	cmd = &proto.Cmd{
