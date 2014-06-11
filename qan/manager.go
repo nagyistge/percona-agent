@@ -41,20 +41,21 @@ type Manager struct {
 	spool         data.Spooler
 	im            *instance.Repo
 	// --
-	config         *Config
-	running        bool
-	mux            *sync.RWMutex // guards config and running
-	tickChan       chan time.Time
-	tickCheckChan  chan time.Time // used to initiate periodical mysql checks
-	mysqlConn      mysql.Connector
-	previousUptime uint
-	iter           IntervalIter
-	workers        map[Worker]*Interval
-	workersMux     *sync.RWMutex
-	workerDoneChan chan Worker
-	status         *pct.Status
-	sync           *pct.SyncChan
-	oldSlowLogs    map[string]int
+	config          *Config
+	running         bool
+	mux             *sync.RWMutex // guards config and running
+	tickChan        chan time.Time
+	tickCheckChan   chan time.Time // used to initiate periodical mysql checks
+	mysqlConn       mysql.Connector
+	lastUptime      int64
+	lastUptimeCheck time.Time
+	iter            IntervalIter
+	workers         map[Worker]*Interval
+	workersMux      *sync.RWMutex
+	workerDoneChan  chan Worker
+	status          *pct.Status
+	sync            *pct.SyncChan
+	oldSlowLogs     map[string]int
 }
 
 func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock ticker.Manager, iterFactory IntervalIterFactory, workerFactory WorkerFactory, spool data.Spooler, im *instance.Repo) *Manager {
@@ -413,13 +414,7 @@ func (m *Manager) mysqlPeriodicalSetup(config Config) error {
 	}
 	defer m.mysqlConn.Close()
 
-	restarted, err := m.checkIfMysqlRestarted()
-	if err != nil {
-		m.logger.Warn("Unable to check if MySQL was restarted: %s", err)
-		return err
-	}
-
-	if restarted {
+	if restarted := m.checkIfMysqlRestarted(); restarted {
 		// Configure MySQL to enable QAN
 		return m.mysqlSetup(config)
 	}
@@ -435,26 +430,43 @@ func (m *Manager) mysqlStartSetup(config Config) error {
 	defer m.mysqlConn.Close()
 
 	// Get current MySQL uptime - this is later used to detect if MySQL was restarted
-	m.previousUptime = m.mysqlConn.Uptime()
+	m.lastUptime = m.mysqlConn.Uptime()
 
 	// Configure MySQL to enable QAN
 	return m.mysqlSetup(config)
 }
 
-func (m *Manager) checkIfMysqlRestarted() (bool, error) {
-	previousUptime := m.previousUptime
+func (m *Manager) checkIfMysqlRestarted() bool {
+	lastUptime := m.lastUptime
+	lastUptimeCheck := m.lastUptimeCheck
 	currentUptime := m.mysqlConn.Uptime()
 
+	// Calculate expected uptime
+	//   This protects against situation where after restarting MySQL
+	//   we are unable to connect to it for period longer than last registered uptime
+	//
+	// Steps to reproduce:
+	// * currentUptime=60 lastUptime=0
+	// * Restart MySQL
+	// * QAN connection problem for 120s
+	// * currentUptime=120 lastUptime=60 (new uptime (120s) is higher than last registered (60s))
+	// * elapsedTime=120s (time elapsed since last check)
+	// * expectedUptime= 60s + 120s = 180s
+	// * 120s < 180s (currentUptime < expectedUptime) => server was restarted
+	elapsedTime := time.Now().Unix() - lastUptimeCheck.Unix()
+	expectedUptime := lastUptime + elapsedTime
+
 	// Save uptime from last check
-	m.previousUptime = currentUptime
+	m.lastUptime = currentUptime
+	m.lastUptimeCheck = time.Now()
 
 	// If current server uptime is lower than last registered uptime
 	// then we can assume that server was restarted
-	if currentUptime < previousUptime {
-		return true, nil
+	if currentUptime < expectedUptime {
+		return true
 	}
 
-	return false, nil
+	return false
 }
 
 // @goroutine[1]

@@ -33,7 +33,7 @@ type Connector interface {
 	Close()
 	Set([]Query) error
 	GetGlobalVarString(varName string) string
-	Uptime() (uptime uint)
+	Uptime() (uptime int64)
 }
 
 type Connection struct {
@@ -128,7 +128,7 @@ func (c *Connection) GetGlobalVarNumber(varName string) float64 {
 	return varValue
 }
 
-func (c *Connection) Uptime() (uptime uint) {
+func (c *Connection) Uptime() (uptime int64) {
 	if c.conn == nil {
 		return 0
 	}

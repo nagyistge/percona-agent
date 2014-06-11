@@ -29,7 +29,7 @@ type ConnectorMock struct {
 	CloseMock              func()
 	SetMock                func([]mysql.Query) error
 	GetGlobalVarStringMock func(varName string) string
-	UptimeMock             func() (uptime uint)
+	UptimeMock             func() (uptime int64)
 }
 
 func NewConnectorMock() *ConnectorMock {
@@ -60,6 +60,6 @@ func (c *ConnectorMock) GetGlobalVarString(varName string) string {
 	return c.GetGlobalVarStringMock(varName)
 }
 
-func (c *ConnectorMock) Uptime() uint {
+func (c *ConnectorMock) Uptime() int64 {
 	return c.UptimeMock()
 }

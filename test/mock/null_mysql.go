@@ -68,6 +68,6 @@ func (n *NullMySQL) GetGlobalVarString(varName string) string {
 	return ""
 }
 
-func (n *NullMySQL) Uptime() uint {
+func (n *NullMySQL) Uptime() int64 {
 	return 0
 }

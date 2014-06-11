@@ -512,8 +512,8 @@ func (s *ManagerTestSuite) TestMySQLRestart(t *C) {
 			setChan <- queries
 			return nil
 		},
-		UptimeMock: func() uint {
-			return uint(time.Now().Unix())
+		UptimeMock: func() int64 {
+			return time.Now().Unix()
 		},
 	}
 	mockConnFactory := &mock.ConnectionFactory{
@@ -567,6 +567,15 @@ func (s *ManagerTestSuite) TestMySQLRestart(t *C) {
 	t.Check(status["qan"], Equals, "Running")
 	t.Check(status["qan-log-parser"], Equals, "Idle (0 of 2 running)")
 
+	// Stop QAN when we are done
+	cmd = &proto.Cmd{
+		Ts:        now,
+		AgentUuid: "123",
+		Service:   "",
+		Cmd:       "StopService",
+	}
+	defer m.Handle(cmd)
+
 	/**
 	 * QAN should configure mysql at startup
 	 */
@@ -599,14 +608,14 @@ LOOP1:
 			break LOOP1
 		}
 	}
-	t.Assert(gotQueries, DeepEquals, expectedQueries)
+	t.Assert(gotQueries, DeepEquals, expectedQueries, Commentf("QAN didn't configure MySQL on startup"))
 
 	/**
 	 * QAN should also check periodically if MySQL was restarted
 	 * if so then it should configure it again
 	 */
 	gotQueries = nil
-	mockConn.UptimeMock = func() uint {
+	mockConn.UptimeMock = func() int64 {
 		return 0 // reset timestamp to imitate mysql restart
 	}
 	m.GetTickCheckChan() <- time.Now()
@@ -620,14 +629,14 @@ LOOP2:
 			break LOOP2
 		}
 	}
-	t.Assert(gotQueries, DeepEquals, expectedQueries)
+	t.Assert(gotQueries, DeepEquals, expectedQueries, Commentf("MySQL was restarted, but QAN didn't reconfigure MySQL"))
 
 	/**
 	 * If MySQL was not restarted then QAN should not configure MySQL again
 	 */
 	gotQueries = nil
-	mockConn.UptimeMock = func() uint {
-		return uint(time.Now().Unix())
+	mockConn.UptimeMock = func() int64 {
+		return 2
 	}
 	m.GetTickCheckChan() <- time.Now()
 	timeout = time.After(200 * time.Millisecond)
@@ -640,17 +649,34 @@ LOOP3:
 			break LOOP3
 		}
 	}
-	t.Assert(gotQueries, IsNil)
+	t.Assert(gotQueries, IsNil, Commentf("MySQL was not restarted, but QAN reconfigured MySQL"))
 
-	// Stop QAN.
-	cmd = &proto.Cmd{
-		Ts:        now,
-		AgentUuid: "123",
-		Service:   "",
-		Cmd:       "StopService",
+	/**
+	 * Now let's imitate MySQL server restart and let's wait 3 seconds before next check.
+	 * Since MySQL server was restarted and we waited 3s then uptime=3s
+	 * which is higher than last registered uptime=2s
+	 *
+	 * However we expect in this test that this is properly detected as MySQL restart
+	 * and the QAN service is again reconfigured
+	 */
+	waitTime := int64(3)
+	time.Sleep(time.Duration(waitTime) * time.Second)
+	gotQueries = nil
+	mockConn.UptimeMock = func() int64 {
+		return waitTime
 	}
-	reply = m.Handle(cmd)
-	t.Assert(reply.Error, Equals, "")
+	m.GetTickCheckChan() <- time.Now()
+	timeout = time.After(200 * time.Millisecond)
+LOOP4:
+	for {
+		select {
+		case q := <-setChan:
+			gotQueries = append(gotQueries, q)
+		case <-timeout:
+			break LOOP4
+		}
+	}
+	t.Assert(gotQueries, DeepEquals, expectedQueries, Commentf("MySQL was restarted (uptime overlaped last registered uptime), but QAN didn't reconfiugre MySQL"))
 }
 
 func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(t *C) {
