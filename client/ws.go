@@ -25,6 +25,9 @@ import (
 	"github.com/percona/percona-agent/pct"
 	"sync"
 	"time"
+	"net"
+	"crypto/tls"
+	"strings"
 )
 
 const (
@@ -121,6 +124,72 @@ func (c *WebsocketClient) Connect() {
 	}
 }
 
+func TlsDial(network, addr string, config *tls.Config, timeout uint) (*tls.Conn, error) {
+	raddr := addr
+	c, err := net.DialTimeout(network, raddr, time.Duration(timeout) * time.Second)
+	if err != nil {
+		return nil, err
+	}
+
+	colonPos := strings.LastIndex(raddr, ":")
+	if colonPos == -1 {
+		colonPos = len(raddr)
+	}
+	hostname := raddr[:colonPos]
+
+	if config == nil {
+		return nil, fmt.Errorf("No config passed to TlsDial")
+	}
+	// If no ServerName is set, infer the ServerName
+	// from the hostname we're connecting to.
+	if config.ServerName == "" {
+		// Make a copy to avoid polluting argument or default.
+		c := *config
+		c.ServerName = hostname
+		config = &c
+	}
+	conn := tls.Client(c, config)
+	if err = conn.Handshake(); err != nil {
+		c.Close()
+		return nil, err
+	}
+	return conn, nil
+}
+
+// We need this function, because websocket.DialConfig is limited to connection without timeout.
+// DialConfigTimeout opens a new client connection to a WebSocket with a config and timeout.
+func DialConfigTimeout(config *websocket.Config, timeout uint) (ws *websocket.Conn, err error) {
+	var client net.Conn
+	if config.Location == nil {
+			return nil, &websocket.DialError{config, websocket.ErrBadWebSocketLocation}
+	}
+	if config.Origin == nil {
+			return nil, &websocket.DialError{config, websocket.ErrBadWebSocketOrigin}
+	}
+	switch config.Location.Scheme {
+	case "ws":
+			client, err = net.DialTimeout("tcp", config.Location.Host, time.Duration(timeout) * time.Second)
+
+	case "wss":
+			client, err = TlsDial("tcp", config.Location.Host, config.TlsConfig, timeout)
+
+	default:
+			err = websocket.ErrBadScheme
+	}
+	if err != nil {
+			goto Error
+	}
+
+	ws, err = websocket.NewClient(config, client)
+	if err != nil {
+			goto Error
+	}
+	return
+
+Error:
+	return nil, &websocket.DialError{config, err}
+}
+
 func (c *WebsocketClient) ConnectOnce() error {
 	c.logger.Debug("ConnectOnce:call")
 	defer c.logger.Debug("ConnectOnce:return")
@@ -137,7 +206,7 @@ func (c *WebsocketClient) ConnectOnce() error {
 
 	c.logger.Debug("ConnectOnce:websocket.DialConfig")
 	c.status.Update(c.name, "Connecting "+link)
-	conn, err := websocket.DialConfig(config)
+	conn, err := DialConfigTimeout(config, 10) // 10 seconds timeout
 	if err != nil {
 		return err
 	}
