@@ -138,7 +138,7 @@ func TlsDialTimeout(network, addr string, config *tls.Config, timeout uint) (*tl
 	hostname := raddr[:colonPos]
 
 	if config == nil {
-		return nil, fmt.Errorf("No config passed to TlsDial")
+		return nil, fmt.Errorf("No config passed to TlsDialTimeout")
 	}
 	// If no ServerName is set, infer the ServerName
 	// from the hostname we're connecting to.
