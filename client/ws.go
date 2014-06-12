@@ -19,15 +19,15 @@ package client
 
 import (
 	"code.google.com/p/go.net/websocket"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/pct"
+	"net"
+	"strings"
 	"sync"
 	"time"
-	"net"
-	"crypto/tls"
-	"strings"
 )
 
 const (
@@ -124,9 +124,9 @@ func (c *WebsocketClient) Connect() {
 	}
 }
 
-func TlsDial(network, addr string, config *tls.Config, timeout uint) (*tls.Conn, error) {
+func TlsDialTimeout(network, addr string, config *tls.Config, timeout uint) (*tls.Conn, error) {
 	raddr := addr
-	c, err := net.DialTimeout(network, raddr, time.Duration(timeout) * time.Second)
+	c, err := net.DialTimeout(network, raddr, time.Duration(timeout)*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -161,28 +161,28 @@ func TlsDial(network, addr string, config *tls.Config, timeout uint) (*tls.Conn,
 func DialConfigTimeout(config *websocket.Config, timeout uint) (ws *websocket.Conn, err error) {
 	var client net.Conn
 	if config.Location == nil {
-			return nil, &websocket.DialError{config, websocket.ErrBadWebSocketLocation}
+		return nil, &websocket.DialError{config, websocket.ErrBadWebSocketLocation}
 	}
 	if config.Origin == nil {
-			return nil, &websocket.DialError{config, websocket.ErrBadWebSocketOrigin}
+		return nil, &websocket.DialError{config, websocket.ErrBadWebSocketOrigin}
 	}
 	switch config.Location.Scheme {
 	case "ws":
-			client, err = net.DialTimeout("tcp", config.Location.Host, time.Duration(timeout) * time.Second)
+		client, err = net.DialTimeout("tcp", config.Location.Host, time.Duration(timeout)*time.Second)
 
 	case "wss":
-			client, err = TlsDial("tcp", config.Location.Host, config.TlsConfig, timeout)
+		client, err = TlsDialTimeout("tcp", config.Location.Host, config.TlsConfig, timeout)
 
 	default:
-			err = websocket.ErrBadScheme
+		err = websocket.ErrBadScheme
 	}
 	if err != nil {
-			goto Error
+		goto Error
 	}
 
 	ws, err = websocket.NewClient(config, client)
 	if err != nil {
-			goto Error
+		goto Error
 	}
 	return
 
