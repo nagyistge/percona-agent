@@ -177,7 +177,7 @@ func (a *API) getLinks(apiKey, url string) (map[string]string, error) {
 	if code >= 400 {
 		return nil, fmt.Errorf("Error %d from %s\n", code, url)
 	} else if len(data) == 0 {
-		return nil, fmt.Errorf("OK response from ", url, "but no content")
+		return nil, fmt.Errorf("OK response from %s but no content", url)
 	}
 
 	links := &proto.Links{}
