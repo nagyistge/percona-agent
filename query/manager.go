@@ -18,8 +18,8 @@
 package query
 
 /**
- * query is a proxy manager for monitors.  It doesn't have its own config,
- * it's job is to start and stop monitors, mostly done in Handle().
+ * query is a proxy manager for service instances. It doesn't have its own config,
+ * it's job is to start and stop instances, mostly done in Handle().
  */
 
 import (
@@ -41,24 +41,24 @@ const (
 
 type Manager struct {
 	logger  *pct.Logger
-	factory MonitorFactory
+	factory InstanceFactory
 	im      *instance.Repo
 	// --
-	monitors map[string]Monitor
-	running  bool
-	mux      *sync.RWMutex // guards monitors and running
-	status   *pct.Status
+	instances map[string]Instance
+	running   bool
+	mux       *sync.RWMutex // guards instances and running
+	status    *pct.Status
 }
 
-func NewManager(logger *pct.Logger, factory MonitorFactory, im *instance.Repo) *Manager {
+func NewManager(logger *pct.Logger, factory InstanceFactory, im *instance.Repo) *Manager {
 	m := &Manager{
 		logger:  logger,
 		factory: factory,
 		im:      im,
 		// --
-		monitors: make(map[string]Monitor),
-		status:   pct.NewStatus([]string{SERVICE_NAME}),
-		mux:      &sync.RWMutex{},
+		instances: make(map[string]Instance),
+		status:    pct.NewStatus([]string{SERVICE_NAME}),
+		mux:       &sync.RWMutex{},
 	}
 	return m
 }
@@ -77,7 +77,7 @@ func (m *Manager) Start() error {
 		return pct.ServiceIsRunningError{Service: SERVICE_NAME}
 	}
 
-	// Start all metric monitors.
+	// Start all service instances.
 	glob := filepath.Join(pct.Basedir.Dir("config"), fmt.Sprintf("%s-*.conf"), SERVICE_NAME)
 	configFiles, err := filepath.Glob(glob)
 	if err != nil {
@@ -119,13 +119,13 @@ func (m *Manager) Start() error {
 func (m *Manager) Stop() error {
 	m.mux.Lock()
 	defer m.mux.Unlock()
-	for name, monitor := range m.monitors {
+	for name, instance := range m.instances {
 		m.status.Update(SERVICE_NAME, "Stopping "+name)
-		if err := monitor.Stop(); err != nil {
+		if err := instance.Stop(); err != nil {
 			m.logger.Warn("Failed to stop " + name + ": " + err.Error())
 			continue
 		}
-		delete(m.monitors, name)
+		delete(m.instances, name)
 	}
 	m.running = false
 	m.logger.Info("Stopped")
@@ -140,7 +140,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 	switch cmd.Cmd {
 	case "StartService":
-		config, name, err := m.getMonitorConfig(cmd)
+		config, name, err := m.getInstanceConfig(cmd)
 		if err != nil {
 			return cmd.Reply(nil, err)
 		}
@@ -148,56 +148,56 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		m.status.UpdateRe(SERVICE_NAME, "Starting "+name, cmd)
 		m.logger.Info("Start", name, cmd)
 
-		// Monitors names must be unique.
+		// Instances names must be unique.
 		m.mux.RLock()
-		_, haveMonitor := m.monitors[name]
+		_, haveInstance := m.instances[name]
 		m.mux.RUnlock()
-		if haveMonitor {
-			return cmd.Reply(nil, fmt.Errorf("Duplicate monitor: %s", err))
+		if haveInstance {
+			return cmd.Reply(nil, fmt.Errorf("Duplicate instance: %s", err))
 		}
 
-		// Create the monitor based on its type.
-		monitor, err := m.factory.Make(config.Service, config.InstanceId, cmd.Data)
+		// Create the instance based on its type.
+		instance, err := m.factory.Make(config.Service, config.InstanceId, cmd.Data)
 		if err != nil {
 			return cmd.Reply(nil, fmt.Errorf("Factory: %s", err))
 		}
 
-		// Start the monitor.
-		if err := monitor.Start(); err != nil {
+		// Start the instance.
+		if err := instance.Start(); err != nil {
 			return cmd.Reply(nil, fmt.Errorf("Start %s: %s", name, err))
 		}
 		m.mux.Lock()
-		m.monitors[name] = monitor
+		m.instances[name] = instance
 		m.mux.Unlock()
 
-		// Save the monitor-specific config to disk so agent starts on restart.
-		monitorConfig := monitor.Config()
-		if err := pct.Basedir.WriteConfig(name, monitorConfig); err != nil {
+		// Save the instance-specific config to disk so agent starts on restart.
+		instanceConfig := instance.Config()
+		if err := pct.Basedir.WriteConfig(name, instanceConfig); err != nil {
 			return cmd.Reply(nil, fmt.Errorf("Write %s: %s", name, err))
 		}
 
 		return cmd.Reply(nil) // success
 	case "StopService":
-		_, name, err := m.getMonitorConfig(cmd)
+		_, name, err := m.getInstanceConfig(cmd)
 		if err != nil {
 			return cmd.Reply(nil, err)
 		}
 		m.status.UpdateRe(SERVICE_NAME, "Stopping "+name, cmd)
 		m.logger.Info("Stop", name, cmd)
 		m.mux.RLock()
-		monitor, ok := m.monitors[name]
+		instance, ok := m.instances[name]
 		m.mux.RUnlock()
 		if !ok {
-			return cmd.Reply(nil, fmt.Errorf("Unknown monitor: %s", name))
+			return cmd.Reply(nil, fmt.Errorf("Unknown instance: %s", name))
 		}
-		if err := monitor.Stop(); err != nil {
+		if err := instance.Stop(); err != nil {
 			return cmd.Reply(nil, fmt.Errorf("Stop %s: %s", name, err))
 		}
 		if err := pct.Basedir.RemoveConfig(name); err != nil {
 			return cmd.Reply(nil, fmt.Errorf("Remove %s: %s", name, err))
 		}
 		m.mux.Lock()
-		delete(m.monitors, name)
+		delete(m.instances, name)
 		m.mux.Unlock()
 		return cmd.Reply(nil) // success
 	case "GetConfig":
@@ -212,19 +212,19 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		m.logger.Info("Running explain", name, cmd)
 
 		m.mux.RLock()
-		monitor, ok := m.monitors[name]
+		instance, ok := m.instances[name]
 		m.mux.RUnlock()
 		if !ok {
-			return cmd.Reply(nil, fmt.Errorf("Unknown monitor: %s", name))
+			return cmd.Reply(nil, fmt.Errorf("Unknown instance: %s", name))
 		}
 
-		explain, err := monitor.Explain(query)
+		explain, err := instance.Explain(query)
 		if err != nil {
-			return cmd.Reply(nil, fmt.Errorf("Explain %s: %s %#v", name, err, m.monitors))
+			return cmd.Reply(nil, fmt.Errorf("Explain %s: %s %#v", name, err, m.instances))
 		}
 		return cmd.Reply(explain)
 	default:
-		// SetConfig does not work by design.  To re-configure a monitor,
+		// SetConfig does not work by design.  To re-configure a instance,
 		// stop it then start it again with the new config.
 		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
@@ -235,9 +235,9 @@ func (m *Manager) Status() map[string]string {
 	status := m.status.All()
 	m.mux.RLock()
 	defer m.mux.RUnlock()
-	for _, monitor := range m.monitors {
-		monitorStatus := monitor.Status()
-		for k, v := range monitorStatus {
+	for _, instance := range m.instances {
+		instanceStatus := instance.Status()
+		for k, v := range instanceStatus {
 			status[k] = v
 		}
 	}
@@ -251,20 +251,20 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 	m.mux.RLock()
 	defer m.mux.RUnlock()
 
-	// Manager does not have its own config.  It returns all monitors' configs instead.
+	// Manager does not have its own config. It returns all instances' configs instead.
 
 	// Configs are always returned as array of AgentConfig resources.
 	configs := []proto.AgentConfig{}
 	errs := []error{}
-	for _, monitor := range m.monitors {
-		monitorConfig := monitor.Config()
-		// Full monitor config as JSON string.
-		bytes, err := json.Marshal(monitorConfig)
+	for _, instance := range m.instances {
+		instanceConfig := instance.Config()
+		// Full instance config as JSON string.
+		bytes, err := json.Marshal(instanceConfig)
 		if err != nil {
 			errs = append(errs, err)
 			continue
 		}
-		// Just the monitor's ServiceInstance, aka ExternalService.
+		// Just the instance's ServiceInstance, aka ExternalService.
 		queryConfig := &Config{}
 		if err := json.Unmarshal(bytes, queryConfig); err != nil {
 			errs = append(errs, err)
@@ -285,18 +285,18 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 	return configs, errs
 }
 
-func (m *Manager) getMonitorConfig(cmd *proto.Cmd) (*Config, string, error) {
+func (m *Manager) getInstanceConfig(cmd *proto.Cmd) (*Config, string, error) {
 	/**
-	 * cmd.Data is a monitor-specific config, e.g. mysql.Config.  But monitor-specific
-	 * configs embed query.Config, so get that first to determine the monitor's name and
-	 * type which is all we need to start it.  The monitor itself will decode cmd.Data
-	 * into it's specific config, which we fetch back later by calling monitor.Config()
+	 * cmd.Data is a instance-specific config, e.g. mysql.Config.  But instance-specific
+	 * configs embed query.Config, so get that first to determine the instance's name and
+	 * type which is all we need to start it.  The instance itself will decode cmd.Data
+	 * into it's specific config, which we fetch back later by calling instance.Config()
 	 * to save to disk.
 	 */
 	config := &Config{}
 	if cmd.Data != nil {
 		if err := json.Unmarshal(cmd.Data, config); err != nil {
-			return nil, "", fmt.Errorf("%s.getMonitorConfig:json.Unmarshal:%s", SERVICE_NAME, err)
+			return nil, "", fmt.Errorf("%s.getInstanceConfig:json.Unmarshal:%s", SERVICE_NAME, err)
 		}
 	}
 
@@ -315,16 +315,16 @@ func (m *Manager) getInstanceName(service string, instanceId uint) (name string)
 
 func (m *Manager) getExplainQuery(cmd *proto.Cmd) (query string, name string, err error) {
 	/**
-	 * cmd.Data is a monitor-specific config, e.g. mysql.Config.  But monitor-specific
-	 * configs embed query.Config, so get that first to determine the monitor's name and
-	 * type which is all we need to start it.  The monitor itself will decode cmd.Data
-	 * into it's specific config, which we fetch back later by calling monitor.Config()
+	 * cmd.Data is a instance-specific config, e.g. mysql.Config.  But instance-specific
+	 * configs embed query.Config, so get that first to determine the instance's name and
+	 * type which is all we need to start it.  The instance itself will decode cmd.Data
+	 * into it's specific config, which we fetch back later by calling instance.Config()
 	 * to save to disk.
 	 */
 	var explainQuery mysql.ExplainQuery
 	if cmd.Data != nil {
 		if err := json.Unmarshal(cmd.Data, &explainQuery); err != nil {
-			return "", "", fmt.Errorf("%s.getMonitorConfig:json.Unmarshal:%s", SERVICE_NAME, err)
+			return "", "", fmt.Errorf("%s.getInstanceConfig:json.Unmarshal:%s", SERVICE_NAME, err)
 		}
 	}
 

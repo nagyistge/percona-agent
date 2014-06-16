@@ -23,73 +23,73 @@ import (
 	"github.com/percona/percona-agent/query"
 )
 
-type QueryMonitorFactory struct {
-	monitors  map[string]query.Monitor
-	monitorNo int
-	Made      []string
+type QueryInstanceFactory struct {
+	instances  map[string]query.Instance
+	instanceNo int
+	Made       []string
 }
 
-func NewQueryMonitorFactory(monitors map[string]query.Monitor) *QueryMonitorFactory {
-	f := &QueryMonitorFactory{
-		monitors: monitors,
-		Made:     []string{},
+func NewQueryInstanceFactory(instances map[string]query.Instance) *QueryInstanceFactory {
+	f := &QueryInstanceFactory{
+		instances: instances,
+		Made:      []string{},
 	}
 	return f
 }
 
-func (f *QueryMonitorFactory) Make(service string, id uint, data []byte) (query.Monitor, error) {
+func (f *QueryInstanceFactory) Make(service string, id uint, data []byte) (query.Instance, error) {
 	name := fmt.Sprintf("%s-%d", service, id)
-	if monitor, ok := f.monitors[name]; ok {
-		return monitor, nil
+	if instance, ok := f.instances[name]; ok {
+		return instance, nil
 	}
 
-	panic(fmt.Sprintf("Mock factory doesn't have monitor %s. Provide it via NewQueryMonitorFactory(...) or Set(...).", name))
+	panic(fmt.Sprintf("Mock factory doesn't have instance %s. Provide it via NewQueryInstanceFactory(...) or Set(...).", name))
 }
 
 // --------------------------------------------------------------------------
 
-type QueryMonitor struct {
+type QueryInstance struct {
 	running bool
 	config  interface{}
 	explain map[string]*mysql.Explain
 }
 
-func NewQueryMonitor() *QueryMonitor {
-	m := &QueryMonitor{
+func NewQueryInstance() *QueryInstance {
+	m := &QueryInstance{
 		explain: make(map[string]*mysql.Explain),
 	}
 	return m
 }
 
-func (m *QueryMonitor) Start() error {
+func (m *QueryInstance) Start() error {
 	m.running = true
 	return nil
 }
 
-func (m *QueryMonitor) Stop() error {
+func (m *QueryInstance) Stop() error {
 	m.running = false
 	return nil
 }
 
-func (m *QueryMonitor) Status() map[string]string {
+func (m *QueryInstance) Status() map[string]string {
 	status := make(map[string]string)
 	if m.running {
-		status["monitor"] = "Running"
+		status["instance"] = "Running"
 	} else {
-		status["monitor"] = "Stopped"
+		status["instance"] = "Stopped"
 	}
 	return status
 }
 
-func (m *QueryMonitor) Config() interface{} {
+func (m *QueryInstance) Config() interface{} {
 	return m.config
 }
 
-func (m *QueryMonitor) SetConfig(v interface{}) {
+func (m *QueryInstance) SetConfig(v interface{}) {
 	m.config = v
 }
 
-func (n *QueryMonitor) Explain(query string) (explain *mysql.Explain, err error) {
+func (n *QueryInstance) Explain(query string) (explain *mysql.Explain, err error) {
 	explain, ok := n.explain[query]
 	if !ok {
 		return nil, fmt.Errorf("Explain output not set in mock")
@@ -98,6 +98,6 @@ func (n *QueryMonitor) Explain(query string) (explain *mysql.Explain, err error)
 	return explain, nil
 }
 
-func (n *QueryMonitor) SetExplain(query string, explain *mysql.Explain) {
+func (n *QueryInstance) SetExplain(query string, explain *mysql.Explain) {
 	n.explain[query] = explain
 }

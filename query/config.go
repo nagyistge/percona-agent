@@ -22,11 +22,11 @@ import (
 )
 
 /**
- * query is a proxy service for monitors so this config is per-monitor.
- * Monitors are uniquely identified by name, so one agent can monitor
- * multiple systems.
+ * query is a proxy service for service instances so this config is per-instance.
+ * Instances are uniquely identified by name,
+ * so one agent can interact with multiple systems.
  */
 
 type Config struct {
-	proto.ServiceInstance // info about external service being monitored
+	proto.ServiceInstance // info about external service
 }

@@ -25,7 +25,7 @@ import (
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/query"
-	mysqlMonitor "github.com/percona/percona-agent/query/mysql"
+	mysqlInstance "github.com/percona/percona-agent/query/mysql"
 	"github.com/percona/percona-agent/test/mock"
 	"io/ioutil"
 	. "launchpad.net/gocheck"
@@ -43,18 +43,18 @@ func Test(t *testing.T) { TestingT(t) }
 /////////////////////////////////////////////////////////////////////////////
 
 type ManagerTestSuite struct {
-	logChan      chan *proto.LogEntry
-	logger       *pct.Logger
-	tickChan     chan time.Time
-	dataChan     chan interface{}
-	traceChan    chan string
-	readyChan    chan bool
-	configDir    string
-	tmpDir       string
-	im           *instance.Repo
-	mysqlMonitor *mock.QueryMonitor
-	factory      *mock.QueryMonitorFactory
-	api          *mock.API
+	logChan       chan *proto.LogEntry
+	logger        *pct.Logger
+	tickChan      chan time.Time
+	dataChan      chan interface{}
+	traceChan     chan string
+	readyChan     chan bool
+	configDir     string
+	tmpDir        string
+	im            *instance.Repo
+	mysqlInstance *mock.QueryInstance
+	factory       *mock.QueryInstanceFactory
+	api           *mock.API
 }
 
 var _ = Suite(&ManagerTestSuite{})
@@ -82,9 +82,9 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	t.Assert(err, IsNil)
 	s.im.Add("mysql", 1, data, false)
 
-	s.mysqlMonitor = mock.NewQueryMonitor()
-	s.factory = mock.NewQueryMonitorFactory(map[string]query.Monitor{
-		"mysql-1": s.mysqlMonitor,
+	s.mysqlInstance = mock.NewQueryInstance()
+	s.factory = mock.NewQueryInstanceFactory(map[string]query.Instance{
+		"mysql-1": s.mysqlInstance,
 	})
 
 	links := map[string]string{
@@ -117,10 +117,10 @@ func (s *ManagerTestSuite) TearDownSuite(t *C) {
 
 func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 	/**
-	 * query is a proxy manager for monitors, so it's always running.
+	 * query is a proxy manager for instances, so it's always running.
 	 * It should implement the service manager interface anyway,
 	 * but it doesn't actually start or stop.  Its main work is done
-	 * in Handle, starting and stopping monitors (tested later).
+	 * in Handle, starting and stopping instances (tested later).
 	 */
 	m := query.NewManager(s.logger, s.factory, s.im)
 	t.Assert(m, Not(IsNil), Commentf("Make new query.Manager"))
@@ -150,16 +150,16 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 	t.Check(err, FitsTypeOf, pct.ServiceIsRunningError{})
 
 	// StartService
-	monitorConfig := mysqlMonitor.Config{
+	instanceConfig := mysqlInstance.Config{
 		Config: *config,
 	}
-	monitorConfigData, err := json.Marshal(monitorConfig)
+	instanceConfigData, err := json.Marshal(instanceConfig)
 	t.Assert(err, IsNil)
 	// The agent calls query.Handle() with the cmd (for logging and status) and the config data.
 	cmd := &proto.Cmd{
 		Service: "query",
 		Cmd:     "StartService",
-		Data:    monitorConfigData,
+		Data:    instanceConfigData,
 	}
 	reply := m.Handle(cmd)
 	t.Assert(reply, NotNil)
@@ -227,7 +227,7 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 			},
 		},
 	}
-	s.mysqlMonitor.SetExplain("SELECT 1", expectedExplain)
+	s.mysqlInstance.SetExplain("SELECT 1", expectedExplain)
 
 	explainQuery := &mysql.ExplainQuery{
 		ServiceInstance: serviceInstance,

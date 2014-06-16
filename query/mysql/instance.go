@@ -25,10 +25,10 @@ import (
 )
 
 const (
-	MONITOR_NAME = "mysql"
+	INSTANCE_TYPE = "mysql"
 )
 
-type Monitor struct {
+type Instance struct {
 	name   string
 	config *Config
 	logger *pct.Logger
@@ -38,14 +38,14 @@ type Monitor struct {
 	running bool
 }
 
-func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Connector) *Monitor {
-	m := &Monitor{
+func NewInstance(name string, config *Config, logger *pct.Logger, conn mysql.Connector) *Instance {
+	m := &Instance{
 		name:   name,
 		config: config,
 		logger: logger,
 		conn:   conn,
 		// --
-		status: pct.NewStatus([]string{name, fmt.Sprintf("%s-%s", name, MONITOR_NAME)}),
+		status: pct.NewStatus([]string{name, fmt.Sprintf("%s-%s", name, INSTANCE_TYPE)}),
 	}
 	return m
 }
@@ -55,7 +55,7 @@ func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Conn
 /////////////////////////////////////////////////////////////////////////////
 
 // @goroutine[0]
-func (m *Monitor) Start() error {
+func (m *Instance) Start() error {
 	m.logger.Debug("Start:call")
 	defer m.logger.Debug("Start:return")
 
@@ -71,7 +71,7 @@ func (m *Monitor) Start() error {
 }
 
 // @goroutine[0]
-func (m *Monitor) Stop() error {
+func (m *Instance) Stop() error {
 	m.logger.Debug("Stop:call")
 	defer m.logger.Debug("Stop:return")
 
@@ -88,16 +88,16 @@ func (m *Monitor) Stop() error {
 }
 
 // @goroutine[0]
-func (m *Monitor) Status() map[string]string {
+func (m *Instance) Status() map[string]string {
 	return m.status.All()
 }
 
 // @goroutine[0]
-func (m *Monitor) Config() interface{} {
+func (m *Instance) Config() interface{} {
 	return m.config
 }
 
-func (m *Monitor) Explain(query string) (explain *mysql.Explain, err error) {
+func (m *Instance) Explain(query string) (explain *mysql.Explain, err error) {
 	if err = m.conn.Connect(2); err != nil {
 		return nil, err
 	}

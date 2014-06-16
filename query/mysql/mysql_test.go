@@ -24,7 +24,7 @@ import (
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/query"
-	monitor "github.com/percona/percona-agent/query/mysql"
+	instance "github.com/percona/percona-agent/query/mysql"
 	"github.com/percona/percona-agent/test"
 	. "launchpad.net/gocheck"
 	"os"
@@ -74,11 +74,10 @@ func (s *TestSuite) TearDownSuite(t *C) {
 // --------------------------------------------------------------------------
 
 func (s *TestSuite) TestQuery(t *C) {
-	// First, monitors monitor an instance of some service (MySQL, RabbitMQ, etc.)
-	// So the instance name and id are given.  Second, every monitor has its own
+	// Every query instance has its own
 	// specific config info which is sent as the proto.Cmd.Data.  This config
 	// embed a query.Config which embed an instance.Config:
-	config := &monitor.Config{
+	config := &instance.Config{
 		Config: query.Config{
 			ServiceInstance: proto.ServiceInstance{
 				Service:    "mysql",
@@ -87,24 +86,24 @@ func (s *TestSuite) TestQuery(t *C) {
 		},
 	}
 
-	// From the config, the factory determine's the monitor's name based on
-	// the service instance it's monitoring, and it creates a mysql.Connector
-	// for the DSN for that service (since it's a MySQL monitor in this case).
-	// It creates the monitor with these args:
-	m := monitor.NewMonitor(s.name, config, s.logger, mysql.NewConnection(dsn))
+	// From the config, the factory determine's the instance's name based on
+	// the service instance, and it creates a mysql.Connector
+	// for the DSN for that service (since it's a MySQL instance in this case).
+	// It creates the instance with these args:
+	m := instance.NewInstance(s.name, config, s.logger, mysql.NewConnection(dsn))
 	if m == nil {
-		t.Fatal("Make new mysql.Monitor")
+		t.Fatal("Make new mysql.Instance")
 	}
 
-	// The factory returns the monitor to the manager which starts it:
+	// The factory returns the instance to the manager which starts it:
 	err := m.Start()
 	if err != nil {
-		t.Fatalf("Start monitor without error, got %s", err)
+		t.Fatalf("Start instance without error, got %s", err)
 	}
 
-	// monitor=Ready once it has successfully started and is ready for further instructions
+	// instance=Ready once it has successfully started and is ready for further instructions
 	if ok := test.WaitStatus(1, m, s.name, "Ready"); !ok {
-		t.Fatalf("Monitor is not running. Last status: %s", m.Status())
+		t.Fatalf("Instance is not running. Last status: %s", m.Status())
 	}
 	expectedExplain := &mysql.Explain{
 		Result: []mysql.ExplainRow{
@@ -173,10 +172,10 @@ func (s *TestSuite) TestQuery(t *C) {
 	t.Assert(gotExplain, DeepEquals, expectedExplain)
 
 	/**
-	 * Stop the monitor.
+	 * Stop the query instance.
 	 */
 	m.Stop()
 	if ok := test.WaitStatus(1, m, s.name, "Stopped"); !ok {
-		t.Fatal("Monitor is not stopped. Last status: %s", m.Status())
+		t.Fatal("Instance is not stopped. Last status: %s", m.Status())
 	}
 }

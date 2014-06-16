@@ -15,7 +15,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package monitor
+package instance
 
 import (
 	"encoding/json"
@@ -41,10 +41,10 @@ func NewFactory(logChan chan *proto.LogEntry, ir *instance.Repo) *Factory {
 	return f
 }
 
-func (f *Factory) Make(service string, instanceId uint, data []byte) (query.Monitor, error) {
-	var monitor query.Monitor
+func (f *Factory) Make(service string, instanceId uint, data []byte) (query.Instance, error) {
+	var instance query.Instance
 	switch service {
-	case mysql.MONITOR_NAME:
+	case mysql.INSTANCE_TYPE:
 		// Load the MySQL instance info (DSN, name, etc.).
 		mysqlIt := &proto.MySQLInstance{}
 		if err := f.ir.Get(service, instanceId, mysqlIt); err != nil {
@@ -58,17 +58,17 @@ func (f *Factory) Make(service string, instanceId uint, data []byte) (query.Moni
 		}
 
 		// The user-friendly name of the service, e.g. query-mysql-db101:
-		alias := fmt.Sprintf("%s-%s-%s", query.SERVICE_NAME, mysql.MONITOR_NAME, mysqlIt.Hostname)
+		alias := fmt.Sprintf("%s-%s-%s", query.SERVICE_NAME, mysql.INSTANCE_TYPE, mysqlIt.Hostname)
 
-		// Make a MySQL metrics monitor.
-		monitor = mysql.NewMonitor(
+		// Make a MySQL instance.
+		instance = mysql.NewInstance(
 			alias,
 			config,
 			pct.NewLogger(f.logChan, alias),
 			mysqlConn.NewConnection(mysqlIt.DSN),
 		)
 	default:
-		return nil, fmt.Errorf("Unknown %s monitor type: %s", query.SERVICE_NAME, service)
+		return nil, fmt.Errorf("Unknown %s instance type: %s", query.SERVICE_NAME, service)
 	}
-	return monitor, nil
+	return instance, nil
 }

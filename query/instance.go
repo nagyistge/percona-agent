@@ -21,7 +21,7 @@ import (
 	"github.com/percona/percona-agent/mysql"
 )
 
-type Monitor interface {
+type Instance interface {
 	Config() interface{}
 	Start() error
 	Status() map[string]string
@@ -29,6 +29,6 @@ type Monitor interface {
 	Explain(q string) (*mysql.Explain, error)
 }
 
-type MonitorFactory interface {
-	Make(service string, instanceId uint, data []byte) (Monitor, error)
+type InstanceFactory interface {
+	Make(service string, instanceId uint, data []byte) (Instance, error)
 }
