@@ -135,6 +135,11 @@ func TlsDialTimeout(network, addr string, config *tls.Config, timeout uint) (*tl
 	if colonPos == -1 {
 		colonPos = len(raddr)
 	}
+	/**
+	 * stripping a port number,
+	 * if no port, then let's take whole string
+	 * as a host name
+	 */
 	hostname := raddr[:colonPos]
 
 	if config == nil {
@@ -177,17 +182,14 @@ func DialConfigTimeout(config *websocket.Config, timeout uint) (ws *websocket.Co
 		err = websocket.ErrBadScheme
 	}
 	if err != nil {
-		goto Error
+		return nil, &websocket.DialError{config, err}
 	}
 
 	ws, err = websocket.NewClient(config, client)
 	if err != nil {
-		goto Error
+		return nil, &websocket.DialError{config, err}
 	}
-	return
-
-Error:
-	return nil, &websocket.DialError{config, err}
+	return ws, nil
 }
 
 func (c *WebsocketClient) ConnectOnce() error {
