@@ -99,11 +99,9 @@ func (m *Monitor) Config() interface{} {
 
 func (m *Monitor) Explain(query string) (explain *mysql.Explain, err error) {
 	if err = m.conn.Connect(2); err != nil {
-		panic("a")
 		return nil, err
 	}
 	if explain, err = m.conn.Explain(query); err != nil {
-		panic("b")
 		return nil, err
 	}
 

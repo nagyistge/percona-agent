@@ -41,8 +41,8 @@ func NewFactory(logChan chan *proto.LogEntry, ir *instance.Repo) *Factory {
 	return f
 }
 
-func (f *Factory) Make(service string, instanceId uint, data []byte) (mm.Monitor, error) {
-	var monitor mm.Monitor
+func (f *Factory) Make(service string, instanceId uint, data []byte) (query.Monitor, error) {
+	var monitor query.Monitor
 	switch service {
 	case mysql.MONITOR_NAME:
 		// Load the MySQL instance info (DSN, name, etc.).
@@ -51,7 +51,7 @@ func (f *Factory) Make(service string, instanceId uint, data []byte) (mm.Monitor
 			return nil, err
 		}
 
-		// Parse the MySQL sysconfig config.
+		// Parse the MySQL query config.
 		config := &mysql.Config{}
 		if err := json.Unmarshal(data, config); err != nil {
 			return nil, err
