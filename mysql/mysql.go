@@ -48,9 +48,10 @@ type Connection struct {
 // @todo move ExplainRow and NullString to proto
 // @todo not all rows are included
 type ExplainRow struct {
-	Id           int64
+	Id           NullInt64
 	SelectType   NullString
 	Table        NullString
+	CreateTable  NullString
 	Type         NullString
 	PossibleKeys NullString // maybe map
 	Key          NullString

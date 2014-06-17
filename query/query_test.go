@@ -25,7 +25,6 @@ import (
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/query"
-	mysqlInstance "github.com/percona/percona-agent/query/mysql"
 	"github.com/percona/percona-agent/test/mock"
 	"io/ioutil"
 	. "launchpad.net/gocheck"
@@ -43,23 +42,23 @@ func Test(t *testing.T) { TestingT(t) }
 /////////////////////////////////////////////////////////////////////////////
 
 type ManagerTestSuite struct {
-	logChan       chan *proto.LogEntry
-	logger        *pct.Logger
-	tickChan      chan time.Time
-	dataChan      chan interface{}
-	traceChan     chan string
-	readyChan     chan bool
-	configDir     string
-	tmpDir        string
-	im            *instance.Repo
-	mysqlInstance *mock.QueryInstance
-	factory       *mock.QueryInstanceFactory
-	api           *mock.API
+	nullmysql *mock.NullMySQL
+	logChan   chan *proto.LogEntry
+	logger    *pct.Logger
+	tickChan  chan time.Time
+	dataChan  chan interface{}
+	traceChan chan string
+	readyChan chan bool
+	configDir string
+	tmpDir    string
+	ir        *instance.Repo
+	api       *mock.API
 }
 
 var _ = Suite(&ManagerTestSuite{})
 
 func (s *ManagerTestSuite) SetUpSuite(t *C) {
+	s.nullmysql = mock.NewNullMySQL()
 	s.logChan = make(chan *proto.LogEntry, 10)
 	s.logger = pct.NewLogger(s.logChan, query.SERVICE_NAME+"-manager-test")
 	s.traceChan = make(chan string, 10)
@@ -74,18 +73,13 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	}
 	s.configDir = pct.Basedir.Dir("config")
 
-	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im"), s.configDir, s.api)
+	s.ir = instance.NewRepo(pct.NewLogger(s.logChan, "ir"), s.configDir, s.api)
 	data, err := json.Marshal(&proto.MySQLInstance{
 		Hostname: "db1",
-		DSN:      "user:host@tcp:(127.0.0.1:3306)",
+		DSN:      "user:host@tcp(127.0.0.1:3306)/",
 	})
 	t.Assert(err, IsNil)
-	s.im.Add("mysql", 1, data, false)
-
-	s.mysqlInstance = mock.NewQueryInstance()
-	s.factory = mock.NewQueryInstanceFactory(map[string]query.Instance{
-		"mysql-1": s.mysqlInstance,
-	})
+	s.ir.Add("mysql", 1, data, false)
 
 	links := map[string]string{
 		"agent":     "http://localhost/agent",
@@ -116,26 +110,12 @@ func (s *ManagerTestSuite) TearDownSuite(t *C) {
 // --------------------------------------------------------------------------
 
 func (s *ManagerTestSuite) TestStartStopManager(t *C) {
-	/**
-	 * query is a proxy manager for instances, so it's always running.
-	 * It should implement the service manager interface anyway,
-	 * but it doesn't actually start or stop.  Its main work is done
-	 * in Handle, starting and stopping instances (tested later).
-	 */
-	m := query.NewManager(s.logger, s.factory, s.im)
+	var err error
+
+	// Create query manager
+	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
+	m := query.NewManager(s.logger, mockConnFactory, s.ir)
 	t.Assert(m, Not(IsNil), Commentf("Make new query.Manager"))
-
-	serviceInstance := proto.ServiceInstance{
-		Service:    "mysql",
-		InstanceId: 1,
-	}
-
-	// First the API marshals an query.Config.
-	config := &query.Config{
-		ServiceInstance: serviceInstance,
-	}
-	err := pct.Basedir.WriteConfig(query.SERVICE_NAME+"-mysql-1", config)
-	t.Assert(err, IsNil)
 
 	// The agent calls mm.Start().
 	err = m.Start()
@@ -149,27 +129,17 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 	err = m.Start()
 	t.Check(err, FitsTypeOf, pct.ServiceIsRunningError{})
 
-	// StartService
-	instanceConfig := mysqlInstance.Config{
-		Config: *config,
-	}
-	instanceConfigData, err := json.Marshal(instanceConfig)
-	t.Assert(err, IsNil)
-	// The agent calls query.Handle() with the cmd (for logging and status) and the config data.
-	cmd := &proto.Cmd{
-		Service: "query",
-		Cmd:     "StartService",
-		Data:    instanceConfigData,
-	}
-	reply := m.Handle(cmd)
-	t.Assert(reply, NotNil)
-	t.Check(reply.Error, Equals, "")
-
-	// Explain
+	// Explain query
+	q := "SELECT 1"
 	expectedExplain := &mysql.Explain{
 		Result: []mysql.ExplainRow{
 			mysql.ExplainRow{
-				Id: 1,
+				Id: mysql.NullInt64{
+					NullInt64: sql.NullInt64{
+						Int64: 1,
+						Valid: true,
+					},
+				},
 				SelectType: mysql.NullString{
 					NullString: sql.NullString{
 						String: "SIMPLE",
@@ -177,6 +147,12 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 					},
 				},
 				Table: mysql.NullString{
+					NullString: sql.NullString{
+						String: "",
+						Valid:  false,
+					},
+				},
+				CreateTable: mysql.NullString{
 					NullString: sql.NullString{
 						String: "",
 						Valid:  false,
@@ -227,16 +203,21 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 			},
 		},
 	}
-	s.mysqlInstance.SetExplain("SELECT 1", expectedExplain)
+	s.nullmysql.SetExplain(q, expectedExplain)
+
+	serviceInstance := proto.ServiceInstance{
+		Service:    "mysql",
+		InstanceId: 1,
+	}
 
 	explainQuery := &mysql.ExplainQuery{
 		ServiceInstance: serviceInstance,
-		Query:           "SELECT 1",
+		Query:           q,
 	}
 	data, err := json.Marshal(&explainQuery)
 	t.Assert(err, IsNil)
 
-	cmd = &proto.Cmd{
+	cmd := &proto.Cmd{
 		Service: "query",
 		Cmd:     "Explain",
 		Data:    data,
@@ -251,12 +232,9 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 	t.Assert(err, IsNil)
 	t.Assert(gotExplain, DeepEquals, expectedExplain)
 
-	// Stopping should be idempotent.
+	// You can't stop this service
 	err = m.Stop()
 	t.Check(err, IsNil)
-	err = m.Stop()
-	t.Check(err, IsNil)
-
 	status = m.Status()
-	t.Check(status[query.SERVICE_NAME], Equals, "Stopped")
+	t.Check(status[query.SERVICE_NAME], Equals, "Running")
 }

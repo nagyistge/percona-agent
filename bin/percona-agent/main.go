@@ -227,6 +227,18 @@ func run() error {
 	}
 
 	/**
+	 * Query service
+	 */
+	queryManager := query.NewManager(
+		pct.NewLogger(logChan, "query"),
+		&mysql.RealConnectionFactory{},
+		itManager.Repo(),
+	)
+	if err := queryManager.Start(); err != nil {
+		return fmt.Errorf("Error starting query manager: %s\n", err)
+	}
+
+	/**
 	 * Query Analytics
 	 */
 

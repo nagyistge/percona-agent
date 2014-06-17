@@ -23,12 +23,14 @@ import (
 )
 
 type NullMySQL struct {
-	set []mysql.Query
+	set     []mysql.Query
+	explain map[string]*mysql.Explain
 }
 
 func NewNullMySQL() *NullMySQL {
 	n := &NullMySQL{
-		set: []mysql.Query{},
+		set:     []mysql.Query{},
+		explain: make(map[string]*mysql.Explain),
 	}
 	return n
 }
@@ -50,7 +52,11 @@ func (n *NullMySQL) Close() {
 }
 
 func (n *NullMySQL) Explain(query string) (explain *mysql.Explain, err error) {
-	return explain, err
+	return n.explain[query], nil
+}
+
+func (n *NullMySQL) SetExplain(query string, explain *mysql.Explain) {
+	n.explain[query] = explain
 }
 
 func (n *NullMySQL) Set(queries []mysql.Query) error {
