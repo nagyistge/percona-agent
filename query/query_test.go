@@ -22,7 +22,6 @@ import (
 	"encoding/json"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/instance"
-	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/query"
 	"github.com/percona/percona-agent/test/mock"
@@ -131,70 +130,70 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 
 	// Explain query
 	q := "SELECT 1"
-	expectedExplain := &mysql.Explain{
-		Result: []mysql.ExplainRow{
-			mysql.ExplainRow{
-				Id: mysql.NullInt64{
+	expectedExplain := &proto.Explain{
+		Result: []proto.ExplainRow{
+			proto.ExplainRow{
+				Id: proto.NullInt64{
 					NullInt64: sql.NullInt64{
 						Int64: 1,
 						Valid: true,
 					},
 				},
-				SelectType: mysql.NullString{
+				SelectType: proto.NullString{
 					NullString: sql.NullString{
 						String: "SIMPLE",
 						Valid:  true,
 					},
 				},
-				Table: mysql.NullString{
+				Table: proto.NullString{
 					NullString: sql.NullString{
 						String: "",
 						Valid:  false,
 					},
 				},
-				CreateTable: mysql.NullString{
+				CreateTable: proto.NullString{
 					NullString: sql.NullString{
 						String: "",
 						Valid:  false,
 					},
 				},
-				Type: mysql.NullString{
+				Type: proto.NullString{
 					NullString: sql.NullString{
 						String: "",
 						Valid:  false,
 					},
 				},
-				PossibleKeys: mysql.NullString{
+				PossibleKeys: proto.NullString{
 					NullString: sql.NullString{
 						String: "",
 						Valid:  false,
 					},
 				},
-				Key: mysql.NullString{
+				Key: proto.NullString{
 					NullString: sql.NullString{
 						String: "",
 						Valid:  false,
 					},
 				},
-				KeyLen: mysql.NullInt64{
+				KeyLen: proto.NullInt64{
 					NullInt64: sql.NullInt64{
 						Int64: 0,
 						Valid: false,
 					},
 				},
-				Ref: mysql.NullString{
+				Ref: proto.NullString{
 					NullString: sql.NullString{
 						String: "",
 						Valid:  false,
 					},
 				},
-				Rows: mysql.NullInt64{
+				Rows: proto.NullInt64{
 					NullInt64: sql.NullInt64{
 						Int64: 0,
 						Valid: false,
 					},
 				},
-				Extra: mysql.NullString{
+				Extra: proto.NullString{
 					NullString: sql.NullString{
 						String: "No tables used",
 						Valid:  true,
@@ -210,7 +209,7 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 		InstanceId: 1,
 	}
 
-	explainQuery := &mysql.ExplainQuery{
+	explainQuery := &proto.ExplainQuery{
 		ServiceInstance: serviceInstance,
 		Query:           q,
 	}
@@ -227,7 +226,7 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 	t.Assert(gotReply, NotNil)
 	t.Assert(gotReply.Error, Equals, "")
 
-	gotExplain := &mysql.Explain{}
+	gotExplain := &proto.Explain{}
 	err = json.Unmarshal(gotReply.Data, gotExplain)
 	t.Assert(err, IsNil)
 	t.Assert(gotExplain, DeepEquals, expectedExplain)

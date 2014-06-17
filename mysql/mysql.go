@@ -18,9 +18,7 @@
 package mysql
 
 import (
-	"bytes"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
@@ -34,7 +32,7 @@ type Connector interface {
 	DSN() string
 	Connect(tries uint) error
 	Close()
-	Explain(q string) (explain *Explain, err error)
+	Explain(q string) (explain *proto.Explain, err error)
 	Set([]Query) error
 	GetGlobalVarString(varName string) string
 }
@@ -44,83 +42,6 @@ type Connection struct {
 	conn    *sql.DB
 	backoff *pct.Backoff
 }
-
-// @todo move ExplainRow and NullString to proto
-// @todo not all rows are included
-type ExplainRow struct {
-	Id           NullInt64
-	SelectType   NullString
-	Table        NullString
-	CreateTable  NullString
-	Type         NullString
-	PossibleKeys NullString // maybe map
-	Key          NullString
-	KeyLen       NullInt64
-	Ref          NullString
-	Rows         NullInt64
-	Extra        NullString
-}
-
-type NullString struct {
-	sql.NullString
-}
-
-func (n NullString) MarshalJSON() (b []byte, err error) {
-	if !n.Valid {
-		return []byte("null"), nil
-	}
-	return json.Marshal(n.String)
-}
-
-func (n *NullString) UnmarshalJSON(b []byte) error {
-	if bytes.Equal(b, []byte("null")) {
-		n.String = ""
-		n.Valid = false
-		return nil
-	}
-	err := json.Unmarshal(b, &n.String)
-	if err != nil {
-		return err
-	}
-	n.Valid = true
-	return nil
-}
-
-type NullInt64 struct {
-	sql.NullInt64
-}
-
-func (n NullInt64) MarshalJSON() (b []byte, err error) {
-	if !n.Valid {
-		return []byte("null"), nil
-	}
-	return json.Marshal(n.Int64)
-}
-
-func (n *NullInt64) UnmarshalJSON(b []byte) error {
-	if bytes.Equal(b, []byte("null")) {
-		n.Int64 = 0
-		n.Valid = false
-		return nil
-	}
-	err := json.Unmarshal(b, &n.Int64)
-	if err != nil {
-		return err
-	}
-	n.Valid = true
-	return nil
-}
-
-type ExplainQuery struct {
-	proto.ServiceInstance
-	Query string
-}
-
-type Explain struct {
-	Result []ExplainRow
-}
-
-// @todo all above to proto
 
 func NewConnection(dsn string) *Connection {
 	c := &Connection{
@@ -178,16 +99,16 @@ func (c *Connection) Close() {
 	}
 }
 
-func (c *Connection) Explain(q string) (explain *Explain, err error) {
+func (c *Connection) Explain(q string) (explain *proto.Explain, err error) {
 	rows, err := c.conn.Query(fmt.Sprintf("EXPLAIN %s", q))
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	explain = &Explain{}
+	explain = &proto.Explain{}
 	for rows.Next() {
-		explainRow := ExplainRow{}
+		explainRow := proto.ExplainRow{}
 		err = rows.Scan(
 			&explainRow.Id,
 			&explainRow.SelectType,

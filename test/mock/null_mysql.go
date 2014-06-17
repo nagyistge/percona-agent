@@ -19,18 +19,19 @@ package mock
 
 import (
 	"database/sql"
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mysql"
 )
 
 type NullMySQL struct {
 	set     []mysql.Query
-	explain map[string]*mysql.Explain
+	explain map[string]*proto.Explain
 }
 
 func NewNullMySQL() *NullMySQL {
 	n := &NullMySQL{
 		set:     []mysql.Query{},
-		explain: make(map[string]*mysql.Explain),
+		explain: make(map[string]*proto.Explain),
 	}
 	return n
 }
@@ -51,11 +52,11 @@ func (n *NullMySQL) Close() {
 	return
 }
 
-func (n *NullMySQL) Explain(query string) (explain *mysql.Explain, err error) {
+func (n *NullMySQL) Explain(query string) (explain *proto.Explain, err error) {
 	return n.explain[query], nil
 }
 
-func (n *NullMySQL) SetExplain(query string, explain *mysql.Explain) {
+func (n *NullMySQL) SetExplain(query string, explain *proto.Explain) {
 	n.explain[query] = explain
 }
 

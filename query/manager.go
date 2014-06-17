@@ -153,7 +153,7 @@ func (m *Manager) createConn(service string, instanceId uint) (conn mysql.Connec
 	return conn, nil
 }
 
-func (m *Manager) getExplainQuery(cmd *proto.Cmd) (explainQuery *mysql.ExplainQuery, err error) {
+func (m *Manager) getExplainQuery(cmd *proto.Cmd) (explainQuery *proto.ExplainQuery, err error) {
 	if cmd.Data == nil {
 		return nil, fmt.Errorf("%s.getExplainQuery:cmd.Data is empty", SERVICE_NAME)
 	}
