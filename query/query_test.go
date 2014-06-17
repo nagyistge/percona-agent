@@ -150,74 +150,72 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 
 	// Explain query
 	q := "SELECT 1"
-	expectedExplain := &proto.Explain{
-		Result: []proto.ExplainRow{
-			proto.ExplainRow{
-				Id: proto.NullInt64{
-					NullInt64: sql.NullInt64{
-						Int64: 1,
-						Valid: true,
-					},
+	expectedExplain := []proto.ExplainRow{
+		proto.ExplainRow{
+			Id: proto.NullInt64{
+				NullInt64: sql.NullInt64{
+					Int64: 1,
+					Valid: true,
 				},
-				SelectType: proto.NullString{
-					NullString: sql.NullString{
-						String: "SIMPLE",
-						Valid:  true,
-					},
+			},
+			SelectType: proto.NullString{
+				NullString: sql.NullString{
+					String: "SIMPLE",
+					Valid:  true,
 				},
-				Table: proto.NullString{
-					NullString: sql.NullString{
-						String: "",
-						Valid:  false,
-					},
+			},
+			Table: proto.NullString{
+				NullString: sql.NullString{
+					String: "",
+					Valid:  false,
 				},
-				CreateTable: proto.NullString{
-					NullString: sql.NullString{
-						String: "",
-						Valid:  false,
-					},
+			},
+			CreateTable: proto.NullString{
+				NullString: sql.NullString{
+					String: "",
+					Valid:  false,
 				},
-				Type: proto.NullString{
-					NullString: sql.NullString{
-						String: "",
-						Valid:  false,
-					},
+			},
+			Type: proto.NullString{
+				NullString: sql.NullString{
+					String: "",
+					Valid:  false,
 				},
-				PossibleKeys: proto.NullString{
-					NullString: sql.NullString{
-						String: "",
-						Valid:  false,
-					},
+			},
+			PossibleKeys: proto.NullString{
+				NullString: sql.NullString{
+					String: "",
+					Valid:  false,
 				},
-				Key: proto.NullString{
-					NullString: sql.NullString{
-						String: "",
-						Valid:  false,
-					},
+			},
+			Key: proto.NullString{
+				NullString: sql.NullString{
+					String: "",
+					Valid:  false,
 				},
-				KeyLen: proto.NullInt64{
-					NullInt64: sql.NullInt64{
-						Int64: 0,
-						Valid: false,
-					},
+			},
+			KeyLen: proto.NullInt64{
+				NullInt64: sql.NullInt64{
+					Int64: 0,
+					Valid: false,
 				},
-				Ref: proto.NullString{
-					NullString: sql.NullString{
-						String: "",
-						Valid:  false,
-					},
+			},
+			Ref: proto.NullString{
+				NullString: sql.NullString{
+					String: "",
+					Valid:  false,
 				},
-				Rows: proto.NullInt64{
-					NullInt64: sql.NullInt64{
-						Int64: 0,
-						Valid: false,
-					},
+			},
+			Rows: proto.NullInt64{
+				NullInt64: sql.NullInt64{
+					Int64: 0,
+					Valid: false,
 				},
-				Extra: proto.NullString{
-					NullString: sql.NullString{
-						String: "No tables used",
-						Valid:  true,
-					},
+			},
+			Extra: proto.NullString{
+				NullString: sql.NullString{
+					String: "No tables used",
+					Valid:  true,
 				},
 			},
 		},
@@ -246,8 +244,8 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 	t.Assert(gotReply, NotNil)
 	t.Assert(gotReply.Error, Equals, "")
 
-	gotExplain := &proto.Explain{}
-	err = json.Unmarshal(gotReply.Data, gotExplain)
+	var gotExplain []proto.ExplainRow
+	err = json.Unmarshal(gotReply.Data, &gotExplain)
 	t.Assert(err, IsNil)
 	t.Assert(gotExplain, DeepEquals, expectedExplain)
 
@@ -271,74 +269,72 @@ func (s *ManagerTestSuite) TestExplain(t *C) {
 
 	// Explain query
 	q := "SELECT 1"
-	expectedExplain := &proto.Explain{
-		Result: []proto.ExplainRow{
-			proto.ExplainRow{
-				Id: proto.NullInt64{
-					NullInt64: sql.NullInt64{
-						Int64: 1,
-						Valid: true,
-					},
+	expectedExplain := []proto.ExplainRow{
+		proto.ExplainRow{
+			Id: proto.NullInt64{
+				NullInt64: sql.NullInt64{
+					Int64: 1,
+					Valid: true,
 				},
-				SelectType: proto.NullString{
-					NullString: sql.NullString{
-						String: "SIMPLE",
-						Valid:  true,
-					},
+			},
+			SelectType: proto.NullString{
+				NullString: sql.NullString{
+					String: "SIMPLE",
+					Valid:  true,
 				},
-				Table: proto.NullString{
-					NullString: sql.NullString{
-						String: "",
-						Valid:  false,
-					},
+			},
+			Table: proto.NullString{
+				NullString: sql.NullString{
+					String: "",
+					Valid:  false,
 				},
-				CreateTable: proto.NullString{
-					NullString: sql.NullString{
-						String: "",
-						Valid:  false,
-					},
+			},
+			CreateTable: proto.NullString{
+				NullString: sql.NullString{
+					String: "",
+					Valid:  false,
 				},
-				Type: proto.NullString{
-					NullString: sql.NullString{
-						String: "",
-						Valid:  false,
-					},
+			},
+			Type: proto.NullString{
+				NullString: sql.NullString{
+					String: "",
+					Valid:  false,
 				},
-				PossibleKeys: proto.NullString{
-					NullString: sql.NullString{
-						String: "",
-						Valid:  false,
-					},
+			},
+			PossibleKeys: proto.NullString{
+				NullString: sql.NullString{
+					String: "",
+					Valid:  false,
 				},
-				Key: proto.NullString{
-					NullString: sql.NullString{
-						String: "",
-						Valid:  false,
-					},
+			},
+			Key: proto.NullString{
+				NullString: sql.NullString{
+					String: "",
+					Valid:  false,
 				},
-				KeyLen: proto.NullInt64{
-					NullInt64: sql.NullInt64{
-						Int64: 0,
-						Valid: false,
-					},
+			},
+			KeyLen: proto.NullInt64{
+				NullInt64: sql.NullInt64{
+					Int64: 0,
+					Valid: false,
 				},
-				Ref: proto.NullString{
-					NullString: sql.NullString{
-						String: "",
-						Valid:  false,
-					},
+			},
+			Ref: proto.NullString{
+				NullString: sql.NullString{
+					String: "",
+					Valid:  false,
 				},
-				Rows: proto.NullInt64{
-					NullInt64: sql.NullInt64{
-						Int64: 0,
-						Valid: false,
-					},
+			},
+			Rows: proto.NullInt64{
+				NullInt64: sql.NullInt64{
+					Int64: 0,
+					Valid: false,
 				},
-				Extra: proto.NullString{
-					NullString: sql.NullString{
-						String: "No tables used",
-						Valid:  true,
-					},
+			},
+			Extra: proto.NullString{
+				NullString: sql.NullString{
+					String: "No tables used",
+					Valid:  true,
 				},
 			},
 		},
@@ -361,8 +357,8 @@ func (s *ManagerTestSuite) TestExplain(t *C) {
 	t.Assert(gotReply, NotNil)
 	t.Assert(gotReply.Error, Equals, "")
 
-	gotExplain := &proto.Explain{}
-	err = json.Unmarshal(gotReply.Data, gotExplain)
+	var gotExplain []proto.ExplainRow
+	err = json.Unmarshal(gotReply.Data, &gotExplain)
 	t.Assert(err, IsNil)
 	t.Assert(gotExplain, DeepEquals, expectedExplain)
 }

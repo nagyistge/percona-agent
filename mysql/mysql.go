@@ -32,7 +32,7 @@ type Connector interface {
 	DSN() string
 	Connect(tries uint) error
 	Close()
-	Explain(q string) (explain *proto.Explain, err error)
+	Explain(q string) (explain []proto.ExplainRow, err error)
 	Set([]Query) error
 	GetGlobalVarString(varName string) string
 }
@@ -99,14 +99,13 @@ func (c *Connection) Close() {
 	}
 }
 
-func (c *Connection) Explain(q string) (explain *proto.Explain, err error) {
+func (c *Connection) Explain(q string) (explain []proto.ExplainRow, err error) {
 	rows, err := c.conn.Query(fmt.Sprintf("EXPLAIN %s", q))
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	explain = &proto.Explain{}
 	for rows.Next() {
 		explainRow := proto.ExplainRow{}
 		err = rows.Scan(
@@ -124,7 +123,7 @@ func (c *Connection) Explain(q string) (explain *proto.Explain, err error) {
 		if err != nil {
 			return nil, err
 		}
-		explain.Result = append(explain.Result, explainRow)
+		explain = append(explain, explainRow)
 	}
 	err = rows.Err()
 	if err != nil {

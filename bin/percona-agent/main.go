@@ -33,6 +33,7 @@ import (
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/qan"
+	"github.com/percona/percona-agent/query"
 	"github.com/percona/percona-agent/sysconfig"
 	sysconfigMonitor "github.com/percona/percona-agent/sysconfig/monitor"
 	"github.com/percona/percona-agent/ticker"
@@ -290,6 +291,7 @@ func run() error {
 		"mm":        mmManager,
 		"instance":  itManager,
 		"sysconfig": sysconfigManager,
+		"query":     queryManager,
 	}
 
 	agent := agent.NewAgent(
