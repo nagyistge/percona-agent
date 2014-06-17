@@ -124,13 +124,7 @@ func (c *WebsocketClient) Connect() {
 	}
 }
 
-func TlsDialTimeout(network, addr string, config *tls.Config, timeout uint) (*tls.Conn, error) {
-	raddr := addr
-	c, err := net.DialTimeout(network, raddr, time.Duration(timeout)*time.Second)
-	if err != nil {
-		return nil, err
-	}
-
+func getHostname(raddr string) string {
 	colonPos := strings.LastIndex(raddr, ":")
 	if colonPos == -1 {
 		colonPos = len(raddr)
@@ -140,11 +134,21 @@ func TlsDialTimeout(network, addr string, config *tls.Config, timeout uint) (*tl
 	 * if no port, then let's take whole string
 	 * as a host name
 	 */
-	hostname := raddr[:colonPos]
+	return raddr[:colonPos]
+}
 
+func TlsDialTimeout(network, raddr string, config *tls.Config, timeout uint) (*tls.Conn, error) {
 	if config == nil {
 		return nil, fmt.Errorf("No config passed to TlsDialTimeout")
 	}
+
+	c, err := net.DialTimeout(network, raddr, time.Duration(timeout)*time.Second)
+	if err != nil {
+		return nil, err
+	}
+
+	hostname := getHostname(raddr)
+
 	// If no ServerName is set, infer the ServerName
 	// from the hostname we're connecting to.
 	if config.ServerName == "" {
