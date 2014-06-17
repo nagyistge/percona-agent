@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/instance"
+	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/query"
 	"github.com/percona/percona-agent/test/mock"
@@ -41,22 +42,30 @@ func Test(t *testing.T) { TestingT(t) }
 /////////////////////////////////////////////////////////////////////////////
 
 type ManagerTestSuite struct {
-	nullmysql *mock.NullMySQL
-	logChan   chan *proto.LogEntry
-	logger    *pct.Logger
-	tickChan  chan time.Time
-	dataChan  chan interface{}
-	traceChan chan string
-	readyChan chan bool
-	configDir string
-	tmpDir    string
-	ir        *instance.Repo
-	api       *mock.API
+	nullmysql     *mock.NullMySQL
+	logChan       chan *proto.LogEntry
+	logger        *pct.Logger
+	tickChan      chan time.Time
+	dataChan      chan interface{}
+	traceChan     chan string
+	readyChan     chan bool
+	configDir     string
+	tmpDir        string
+	ir            *instance.Repo
+	dsn           string
+	rir           *instance.Repo
+	mysqlInstance proto.ServiceInstance
+	api           *mock.API
 }
 
 var _ = Suite(&ManagerTestSuite{})
 
 func (s *ManagerTestSuite) SetUpSuite(t *C) {
+	s.dsn = os.Getenv("PCT_TEST_MYSQL_DSN")
+	if s.dsn == "" {
+		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
+	}
+
 	s.nullmysql = mock.NewNullMySQL()
 	s.logChan = make(chan *proto.LogEntry, 10)
 	s.logger = pct.NewLogger(s.logChan, query.SERVICE_NAME+"-manager-test")
@@ -72,6 +81,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	}
 	s.configDir = pct.Basedir.Dir("config")
 
+	// Fake instance repo
 	s.ir = instance.NewRepo(pct.NewLogger(s.logChan, "ir"), s.configDir, s.api)
 	data, err := json.Marshal(&proto.MySQLInstance{
 		Hostname: "db1",
@@ -79,6 +89,16 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	})
 	t.Assert(err, IsNil)
 	s.ir.Add("mysql", 1, data, false)
+
+	// Real instance repo
+	s.rir = instance.NewRepo(pct.NewLogger(s.logChan, "im-test"), s.configDir, s.api)
+	data, err = json.Marshal(&proto.MySQLInstance{
+		Hostname: "db1",
+		DSN:      s.dsn,
+	})
+	t.Assert(err, IsNil)
+	s.rir.Add("mysql", 1, data, false)
+	s.mysqlInstance = proto.ServiceInstance{Service: "mysql", InstanceId: 1}
 
 	links := map[string]string{
 		"agent":     "http://localhost/agent",
@@ -236,4 +256,113 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 	t.Check(err, IsNil)
 	status = m.Status()
 	t.Check(status[query.SERVICE_NAME], Equals, "Running")
+}
+
+func (s *ManagerTestSuite) TestExplain(t *C) {
+	var err error
+
+	// Create query manager
+	m := query.NewManager(s.logger, &mysql.RealConnectionFactory{}, s.rir)
+	t.Assert(m, Not(IsNil), Commentf("Make new query.Manager"))
+
+	// The agent calls mm.Start().
+	err = m.Start()
+	t.Assert(err, IsNil)
+
+	// Explain query
+	q := "SELECT 1"
+	expectedExplain := &proto.Explain{
+		Result: []proto.ExplainRow{
+			proto.ExplainRow{
+				Id: proto.NullInt64{
+					NullInt64: sql.NullInt64{
+						Int64: 1,
+						Valid: true,
+					},
+				},
+				SelectType: proto.NullString{
+					NullString: sql.NullString{
+						String: "SIMPLE",
+						Valid:  true,
+					},
+				},
+				Table: proto.NullString{
+					NullString: sql.NullString{
+						String: "",
+						Valid:  false,
+					},
+				},
+				CreateTable: proto.NullString{
+					NullString: sql.NullString{
+						String: "",
+						Valid:  false,
+					},
+				},
+				Type: proto.NullString{
+					NullString: sql.NullString{
+						String: "",
+						Valid:  false,
+					},
+				},
+				PossibleKeys: proto.NullString{
+					NullString: sql.NullString{
+						String: "",
+						Valid:  false,
+					},
+				},
+				Key: proto.NullString{
+					NullString: sql.NullString{
+						String: "",
+						Valid:  false,
+					},
+				},
+				KeyLen: proto.NullInt64{
+					NullInt64: sql.NullInt64{
+						Int64: 0,
+						Valid: false,
+					},
+				},
+				Ref: proto.NullString{
+					NullString: sql.NullString{
+						String: "",
+						Valid:  false,
+					},
+				},
+				Rows: proto.NullInt64{
+					NullInt64: sql.NullInt64{
+						Int64: 0,
+						Valid: false,
+					},
+				},
+				Extra: proto.NullString{
+					NullString: sql.NullString{
+						String: "No tables used",
+						Valid:  true,
+					},
+				},
+			},
+		},
+	}
+
+	explainQuery := &proto.ExplainQuery{
+		ServiceInstance: s.mysqlInstance,
+		Query:           q,
+	}
+	data, err := json.Marshal(&explainQuery)
+	t.Assert(err, IsNil)
+
+	cmd := &proto.Cmd{
+		Service: "query",
+		Cmd:     "Explain",
+		Data:    data,
+	}
+
+	gotReply := m.Handle(cmd)
+	t.Assert(gotReply, NotNil)
+	t.Assert(gotReply.Error, Equals, "")
+
+	gotExplain := &proto.Explain{}
+	err = json.Unmarshal(gotReply.Data, gotExplain)
+	t.Assert(err, IsNil)
+	t.Assert(gotExplain, DeepEquals, expectedExplain)
 }

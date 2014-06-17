@@ -17,11 +17,6 @@
 
 package query
 
-/**
- * query is a proxy manager for service instances. It doesn't have its own config,
- * it's job is to start and stop instances, mostly done in Handle().
- */
-
 import (
 	"encoding/json"
 	"fmt"
