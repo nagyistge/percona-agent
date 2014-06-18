@@ -45,6 +45,7 @@ const (
 	ADDR     = "127.0.0.1:8000" // make sure this port is free
 	URL      = "ws://" + ADDR
 	ENDPOINT = "/"
+	WSS_API  = "wss://v2-cloud-api.percona.com:443/agents/a0a3320f-ed7b-11e3-a1ef-002590d732b4/cmd"
 )
 
 func (s *TestSuite) SetUpSuite(t *C) {
@@ -372,4 +373,52 @@ func (s *TestSuite) TestChannelsAfterReconnect(t *C) {
 	ws.SendChan() <- reply
 	data = test.WaitData(c.RecvChan)
 	t.Assert(len(data), Equals, 1)
+}
+
+func (s *TestSuite) TestWssConnection(t *C) {
+	api := pct.NewAPI()
+	err := api.Connect("v2-cloud-api.percona.com", "db904dcf90ed1b3eb2f2ba5e3f7a1ab6", "a0a3320f-ed7b-11e3-a1ef-002590d732b4")
+	t.Assert(err, IsNil)
+	ws, err := client.NewWebsocketClient(s.logger, api, "cmd")
+	t.Assert(err, IsNil)
+
+	// Start send/recv chans, but idle until successful Connect.
+	ws.Start()
+	defer ws.Stop()
+
+	ws.Connect()
+	// t.Assert("-", Equals, "")
+/*
+	c := <-mock.ClientConnectChan
+	<-ws.ConnectChan()
+
+	// API sends Cmd to client.
+	cmd := &proto.Cmd{
+		User: "Oleg",
+		Ts:   time.Now(),
+		Cmd:  "Status",
+	}
+	c.SendChan <- cmd
+
+	// If client's recvChan is working, it will receive the Cmd.
+	got := test.WaitCmd(ws.RecvChan())
+	t.Assert(len(got), Equals, 1)
+	t.Assert(got[0], DeepEquals, *cmd)
+
+	// Client sends Reply in response to Cmd.
+	reply := cmd.Reply(nil, nil)
+	ws.SendChan() <- reply
+
+	// If client's sendChan is working, we/API will receive the Reply.
+	data := test.WaitData(c.RecvChan)
+	t.Assert(len(data), Equals, 1)
+
+	// We're dealing with generic data again.
+	m := data[0].(map[string]interface{})
+	t.Assert(m["Cmd"], Equals, "Status")
+	t.Assert(m["Error"], Equals, "")
+
+	err = ws.Disconnect()
+	t.Assert(err, IsNil)
+*/
 }

@@ -138,17 +138,14 @@ func getHostname(raddr string) string {
 }
 
 func TlsDialTimeout(network, raddr string, config *tls.Config, timeout uint) (*tls.Conn, error) {
-	if config == nil {
-		return nil, fmt.Errorf("No config passed to TlsDialTimeout")
-	}
-
 	c, err := net.DialTimeout(network, raddr, time.Duration(timeout)*time.Second)
 	if err != nil {
 		return nil, err
 	}
-
 	hostname := getHostname(raddr)
-
+	if config == nil {
+		config = &tls.Config{}
+	}
 	// If no ServerName is set, infer the ServerName
 	// from the hostname we're connecting to.
 	if config.ServerName == "" {
