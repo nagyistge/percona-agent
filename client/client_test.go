@@ -33,10 +33,12 @@ import (
 func Test(t *testing.T) { TestingT(t) }
 
 type TestSuite struct {
-	logChan chan *proto.LogEntry
-	logger  *pct.Logger
-	server  *mock.WebsocketServer
-	api     *mock.API
+	logChan   chan *proto.LogEntry
+	logger    *pct.Logger
+	server    *mock.WebsocketServer
+	api       *mock.API
+	serverWss *mock.WebsocketServerWss
+	apiWss    *mock.API
 }
 
 var _ = Suite(&TestSuite{})
@@ -45,7 +47,9 @@ const (
 	ADDR     = "127.0.0.1:8000" // make sure this port is free
 	URL      = "ws://" + ADDR
 	ENDPOINT = "/"
-	WSS_API  = "wss://v2-cloud-api.percona.com:443/agents/a0a3320f-ed7b-11e3-a1ef-002590d732b4/cmd"
+	WSSADDR  = "127.0.0.1:8443" // make sure this port is free
+	WSSURL   = "wss://" + WSSADDR
+	WSSENDPOINT = "/wss/"
 )
 
 func (s *TestSuite) SetUpSuite(t *C) {
@@ -56,16 +60,30 @@ func (s *TestSuite) SetUpSuite(t *C) {
 	mock.RecvChan = make(chan interface{}, 5)
 	s.server = new(mock.WebsocketServer)
 	go s.server.Run(ADDR, ENDPOINT)
-	time.Sleep(100 * time.Millisecond)
+
+	time.Sleep(1000 * time.Millisecond)
 
 	links := map[string]string{"agent": URL}
 	s.api = mock.NewAPI("http://localhost", ADDR, "apikey", "uuid", links)
+
+	mock.SendChanWss = make(chan interface{}, 5)
+	mock.RecvChanWss = make(chan interface{}, 5)
+	s.serverWss = new(mock.WebsocketServerWss)
+	go s.serverWss.RunWss(WSSADDR, WSSENDPOINT)
+
+	time.Sleep(1000 * time.Millisecond)
+
+	linksWss := map[string]string{"/wss/agent": WSSURL}
+	s.apiWss = mock.NewAPI("https://localhost", WSSADDR, "apikey", "uuid", linksWss)
 }
 
 func (s *TestSuite) TearDownTest(t *C) {
 	// Disconnect all clients.
 	for _, c := range mock.Clients {
 		mock.DisconnectClient(c)
+	}
+	for _, c := range mock.ClientsWss {
+		mock.DisconnectClientWss(c)
 	}
 }
 
@@ -375,50 +393,68 @@ func (s *TestSuite) TestChannelsAfterReconnect(t *C) {
 	t.Assert(len(data), Equals, 1)
 }
 
-func (s *TestSuite) TestWssConnection(t *C) {
-	api := pct.NewAPI()
-	err := api.Connect("v2-cloud-api.percona.com", "db904dcf90ed1b3eb2f2ba5e3f7a1ab6", "a0a3320f-ed7b-11e3-a1ef-002590d732b4")
+func (s *TestSuite) TestSendWss(t *C) {
+	/**
+	 * LogRelay (logrelay/) uses "direct" interface, not send/recv chans.
+	 */
+
+	wss, err := client.NewWebsocketClient(s.logger, s.apiWss, "/wss/agent")
 	t.Assert(err, IsNil)
-	ws, err := client.NewWebsocketClient(s.logger, api, "cmd")
-	t.Assert(err, IsNil)
 
-	// Start send/recv chans, but idle until successful Connect.
-	ws.Start()
-	defer ws.Stop()
+	// Client sends state of connection (true=connected, false=disconnected)
+	// on its ConnectChan.
+	connected := false
+	doneChan := make(chan bool)
+	go func() {
+		connected = <-wss.ConnectChan()
+		doneChan <- true
+	}()
 
-	ws.Connect()
-	// t.Assert("-", Equals, "")
-/*
-	c := <-mock.ClientConnectChan
-	<-ws.ConnectChan()
+	// Wait for connection in mock ws server.
+	wss.Connect()
+	c := <-mock.ClientConnectChanWss
 
-	// API sends Cmd to client.
-	cmd := &proto.Cmd{
-		User: "Oleg",
-		Ts:   time.Now(),
-		Cmd:  "Status",
+	<-doneChan
+	t.Check(connected, Equals, true)
+
+	// Send a log entry.
+	logEntry := &proto.LogEntry{
+		Level:   2,
+		Service: "qan",
+		Msg:     "Hello",
 	}
-	c.SendChan <- cmd
-
-	// If client's recvChan is working, it will receive the Cmd.
-	got := test.WaitCmd(ws.RecvChan())
-	t.Assert(len(got), Equals, 1)
-	t.Assert(got[0], DeepEquals, *cmd)
-
-	// Client sends Reply in response to Cmd.
-	reply := cmd.Reply(nil, nil)
-	ws.SendChan() <- reply
-
-	// If client's sendChan is working, we/API will receive the Reply.
-	data := test.WaitData(c.RecvChan)
-	t.Assert(len(data), Equals, 1)
-
-	// We're dealing with generic data again.
-	m := data[0].(map[string]interface{})
-	t.Assert(m["Cmd"], Equals, "Status")
-	t.Assert(m["Error"], Equals, "")
-
-	err = ws.Disconnect()
+	err = wss.Send(logEntry, 5)
 	t.Assert(err, IsNil)
-*/
+
+	// Recv what we just sent.
+	got := test.WaitData(c.RecvChanWss)
+	t.Assert(len(got), Equals, 1)
+
+	// We're dealing with generic data.
+	m := got[0].(map[string]interface{})
+	t.Check(m["Level"], Equals, float64(2))
+	t.Check(m["Service"], Equals, "qan")
+	t.Check(m["Msg"], Equals, "Hello")
+
+	// Quick check that Conn() works.
+	conn := wss.Conn()
+	t.Check(conn, NotNil)
+
+	// Status should report connected to the proper link.
+	status := wss.Status()
+	t.Check(status, DeepEquals, map[string]string{
+		"ws":      "Connected " + URL,
+		"ws-link": URL,
+	})
+
+	// Disconnect should not return an error.
+	err = wss.Disconnect()
+	t.Assert(err, IsNil)
+
+	// Status should report disconnected and still the proper link.
+	status = wss.Status()
+	t.Check(status, DeepEquals, map[string]string{
+		"ws":      "Disconnected",
+		"ws-link": URL,
+	})
 }

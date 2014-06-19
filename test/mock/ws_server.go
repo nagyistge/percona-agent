@@ -21,6 +21,8 @@ import (
 	"code.google.com/p/go.net/websocket"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 )
 
 type WebsocketServer struct {
@@ -35,6 +37,18 @@ func (s *WebsocketServer) Run(addr string, endpoint string) {
 	go run()
 	http.Handle(endpoint, websocket.Handler(wsHandler))
 	if err := http.ListenAndServe(addr, nil); err != nil {
+		log.Fatal("ListenAndServe:", err)
+	}
+}
+
+// addr: https://127.0.0.1:8443
+// endpoint: /agent
+func (s *WebsocketServer) RunSecure(addr string, endpoint string) {
+	go run()
+	http.Handle(endpoint, websocket.Handler(wsHandler))
+	curDir, _ := os.Getwd()
+	curDir = strings.TrimSuffix(curDir, "client")
+	if err := http.ListenAndServeTLS(addr, curDir + "test/keys/cert.pem", curDir + "test/keys/key.pem", nil); err != nil {
 		log.Fatal("ListenAndServe:", err)
 	}
 }

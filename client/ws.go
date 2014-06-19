@@ -108,6 +108,7 @@ func (c *WebsocketClient) Connect() {
 		time.Sleep(c.backoff.Wait())
 
 		if err := c.ConnectOnce(); err != nil {
+			fmt.Printf("+++> %v\n", err)
 			c.logger.Warn(err)
 			continue
 		}
@@ -138,7 +139,7 @@ func getHostname(raddr string) string {
 }
 
 func TlsDialTimeout(network, raddr string, config *tls.Config, timeout uint) (*tls.Conn, error) {
-	c, err := net.DialTimeout(network, raddr, time.Duration(timeout)*time.Second)
+	client, err := net.DialTimeout(network, raddr, time.Duration(timeout)*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -150,13 +151,14 @@ func TlsDialTimeout(network, raddr string, config *tls.Config, timeout uint) (*t
 	// from the hostname we're connecting to.
 	if config.ServerName == "" {
 		// Make a copy to avoid polluting argument or default.
-		c := *config
-		c.ServerName = hostname
-		config = &c
+		configCopy := *config
+		configCopy.ServerName = hostname
+		config = &configCopy
 	}
-	conn := tls.Client(c, config)
+	config.InsecureSkipVerify = true
+	conn := tls.Client(client, config)
 	if err = conn.Handshake(); err != nil {
-		c.Close()
+		client.Close()
 		return nil, err
 	}
 	return conn, nil
