@@ -26,6 +26,7 @@ import (
 	. "launchpad.net/gocheck"
 	"testing"
 	"time"
+    "fmt"
 )
 
 // Hook gocheck into the "go test" runner.
@@ -44,12 +45,12 @@ type TestSuite struct {
 var _ = Suite(&TestSuite{})
 
 const (
-	ADDR     = "127.0.0.1:8000" // make sure this port is free
-	URL      = "ws://" + ADDR
-	ENDPOINT = "/"
-	WSSADDR  = "127.0.0.1:8443" // make sure this port is free
-	WSSURL   = "wss://" + WSSADDR
+	ADDR        = "127.0.0.1:8000" // make sure this port is free
+	URL         = "ws://" + ADDR
+	ENDPOINT    = "/"
+	WSSADDR     = "127.0.0.1:8443" // make sure this port is free
 	WSSENDPOINT = "/wss/"
+	WSSURL      = "wss://" + WSSADDR + WSSENDPOINT
 )
 
 func (s *TestSuite) SetUpSuite(t *C) {
@@ -73,7 +74,8 @@ func (s *TestSuite) SetUpSuite(t *C) {
 
 	time.Sleep(1000 * time.Millisecond)
 
-	linksWss := map[string]string{"/wss/agent": WSSURL}
+	linksWss := map[string]string{"agent": WSSURL}
+	fmt.Printf("---> %v\n", linksWss)
 	s.apiWss = mock.NewAPI("https://localhost", WSSADDR, "apikey", "uuid", linksWss)
 }
 
@@ -398,7 +400,7 @@ func (s *TestSuite) TestSendWss(t *C) {
 	 * LogRelay (logrelay/) uses "direct" interface, not send/recv chans.
 	 */
 
-	wss, err := client.NewWebsocketClient(s.logger, s.apiWss, "/wss/agent")
+	wss, err := client.NewWebsocketClient(s.logger, s.apiWss, "agent")
 	t.Assert(err, IsNil)
 
 	// Client sends state of connection (true=connected, false=disconnected)
@@ -412,6 +414,7 @@ func (s *TestSuite) TestSendWss(t *C) {
 
 	// Wait for connection in mock ws server.
 	wss.Connect()
+
 	c := <-mock.ClientConnectChanWss
 
 	<-doneChan
@@ -443,8 +446,8 @@ func (s *TestSuite) TestSendWss(t *C) {
 	// Status should report connected to the proper link.
 	status := wss.Status()
 	t.Check(status, DeepEquals, map[string]string{
-		"ws":      "Connected " + URL,
-		"ws-link": URL,
+		"ws":      "Connected " + WSSURL,
+		"ws-link": WSSURL,
 	})
 
 	// Disconnect should not return an error.
@@ -455,6 +458,6 @@ func (s *TestSuite) TestSendWss(t *C) {
 	status = wss.Status()
 	t.Check(status, DeepEquals, map[string]string{
 		"ws":      "Disconnected",
-		"ws-link": URL,
+		"ws-link": WSSURL,
 	})
 }

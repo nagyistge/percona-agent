@@ -108,7 +108,6 @@ func (c *WebsocketClient) Connect() {
 		time.Sleep(c.backoff.Wait())
 
 		if err := c.ConnectOnce(); err != nil {
-			fmt.Printf("+++> %v\n", err)
 			c.logger.Warn(err)
 			continue
 		}
