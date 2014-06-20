@@ -26,7 +26,6 @@ import (
 	. "launchpad.net/gocheck"
 	"testing"
 	"time"
-    "fmt"
 )
 
 // Hook gocheck into the "go test" runner.
@@ -75,7 +74,6 @@ func (s *TestSuite) SetUpSuite(t *C) {
 	time.Sleep(1000 * time.Millisecond)
 
 	linksWss := map[string]string{"agent": WSSURL}
-	fmt.Printf("---> %v\n", linksWss)
 	s.apiWss = mock.NewAPI("https://localhost", WSSADDR, "apikey", "uuid", linksWss)
 }
 
@@ -411,6 +409,11 @@ func (s *TestSuite) TestSendWss(t *C) {
 		connected = <-wss.ConnectChan()
 		doneChan <- true
 	}()
+
+	// *websocket.DialError = &websocket.DialError{Config:(*websocket.Config)(0x18991720), Err:(*net.OpError)(0x18994300)} ("websocket.Dial wss://127.0.0.1:8443/wss/: dial tcp 127.0.0.1:8443: i/o timeout")
+	// was able to get an error here only with firewall
+	// err = wss.ConnectOnce()
+	// t.Assert(err, IsNil)
 
 	// Wait for connection in mock ws server.
 	wss.Connect()
