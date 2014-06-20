@@ -39,7 +39,7 @@ func (s *WebsocketServerWss) RunWss(addr string, endpoint string) {
 	curDir, _ := os.Getwd()
 	curDir = strings.TrimSuffix(curDir, "client")
 	if err := http.ListenAndServeTLS(addr, curDir + "test/keys/cert.pem", curDir + "test/keys/key.pem", nil); err != nil {
-		log.Fatal("ListenAndServeTLS:", err)
+		log.Fatal("ListenAndServe:", err)
 	}
 }
 
@@ -58,6 +58,7 @@ func wssHandler(wss *websocket.Conn) {
 		RecvChanWss: make(chan interface{}, 5),
 	}
 	internalClientConnectChanWss <- c
+
 	defer func() {
 		ClientRmChanWss <- c
 		ClientDisconnectChanWss <- c

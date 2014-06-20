@@ -111,7 +111,7 @@ func (c *WebsocketClient) Connect() {
 			c.logger.Warn(err)
 			continue
 		}
-
+		
 		// Start/resume send() and recv() goroutines if Start() was called.
 		if c.started {
 			c.recvSync.Start()
