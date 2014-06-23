@@ -24,6 +24,7 @@ import (
 	"github.com/percona/percona-agent/test/mock"
 	. "launchpad.net/gocheck"
 	"testing"
+	"time"
 )
 
 func Test(t *testing.T) { TestingT(t) }
@@ -46,14 +47,169 @@ func (s *TestSuite) SetUpSuite(t *C) {
 	s.logger = pct.NewLogger(s.logChan, "mrms-test")
 }
 
-func (s *TestSuite) TestAddRemove(t *C) {
-	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
+func (s *TestSuite) TestStartStop(t *C) {
+	firstUptime := make(chan bool, 1)
+	mockConn := &mock.ConnectorMock{
+		ConnectMock: func(tries uint) error {
+			return nil
+		},
+		CloseMock: func() {
+		},
+		UptimeMock: func() int64 {
+			firstUptime <- true
+			return 10
+		},
+	}
+	mockConnFactory := &mock.ConnectionFactory{
+		Conn: mockConn,
+	}
 	m := mrms.NewManager(s.logger, mockConnFactory)
-	dsn := "a"
-	c, err := m.Add(dsn)
+	dsn := "fake:dsn@tcp(127.0.0.1:3306)/?parseTime=true"
+
+	/**
+	 * Register new subscriber
+	 */
+	subChan, err := m.Add(dsn)
 	t.Assert(err, IsNil)
 
-	m.Remove(dsn, c)
+	/**
+	 * Start MRMS
+	 */
+	err = m.Start()
+	t.Assert(err, IsNil)
 
-	t.Assert(true, Equals, true)
+	select {
+	case <-firstUptime:
+	case <-time.After(1 * time.Second):
+		t.Errorf("MRMS didn't checked uptime upon startup")
+	}
+
+	// Let's imitate MySQL restart
+	mockConn.UptimeMock = func() int64 {
+		return 5
+	}
+
+	// After max 1 second it should notify subscriber about MySQL restart
+	var notified bool
+	select {
+	case notified = <-subChan:
+	case <-time.After(1 * time.Second):
+	}
+	t.Assert(notified, Equals, true, Commentf("MySQL was restarted but MRMS didn't notify subscribers"))
+
+	/**
+	 * Stop MRMS
+	 */
+	err = m.Stop()
+	t.Assert(err, IsNil)
+
+	// Let's imitate MySQL restart
+	mockConn.UptimeMock = func() int64 {
+		return 1
+	}
+
+	// After stopping service it should not notify subscribers anymore
+	time.Sleep(2 * time.Second)
+	select {
+	case notified = <-subChan:
+	default:
+	}
+	t.Assert(notified, Equals, true, Commentf("MRMS notified subscribers after being stopped"))
+}
+
+func (s *TestSuite) TestNotifications(t *C) {
+	mockConn := &mock.ConnectorMock{
+		ConnectMock: func(tries uint) error {
+			return nil
+		},
+		CloseMock: func() {
+		},
+		UptimeMock: func() int64 {
+			return time.Now().Unix()
+		},
+	}
+	mockConnFactory := &mock.ConnectionFactory{
+		Conn: mockConn,
+	}
+	m := mrms.NewManager(s.logger, mockConnFactory)
+	dsn := "fake:dsn@tcp(127.0.0.1:3306)/?parseTime=true"
+
+	/**
+	 * Register new subscriber
+	 */
+	subChan, err := m.Add(dsn)
+	t.Assert(err, IsNil)
+
+	/**
+	 * MRMS should not send notification after first check for given dsn
+	 */
+	var notified bool
+	select {
+	case notified = <-subChan:
+	default:
+	}
+	t.Assert(notified, Equals, false, Commentf("MySQL was not restarted (first check of MySQL server), but MRMS notified subscribers"))
+
+	/**
+	 * If MySQL was restarted then MRMS should notify subscriber
+	 */
+	mockConn.UptimeMock = func() int64 {
+		return 0
+	}
+	m.Run()
+	notified = false
+	select {
+	case notified = <-subChan:
+	default:
+	}
+	t.Assert(notified, Equals, true, Commentf("MySQL was restarted, but MRMS didn't notify subscribers"))
+
+	/**
+	 * If MySQL was not restarted then MRMS should not notify subscriber
+	 */
+	mockConn.UptimeMock = func() int64 {
+		return 2
+	}
+	m.Run()
+	notified = false
+	select {
+	case notified = <-subChan:
+	default:
+	}
+	t.Assert(notified, Equals, false, Commentf("MySQL was not restarted, but MRMS notified subscribers"))
+
+	/**
+	 * Now let's imitate MySQL server restart and let's wait 3 seconds before next check.
+	 * Since MySQL server was restarted and we waited 3s then uptime=3s
+	 * which is higher than last registered uptime=2s
+	 *
+	 * However we expect in this test that this is properly detected as MySQL restart
+	 * and the MRMS notifies subscribers
+	 */
+	waitTime := int64(3)
+	time.Sleep(time.Duration(waitTime) * time.Second)
+	mockConn.UptimeMock = func() int64 {
+		return waitTime
+	}
+	m.Run()
+	select {
+	case notified = <-subChan:
+	default:
+	}
+	t.Assert(notified, Equals, true, Commentf("MySQL was restarted (uptime overlaped last registered uptime), but MRMS didn't notify subscribers"))
+
+	/**
+	 * After removing subscriber MRMS should not notify it anymore about MySQL restarts
+	 */
+	mockConn.UptimeMock = func() int64 {
+		return 0
+	}
+	m.Remove(dsn, subChan)
+	m.Run()
+	notified = false
+	select {
+	case notified = <-subChan:
+	default:
+	}
+	t.Assert(notified, Equals, false, Commentf("Subscriber was removed but MRMS still notified it about MySQL restart"))
 }

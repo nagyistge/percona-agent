@@ -513,9 +513,6 @@ func (s *ManagerTestSuite) TestMySQLRestart(t *C) {
 			setChan <- queries
 			return nil
 		},
-		UptimeMock: func() int64 {
-			return time.Now().Unix()
-		},
 		DSNMock: func() string {
 			return s.dsn
 		},
@@ -603,13 +600,13 @@ func (s *ManagerTestSuite) TestMySQLRestart(t *C) {
 		},
 	}
 	var gotQueries [][]mysql.Query
-LOOP1:
+LOOP:
 	for {
 		select {
 		case q := <-setChan:
 			gotQueries = append(gotQueries, q)
 		default:
-			break LOOP1
+			break LOOP
 		}
 	}
 	t.Assert(gotQueries, DeepEquals, expectedQueries, Commentf("QAN didn't configure MySQL on startup"))
@@ -619,68 +616,18 @@ LOOP1:
 	 * if so then it should configure it again
 	 */
 	gotQueries = nil
-	mockConn.UptimeMock = func() int64 {
-		return 0 // reset timestamp to imitate mysql restart
-	}
-	m.GetRestartChan() <- true
+	m.GetRestartChan() <- true // imitate mysql restart
 	timeout := time.After(200 * time.Millisecond)
-LOOP2:
+TIMEOUT:
 	for {
 		select {
 		case q := <-setChan:
 			gotQueries = append(gotQueries, q)
 		case <-timeout:
-			break LOOP2
+			break TIMEOUT
 		}
 	}
 	t.Assert(gotQueries, DeepEquals, expectedQueries, Commentf("MySQL was restarted, but QAN didn't reconfigure MySQL"))
-
-	/**
-	 * If MySQL was not restarted then QAN should not configure MySQL again
-	 */
-	gotQueries = nil
-	mockConn.UptimeMock = func() int64 {
-		return 2
-	}
-	m.GetRestartChan() <- true
-	timeout = time.After(200 * time.Millisecond)
-LOOP3:
-	for {
-		select {
-		case q := <-setChan:
-			gotQueries = append(gotQueries, q)
-		case <-timeout:
-			break LOOP3
-		}
-	}
-	t.Assert(gotQueries, IsNil, Commentf("MySQL was not restarted, but QAN reconfigured MySQL"))
-
-	/**
-	 * Now let's imitate MySQL server restart and let's wait 3 seconds before next check.
-	 * Since MySQL server was restarted and we waited 3s then uptime=3s
-	 * which is higher than last registered uptime=2s
-	 *
-	 * However we expect in this test that this is properly detected as MySQL restart
-	 * and the QAN service is again reconfigured
-	 */
-	waitTime := int64(3)
-	time.Sleep(time.Duration(waitTime) * time.Second)
-	gotQueries = nil
-	mockConn.UptimeMock = func() int64 {
-		return waitTime
-	}
-	m.GetRestartChan() <- true
-	timeout = time.After(200 * time.Millisecond)
-LOOP4:
-	for {
-		select {
-		case q := <-setChan:
-			gotQueries = append(gotQueries, q)
-		case <-timeout:
-			break LOOP4
-		}
-	}
-	t.Assert(gotQueries, DeepEquals, expectedQueries, Commentf("MySQL was restarted (uptime overlaped last registered uptime), but QAN didn't reconfiugre MySQL"))
 }
 
 func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(t *C) {

@@ -18,6 +18,7 @@
 package mrms
 
 import (
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"sync"
@@ -27,8 +28,11 @@ import (
 type Manager struct {
 	logger           *pct.Logger
 	mysqlConnFactory mysql.ConnectionFactory
-	mysqlInstances   map[string]*mysqlInstance
+	// --
+	status         *pct.Status
+	mysqlInstances map[string]*mysqlInstance
 	sync.RWMutex
+	stop chan bool
 }
 
 type mysqlInstance struct {
@@ -116,7 +120,9 @@ func NewManager(logger *pct.Logger, mysqlConnFactory mysql.ConnectionFactory) MR
 	m := &Manager{
 		logger:           logger,
 		mysqlConnFactory: mysqlConnFactory,
+		status:           pct.NewStatus([]string{"mrms"}),
 		mysqlInstances:   make(map[string]*mysqlInstance),
+		stop:             make(chan bool, 1),
 	}
 	return m
 }
@@ -161,6 +167,44 @@ func (m *Manager) Run() {
 			mysqlInstance.NotifySubscribers()
 		}
 	}
+}
+
+func (m *Manager) Start() error {
+	go func() {
+		m.Run() // Immediately run first check
+		for {
+			sleep := time.After(1 * time.Second)
+			select {
+			case <-sleep:
+				m.Run()
+			case <-m.stop:
+				return
+			}
+		}
+	}()
+
+	return nil
+}
+
+func (m *Manager) Stop() error {
+	select {
+	case m.stop <- true:
+	default:
+	}
+
+	return nil
+}
+
+func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
+	return nil, nil
+}
+
+func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
+	return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
+}
+
+func (m *Manager) Status() map[string]string {
+	return m.status.All()
 }
 
 func (m *Manager) createMysqlInstance(dsn string) (mi *mysqlInstance, err error) {

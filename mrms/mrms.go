@@ -17,7 +17,16 @@
 
 package mrms
 
+import (
+	"github.com/percona/cloud-protocol/proto"
+)
+
 type MRMS interface {
+	Start() error
+	Stop() error
+	Status() map[string]string
+	GetConfig() ([]proto.AgentConfig, []error)
+	Handle(cmd *proto.Cmd) *proto.Reply
 	Add(dsn string) (c chan bool, err error)
 	Remove(dsn string, c chan bool)
 	Run()

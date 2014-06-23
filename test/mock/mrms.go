@@ -17,6 +17,10 @@
 
 package mock
 
+import (
+	"github.com/percona/cloud-protocol/proto"
+)
+
 type MRMS struct {
 }
 
@@ -34,4 +38,24 @@ func (m *MRMS) Remove(dsn string, c chan bool) {
 }
 
 func (m *MRMS) Run() {
+}
+
+func (m *MRMS) Start() error {
+	return nil
+}
+
+func (m *MRMS) Stop() error {
+	return nil
+}
+
+func (m *MRMS) GetConfig() ([]proto.AgentConfig, []error) {
+	return nil, nil
+}
+
+func (m *MRMS) Handle(cmd *proto.Cmd) *proto.Reply {
+	return cmd.Reply(nil)
+}
+
+func (m *MRMS) Status() map[string]string {
+	return nil
 }
