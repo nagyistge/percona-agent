@@ -30,6 +30,8 @@ import (
 	"github.com/percona/percona-agent/log"
 	"github.com/percona/percona-agent/mm"
 	mmMonitor "github.com/percona/percona-agent/mm/monitor"
+	"github.com/percona/percona-agent/mrms"
+	mrmsMonitor "github.com/percona/percona-agent/mrms/monitor"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/qan"
@@ -142,6 +144,11 @@ func run() error {
 	}
 
 	/**
+	 * Connection factory
+	 */
+	connFactory := &mysql.RealConnectionFactory{}
+
+	/**
 	 * Log relay
 	 */
 
@@ -171,6 +178,22 @@ func run() error {
 	)
 	if err := itManager.Start(); err != nil {
 		return fmt.Errorf("Error starting instance manager: %s\n", err)
+	}
+
+	/**
+	 * Start MRMS (MySQL Restart Monitoring Service)
+	 */
+
+	mysqlRestartMonitor := mrmsMonitor.NewMonitor(
+		pct.NewLogger(logChan, "mrms-monitor"),
+		connFactory,
+	)
+	mrmsManager := mrms.NewManager(
+		pct.NewLogger(logChan, "mrms-manager"),
+		mysqlRestartMonitor,
+	)
+	if err := mrmsManager.Start(); err != nil {
+		return fmt.Errorf("Error starting mrms manager: %s\n", err)
 	}
 
 	/**
@@ -232,12 +255,13 @@ func run() error {
 
 	qanManager := qan.NewManager(
 		pct.NewLogger(logChan, "qan"),
-		&mysql.RealConnectionFactory{},
+		connFactory,
 		clock,
 		qan.NewFileIntervalIterFactory(logChan),
 		qan.NewSlowLogWorkerFactory(logChan),
 		dataManager.Spooler(),
 		itManager.Repo(),
+		mysqlRestartMonitor,
 	)
 	if err := qanManager.Start(); err != nil {
 		return fmt.Errorf("Error starting qan manager: %s\n", err)
@@ -277,6 +301,7 @@ func run() error {
 		"qan":       qanManager,
 		"mm":        mmManager,
 		"instance":  itManager,
+		"mrms":      mrmsManager,
 		"sysconfig": sysconfigManager,
 	}
 

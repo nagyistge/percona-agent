@@ -24,6 +24,7 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/instance"
+	"github.com/percona/percona-agent/mrms"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/ticker"
@@ -40,12 +41,13 @@ type Manager struct {
 	workerFactory WorkerFactory
 	spool         data.Spooler
 	im            *instance.Repo
+	mrm           mrms.Monitor
 	// --
 	config          *Config
 	running         bool
 	mux             *sync.RWMutex // guards config and running
 	tickChan        chan time.Time
-	tickCheckChan   chan time.Time // used to initiate periodical mysql checks
+	restartChan     chan bool
 	mysqlConn       mysql.Connector
 	lastUptime      int64
 	lastUptimeCheck time.Time
@@ -58,7 +60,7 @@ type Manager struct {
 	oldSlowLogs     map[string]int
 }
 
-func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock ticker.Manager, iterFactory IntervalIterFactory, workerFactory WorkerFactory, spool data.Spooler, im *instance.Repo) *Manager {
+func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock ticker.Manager, iterFactory IntervalIterFactory, workerFactory WorkerFactory, spool data.Spooler, im *instance.Repo, mrm mrms.Monitor) *Manager {
 	m := &Manager{
 		logger:        logger,
 		mysqlFactory:  mysqlFactory,
@@ -67,10 +69,10 @@ func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock 
 		workerFactory: workerFactory,
 		spool:         spool,
 		im:            im,
+		mrm:           mrm,
 		// --
 		mux:            new(sync.RWMutex),
 		tickChan:       make(chan time.Time),
-		tickCheckChan:  make(chan time.Time),
 		workers:        make(map[Worker]*Interval),
 		workersMux:     new(sync.RWMutex),
 		workerDoneChan: make(chan Worker, 2),
@@ -234,8 +236,8 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 	return []proto.AgentConfig{config}, nil
 }
 
-func (m *Manager) GetTickCheckChan() chan time.Time {
-	return m.tickCheckChan
+func (m *Manager) GetRestartChan() chan bool {
+	return m.restartChan
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -371,9 +373,9 @@ func (m *Manager) run(config Config) {
 					m.oldSlowLogs[file] = cnt - 1
 				}
 			}
-		case <-m.tickCheckChan:
-			if err := m.mysqlPeriodicalSetup(config); err != nil {
-				m.logger.Warn("Periodical MySQL setup failed: %s", err)
+		case <-m.restartChan:
+			if err := m.mysqlSetup(config); err != nil {
+				m.logger.Warn("Failed to setup MySQL after server being restarted: %s", err)
 				continue
 			}
 		case <-m.sync.StopChan:
@@ -398,6 +400,12 @@ func (m *Manager) createMysqlConn(service string, instanceId uint) error {
 }
 
 func (m *Manager) mysqlSetup(config Config) error {
+	if err := m.mysqlConn.Connect(2); err != nil {
+		m.logger.Warn("Unable to connect to MySQL: %s", err)
+		return err
+	}
+	defer m.mysqlConn.Close()
+
 	// Set global vars to config/enable slow log.
 	if err := m.mysqlConn.Set(config.Start); err != nil {
 		m.logger.Error("Unable to configure MySQL: %s", err)
@@ -405,68 +413,6 @@ func (m *Manager) mysqlSetup(config Config) error {
 	}
 
 	return nil // success
-}
-
-func (m *Manager) mysqlPeriodicalSetup(config Config) error {
-	if err := m.mysqlConn.Connect(2); err != nil {
-		m.logger.Warn("Unable to connect to MySQL: %s", err)
-		return err
-	}
-	defer m.mysqlConn.Close()
-
-	if restarted := m.checkIfMysqlRestarted(); restarted {
-		// Configure MySQL to enable QAN
-		return m.mysqlSetup(config)
-	}
-
-	return nil
-}
-
-func (m *Manager) mysqlStartSetup(config Config) error {
-	if err := m.mysqlConn.Connect(2); err != nil {
-		m.logger.Warn("Unable to connect to MySQL: %s", err)
-		return err
-	}
-	defer m.mysqlConn.Close()
-
-	// Get current MySQL uptime - this is later used to detect if MySQL was restarted
-	m.lastUptime = m.mysqlConn.Uptime()
-
-	// Configure MySQL to enable QAN
-	return m.mysqlSetup(config)
-}
-
-func (m *Manager) checkIfMysqlRestarted() bool {
-	lastUptime := m.lastUptime
-	lastUptimeCheck := m.lastUptimeCheck
-	currentUptime := m.mysqlConn.Uptime()
-
-	// Calculate expected uptime
-	//   This protects against situation where after restarting MySQL
-	//   we are unable to connect to it for period longer than last registered uptime
-	//
-	// Steps to reproduce:
-	// * currentUptime=60 lastUptime=0
-	// * Restart MySQL
-	// * QAN connection problem for 120s
-	// * currentUptime=120 lastUptime=60 (new uptime (120s) is higher than last registered (60s))
-	// * elapsedTime=120s (time elapsed since last check)
-	// * expectedUptime= 60s + 120s = 180s
-	// * 120s < 180s (currentUptime < expectedUptime) => server was restarted
-	elapsedTime := time.Now().Unix() - lastUptimeCheck.Unix()
-	expectedUptime := lastUptime + elapsedTime
-
-	// Save uptime from last check
-	m.lastUptime = currentUptime
-	m.lastUptimeCheck = time.Now()
-
-	// If current server uptime is lower than last registered uptime
-	// then we can assume that server was restarted
-	if currentUptime < expectedUptime {
-		return true
-	}
-
-	return false
 }
 
 // @goroutine[1]
@@ -559,14 +505,18 @@ func (m *Manager) start(config *Config) error {
 		return err
 	}
 
+	// Register restart chan
+	restartChan, err := m.mrm.Add(m.mysqlConn.DSN())
+	if err != nil {
+		return err
+	}
+	m.restartChan = restartChan
+
 	// Configure mysql to enable slow log monitoring
-	m.mysqlStartSetup(*config)
+	m.mysqlSetup(*config)
 
 	// Add a tickChan to the clock so it receives ticks at intervals.
 	m.clock.Add(m.tickChan, config.Interval, true)
-
-	// Add a tickCheckChan to the clock so it receives ticks at intervals.
-	m.clock.Add(m.tickCheckChan, config.Interval, true)
 
 	// Make an iterator for the slow log file at interval ticks.
 	filenameFunc := func() (string, error) {
@@ -600,7 +550,7 @@ func (m *Manager) stop() error {
 	m.iter.Stop()
 	m.iter = nil
 	m.clock.Remove(m.tickChan)
-	m.clock.Remove(m.tickCheckChan)
+	m.mrm.Remove(m.mysqlConn.DSN(), m.restartChan)
 
 	// Stop run()/qan-log-parser.
 	m.sync.Stop()
