@@ -15,11 +15,11 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package mrms_test
+package monitor_test
 
 import (
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/percona-agent/mrms"
+	"github.com/percona/percona-agent/mrms/monitor"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test/mock"
 	. "launchpad.net/gocheck"
@@ -44,7 +44,7 @@ var _ = Suite(&TestSuite{})
 func (s *TestSuite) SetUpSuite(t *C) {
 	s.nullmysql = mock.NewNullMySQL()
 	s.logChan = make(chan *proto.LogEntry, 1000)
-	s.logger = pct.NewLogger(s.logChan, "mrms-test")
+	s.logger = pct.NewLogger(s.logChan, "mrms-monitor-test")
 }
 
 func (s *TestSuite) TestStartStop(t *C) {
@@ -63,7 +63,7 @@ func (s *TestSuite) TestStartStop(t *C) {
 	mockConnFactory := &mock.ConnectionFactory{
 		Conn: mockConn,
 	}
-	m := mrms.NewManager(s.logger, mockConnFactory)
+	m := monitor.NewMonitor(s.logger, mockConnFactory)
 	dsn := "fake:dsn@tcp(127.0.0.1:3306)/?parseTime=true"
 
 	/**
@@ -131,7 +131,7 @@ func (s *TestSuite) TestNotifications(t *C) {
 	mockConnFactory := &mock.ConnectionFactory{
 		Conn: mockConn,
 	}
-	m := mrms.NewManager(s.logger, mockConnFactory)
+	m := monitor.NewMonitor(s.logger, mockConnFactory)
 	dsn := "fake:dsn@tcp(127.0.0.1:3306)/?parseTime=true"
 
 	/**

@@ -31,6 +31,7 @@ import (
 	"github.com/percona/percona-agent/mm"
 	mmMonitor "github.com/percona/percona-agent/mm/monitor"
 	"github.com/percona/percona-agent/mrms"
+	mrmsMonitor "github.com/percona/percona-agent/mrms/monitor"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/qan"
@@ -180,12 +181,16 @@ func run() error {
 	}
 
 	/**
-	 * MySQL restart monitoring service
+	 * Start MRMS (MySQL Restart Monitoring Service)
 	 */
 
+	mysqlRestartMonitor := mrmsMonitor.NewMonitor(
+		pct.NewLogger(logChan, "mrms-monitor"),
+		connFactory,
+	)
 	mrmsManager := mrms.NewManager(
 		pct.NewLogger(logChan, "mrms-manager"),
-		connFactory,
+		mysqlRestartMonitor,
 	)
 	if err := mrmsManager.Start(); err != nil {
 		return fmt.Errorf("Error starting mrms manager: %s\n", err)
@@ -256,7 +261,7 @@ func run() error {
 		qan.NewSlowLogWorkerFactory(logChan),
 		dataManager.Spooler(),
 		itManager.Repo(),
-		mrmsManager,
+		mysqlRestartMonitor,
 	)
 	if err := qanManager.Start(); err != nil {
 		return fmt.Errorf("Error starting qan manager: %s\n", err)

@@ -15,19 +15,31 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package mrms
+package mock
 
-import (
-	"github.com/percona/cloud-protocol/proto"
-)
+type MrmsMonitor struct {
+}
 
-type MRMS interface {
-	Start() error
-	Stop() error
-	Status() map[string]string
-	GetConfig() ([]proto.AgentConfig, []error)
-	Handle(cmd *proto.Cmd) *proto.Reply
-	Add(dsn string) (c chan bool, err error)
-	Remove(dsn string, c chan bool)
-	Run()
+func NewMrmsMonitor() *MrmsMonitor {
+	m := &MrmsMonitor{}
+	return m
+}
+
+func (m *MrmsMonitor) Add(dsn string) (c chan bool, err error) {
+	c = make(chan bool, 10)
+	return c, nil
+}
+
+func (m *MrmsMonitor) Remove(dsn string, c chan bool) {
+}
+
+func (m *MrmsMonitor) Run() {
+}
+
+func (m *MrmsMonitor) Start() error {
+	return nil
+}
+
+func (m *MrmsMonitor) Stop() error {
+	return nil
 }

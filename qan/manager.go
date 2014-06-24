@@ -41,7 +41,7 @@ type Manager struct {
 	workerFactory WorkerFactory
 	spool         data.Spooler
 	im            *instance.Repo
-	mrms          mrms.MRMS
+	mrm           mrms.Monitor
 	// --
 	config          *Config
 	running         bool
@@ -60,7 +60,7 @@ type Manager struct {
 	oldSlowLogs     map[string]int
 }
 
-func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock ticker.Manager, iterFactory IntervalIterFactory, workerFactory WorkerFactory, spool data.Spooler, im *instance.Repo, mrms mrms.MRMS) *Manager {
+func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock ticker.Manager, iterFactory IntervalIterFactory, workerFactory WorkerFactory, spool data.Spooler, im *instance.Repo, mrm mrms.Monitor) *Manager {
 	m := &Manager{
 		logger:        logger,
 		mysqlFactory:  mysqlFactory,
@@ -69,7 +69,7 @@ func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock 
 		workerFactory: workerFactory,
 		spool:         spool,
 		im:            im,
-		mrms:          mrms,
+		mrm:           mrm,
 		// --
 		mux:            new(sync.RWMutex),
 		tickChan:       make(chan time.Time),
@@ -506,7 +506,7 @@ func (m *Manager) start(config *Config) error {
 	}
 
 	// Register restart chan
-	restartChan, err := m.mrms.Add(m.mysqlConn.DSN())
+	restartChan, err := m.mrm.Add(m.mysqlConn.DSN())
 	if err != nil {
 		return err
 	}
@@ -550,7 +550,7 @@ func (m *Manager) stop() error {
 	m.iter.Stop()
 	m.iter = nil
 	m.clock.Remove(m.tickChan)
-	m.mrms.Remove(m.mysqlConn.DSN(), m.restartChan)
+	m.mrm.Remove(m.mysqlConn.DSN(), m.restartChan)
 
 	// Stop run()/qan-log-parser.
 	m.sync.Stop()
