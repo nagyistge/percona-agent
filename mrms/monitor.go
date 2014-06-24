@@ -22,5 +22,5 @@ type Monitor interface {
 	Stop() error
 	Add(dsn string) (c chan bool, err error)
 	Remove(dsn string, c chan bool)
-	Run()
+	Check()
 }

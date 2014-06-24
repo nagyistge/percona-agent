@@ -33,7 +33,7 @@ func (m *MrmsMonitor) Add(dsn string) (c chan bool, err error) {
 func (m *MrmsMonitor) Remove(dsn string, c chan bool) {
 }
 
-func (m *MrmsMonitor) Run() {
+func (m *MrmsMonitor) Check() {
 }
 
 func (m *MrmsMonitor) Start() error {

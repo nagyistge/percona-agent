@@ -156,7 +156,7 @@ func (s *TestSuite) TestNotifications(t *C) {
 	mockConn.UptimeMock = func() int64 {
 		return 0
 	}
-	m.Run()
+	m.Check()
 	notified = false
 	select {
 	case notified = <-subChan:
@@ -170,7 +170,7 @@ func (s *TestSuite) TestNotifications(t *C) {
 	mockConn.UptimeMock = func() int64 {
 		return 2
 	}
-	m.Run()
+	m.Check()
 	notified = false
 	select {
 	case notified = <-subChan:
@@ -191,7 +191,7 @@ func (s *TestSuite) TestNotifications(t *C) {
 	mockConn.UptimeMock = func() int64 {
 		return waitTime
 	}
-	m.Run()
+	m.Check()
 	select {
 	case notified = <-subChan:
 	default:
@@ -205,7 +205,7 @@ func (s *TestSuite) TestNotifications(t *C) {
 		return 0
 	}
 	m.Remove(dsn, subChan)
-	m.Run()
+	m.Check()
 	notified = false
 	select {
 	case notified = <-subChan:

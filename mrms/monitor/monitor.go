@@ -47,12 +47,12 @@ func NewMonitor(logger *pct.Logger, mysqlConnFactory mysql.ConnectionFactory) mr
 
 func (m *Monitor) Start() error {
 	go func() {
-		m.Run() // Immediately run first check
+		m.Check() // Immediately run first check
 		for {
 			sleep := time.After(1 * time.Second)
 			select {
 			case <-sleep:
-				m.Run()
+				m.Check()
 			case <-m.stop:
 				return
 			}
@@ -102,7 +102,7 @@ func (m *Monitor) Remove(dsn string, c chan bool) {
 	}
 }
 
-func (m *Monitor) Run() {
+func (m *Monitor) Check() {
 	m.RLock()
 	defer m.RUnlock()
 
