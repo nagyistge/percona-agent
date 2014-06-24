@@ -24,42 +24,42 @@ import (
 	"time"
 )
 
-type mysqlInstance struct {
-	logger          *pct.Logger
-	mysqlConn       mysql.Connector
+type MysqlInstance struct {
+	logger      *pct.Logger
+	mysqlConn   mysql.Connector
+	Subscribers *Subscribers
+	// --
 	lastUptime      int64
 	lastUptimeCheck time.Time
-	subscribers     map[chan bool]bool
-	sync.RWMutex
+	sync.Mutex
 }
 
-func (m *mysqlInstance) Add() (c chan bool) {
-	m.Lock()
-	defer m.Unlock()
-
-	c = make(chan bool, 5)
-	m.subscribers[c] = true
-
-	return c
-}
-
-func (m *mysqlInstance) Remove(c chan bool) {
-	m.Lock()
-	defer m.Unlock()
-
-	if m.subscribers[c] {
-		delete(m.subscribers, c)
+func NewMysqlInstance(logger *pct.Logger, mysqlConn mysql.Connector, subscribers *Subscribers) (mi *MysqlInstance, err error) {
+	if err := mysqlConn.Connect(2); err != nil {
+		logger.Warn("Unable to connect to MySQL: %s", err)
+		return nil, err
 	}
+	defer mysqlConn.Close()
+
+	// Get current MySQL uptime - this is later used to detect if MySQL was restarted
+	lastUptime := mysqlConn.Uptime()
+	lastUptimeCheck := time.Now()
+
+	mi = &MysqlInstance{
+		logger:          logger,
+		mysqlConn:       mysqlConn,
+		Subscribers:     subscribers,
+		lastUptime:      lastUptime,
+		lastUptimeCheck: lastUptimeCheck,
+	}
+
+	return mi, nil
 }
 
-func (m *mysqlInstance) Empty() bool {
-	m.RLock()
-	defer m.RUnlock()
+func (m *MysqlInstance) CheckIfMysqlRestarted() bool {
+	m.Lock()
+	defer m.Unlock()
 
-	return len(m.subscribers) == 0
-}
-
-func (m *mysqlInstance) CheckIfMysqlRestarted() bool {
 	lastUptime := m.lastUptime
 	lastUptimeCheck := m.lastUptimeCheck
 	currentUptime := m.mysqlConn.Uptime()
@@ -90,17 +90,4 @@ func (m *mysqlInstance) CheckIfMysqlRestarted() bool {
 	}
 
 	return false
-}
-
-func (m *mysqlInstance) NotifySubscribers() {
-	m.RLock()
-	defer m.RUnlock()
-
-	for c, _ := range m.subscribers {
-		select {
-		case c <- true:
-		default:
-			m.logger.Warn("Unable to notify subscriber")
-		}
-	}
 }

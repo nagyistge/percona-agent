@@ -29,7 +29,7 @@ type Monitor struct {
 	logger           *pct.Logger
 	mysqlConnFactory mysql.ConnectionFactory
 	// --
-	mysqlInstances map[string]*mysqlInstance
+	mysqlInstances map[string]*MysqlInstance
 	sync.RWMutex
 	// --
 	stop chan bool
@@ -39,7 +39,7 @@ func NewMonitor(logger *pct.Logger, mysqlConnFactory mysql.ConnectionFactory) mr
 	m := &Monitor{
 		logger:           logger,
 		mysqlConnFactory: mysqlConnFactory,
-		mysqlInstances:   make(map[string]*mysqlInstance),
+		mysqlInstances:   make(map[string]*MysqlInstance),
 		stop:             make(chan bool, 1),
 	}
 	return m
@@ -85,7 +85,7 @@ func (m *Monitor) Add(dsn string) (c chan bool, err error) {
 		m.mysqlInstances[dsn] = mysqlInstance
 	}
 
-	c = mysqlInstance.Add()
+	c = mysqlInstance.Subscribers.Add()
 
 	return c, nil
 }
@@ -95,8 +95,8 @@ func (m *Monitor) Remove(dsn string, c chan bool) {
 	defer m.Unlock()
 
 	if mysqlInstance, ok := m.mysqlInstances[dsn]; ok {
-		mysqlInstance.Remove(c)
-		if mysqlInstance.Empty() {
+		mysqlInstance.Subscribers.Remove(c)
+		if mysqlInstance.Subscribers.Empty() {
 			delete(m.mysqlInstances, dsn)
 		}
 	}
@@ -108,30 +108,13 @@ func (m *Monitor) Check() {
 
 	for _, mysqlInstance := range m.mysqlInstances {
 		if mysqlInstance.CheckIfMysqlRestarted() {
-			mysqlInstance.NotifySubscribers()
+			mysqlInstance.Subscribers.Notify()
 		}
 	}
 }
 
-func (m *Monitor) createMysqlInstance(dsn string) (mi *mysqlInstance, err error) {
+func (m *Monitor) createMysqlInstance(dsn string) (mi *MysqlInstance, err error) {
 	mysqlConn := m.mysqlConnFactory.Make(dsn)
-	if err := mysqlConn.Connect(2); err != nil {
-		m.logger.Warn("Unable to connect to MySQL: %s", err)
-		return nil, err
-	}
-	defer mysqlConn.Close()
-
-	// Get current MySQL uptime - this is later used to detect if MySQL was restarted
-	lastUptime := mysqlConn.Uptime()
-	lastUptimeCheck := time.Now()
-
-	mi = &mysqlInstance{
-		logger:          m.logger,
-		mysqlConn:       mysqlConn,
-		lastUptime:      lastUptime,
-		lastUptimeCheck: lastUptimeCheck,
-		subscribers:     make(map[chan bool]bool),
-	}
-
-	return mi, nil
+	subscribers := NewSubscribers(m.logger)
+	return NewMysqlInstance(m.logger, mysqlConn, subscribers)
 }
