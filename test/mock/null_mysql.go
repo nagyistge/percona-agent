@@ -23,7 +23,9 @@ import (
 )
 
 type NullMySQL struct {
-	set []mysql.Query
+	set         []mysql.Query
+	uptime      int64
+	uptimeCount uint
 }
 
 func NewNullMySQL() *NullMySQL {
@@ -69,5 +71,14 @@ func (n *NullMySQL) GetGlobalVarString(varName string) string {
 }
 
 func (n *NullMySQL) Uptime() int64 {
-	return 0
+	n.uptimeCount++
+	return n.uptime
+}
+
+func (n *NullMySQL) GetUptimeCount() uint {
+	return n.uptimeCount
+}
+
+func (n *NullMySQL) SetUptime(uptime int64) {
+	n.uptime = uptime
 }

@@ -502,21 +502,7 @@ func (s *ManagerTestSuite) TestMySQLRestart(t *C) {
 	 * Create and start manager.
 	 */
 
-	setChan := make(chan []mysql.Query, 1)
-	mockConn := &mock.ConnectorMock{
-		ConnectMock: func(tries uint) error {
-			return nil
-		},
-		CloseMock: func() {
-		},
-		SetMock: func(queries []mysql.Query) error {
-			setChan <- queries
-			return nil
-		},
-		DSNMock: func() string {
-			return s.dsn
-		},
-	}
+	mockConn := mock.NewNullMySQL()
 	mockConnFactory := &mock.ConnectionFactory{
 		Conn: mockConn,
 	}
@@ -580,35 +566,27 @@ func (s *ManagerTestSuite) TestMySQLRestart(t *C) {
 	/**
 	 * QAN should configure mysql at startup
 	 */
-	expectedQueries := [][]mysql.Query{
-		[]mysql.Query{
-			mysql.Query{
-				Set:    "SET GLOBAL slow_query_log=OFF",
-				Verify: "",
-				Expect: "",
-			},
-			mysql.Query{
-				Set:    "SET GLOBAL long_query_time=0.123",
-				Verify: "",
-				Expect: "",
-			},
-			mysql.Query{
-				Set:    "SET GLOBAL slow_query_log=ON",
-				Verify: "",
-				Expect: "",
-			},
+
+	expectedQueries := []mysql.Query{
+		mysql.Query{
+			Set:    "SET GLOBAL slow_query_log=OFF",
+			Verify: "",
+			Expect: "",
+		},
+		mysql.Query{
+			Set:    "SET GLOBAL long_query_time=0.123",
+			Verify: "",
+			Expect: "",
+		},
+		mysql.Query{
+			Set:    "SET GLOBAL slow_query_log=ON",
+			Verify: "",
+			Expect: "",
 		},
 	}
-	var gotQueries [][]mysql.Query
-LOOP:
-	for {
-		select {
-		case q := <-setChan:
-			gotQueries = append(gotQueries, q)
-		default:
-			break LOOP
-		}
-	}
+	var gotQueries []mysql.Query
+
+	gotQueries = mockConn.GetSet()
 	t.Assert(gotQueries, DeepEquals, expectedQueries, Commentf("QAN didn't configure MySQL on startup"))
 
 	/**
@@ -616,15 +594,19 @@ LOOP:
 	 * if so then it should configure it again
 	 */
 	gotQueries = nil
+	mockConn.Set(nil)
 	m.GetRestartChan() <- true // imitate mysql restart
-	timeout := time.After(200 * time.Millisecond)
-TIMEOUT:
+	timeout := time.After(1 * time.Second)
+LOOP:
 	for {
 		select {
-		case q := <-setChan:
-			gotQueries = append(gotQueries, q)
 		case <-timeout:
-			break TIMEOUT
+			break LOOP
+		default:
+			gotQueries = mockConn.GetSet()
+			if gotQueries != nil {
+				break LOOP
+			}
 		}
 	}
 	t.Assert(gotQueries, DeepEquals, expectedQueries, Commentf("MySQL was restarted, but QAN didn't reconfigure MySQL"))

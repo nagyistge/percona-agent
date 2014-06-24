@@ -48,13 +48,7 @@ func (s *TestSuite) SetUpSuite(t *C) {
 }
 
 func (s *TestSuite) TestStartStop(t *C) {
-	mockConn := &mock.ConnectorMock{
-		ConnectMock: func(tries uint) error {
-			return nil
-		},
-		CloseMock: func() {
-		},
-	}
+	mockConn := mock.NewNullMySQL()
 	mockConnFactory := &mock.ConnectionFactory{
 		Conn: mockConn,
 	}
@@ -64,19 +58,12 @@ func (s *TestSuite) TestStartStop(t *C) {
 	/**
 	 * Register new subscriber
 	 */
-	firstUptime := make(chan bool, 1)
-	mockConn.UptimeMock = func() int64 {
-		firstUptime <- true
-		return 10 // Initial uptime
-	}
+	// Set initial uptime
+	mockConn.SetUptime(10)
+	t.Assert(mockConn.GetUptimeCount(), Equals, uint(0))
 	subChan, err := m.Add(dsn)
 	t.Assert(err, IsNil)
-
-	select {
-	case <-firstUptime:
-	case <-time.After(1 * time.Second):
-		t.Errorf("MRMS didn't checked uptime after adding first subscriber")
-	}
+	t.Assert(mockConn.GetUptimeCount(), Equals, uint(1), Commentf("MRMS didn't checked uptime after adding first subscriber"))
 
 	/**
 	 * Start MRMS
@@ -84,10 +71,8 @@ func (s *TestSuite) TestStartStop(t *C) {
 	err = m.Start()
 	t.Assert(err, IsNil)
 
-	// Let's imitate MySQL restart
-	mockConn.UptimeMock = func() int64 {
-		return 5 // Imitate MySQL restart by setting uptime to 5s (previously 10s)
-	}
+	// Imitate MySQL restart by setting uptime to 5s (previously 10s)
+	mockConn.SetUptime(5)
 
 	// After max 1 second it should notify subscriber about MySQL restart
 	var notified bool
@@ -103,10 +88,8 @@ func (s *TestSuite) TestStartStop(t *C) {
 	err = m.Stop()
 	t.Assert(err, IsNil)
 
-	// Let's imitate MySQL restart
-	mockConn.UptimeMock = func() int64 {
-		return 1 // Imitate MySQL restart by setting uptime to 1s (previously 5s)
-	}
+	// Imitate MySQL restart by setting uptime to 1s (previously 5s)
+	mockConn.SetUptime(1)
 
 	// After stopping service it should not notify subscribers anymore
 	time.Sleep(2 * time.Second)
@@ -118,13 +101,7 @@ func (s *TestSuite) TestStartStop(t *C) {
 }
 
 func (s *TestSuite) TestNotifications(t *C) {
-	mockConn := &mock.ConnectorMock{
-		ConnectMock: func(tries uint) error {
-			return nil
-		},
-		CloseMock: func() {
-		},
-	}
+	mockConn := mock.NewNullMySQL()
 	mockConnFactory := &mock.ConnectionFactory{
 		Conn: mockConn,
 	}
@@ -134,9 +111,8 @@ func (s *TestSuite) TestNotifications(t *C) {
 	/**
 	 * Register new subscriber
 	 */
-	mockConn.UptimeMock = func() int64 {
-		return 10 // Initial uptime
-	}
+	// Set initial uptime
+	mockConn.SetUptime(10)
 	subChan, err := m.Add(dsn)
 	t.Assert(err, IsNil)
 
@@ -153,9 +129,8 @@ func (s *TestSuite) TestNotifications(t *C) {
 	/**
 	 * If MySQL was restarted then MRMS should notify subscriber
 	 */
-	mockConn.UptimeMock = func() int64 {
-		return 0 // imitate MySQL restart by returning 0s uptime
-	}
+	// Imitate MySQL restart by returning 0s uptime (previously 10s)
+	mockConn.SetUptime(0)
 	m.Check()
 	notified = false
 	select {
@@ -167,9 +142,8 @@ func (s *TestSuite) TestNotifications(t *C) {
 	/**
 	 * If MySQL was not restarted then MRMS should not notify subscriber
 	 */
-	mockConn.UptimeMock = func() int64 {
-		return 2 // 2s uptime is higher than previous 0s, this indicates MySQL was not restarted
-	}
+	// 2s uptime is higher than previous 0s, this indicates MySQL was not restarted
+	mockConn.SetUptime(2)
 	m.Check()
 	notified = false
 	select {
@@ -188,9 +162,7 @@ func (s *TestSuite) TestNotifications(t *C) {
 	 */
 	waitTime := int64(3)
 	time.Sleep(time.Duration(waitTime) * time.Second)
-	mockConn.UptimeMock = func() int64 {
-		return waitTime
-	}
+	mockConn.SetUptime(waitTime)
 	m.Check()
 	select {
 	case notified = <-subChan:
@@ -201,9 +173,8 @@ func (s *TestSuite) TestNotifications(t *C) {
 	/**
 	 * After removing subscriber MRMS should not notify it anymore about MySQL restarts
 	 */
-	mockConn.UptimeMock = func() int64 {
-		return 0 // imitate MySQL restart by returning 0s uptime
-	}
+	// Imitate MySQL restart by returning 0s uptime (previously 3s)
+	mockConn.SetUptime(0)
 	m.Remove(dsn, subChan)
 	m.Check()
 	notified = false
