@@ -45,23 +45,15 @@ func NewMonitor(logger *pct.Logger, mysqlConnFactory mysql.ConnectionFactory) mr
 	return m
 }
 
+/////////////////////////////////////////////////////////////////////////////
+// Interface
+/////////////////////////////////////////////////////////////////////////////
+
 /**
  * Monitor for MySQL restart every *interval*
  */
 func (m *Monitor) Start(interval time.Duration) error {
-	go func() {
-		m.Check() // Immediately run first check
-		for {
-			select {
-			case <-time.After(interval):
-				m.Check()
-			case <-m.sync.StopChan:
-				m.sync.Done()
-				return
-			}
-		}
-	}()
-
+	go m.run(interval)
 	return nil
 }
 
@@ -109,6 +101,24 @@ func (m *Monitor) Check() {
 	for _, mysqlInstance := range m.mysqlInstances {
 		if mysqlInstance.CheckIfMysqlRestarted() {
 			mysqlInstance.Subscribers.Notify()
+		}
+	}
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Implementation
+/////////////////////////////////////////////////////////////////////////////
+
+func (m *Monitor) run(interval time.Duration) {
+	defer m.sync.Done()
+
+	m.Check() // Immediately run first check
+	for {
+		select {
+		case <-time.After(interval):
+			m.Check()
+		case <-m.sync.StopChan:
+			return
 		}
 	}
 }
