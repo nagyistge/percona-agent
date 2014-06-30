@@ -18,6 +18,7 @@
 package monitor
 
 import (
+	"fmt"
 	"github.com/percona/percona-agent/mrms"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
@@ -53,17 +54,26 @@ func NewMonitor(logger *pct.Logger, mysqlConnFactory mysql.ConnectionFactory) mr
  * Monitor for MySQL restart every *interval*
  */
 func (m *Monitor) Start(interval time.Duration) error {
+	m.logger.Debug("Start:call")
+	defer m.logger.Debug("Start:return")
+
 	go m.run(interval)
 	return nil
 }
 
 func (m *Monitor) Stop() error {
+	m.logger.Debug("Stop:call")
+	defer m.logger.Debug("Stop:return")
+
 	m.sync.Stop()
 	m.sync.Wait()
 	return nil
 }
 
 func (m *Monitor) Add(dsn string) (c chan bool, err error) {
+	m.logger.Debug("Add:call")
+	defer m.logger.Debug("Add:return")
+
 	m.Lock()
 	defer m.Unlock()
 
@@ -83,6 +93,9 @@ func (m *Monitor) Add(dsn string) (c chan bool, err error) {
 }
 
 func (m *Monitor) Remove(dsn string, c chan bool) {
+	m.logger.Debug("Remove:call")
+	defer m.logger.Debug("Remove:return")
+
 	m.Lock()
 	defer m.Unlock()
 
@@ -95,6 +108,9 @@ func (m *Monitor) Remove(dsn string, c chan bool) {
 }
 
 func (m *Monitor) Check() {
+	m.logger.Debug("Check:call")
+	defer m.logger.Debug("Check:return")
+
 	m.RLock()
 	defer m.RUnlock()
 
@@ -110,6 +126,9 @@ func (m *Monitor) Check() {
 /////////////////////////////////////////////////////////////////////////////
 
 func (m *Monitor) run(interval time.Duration) {
+	m.logger.Debug("run:call")
+	defer m.logger.Debug("run:return")
+
 	defer m.sync.Done()
 
 	m.Check() // Immediately run first check
@@ -124,6 +143,9 @@ func (m *Monitor) run(interval time.Duration) {
 }
 
 func (m *Monitor) createMysqlInstance(dsn string) (mi *MysqlInstance, err error) {
+	m.logger.Debug(fmt.Sprintf("createMysqlInstance:call:%s", dsn))
+	defer m.logger.Debug("createMysqlInstance:return")
+
 	mysqlConn := m.mysqlConnFactory.Make(dsn)
 	subscribers := NewSubscribers(m.logger)
 	return NewMysqlInstance(m.logger, mysqlConn, subscribers)
