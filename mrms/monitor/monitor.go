@@ -32,7 +32,7 @@ type Monitor struct {
 	mysqlInstances map[string]*MysqlInstance
 	sync.RWMutex
 	// --
-	stop chan bool
+	sync *pct.SyncChan
 }
 
 func NewMonitor(logger *pct.Logger, mysqlConnFactory mysql.ConnectionFactory) mrms.Monitor {
@@ -40,7 +40,7 @@ func NewMonitor(logger *pct.Logger, mysqlConnFactory mysql.ConnectionFactory) mr
 		logger:           logger,
 		mysqlConnFactory: mysqlConnFactory,
 		mysqlInstances:   make(map[string]*MysqlInstance),
-		stop:             make(chan bool, 1),
+		sync:             pct.NewSyncChan(),
 	}
 	return m
 }
@@ -55,7 +55,8 @@ func (m *Monitor) Start(interval time.Duration) error {
 			select {
 			case <-time.After(interval):
 				m.Check()
-			case <-m.stop:
+			case <-m.sync.StopChan:
+				m.sync.Done()
 				return
 			}
 		}
@@ -65,11 +66,8 @@ func (m *Monitor) Start(interval time.Duration) error {
 }
 
 func (m *Monitor) Stop() error {
-	select {
-	case m.stop <- true:
-	default:
-	}
-
+	m.sync.Stop()
+	m.sync.Wait()
 	return nil
 }
 
