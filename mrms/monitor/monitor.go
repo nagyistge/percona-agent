@@ -45,13 +45,15 @@ func NewMonitor(logger *pct.Logger, mysqlConnFactory mysql.ConnectionFactory) mr
 	return m
 }
 
-func (m *Monitor) Start() error {
+/**
+ * Monitor for MySQL restart every *interval*
+ */
+func (m *Monitor) Start(interval time.Duration) error {
 	go func() {
 		m.Check() // Immediately run first check
 		for {
-			sleep := time.After(1 * time.Second)
 			select {
-			case <-sleep:
+			case <-time.After(interval):
 				m.Check()
 			case <-m.stop:
 				return

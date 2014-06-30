@@ -68,7 +68,8 @@ func (s *TestSuite) TestStartStop(t *C) {
 	/**
 	 * Start MRMS
 	 */
-	err = m.Start()
+	interval := 1 * time.Second
+	err = m.Start(interval)
 	t.Assert(err, IsNil)
 
 	// Imitate MySQL restart by setting uptime to 5s (previously 10s)

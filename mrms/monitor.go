@@ -17,8 +17,12 @@
 
 package mrms
 
+import (
+	"time"
+)
+
 type Monitor interface {
-	Start() error
+	Start(interval time.Duration) error
 	Stop() error
 	Add(dsn string) (c chan bool, err error)
 	Remove(dsn string, c chan bool)

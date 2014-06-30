@@ -17,6 +17,10 @@
 
 package mock
 
+import (
+	"time"
+)
+
 type MrmsMonitor struct {
 }
 
@@ -36,7 +40,7 @@ func (m *MrmsMonitor) Remove(dsn string, c chan bool) {
 func (m *MrmsMonitor) Check() {
 }
 
-func (m *MrmsMonitor) Start() error {
+func (m *MrmsMonitor) Start(interval time.Duration) error {
 	return nil
 }
 

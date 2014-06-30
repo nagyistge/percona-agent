@@ -20,10 +20,12 @@ package mrms
 import (
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/pct"
+	"time"
 )
 
 const (
-	SERVICE_NAME = "mrms"
+	SERVICE_NAME     = "mrms"
+	MONITOR_INTERVAL = 50 * time.Second
 )
 
 /**
@@ -49,7 +51,7 @@ func NewManager(logger *pct.Logger, monitor Monitor) *Manager {
 
 func (m *Manager) Start() error {
 	m.status.Update(SERVICE_NAME, "Starting")
-	if err := m.monitor.Start(); err != nil {
+	if err := m.monitor.Start(MONITOR_INTERVAL); err != nil {
 		m.logger.Warn("Failed to start %s: %s", SERVICE_NAME, err)
 		return err
 	}
