@@ -24,6 +24,7 @@ import (
 type Monitor interface {
 	Start(interval time.Duration) error
 	Stop() error
+	Status() map[string]string
 	Add(dsn string) (c chan bool, err error)
 	Remove(dsn string, c chan bool)
 	Check()

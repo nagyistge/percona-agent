@@ -47,3 +47,9 @@ func (m *MrmsMonitor) Start(interval time.Duration) error {
 func (m *MrmsMonitor) Stop() error {
 	return nil
 }
+
+func (m *MrmsMonitor) Status() (status map[string]string) {
+	return map[string]string{
+		"mrms-monitor-mock": "Idle",
+	}
+}

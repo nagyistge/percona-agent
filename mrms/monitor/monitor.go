@@ -26,6 +26,10 @@ import (
 	"time"
 )
 
+const (
+	MONITOR_NAME = "mrms-monitor"
+)
+
 type Monitor struct {
 	logger           *pct.Logger
 	mysqlConnFactory mysql.ConnectionFactory
@@ -33,15 +37,19 @@ type Monitor struct {
 	mysqlInstances map[string]*MysqlInstance
 	sync.RWMutex
 	// --
-	sync *pct.SyncChan
+	status *pct.Status
+	sync   *pct.SyncChan
 }
 
 func NewMonitor(logger *pct.Logger, mysqlConnFactory mysql.ConnectionFactory) mrms.Monitor {
 	m := &Monitor{
 		logger:           logger,
 		mysqlConnFactory: mysqlConnFactory,
-		mysqlInstances:   make(map[string]*MysqlInstance),
-		sync:             pct.NewSyncChan(),
+		// --
+		mysqlInstances: make(map[string]*MysqlInstance),
+		// --
+		status: pct.NewStatus([]string{MONITOR_NAME}),
+		sync:   pct.NewSyncChan(),
 	}
 	return m
 }
@@ -68,6 +76,10 @@ func (m *Monitor) Stop() error {
 	m.sync.Stop()
 	m.sync.Wait()
 	return nil
+}
+
+func (m *Monitor) Status() map[string]string {
+	return m.status.All()
 }
 
 func (m *Monitor) Add(dsn string) (c chan bool, err error) {
@@ -129,13 +141,22 @@ func (m *Monitor) run(interval time.Duration) {
 	m.logger.Debug("run:call")
 	defer m.logger.Debug("run:return")
 
+	// After finishing signal manager that we are done
 	defer m.sync.Done()
 
-	m.Check() // Immediately run first check
+	m.status.Update(MONITOR_NAME, "Started")
+	defer m.status.Update(MONITOR_NAME, "Stopped")
+
 	for {
+		// Immediately run first check...
+		m.status.Update(MONITOR_NAME, "Checking")
+		m.Check()
+
+		// ...and after that idle for *interval* until next check,
+		// or until monitor is stopped
+		m.status.Update(MONITOR_NAME, "Idle")
 		select {
 		case <-time.After(interval):
-			m.Check()
 		case <-m.sync.StopChan:
 			return
 		}

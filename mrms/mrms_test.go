@@ -48,6 +48,7 @@ func (s *TestSuite) SetUpSuite(t *C) {
 
 func (s *TestSuite) TestStartStop(t *C) {
 	var err error
+	var status map[string]string
 	m := mrms.NewManager(s.logger, s.mockMrmsMonitor)
 
 	/**
@@ -55,6 +56,15 @@ func (s *TestSuite) TestStartStop(t *C) {
 	 */
 	err = m.Start()
 	t.Assert(err, IsNil)
+
+	/**
+	 * Check status
+	 */
+	status = m.Status()
+	t.Assert(status, DeepEquals, map[string]string{
+		"mrms":              "Running",
+		"mrms-monitor-mock": "Idle",
+	})
 
 	/**
 	 * Stop MRMS

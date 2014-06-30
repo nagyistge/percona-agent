@@ -89,6 +89,12 @@ func (s *TestSuite) TestStartStop(t *C) {
 	err = m.Stop()
 	t.Assert(err, IsNil)
 
+	// Check status
+	status := m.Status()
+	t.Assert(status, DeepEquals, map[string]string{
+		monitor.MONITOR_NAME: "Stopped",
+	})
+
 	// Imitate MySQL restart by setting uptime to 1s (previously 5s)
 	mockConn.SetUptime(1)
 

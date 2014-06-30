@@ -80,6 +80,11 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 }
 
-func (m *Manager) Status() map[string]string {
-	return m.status.All()
+func (m *Manager) Status() (status map[string]string) {
+	status = m.status.All()
+	monitorStatus := m.monitor.Status()
+	for k, v := range monitorStatus {
+		status[k] = v
+	}
+	return status
 }
