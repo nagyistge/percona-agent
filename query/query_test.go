@@ -256,7 +256,7 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 	t.Check(status[query.SERVICE_NAME], Equals, "Running")
 }
 
-func (s *ManagerTestSuite) TestExplain(t *C) {
+func (s *ManagerTestSuite) TestExplainWithoutDb(t *C) {
 	var err error
 
 	// Create query manager
@@ -362,3 +362,114 @@ func (s *ManagerTestSuite) TestExplain(t *C) {
 	t.Assert(err, IsNil)
 	t.Assert(gotExplain, DeepEquals, expectedExplain)
 }
+
+func (s *ManagerTestSuite) TestExplainWithDb(t *C) {
+	var err error
+
+	// Create query manager
+	m := query.NewManager(s.logger, &mysql.RealConnectionFactory{}, s.rir)
+	t.Assert(m, Not(IsNil), Commentf("Make new query.Manager"))
+
+	// The agent calls mm.Start().
+	err = m.Start()
+	t.Assert(err, IsNil)
+
+	// Explain query
+	db := "information_schema"
+	q := "SELECT table_name FROM tables WHERE table_name='tables'"
+
+	expectedExplain := []proto.ExplainRow{
+		proto.ExplainRow{
+			Id: proto.NullInt64{
+				NullInt64: sql.NullInt64{
+					Int64: 1,
+					Valid: true,
+				},
+			},
+			SelectType: proto.NullString{
+				NullString: sql.NullString{
+					String: "SIMPLE",
+					Valid:  true,
+				},
+			},
+			Table: proto.NullString{
+				NullString: sql.NullString{
+					String: "tables",
+					Valid:  true,
+				},
+			},
+			CreateTable: proto.NullString{
+				NullString: sql.NullString{
+					String: "",
+					Valid:  false,
+				},
+			},
+			Type: proto.NullString{
+				NullString: sql.NullString{
+					String: "ALL",
+					Valid:  true,
+				},
+			},
+			PossibleKeys: proto.NullString{
+				NullString: sql.NullString{
+					String: "",
+					Valid:  false,
+				},
+			},
+			Key: proto.NullString{
+				NullString: sql.NullString{
+					String: "TABLE_NAME",
+					Valid:  true,
+				},
+			},
+			KeyLen: proto.NullInt64{
+				NullInt64: sql.NullInt64{
+					Int64: 0,
+					Valid: false,
+				},
+			},
+			Ref: proto.NullString{
+				NullString: sql.NullString{
+					String: "",
+					Valid:  false,
+				},
+			},
+			Rows: proto.NullInt64{
+				NullInt64: sql.NullInt64{
+					Int64: 0,
+					Valid: false,
+				},
+			},
+			Extra: proto.NullString{
+				NullString: sql.NullString{
+					String: "Using where; Skip_open_table; Scanned 1 database",
+					Valid:  true,
+				},
+			},
+		},
+	}
+
+	explainQuery := &proto.ExplainQuery{
+		ServiceInstance: s.mysqlInstance,
+		Db:              db,
+		Query:           q,
+	}
+	data, err := json.Marshal(&explainQuery)
+	t.Assert(err, IsNil)
+
+	cmd := &proto.Cmd{
+		Service: "query",
+		Cmd:     "Explain",
+		Data:    data,
+	}
+
+	gotReply := m.Handle(cmd)
+	t.Assert(gotReply, NotNil)
+	t.Assert(gotReply.Error, Equals, "")
+
+	var gotExplain []proto.ExplainRow
+	err = json.Unmarshal(gotReply.Data, &gotExplain)
+	t.Assert(err, IsNil)
+	t.Assert(gotExplain, DeepEquals, expectedExplain)
+}
+
