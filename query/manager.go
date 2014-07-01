@@ -120,7 +120,7 @@ func (m *Manager) explain(cmd *proto.Cmd) *proto.Reply {
 	}
 
 	// Run explain
-	explain, err := conn.Explain(explainQuery.Query)
+	explain, err := conn.Explain(explainQuery.Query, explainQuery.Db)
 	if err != nil {
 		return cmd.Reply(nil, fmt.Errorf("Explain failed for %s: %s", name, err))
 	}

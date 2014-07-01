@@ -52,7 +52,7 @@ func (n *NullMySQL) Close() {
 	return
 }
 
-func (n *NullMySQL) Explain(query string) (explain []proto.ExplainRow, err error) {
+func (n *NullMySQL) Explain(query string, db string) (explain []proto.ExplainRow, err error) {
 	return n.explain[query], nil
 }
 

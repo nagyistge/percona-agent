@@ -32,7 +32,7 @@ type Connector interface {
 	DSN() string
 	Connect(tries uint) error
 	Close()
-	Explain(q string) (explain []proto.ExplainRow, err error)
+	Explain(q string, db string) (explain []proto.ExplainRow, err error)
 	Set([]Query) error
 	GetGlobalVarString(varName string) string
 }
@@ -99,8 +99,23 @@ func (c *Connection) Close() {
 	}
 }
 
-func (c *Connection) Explain(q string) (explain []proto.ExplainRow, err error) {
-	rows, err := c.conn.Query(fmt.Sprintf("EXPLAIN %s", q))
+func (c *Connection) Explain(q string, db string) (explain []proto.ExplainRow, err error) {
+	// Transaction because we need to ensure USE and EXPLAIN are run in one connection
+	tx, err := c.conn.Begin()
+	defer tx.Rollback()
+	if err != nil {
+		return nil, err
+	}
+
+	// Some queries are not bound to database
+	if db != "" {
+		_, err := tx.Exec(fmt.Sprintf("USE %s", db))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	rows, err := tx.Query(fmt.Sprintf("EXPLAIN %s", q))
 	if err != nil {
 		return nil, err
 	}
