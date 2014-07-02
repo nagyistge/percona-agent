@@ -268,7 +268,7 @@ func (s *ManagerTestSuite) TestExplainWithoutDb(t *C) {
 	t.Assert(err, IsNil)
 
 	// Explain query
-	q := "SELECT 1"
+	query := "SELECT 1"
 	expectedExplain := []proto.ExplainRow{
 		proto.ExplainRow{
 			Id: proto.NullInt64{
@@ -342,7 +342,7 @@ func (s *ManagerTestSuite) TestExplainWithoutDb(t *C) {
 
 	explainQuery := &proto.ExplainQuery{
 		ServiceInstance: s.mysqlInstance,
-		Query:           q,
+		Query:           query,
 	}
 	data, err := json.Marshal(&explainQuery)
 	t.Assert(err, IsNil)
@@ -376,7 +376,7 @@ func (s *ManagerTestSuite) TestExplainWithDb(t *C) {
 
 	// Explain query
 	db := "information_schema"
-	q := "SELECT table_name FROM tables WHERE table_name='tables'"
+	query := "SELECT table_name FROM tables WHERE table_name='tables'"
 
 	expectedExplain := []proto.ExplainRow{
 		proto.ExplainRow{
@@ -452,7 +452,7 @@ func (s *ManagerTestSuite) TestExplainWithDb(t *C) {
 	explainQuery := &proto.ExplainQuery{
 		ServiceInstance: s.mysqlInstance,
 		Db:              db,
-		Query:           q,
+		Query:           query,
 	}
 	data, err := json.Marshal(&explainQuery)
 	t.Assert(err, IsNil)
@@ -472,4 +472,3 @@ func (s *ManagerTestSuite) TestExplainWithDb(t *C) {
 	t.Assert(err, IsNil)
 	t.Assert(gotExplain, DeepEquals, expectedExplain)
 }
-
