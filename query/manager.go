@@ -24,6 +24,7 @@ import (
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
+	"sync"
 )
 
 const (
@@ -36,7 +37,9 @@ type Manager struct {
 	ir          *instance.Repo
 	// --
 	running bool
-	status  *pct.Status
+	sync.Mutex
+	// --
+	status *pct.Status
 }
 
 func NewManager(logger *pct.Logger, connFactory mysql.ConnectionFactory, ir *instance.Repo) *Manager {
@@ -55,6 +58,9 @@ func NewManager(logger *pct.Logger, connFactory mysql.ConnectionFactory, ir *ins
 /////////////////////////////////////////////////////////////////////////////
 
 func (m *Manager) Start() error {
+	m.Lock()
+	defer m.Unlock()
+
 	if m.running {
 		return pct.ServiceIsRunningError{Service: SERVICE_NAME}
 	}
@@ -71,6 +77,9 @@ func (m *Manager) Stop() error {
 }
 
 func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
+	m.Lock()
+	defer m.Unlock()
+
 	m.status.UpdateRe(SERVICE_NAME, "Handling", cmd)
 	defer m.status.Update(SERVICE_NAME, "Running")
 
