@@ -25,6 +25,7 @@ import (
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/query"
+	"github.com/percona/percona-agent/query/explain"
 	"github.com/percona/percona-agent/test/mock"
 	"io/ioutil"
 	. "launchpad.net/gocheck"
@@ -131,9 +132,13 @@ func (s *ManagerTestSuite) TearDownSuite(t *C) {
 func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 	var err error
 
-	// Create query manager
 	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
-	m := query.NewManager(s.logger, mockConnFactory, s.ir)
+
+	// Create explain service
+	explainService := explain.NewExplain(s.logger, mockConnFactory, s.rir)
+
+	// Create query manager
+	m := query.NewManager(s.logger, explainService)
 	t.Assert(m, Not(IsNil), Commentf("Make new query.Manager"))
 
 	// The agent calls mm.Start().
@@ -259,8 +264,11 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 func (s *ManagerTestSuite) TestExplainWithoutDb(t *C) {
 	var err error
 
+	// Create explain service
+	explainService := explain.NewExplain(s.logger, &mysql.RealConnectionFactory{}, s.rir)
+
 	// Create query manager
-	m := query.NewManager(s.logger, &mysql.RealConnectionFactory{}, s.rir)
+	m := query.NewManager(s.logger, explainService)
 	t.Assert(m, Not(IsNil), Commentf("Make new query.Manager"))
 
 	// The agent calls mm.Start().
@@ -366,8 +374,11 @@ func (s *ManagerTestSuite) TestExplainWithoutDb(t *C) {
 func (s *ManagerTestSuite) TestExplainWithDb(t *C) {
 	var err error
 
+	// Create explain service
+	explainService := explain.NewExplain(s.logger, &mysql.RealConnectionFactory{}, s.rir)
+
 	// Create query manager
-	m := query.NewManager(s.logger, &mysql.RealConnectionFactory{}, s.rir)
+	m := query.NewManager(s.logger, explainService)
 	t.Assert(m, Not(IsNil), Commentf("Make new query.Manager"))
 
 	// The agent calls mm.Start().

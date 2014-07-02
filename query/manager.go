@@ -18,11 +18,7 @@
 package query
 
 import (
-	"encoding/json"
-	"fmt"
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/percona-agent/instance"
-	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"sync"
 )
@@ -32,9 +28,8 @@ const (
 )
 
 type Manager struct {
-	logger      *pct.Logger
-	connFactory mysql.ConnectionFactory
-	ir          *instance.Repo
+	logger  *pct.Logger
+	explain Explain
 	// --
 	running bool
 	sync.Mutex
@@ -42,11 +37,10 @@ type Manager struct {
 	status *pct.Status
 }
 
-func NewManager(logger *pct.Logger, connFactory mysql.ConnectionFactory, ir *instance.Repo) *Manager {
+func NewManager(logger *pct.Logger, explain Explain) *Manager {
 	m := &Manager{
-		logger:      logger,
-		connFactory: connFactory,
-		ir:          ir,
+		logger:  logger,
+		explain: explain,
 		// --
 		status: pct.NewStatus([]string{SERVICE_NAME}),
 	}
@@ -85,7 +79,8 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 	switch cmd.Cmd {
 	case "Explain":
-		return m.explain(cmd)
+		m.status.UpdateRe(SERVICE_NAME, "Running explain", cmd)
+		return m.explain.Get(cmd)
 	default:
 		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
@@ -97,74 +92,4 @@ func (m *Manager) Status() map[string]string {
 
 func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 	return nil, nil
-}
-
-/////////////////////////////////////////////////////////////////////////////
-// Implementation
-/////////////////////////////////////////////////////////////////////////////
-
-func (m *Manager) explain(cmd *proto.Cmd) *proto.Reply {
-	// Get explain query
-	explainQuery, err := m.getExplainQuery(cmd)
-	if err != nil {
-		return cmd.Reply(nil, err)
-	}
-
-	// The real name of the internal service, e.g. query-mysql-1:
-	name := m.getInstanceName(explainQuery.Service, explainQuery.InstanceId)
-
-	m.status.UpdateRe(SERVICE_NAME, "Running explain", cmd)
-	m.logger.Info("Running explain", name, cmd)
-
-	// Create connector to MySQL instance
-	conn, err := m.createConn(explainQuery.Service, explainQuery.InstanceId)
-	if err != nil {
-		return cmd.Reply(nil, fmt.Errorf("Unable to create connector for %s: %s", name, err))
-	}
-	defer conn.Close()
-
-	// Connect to MySQL instance
-	if err := conn.Connect(2); err != nil {
-		return cmd.Reply(nil, fmt.Errorf("Unable to connect to %s: %s", name, err))
-	}
-
-	// Run explain
-	explain, err := conn.Explain(explainQuery.Query, explainQuery.Db)
-	if err != nil {
-		return cmd.Reply(nil, fmt.Errorf("Explain failed for %s: %s", name, err))
-	}
-
-	return cmd.Reply(explain)
-}
-
-func (m *Manager) getInstanceName(service string, instanceId uint) (name string) {
-	// The real name of the internal service, e.g. query-mysql-1:
-	instanceName := m.ir.Name(service, instanceId)
-	name = fmt.Sprintf("%s-%s", SERVICE_NAME, instanceName)
-	return name
-}
-
-func (m *Manager) createConn(service string, instanceId uint) (conn mysql.Connector, err error) {
-	// Load the MySQL instance info (DSN, name, etc.).
-	mysqlIt := &proto.MySQLInstance{}
-	if err = m.ir.Get(service, instanceId, mysqlIt); err != nil {
-		return nil, err
-	}
-
-	// Create MySQL connection
-	conn = m.connFactory.Make(mysqlIt.DSN)
-
-	return conn, nil
-}
-
-func (m *Manager) getExplainQuery(cmd *proto.Cmd) (explainQuery *proto.ExplainQuery, err error) {
-	if cmd.Data == nil {
-		return nil, fmt.Errorf("%s.getExplainQuery:cmd.Data is empty", SERVICE_NAME)
-	}
-
-	if err := json.Unmarshal(cmd.Data, &explainQuery); err != nil {
-		return nil, fmt.Errorf("%s.getExplainQuery:json.Unmarshal:%s", SERVICE_NAME, err)
-	}
-
-	return explainQuery, nil
 }
