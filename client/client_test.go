@@ -24,6 +24,8 @@ import (
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
 	. "launchpad.net/gocheck"
+	"log"
+	"net"
 	"testing"
 	"time"
 )
@@ -44,10 +46,10 @@ type TestSuite struct {
 var _ = Suite(&TestSuite{})
 
 const (
-	ADDR        = "127.0.0.1:8000" // make sure this port is free
+	ADDR        = "localhost:8000" // make sure this port is free
 	URL         = "ws://" + ADDR
 	ENDPOINT    = "/"
-	WSSADDR     = "127.0.0.1:8443" // make sure this port is free
+	WSSADDR     = "localhost:8443" // make sure this port is free
 	WSSENDPOINT = "/wss/"
 	WSSURL      = "wss://" + WSSADDR + WSSENDPOINT
 )
@@ -61,7 +63,7 @@ func (s *TestSuite) SetUpSuite(t *C) {
 	s.server = new(mock.WebsocketServer)
 	go s.server.Run(ADDR, ENDPOINT)
 
-	time.Sleep(1000 * time.Millisecond)
+	time.Sleep(1 * time.Second)
 
 	links := map[string]string{"agent": URL}
 	s.api = mock.NewAPI("http://localhost", ADDR, "apikey", "uuid", links)
@@ -71,10 +73,10 @@ func (s *TestSuite) SetUpSuite(t *C) {
 	s.serverWss = new(mock.WebsocketServerWss)
 	go s.serverWss.RunWss(WSSADDR, WSSENDPOINT)
 
-	time.Sleep(1000 * time.Millisecond)
+	time.Sleep(1 * time.Second)
 
 	linksWss := map[string]string{"agent": WSSURL}
-	s.apiWss = mock.NewAPI("https://localhost", WSSADDR, "apikey", "uuid", linksWss)
+	s.apiWss = mock.NewAPI("http://localhost", WSSADDR, "apikey", "uuid", linksWss)
 }
 
 func (s *TestSuite) TearDownTest(t *C) {
@@ -393,12 +395,48 @@ func (s *TestSuite) TestChannelsAfterReconnect(t *C) {
 	t.Assert(len(data), Equals, 1)
 }
 
-func (s *TestSuite) TestSendWss(t *C) {
+func (s *TestSuite) TestDialTimeout(t *C) {
 	/**
-	 * LogRelay (logrelay/) uses "direct" interface, not send/recv chans.
+	 * This test simulates a dial timeout by listening on a port that does nothing.
+	 * The TCP connection completes, but the TLS handshake times out because the
+	 * little goroutine below does nothing after net.Listen() (normally code would
+	 * net.Accept() after listening).  To simulate a lower-level dial timeout would
+	 * require a very low-level handling of the network socket: having the port open
+	 * but not completing the TCP syn-syn+ack-ack handshake; this is too complicate,
+	 * so breaking the TLS handshake is close enough.
 	 */
+	addr := "localhost:9443"
+	url := "wss://" + addr + "/"
+	links := map[string]string{"agent": url}
+	api := mock.NewAPI("http://localhost", url, "apikey", "uuid", links)
+	wss, err := client.NewWebsocketClient(s.logger, api, "agent")
+	t.Assert(err, IsNil)
 
-	wss, err := client.NewWebsocketClient(s.logger, s.apiWss, "agent")
+	doneChan := make(chan bool, 1)
+	go func() {
+		l, err := net.Listen("tcp", addr)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer l.Close()
+		<-doneChan
+	}()
+	time.Sleep(1 * time.Second)
+
+	err = wss.ConnectOnce(2)
+	t.Check(err, NotNil)
+
+	doneChan <- true
+}
+
+func (s *TestSuite) TestWssConnection(t *C) {
+	/**
+	 * This test ensures our slighly customized wss connectio handling works,
+	 * i.e. that TLS works.  Only drawback is: client disables cert verification
+	 * because the mock ws server uses a self-signed cert, but this only happens
+	 * when the remote addr is localhost:8443, so it shouldn't affect real connections.
+	 */
+	ws, err := client.NewWebsocketClient(s.logger, s.apiWss, "agent")
 	t.Assert(err, IsNil)
 
 	// Client sends state of connection (true=connected, false=disconnected)
@@ -406,18 +444,12 @@ func (s *TestSuite) TestSendWss(t *C) {
 	connected := false
 	doneChan := make(chan bool)
 	go func() {
-		connected = <-wss.ConnectChan()
+		connected = <-ws.ConnectChan()
 		doneChan <- true
 	}()
 
-	// *websocket.DialError = &websocket.DialError{Config:(*websocket.Config)(0x18991720), Err:(*net.OpError)(0x18994300)} ("websocket.Dial wss://127.0.0.1:8443/wss/: dial tcp 127.0.0.1:8443: i/o timeout")
-	// was able to get an error here only with firewall
-	// err = wss.ConnectOnce()
-	// t.Assert(err, IsNil)
-
 	// Wait for connection in mock ws server.
-	wss.Connect()
-
+	ws.Connect()
 	c := <-mock.ClientConnectChanWss
 
 	<-doneChan
@@ -429,38 +461,12 @@ func (s *TestSuite) TestSendWss(t *C) {
 		Service: "qan",
 		Msg:     "Hello",
 	}
-	err = wss.Send(logEntry, 5)
+	err = ws.Send(logEntry, 5)
 	t.Assert(err, IsNil)
 
 	// Recv what we just sent.
 	got := test.WaitData(c.RecvChanWss)
 	t.Assert(len(got), Equals, 1)
 
-	// We're dealing with generic data.
-	m := got[0].(map[string]interface{})
-	t.Check(m["Level"], Equals, float64(2))
-	t.Check(m["Service"], Equals, "qan")
-	t.Check(m["Msg"], Equals, "Hello")
-
-	// Quick check that Conn() works.
-	conn := wss.Conn()
-	t.Check(conn, NotNil)
-
-	// Status should report connected to the proper link.
-	status := wss.Status()
-	t.Check(status, DeepEquals, map[string]string{
-		"ws":      "Connected " + WSSURL,
-		"ws-link": WSSURL,
-	})
-
-	// Disconnect should not return an error.
-	err = wss.Disconnect()
-	t.Assert(err, IsNil)
-
-	// Status should report disconnected and still the proper link.
-	status = wss.Status()
-	t.Check(status, DeepEquals, map[string]string{
-		"ws":      "Disconnected",
-		"ws-link": WSSURL,
-	})
+	ws.Conn().Close()
 }

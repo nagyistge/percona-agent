@@ -38,7 +38,7 @@ func (s *WebsocketServerWss) RunWss(addr string, endpoint string) {
 	http.Handle(endpoint, websocket.Handler(wssHandler))
 	curDir, _ := os.Getwd()
 	curDir = strings.TrimSuffix(curDir, "client")
-	if err := http.ListenAndServeTLS(addr, curDir + "test/keys/cert.pem", curDir + "test/keys/key.pem", nil); err != nil {
+	if err := http.ListenAndServeTLS(addr, curDir+"test/keys/cert.pem", curDir+"test/keys/key.pem", nil); err != nil {
 		log.Fatal("ListenAndServe:", err)
 	}
 }

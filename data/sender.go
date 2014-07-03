@@ -111,7 +111,7 @@ func (s *Sender) send() {
 	connected := false
 	var apiErr error
 	for i := 1; i <= 3; i++ {
-		if apiErr = s.client.ConnectOnce(); apiErr != nil {
+		if apiErr = s.client.ConnectOnce(10); apiErr != nil {
 			s.logger.Warn("Connect API failed:", apiErr)
 			t := int(5*rand.Float64() + 1) // [1, 5] seconds
 			time.Sleep(time.Duration(t) * time.Second)
