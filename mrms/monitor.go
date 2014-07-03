@@ -15,16 +15,17 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package mock
+package mrms
 
 import (
-	"github.com/percona/percona-agent/mysql"
+	"time"
 )
 
-type ConnectionFactory struct {
-	Conn mysql.Connector
-}
-
-func (f *ConnectionFactory) Make(dsn string) mysql.Connector {
-	return f.Conn
+type Monitor interface {
+	Start(interval time.Duration) error
+	Stop() error
+	Status() map[string]string
+	Add(dsn string) (c chan bool, err error)
+	Remove(dsn string, c chan bool)
+	Check()
 }

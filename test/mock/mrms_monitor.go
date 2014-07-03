@@ -18,13 +18,38 @@
 package mock
 
 import (
-	"github.com/percona/percona-agent/mysql"
+	"time"
 )
 
-type ConnectionFactory struct {
-	Conn mysql.Connector
+type MrmsMonitor struct {
 }
 
-func (f *ConnectionFactory) Make(dsn string) mysql.Connector {
-	return f.Conn
+func NewMrmsMonitor() *MrmsMonitor {
+	m := &MrmsMonitor{}
+	return m
+}
+
+func (m *MrmsMonitor) Add(dsn string) (c chan bool, err error) {
+	c = make(chan bool, 10)
+	return c, nil
+}
+
+func (m *MrmsMonitor) Remove(dsn string, c chan bool) {
+}
+
+func (m *MrmsMonitor) Check() {
+}
+
+func (m *MrmsMonitor) Start(interval time.Duration) error {
+	return nil
+}
+
+func (m *MrmsMonitor) Stop() error {
+	return nil
+}
+
+func (m *MrmsMonitor) Status() (status map[string]string) {
+	return map[string]string{
+		"mrms-monitor-mock": "Idle",
+	}
 }

@@ -35,6 +35,7 @@ type Connector interface {
 	Explain(q string, db string) (explain []*proto.ExplainRow, err error)
 	Set([]Query) error
 	GetGlobalVarString(varName string) string
+	Uptime() (uptime int64)
 }
 
 type Connection struct {
@@ -176,4 +177,15 @@ func (c *Connection) GetGlobalVarNumber(varName string) float64 {
 	var varValue float64
 	c.conn.QueryRow("SELECT @@GLOBAL." + varName).Scan(&varValue)
 	return varValue
+}
+
+func (c *Connection) Uptime() (uptime int64) {
+	if c.conn == nil {
+		return 0
+	}
+	// Result from SHOW STATUS includes two columns,
+	// Variable_name and Value, we ignore the first one as we need only Value
+	var varName string
+	c.conn.QueryRow("SHOW STATUS LIKE 'Uptime'").Scan(&varName, &uptime)
+	return uptime
 }
