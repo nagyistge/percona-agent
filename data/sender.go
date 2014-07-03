@@ -160,14 +160,14 @@ func (s *Sender) send() {
 		// todo: number/time/rate limit so we dont DDoS API
 		s.status.Update("data-sender", "Sending "+file)
 		if err := s.client.SendBytes(data); err != nil {
-			s.logger.Warn(err)
+			s.logger.Warn(fmt.Sprintf("Sending %s: %s", file, err))
 			continue
 		}
 
 		s.status.Update("data-sender", "Waiting for API to ack "+file)
 		resp := &proto.Response{}
 		if err := s.client.Recv(resp, 5); err != nil {
-			s.logger.Warn(err)
+			s.logger.Warn(fmt.Sprintf("Waiting for API to ack %s: %s", file, err))
 			continue
 		}
 		s.logger.Debug(fmt.Sprintf("send:resp:%+v", resp.Code))

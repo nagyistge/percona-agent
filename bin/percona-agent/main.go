@@ -35,6 +35,8 @@ import (
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/qan"
+	"github.com/percona/percona-agent/query"
+	queryService "github.com/percona/percona-agent/query/service"
 	"github.com/percona/percona-agent/sysconfig"
 	sysconfigMonitor "github.com/percona/percona-agent/sysconfig/monitor"
 	"github.com/percona/percona-agent/ticker"
@@ -250,6 +252,22 @@ func run() error {
 	}
 
 	/**
+	 * Query service
+	 */
+	explainService := queryService.NewExplain(
+		pct.NewLogger(logChan, "query"),
+		&mysql.RealConnectionFactory{},
+		itManager.Repo(),
+	)
+	queryManager := query.NewManager(
+		pct.NewLogger(logChan, "query"),
+		explainService,
+	)
+	if err := queryManager.Start(); err != nil {
+		return fmt.Errorf("Error starting query manager: %s\n", err)
+	}
+
+	/**
 	 * Query Analytics
 	 */
 
@@ -303,6 +321,7 @@ func run() error {
 		"instance":  itManager,
 		"mrms":      mrmsManager,
 		"sysconfig": sysconfigManager,
+		"query":     queryManager,
 	}
 
 	agent := agent.NewAgent(
