@@ -20,6 +20,7 @@ package monitor
 import (
 	"github.com/percona/percona-agent/pct"
 	"sync"
+	"time"
 )
 
 type Subscribers struct {
@@ -40,7 +41,7 @@ func (s *Subscribers) Add() (c chan bool) {
 	s.Lock()
 	defer s.Unlock()
 
-	c = make(chan bool, 5)
+	c = make(chan bool, 1)
 	s.subscribers[c] = true
 
 	return c
@@ -69,7 +70,7 @@ func (s *Subscribers) Notify() {
 	for c, _ := range s.subscribers {
 		select {
 		case c <- true:
-		default:
+		case <-time.After(1 * time.Second):
 			s.logger.Warn("Unable to notify subscriber")
 		}
 	}
