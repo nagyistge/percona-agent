@@ -119,8 +119,8 @@ func (s *ManagerTestSuite) TestExplainWithoutDb(t *C) {
 
 	// Explain query
 	query := "SELECT 1"
-	expectedExplain := []proto.ExplainRow{
-		proto.ExplainRow{
+	expectedExplain := []*proto.ExplainRow{
+		&proto.ExplainRow{
 			Id: proto.NullInt64{
 				NullInt64: sql.NullInt64{
 					Int64: 1,
@@ -207,7 +207,7 @@ func (s *ManagerTestSuite) TestExplainWithoutDb(t *C) {
 	t.Assert(gotReply, NotNil)
 	t.Assert(gotReply.Error, Equals, "")
 
-	var gotExplain []proto.ExplainRow
+	var gotExplain []*proto.ExplainRow
 	err = json.Unmarshal(gotReply.Data, &gotExplain)
 	t.Assert(err, IsNil)
 	t.Assert(gotExplain, DeepEquals, expectedExplain)
@@ -221,8 +221,8 @@ func (s *ManagerTestSuite) TestExplainWithDb(t *C) {
 	db := "information_schema"
 	query := "SELECT table_name FROM tables WHERE table_name='tables'"
 
-	expectedExplain := []proto.ExplainRow{
-		proto.ExplainRow{
+	expectedExplain := []*proto.ExplainRow{
+		&proto.ExplainRow{
 			Id: proto.NullInt64{
 				NullInt64: sql.NullInt64{
 					Int64: 1,
@@ -310,7 +310,7 @@ func (s *ManagerTestSuite) TestExplainWithDb(t *C) {
 	t.Assert(gotReply, NotNil)
 	t.Assert(gotReply.Error, Equals, "")
 
-	var gotExplain []proto.ExplainRow
+	var gotExplain []*proto.ExplainRow
 	err = json.Unmarshal(gotReply.Data, &gotExplain)
 	t.Assert(err, IsNil)
 	t.Assert(gotExplain, DeepEquals, expectedExplain)
