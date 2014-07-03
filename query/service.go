@@ -21,6 +21,6 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 )
 
-type Explain interface {
-	Get(cmd *proto.Cmd) (reply *proto.Reply)
+type Service interface {
+	Handle(cmd *proto.Cmd) (reply *proto.Reply)
 }

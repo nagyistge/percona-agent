@@ -34,7 +34,7 @@ import (
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/qan"
 	"github.com/percona/percona-agent/query"
-	"github.com/percona/percona-agent/query/explain"
+	queryService "github.com/percona/percona-agent/query/service"
 	"github.com/percona/percona-agent/sysconfig"
 	sysconfigMonitor "github.com/percona/percona-agent/sysconfig/monitor"
 	"github.com/percona/percona-agent/ticker"
@@ -231,7 +231,7 @@ func run() error {
 	/**
 	 * Query service
 	 */
-	explainService := explain.NewExplain(
+	explainService := queryService.NewExplain(
 		pct.NewLogger(logChan, "query"),
 		&mysql.RealConnectionFactory{},
 		itManager.Repo(),

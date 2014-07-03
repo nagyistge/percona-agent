@@ -12,10 +12,10 @@
    GNU Affero General Public License for more details.
 
    You should have received a copy of the GNU Affero General Public License
-   along with this prograe.  If not, see <http://www.gnu.org/licenses/>
+   along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package explain
+package service
 
 import (
 	"encoding/json"
@@ -49,7 +49,7 @@ func NewExplain(logger *pct.Logger, connFactory mysql.ConnectionFactory, ir *ins
 // Interface
 /////////////////////////////////////////////////////////////////////////////
 
-func (e *Explain) Get(cmd *proto.Cmd) *proto.Reply {
+func (e *Explain) Handle(cmd *proto.Cmd) *proto.Reply {
 	// Get explain query
 	explainQuery, err := e.getExplainQuery(cmd)
 	if err != nil {

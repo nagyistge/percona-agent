@@ -29,7 +29,7 @@ const (
 
 type Manager struct {
 	logger  *pct.Logger
-	explain Explain
+	explain Service
 	// --
 	running bool
 	sync.Mutex
@@ -37,7 +37,7 @@ type Manager struct {
 	status *pct.Status
 }
 
-func NewManager(logger *pct.Logger, explain Explain) *Manager {
+func NewManager(logger *pct.Logger, explain Service) *Manager {
 	m := &Manager{
 		logger:  logger,
 		explain: explain,
@@ -80,7 +80,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	switch cmd.Cmd {
 	case "Explain":
 		m.status.UpdateRe(SERVICE_NAME, "Running explain", cmd)
-		return m.explain.Get(cmd)
+		return m.explain.Handle(cmd)
 	default:
 		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
