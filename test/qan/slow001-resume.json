@@ -104,6 +104,7 @@
    "TotalQueries": 1,
    "Example": {
     "QueryTime": 2,
+    "Db": "sakila",
     "Query": "select sleep(2) from test.n"
    }
   }

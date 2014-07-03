@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/pct"
 	"time"
 )
@@ -31,6 +32,7 @@ type Connector interface {
 	DSN() string
 	Connect(tries uint) error
 	Close()
+	Explain(q string, db string) (explain []*proto.ExplainRow, err error)
 	Set([]Query) error
 	GetGlobalVarString(varName string) string
 }
@@ -95,6 +97,55 @@ func (c *Connection) Close() {
 		c.conn.Close()
 		c.conn = nil
 	}
+}
+
+func (c *Connection) Explain(q string, db string) (explain []*proto.ExplainRow, err error) {
+	// Transaction because we need to ensure USE and EXPLAIN are run in one connection
+	tx, err := c.conn.Begin()
+	defer tx.Rollback()
+	if err != nil {
+		return nil, err
+	}
+
+	// Some queries are not bound to database
+	if db != "" {
+		_, err := tx.Exec(fmt.Sprintf("USE %s", db))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	rows, err := tx.Query(fmt.Sprintf("EXPLAIN %s", q))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		explainRow := &proto.ExplainRow{}
+		err = rows.Scan(
+			&explainRow.Id,
+			&explainRow.SelectType,
+			&explainRow.Table,
+			&explainRow.Type,
+			&explainRow.PossibleKeys,
+			&explainRow.Key,
+			&explainRow.KeyLen,
+			&explainRow.Ref,
+			&explainRow.Rows,
+			&explainRow.Extra,
+		)
+		if err != nil {
+			return nil, err
+		}
+		explain = append(explain, explainRow)
+	}
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return explain, nil // success
 }
 
 func (c *Connection) Set(queries []Query) error {
