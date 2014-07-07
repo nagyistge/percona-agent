@@ -116,26 +116,55 @@ func (c *Connection) Explain(q string, db string) (explain []*proto.ExplainRow, 
 		}
 	}
 
-	rows, err := tx.Query(fmt.Sprintf("EXPLAIN %s", q))
+	// Partitions are introduced since MySQL 5.1
+	// We can simply run EXPLAIN /*!50100 PARTITIONS*/ to get this column when it's available
+	// without prior check for MySQL version.
+	rows, err := tx.Query(fmt.Sprintf("EXPLAIN /*!50100 PARTITIONS*/ %s", q))
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
+	// Go rows.Scan() expects exact number of columns
+	// so when number of columns is undefined then the easiest way to
+	// overcome this problem is to count received number of columns
+	// With 'partitions' it is 11 columns
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+	hasPartitions := len(columns) == 11
+
 	for rows.Next() {
 		explainRow := &proto.ExplainRow{}
-		err = rows.Scan(
-			&explainRow.Id,
-			&explainRow.SelectType,
-			&explainRow.Table,
-			&explainRow.Type,
-			&explainRow.PossibleKeys,
-			&explainRow.Key,
-			&explainRow.KeyLen,
-			&explainRow.Ref,
-			&explainRow.Rows,
-			&explainRow.Extra,
-		)
+		if hasPartitions {
+			err = rows.Scan(
+				&explainRow.Id,
+				&explainRow.SelectType,
+				&explainRow.Table,
+				&explainRow.Partitions, // Since MySQL 5.1
+				&explainRow.Type,
+				&explainRow.PossibleKeys,
+				&explainRow.Key,
+				&explainRow.KeyLen,
+				&explainRow.Ref,
+				&explainRow.Rows,
+				&explainRow.Extra,
+			)
+		} else {
+			err = rows.Scan(
+				&explainRow.Id,
+				&explainRow.SelectType,
+				&explainRow.Table,
+				&explainRow.Type,
+				&explainRow.PossibleKeys,
+				&explainRow.Key,
+				&explainRow.KeyLen,
+				&explainRow.Ref,
+				&explainRow.Rows,
+				&explainRow.Extra,
+			)
+		}
 		if err != nil {
 			return nil, err
 		}

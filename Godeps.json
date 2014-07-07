@@ -16,7 +16,7 @@
 		},
 		{
 			"Pkg": "github.com/percona/cloud-protocol",
-			"Rev": "e0e6ba7e5c8d155f4cf2db0278c91453ca5da9c0"
+			"Rev": "c05a8fa32f4b1af5ca9397f7c2957b6457b3afa5"
 		},
 		{
 			"Pkg": "github.com/percona/mysql-log-parser",
