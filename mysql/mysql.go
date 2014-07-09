@@ -21,7 +21,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/arnehormann/mysql"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/pct"
 	"time"
@@ -240,33 +240,13 @@ func (c *Connection) classicExplain(tx *sql.Tx, query string) (classicExplain []
 
 func (c *Connection) jsonExplain(tx *sql.Tx, query string) (jsonExplain string, err error) {
 	// EXPLAIN in JSON format is introduced since MySQL 5.6.5
-	// NOTE about below implementation: https://github.com/go-sql-driver/mysql/issues/253
-	rows, err := tx.Query(fmt.Sprintf("EXPLAIN /*!50605 FORMAT=JSON*/ %s", query))
-	if err != nil {
-		return "", err
-	}
-	defer rows.Close()
-
-	columns, err := rows.Columns()
-	if err != nil {
-		return "", err
-	}
-	isJSON := len(columns) == 1
-
-	// If result is not a json, then json format is not supported
-	// In such case we return empty string, without error
-	if !isJSON {
-		return "", nil
+	err = tx.QueryRow(fmt.Sprintf("/*!50605 EXPLAIN FORMAT=JSON %s*/", query)).Scan(&jsonExplain)
+	switch err {
+	case nil:
+		return jsonExplain, nil // json format supported
+	case sql.ErrNoRows:
+		return "", nil // json format unsupported
 	}
 
-	if !rows.Next() {
-		return "", fmt.Errorf("Error when getting row with EXPLAIN FORMAT=JSON")
-	}
-
-	// Fetch json
-	err = rows.Scan(&jsonExplain)
-	if err != nil {
-		return "", err
-	}
-	return jsonExplain, nil
+	return "", err // failure
 }

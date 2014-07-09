@@ -20,7 +20,7 @@ package mysql
 import (
 	"database/sql"
 	"fmt"
-	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/arnehormann/mysql"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mm"
 	"github.com/percona/percona-agent/mysql"
