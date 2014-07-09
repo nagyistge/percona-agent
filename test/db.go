@@ -19,7 +19,7 @@ package test
 
 import (
 	"database/sql"
-	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/arnehormann/mysql"
 )
 
 func ConnectMySQL(dsn string) (*sql.DB, error) {

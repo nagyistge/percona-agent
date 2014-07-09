@@ -19,16 +19,21 @@ package mock
 
 import (
 	"database/sql"
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mysql"
 )
 
 type NullMySQL struct {
-	set []mysql.Query
+	set         []mysql.Query
+	explain     map[string]*proto.ExplainResult
+	uptime      int64
+	uptimeCount uint
 }
 
 func NewNullMySQL() *NullMySQL {
 	n := &NullMySQL{
-		set: []mysql.Query{},
+		set:     []mysql.Query{},
+		explain: make(map[string]*proto.ExplainResult),
 	}
 	return n
 }
@@ -49,6 +54,14 @@ func (n *NullMySQL) Close() {
 	return
 }
 
+func (n *NullMySQL) Explain(query string, db string) (explain *proto.ExplainResult, err error) {
+	return n.explain[query], nil
+}
+
+func (n *NullMySQL) SetExplain(query string, explain *proto.ExplainResult) {
+	n.explain[query] = explain
+}
+
 func (n *NullMySQL) Set(queries []mysql.Query) error {
 	for _, q := range queries {
 		n.set = append(n.set, q)
@@ -66,4 +79,17 @@ func (n *NullMySQL) Reset() {
 
 func (n *NullMySQL) GetGlobalVarString(varName string) string {
 	return ""
+}
+
+func (n *NullMySQL) Uptime() int64 {
+	n.uptimeCount++
+	return n.uptime
+}
+
+func (n *NullMySQL) GetUptimeCount() uint {
+	return n.uptimeCount
+}
+
+func (n *NullMySQL) SetUptime(uptime int64) {
+	n.uptime = uptime
 }

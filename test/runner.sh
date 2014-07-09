@@ -23,25 +23,24 @@ do
     shift
 done
 
-# Update dependencies (Yeah, no comments about this code)
-thisPkg=$(go list -e)
+# Update dependencies
 if [ "$UPDATE_DEPENDENCIES" == "yes" ]; then
-    nonStdDeps=$(go list -f '{{join .Deps "\n"}}{{"\n"}}{{join .XTestImports "\n"}}' ./... | xargs go list -e -f '{{if not .Standard}}{{.ImportPath}}{{end}}' | sort | uniq)
-    extDeps=$(echo -e "$nonStdDeps" | grep -v "$thisPkg") # extDeps = nonStdDeps - thisPkg*
-    # Run `go get -u` only if there are any dependencies
-    if [ "$extDeps" != "" ]; then
-        echo -e "$extDeps" | xargs go get -v -u
-    fi
+    go build -o build/agent-build/agent-build github.com/percona/percona-agent/build/agent-build
+    build/agent-build/agent-build -build=false
+
+    VENDOR_DIR="$PWD/vendor"
+    export GOPATH="$VENDOR_DIR:$GOPATH"
 fi
 
 failures="/tmp/go-test-failures.$$"
 coverreport="/tmp/go-test-coverreport.$$"
 
+thisPkg=$(go list -e)
 touch "$coverreport"
 echo >> "$coverreport"
 # Find test files ending with _test.go but ignore those starting with _
 # also ignore hidden files and directories
-for dir in $(find . \( ! -path '*/\.*' \) -type f \( -name '*_test.go' ! -name '_*' \) -print | xargs -n1 dirname | sort | uniq); do
+for dir in $(find . \( ! -path '*/\.*' \) -type f \( -name '*_test.go' ! -name '_*' \) -not -path "./vendor/*" -print | xargs -n1 dirname | sort | uniq); do
    header="Package ${thisPkg}/${dir#./}"
    echo "$header"
    (

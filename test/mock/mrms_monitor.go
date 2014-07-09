@@ -15,30 +15,41 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package pct
+package mock
 
 import (
-	"code.google.com/p/go.net/websocket"
-	"github.com/percona/cloud-protocol/proto"
+	"time"
 )
 
-type WebsocketClient interface {
-	Connect()
-	ConnectOnce(timeout uint) error
-	Disconnect() error
-	Status() map[string]string
+type MrmsMonitor struct {
+}
 
-	// Channel interface:
-	Start()
-	Stop()
-	SendChan() chan *proto.Reply
-	RecvChan() chan *proto.Cmd
-	ConnectChan() chan bool
-	ErrorChan() chan error
+func NewMrmsMonitor() *MrmsMonitor {
+	m := &MrmsMonitor{}
+	return m
+}
 
-	// Direct interface:
-	SendBytes(data []byte) error
-	Send(data interface{}, timeout uint) error
-	Recv(data interface{}, timeout uint) error
-	Conn() *websocket.Conn
+func (m *MrmsMonitor) Add(dsn string) (c chan bool, err error) {
+	c = make(chan bool, 10)
+	return c, nil
+}
+
+func (m *MrmsMonitor) Remove(dsn string, c chan bool) {
+}
+
+func (m *MrmsMonitor) Check() {
+}
+
+func (m *MrmsMonitor) Start(interval time.Duration) error {
+	return nil
+}
+
+func (m *MrmsMonitor) Stop() error {
+	return nil
+}
+
+func (m *MrmsMonitor) Status() (status map[string]string) {
+	return map[string]string{
+		"mrms-monitor-mock": "Idle",
+	}
 }

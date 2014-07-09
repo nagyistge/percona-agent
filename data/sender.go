@@ -111,7 +111,7 @@ func (s *Sender) send() {
 	connected := false
 	var apiErr error
 	for i := 1; i <= 3; i++ {
-		if apiErr = s.client.ConnectOnce(); apiErr != nil {
+		if apiErr = s.client.ConnectOnce(10); apiErr != nil {
 			s.logger.Warn("Connect API failed:", apiErr)
 			t := int(5*rand.Float64() + 1) // [1, 5] seconds
 			time.Sleep(time.Duration(t) * time.Second)
@@ -160,14 +160,14 @@ func (s *Sender) send() {
 		// todo: number/time/rate limit so we dont DDoS API
 		s.status.Update("data-sender", "Sending "+file)
 		if err := s.client.SendBytes(data); err != nil {
-			s.logger.Warn(err)
+			s.logger.Warn(fmt.Sprintf("Sending %s: %s", file, err))
 			continue
 		}
 
 		s.status.Update("data-sender", "Waiting for API to ack "+file)
 		resp := &proto.Response{}
 		if err := s.client.Recv(resp, 5); err != nil {
-			s.logger.Warn(err)
+			s.logger.Warn(fmt.Sprintf("Waiting for API to ack %s: %s", file, err))
 			continue
 		}
 		s.logger.Debug(fmt.Sprintf("send:resp:%+v", resp.Code))

@@ -24,6 +24,7 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/instance"
+	"github.com/percona/percona-agent/mrms"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/ticker"
@@ -40,22 +41,26 @@ type Manager struct {
 	workerFactory WorkerFactory
 	spool         data.Spooler
 	im            *instance.Repo
+	mrm           mrms.Monitor
 	// --
-	config         *Config
-	running        bool
-	mux            *sync.RWMutex // guards config and running
-	tickChan       chan time.Time
-	mysqlConn      mysql.Connector
-	iter           IntervalIter
-	workers        map[Worker]*Interval
-	workersMux     *sync.RWMutex
-	workerDoneChan chan Worker
-	status         *pct.Status
-	sync           *pct.SyncChan
-	oldSlowLogs    map[string]int
+	config          *Config
+	running         bool
+	mux             *sync.RWMutex // guards config and running
+	tickChan        chan time.Time
+	restartChan     chan bool
+	mysqlConn       mysql.Connector
+	lastUptime      int64
+	lastUptimeCheck time.Time
+	iter            IntervalIter
+	workers         map[Worker]*Interval
+	workersMux      *sync.RWMutex
+	workerDoneChan  chan Worker
+	status          *pct.Status
+	sync            *pct.SyncChan
+	oldSlowLogs     map[string]int
 }
 
-func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock ticker.Manager, iterFactory IntervalIterFactory, workerFactory WorkerFactory, spool data.Spooler, im *instance.Repo) *Manager {
+func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock ticker.Manager, iterFactory IntervalIterFactory, workerFactory WorkerFactory, spool data.Spooler, im *instance.Repo, mrm mrms.Monitor) *Manager {
 	m := &Manager{
 		logger:        logger,
 		mysqlFactory:  mysqlFactory,
@@ -64,6 +69,7 @@ func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock 
 		workerFactory: workerFactory,
 		spool:         spool,
 		im:            im,
+		mrm:           mrm,
 		// --
 		mux:            new(sync.RWMutex),
 		tickChan:       make(chan time.Time),
@@ -230,6 +236,10 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 	return []proto.AgentConfig{config}, nil
 }
 
+func (m *Manager) GetRestartChan() chan bool {
+	return m.restartChan
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // Implementation
 /////////////////////////////////////////////////////////////////////////////
@@ -363,12 +373,46 @@ func (m *Manager) run(config Config) {
 					m.oldSlowLogs[file] = cnt - 1
 				}
 			}
+		case <-m.restartChan:
+			if err := m.mysqlSetup(config); err != nil {
+				m.logger.Warn("Failed to setup MySQL after server being restarted: %s", err)
+				continue
+			}
 		case <-m.sync.StopChan:
 			m.logger.Debug("run:stop")
 			m.sync.Graceful()
 			return
 		}
 	}
+}
+
+func (m *Manager) createMysqlConn(service string, instanceId uint) error {
+	// Get MySQL instance info from service instance database (SID).
+	mysqlIt := &proto.MySQLInstance{}
+	if err := m.im.Get(service, instanceId, mysqlIt); err != nil {
+		return err
+	}
+
+	// Connect to MySQL and set global vars to config/enable slow log.
+	m.mysqlConn = m.mysqlFactory.Make(mysqlIt.DSN)
+
+	return nil // success
+}
+
+func (m *Manager) mysqlSetup(config Config) error {
+	if err := m.mysqlConn.Connect(2); err != nil {
+		m.logger.Warn("Unable to connect to MySQL: %s", err)
+		return err
+	}
+	defer m.mysqlConn.Close()
+
+	// Set global vars to config/enable slow log.
+	if err := m.mysqlConn.Set(config.Start); err != nil {
+		m.logger.Error("Unable to configure MySQL: %s", err)
+		return err
+	}
+
+	return nil // success
 }
 
 // @goroutine[1]
@@ -455,22 +499,21 @@ func (m *Manager) start(config *Config) error {
 		return err
 	}
 
-	// Get MySQL instance info from service instance database (SID).
-	mysqlIt := &proto.MySQLInstance{}
-	if err := m.im.Get(config.Service, config.InstanceId, mysqlIt); err != nil {
+	// Create mysql connection which is needed for enabling slow log
+	// and for slow log rotation
+	if err := m.createMysqlConn(config.Service, config.InstanceId); err != nil {
 		return err
 	}
 
-	// Connect to MySQL and set global vars to config/enable slow log.
-	m.mysqlConn = m.mysqlFactory.Make(mysqlIt.DSN)
-	if err := m.mysqlConn.Connect(2); err != nil {
+	// Register restart chan
+	restartChan, err := m.mrm.Add(m.mysqlConn.DSN())
+	if err != nil {
 		return err
 	}
-	defer m.mysqlConn.Close()
+	m.restartChan = restartChan
 
-	if err := m.mysqlConn.Set(config.Start); err != nil {
-		return err
-	}
+	// Configure mysql to enable slow log monitoring
+	m.mysqlSetup(*config)
 
 	// Add a tickChan to the clock so it receives ticks at intervals.
 	m.clock.Add(m.tickChan, config.Interval, true)
@@ -507,6 +550,7 @@ func (m *Manager) stop() error {
 	m.iter.Stop()
 	m.iter = nil
 	m.clock.Remove(m.tickChan)
+	m.mrm.Remove(m.mysqlConn.DSN(), m.restartChan)
 
 	// Stop run()/qan-log-parser.
 	m.sync.Stop()

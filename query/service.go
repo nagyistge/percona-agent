@@ -15,30 +15,12 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package pct
+package query
 
 import (
-	"code.google.com/p/go.net/websocket"
 	"github.com/percona/cloud-protocol/proto"
 )
 
-type WebsocketClient interface {
-	Connect()
-	ConnectOnce(timeout uint) error
-	Disconnect() error
-	Status() map[string]string
-
-	// Channel interface:
-	Start()
-	Stop()
-	SendChan() chan *proto.Reply
-	RecvChan() chan *proto.Cmd
-	ConnectChan() chan bool
-	ErrorChan() chan error
-
-	// Direct interface:
-	SendBytes(data []byte) error
-	Send(data interface{}, timeout uint) error
-	Recv(data interface{}, timeout uint) error
-	Conn() *websocket.Conn
+type Service interface {
+	Handle(cmd *proto.Cmd) (reply *proto.Reply)
 }

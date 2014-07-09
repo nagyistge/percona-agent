@@ -180,6 +180,7 @@ type ManagerTestSuite struct {
 	dsn           string
 	realmysql     *mysql.Connection
 	nullmysql     *mock.NullMySQL
+	mrmsMonitor   *mock.MrmsMonitor
 	reset         []mysql.Query
 	logChan       chan *proto.LogEntry
 	logger        *pct.Logger
@@ -214,6 +215,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	}
 
 	s.nullmysql = mock.NewNullMySQL()
+	s.mrmsMonitor = mock.NewMrmsMonitor()
 
 	s.logChan = make(chan *proto.LogEntry, 1000)
 	s.logger = pct.NewLogger(s.logChan, "qan-test")
@@ -288,7 +290,7 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	 * Create and start manager.
 	 */
 
-	m := qan.NewManager(s.logger, &mysql.RealConnectionFactory{}, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im)
+	m := qan.NewManager(s.logger, &mysql.RealConnectionFactory{}, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im, s.mrmsMonitor)
 	t.Assert(m, NotNil)
 
 	// Create the qan config.
@@ -359,7 +361,7 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	reply = m.Handle(cmd)
 	t.Check(reply.Error, Not(Equals), "")
 
-	// It should add a tickChan for the interval iter.
+	// It should add a tickChan for the interval iter
 	t.Check(s.clock.Added, HasLen, 1)
 	t.Check(s.clock.Removed, HasLen, 0)
 
@@ -435,7 +437,7 @@ func (s *ManagerTestSuite) TestStartServiceFast(t *C) {
 	s.clock.Eta = 180
 	defer func() { s.clock.Eta = 0 }()
 
-	m := qan.NewManager(s.logger, &mysql.RealConnectionFactory{}, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im)
+	m := qan.NewManager(s.logger, &mysql.RealConnectionFactory{}, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im, s.mrmsMonitor)
 	t.Assert(m, NotNil)
 
 	config := &qan.Config{
@@ -494,6 +496,122 @@ func (s *ManagerTestSuite) TestStartServiceFast(t *C) {
 	t.Assert(reply.Error, Equals, "")
 }
 
+func (s *ManagerTestSuite) TestMySQLRestart(t *C) {
+
+	/**
+	 * Create and start manager.
+	 */
+
+	mockConn := mock.NewNullMySQL()
+	mockConnFactory := &mock.ConnectionFactory{
+		Conn: mockConn,
+	}
+	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im, s.mrmsMonitor)
+	t.Assert(m, NotNil)
+
+	// Create the qan config.
+	tmpFile := fmt.Sprintf("/tmp/qan_test.TestStartService.%d", os.Getpid())
+	defer func() { os.Remove(tmpFile) }()
+	config := &qan.Config{
+		ServiceInstance: s.mysqlInstance,
+		Start: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=0.123"},
+			mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+		},
+		Stop: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
+		},
+		Interval:          300,        // 5 min
+		MaxSlowLogSize:    1073741824, // 1 GiB
+		RemoveOldSlowLogs: true,
+		ExampleQueries:    true,
+		MaxWorkers:        2,
+		WorkerRunTime:     600, // 10 min
+	}
+
+	// Create the StartService cmd which contains the qan config.
+	now := time.Now()
+	qanConfig, _ := json.Marshal(config)
+	cmd := &proto.Cmd{
+		Ts:        now,
+		AgentUuid: "123",
+		Service:   "agent",
+		Cmd:       "StartService",
+		Data:      qanConfig,
+	}
+
+	// Have the service manager start the qa service
+	reply := m.Handle(cmd)
+
+	// It should start without error.
+	t.Assert(reply.Error, Equals, "")
+
+	// And status should be "Running" and "Idle".
+	test.WaitStatus(1, m, "qan-log-parser", "Idle (0 of 2 running)")
+	status := m.Status()
+	t.Check(status["qan"], Equals, "Running")
+	t.Check(status["qan-log-parser"], Equals, "Idle (0 of 2 running)")
+
+	// Stop QAN when we are done
+	cmd = &proto.Cmd{
+		Ts:        now,
+		AgentUuid: "123",
+		Service:   "",
+		Cmd:       "StopService",
+	}
+	defer m.Handle(cmd)
+
+	/**
+	 * QAN should configure mysql at startup
+	 */
+
+	expectedQueries := []mysql.Query{
+		mysql.Query{
+			Set:    "SET GLOBAL slow_query_log=OFF",
+			Verify: "",
+			Expect: "",
+		},
+		mysql.Query{
+			Set:    "SET GLOBAL long_query_time=0.123",
+			Verify: "",
+			Expect: "",
+		},
+		mysql.Query{
+			Set:    "SET GLOBAL slow_query_log=ON",
+			Verify: "",
+			Expect: "",
+		},
+	}
+	var gotQueries []mysql.Query
+
+	gotQueries = mockConn.GetSet()
+	t.Assert(gotQueries, DeepEquals, expectedQueries, Commentf("QAN didn't configure MySQL on startup"))
+
+	/**
+	 * QAN should also check periodically if MySQL was restarted
+	 * if so then it should configure it again
+	 */
+	gotQueries = nil
+	mockConn.Set(nil)
+	m.GetRestartChan() <- true // imitate mysql restart
+	timeout := time.After(1 * time.Second)
+LOOP:
+	for {
+		select {
+		case <-timeout:
+			break LOOP
+		default:
+			gotQueries = mockConn.GetSet()
+			if gotQueries != nil {
+				break LOOP
+			}
+		}
+	}
+	t.Assert(gotQueries, DeepEquals, expectedQueries, Commentf("MySQL was restarted, but QAN didn't reconfigure MySQL"))
+}
+
 func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(t *C) {
 
 	// Clean up files that may interfere with test.
@@ -521,7 +639,7 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(t *C) {
 
 	// See TestStartService() for description of these startup tasks.
 	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
-	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im)
+	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im, s.mrmsMonitor)
 	if m == nil {
 		t.Fatal("Create qan.Manager")
 	}
@@ -643,7 +761,7 @@ func (s *ManagerTestSuite) TestRotateSlowLog(t *C) {
 	}
 
 	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
-	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im)
+	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im, s.mrmsMonitor)
 	if m == nil {
 		t.Fatal("Create qan.Manager")
 	}
@@ -780,7 +898,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(t *C) {
 
 	// Create and start manager with mock workers.
 	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
-	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, f, s.spool, s.im)
+	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, f, s.spool, s.im, s.mrmsMonitor)
 	if m == nil {
 		t.Fatal("Create qan.Manager")
 	}
@@ -910,7 +1028,7 @@ func (s *ManagerTestSuite) TestRecoverWorkerPanic(t *C) {
 	w1 := mock.NewQanWorker("qan-worker-1", w1StopChan, nil, nil, true)
 	f := mock.NewQanWorkerFactory([]*mock.QanWorker{w1})
 	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
-	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, f, s.spool, s.im)
+	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, f, s.spool, s.im, s.mrmsMonitor)
 	t.Assert(m, NotNil)
 
 	config := &qan.Config{
@@ -974,7 +1092,7 @@ GET_LOG:
 
 func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
-	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im)
+	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im, s.mrmsMonitor)
 	t.Assert(m, NotNil)
 
 	config := &qan.Config{
@@ -1035,7 +1153,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 
 func (s *ManagerTestSuite) TestStart(t *C) {
 	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
-	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im)
+	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im, s.mrmsMonitor)
 	t.Assert(m, NotNil)
 
 	// Starting qan without a config does nothing but start the qan manager.

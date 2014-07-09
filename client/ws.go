@@ -19,10 +19,12 @@ package client
 
 import (
 	"code.google.com/p/go.net/websocket"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/pct"
+	"net"
 	"sync"
 	"time"
 )
@@ -104,7 +106,7 @@ func (c *WebsocketClient) Connect() {
 		c.status.Update(c.name, "Connect wait")
 		time.Sleep(c.backoff.Wait())
 
-		if err := c.ConnectOnce(); err != nil {
+		if err := c.ConnectOnce(10); err != nil {
 			c.logger.Warn(err)
 			continue
 		}
@@ -121,7 +123,7 @@ func (c *WebsocketClient) Connect() {
 	}
 }
 
-func (c *WebsocketClient) ConnectOnce() error {
+func (c *WebsocketClient) ConnectOnce(timeout uint) error {
 	c.logger.Debug("ConnectOnce:call")
 	defer c.logger.Debug("ConnectOnce:return")
 
@@ -135,9 +137,8 @@ func (c *WebsocketClient) ConnectOnce() error {
 	}
 	config.Header.Add("X-Percona-API-Key", c.api.ApiKey())
 
-	c.logger.Debug("ConnectOnce:websocket.DialConfig")
 	c.status.Update(c.name, "Connecting "+link)
-	conn, err := websocket.DialConfig(config)
+	conn, err := c.dialTimeout(config, timeout)
 	if err != nil {
 		return err
 	}
@@ -149,6 +150,52 @@ func (c *WebsocketClient) ConnectOnce() error {
 	c.status.Update(c.name, "Connected "+link)
 
 	return nil
+}
+
+func (c *WebsocketClient) dialTimeout(config *websocket.Config, timeout uint) (ws *websocket.Conn, err error) {
+	c.logger.Debug("ConnectOnce:websocket.DialConfig:call")
+	defer c.logger.Debug("ConnectOnce:websocket.DialConfig:return")
+
+	// websocket.Dial() does not handle timeouts, so we use lower-level net package
+	// to create connection with timeout, then create ws client with the net connection.
+
+	if config.Location == nil {
+		return nil, websocket.ErrBadWebSocketLocation
+	}
+	if config.Origin == nil {
+		return nil, websocket.ErrBadWebSocketOrigin
+	}
+
+	var conn net.Conn
+	switch config.Location.Scheme {
+	case "ws":
+		conn, err = net.DialTimeout("tcp", config.Location.Host, time.Duration(timeout)*time.Second)
+	case "wss":
+		dialer := &net.Dialer{
+			Timeout: time.Duration(timeout) * time.Second,
+		}
+		if config.Location.Host == "localhost:8443" {
+			// Test uses mock ws server which uses self-signed cert which causes Go to throw
+			// an error like "x509: certificate signed by unknown authority".  This disables
+			// the cert verification for testing.
+			config.TlsConfig = &tls.Config{
+				InsecureSkipVerify: true,
+			}
+		}
+		conn, err = tls.DialWithDialer(dialer, "tcp", config.Location.Host, config.TlsConfig)
+	default:
+		err = websocket.ErrBadScheme
+	}
+	if err != nil {
+		return nil, &websocket.DialError{config, err}
+	}
+
+	ws, err = websocket.NewClient(config, conn)
+	if err != nil {
+		return nil, err
+	}
+
+	return ws, nil
 }
 
 func (c *WebsocketClient) Disconnect() error {

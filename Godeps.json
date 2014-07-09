@@ -1,5 +1,5 @@
 {
-	"GoVersion": "go1.2",
+	"GoVersion": "go1.3",
 	"Deps":
 	[
 		{
@@ -11,16 +11,16 @@
 			"Rev": "3b39664481b57ad99d34c86bd64090c28eacc7a1"
 		},
 		{
-			"Pkg": "github.com/go-sql-driver/mysql",
-			"Rev": "a732e14c62dde3285440047bba97581bc472ae18"
+			"Pkg": "github.com/arnehormann/mysql",
+			"Rev": "72f69004a94c69d0d49452ae8bf9deb3ef675f53"
 		},
 		{
 			"Pkg": "github.com/percona/cloud-protocol",
-			"Rev": "259762cd00476430e180d9677c949700ad132088"
+			"Rev": "c05a8fa32f4b1af5ca9397f7c2957b6457b3afa5"
 		},
 		{
 			"Pkg": "github.com/percona/mysql-log-parser",
-			"Rev": "eda1895c9615e968b9cd8d51147f388ed22c121c"
+			"Rev": "aaf2ea1f034ede37bb34fbaa46fa7ecdd00be5cd"
 		},
 		{
 			"Pkg": "github.com/petar/GoLLRB",

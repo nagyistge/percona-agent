@@ -21,7 +21,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/arnehormann/mysql"
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/pct"
 	"time"
 )
@@ -31,8 +32,10 @@ type Connector interface {
 	DSN() string
 	Connect(tries uint) error
 	Close()
+	Explain(q string, db string) (explain *proto.ExplainResult, err error)
 	Set([]Query) error
 	GetGlobalVarString(varName string) string
+	Uptime() (uptime int64)
 }
 
 type Connection struct {
@@ -97,6 +100,40 @@ func (c *Connection) Close() {
 	}
 }
 
+func (c *Connection) Explain(query string, db string) (explain *proto.ExplainResult, err error) {
+	// Transaction because we need to ensure USE and EXPLAIN are run in one connection
+	tx, err := c.conn.Begin()
+	defer tx.Rollback()
+	if err != nil {
+		return nil, err
+	}
+
+	// Some queries are not bound to database
+	if db != "" {
+		_, err := tx.Exec(fmt.Sprintf("USE %s", db))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	classicExplain, err := c.classicExplain(tx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	jsonExplain, err := c.jsonExplain(tx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	explain = &proto.ExplainResult{
+		Classic: classicExplain,
+		JSON:    jsonExplain,
+	}
+
+	return explain, nil
+}
+
 func (c *Connection) Set(queries []Query) error {
 	if c.conn == nil {
 		return errors.New("Not connected")
@@ -125,4 +162,91 @@ func (c *Connection) GetGlobalVarNumber(varName string) float64 {
 	var varValue float64
 	c.conn.QueryRow("SELECT @@GLOBAL." + varName).Scan(&varValue)
 	return varValue
+}
+
+func (c *Connection) Uptime() (uptime int64) {
+	if c.conn == nil {
+		return 0
+	}
+	// Result from SHOW STATUS includes two columns,
+	// Variable_name and Value, we ignore the first one as we need only Value
+	var varName string
+	c.conn.QueryRow("SHOW STATUS LIKE 'Uptime'").Scan(&varName, &uptime)
+	return uptime
+}
+
+func (c *Connection) classicExplain(tx *sql.Tx, query string) (classicExplain []*proto.ExplainRow, err error) {
+	// Partitions are introduced since MySQL 5.1
+	// We can simply run EXPLAIN /*!50100 PARTITIONS*/ to get this column when it's available
+	// without prior check for MySQL version.
+	rows, err := tx.Query(fmt.Sprintf("EXPLAIN /*!50100 PARTITIONS*/ %s", query))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Go rows.Scan() expects exact number of columns
+	// so when number of columns is undefined then the easiest way to
+	// overcome this problem is to count received number of columns
+	// With 'partitions' it is 11 columns
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+	hasPartitions := len(columns) == 11
+
+	for rows.Next() {
+		explainRow := &proto.ExplainRow{}
+		if hasPartitions {
+			err = rows.Scan(
+				&explainRow.Id,
+				&explainRow.SelectType,
+				&explainRow.Table,
+				&explainRow.Partitions, // Since MySQL 5.1
+				&explainRow.Type,
+				&explainRow.PossibleKeys,
+				&explainRow.Key,
+				&explainRow.KeyLen,
+				&explainRow.Ref,
+				&explainRow.Rows,
+				&explainRow.Extra,
+			)
+		} else {
+			err = rows.Scan(
+				&explainRow.Id,
+				&explainRow.SelectType,
+				&explainRow.Table,
+				&explainRow.Type,
+				&explainRow.PossibleKeys,
+				&explainRow.Key,
+				&explainRow.KeyLen,
+				&explainRow.Ref,
+				&explainRow.Rows,
+				&explainRow.Extra,
+			)
+		}
+		if err != nil {
+			return nil, err
+		}
+		classicExplain = append(classicExplain, explainRow)
+	}
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return classicExplain, nil
+}
+
+func (c *Connection) jsonExplain(tx *sql.Tx, query string) (jsonExplain string, err error) {
+	// EXPLAIN in JSON format is introduced since MySQL 5.6.5
+	err = tx.QueryRow(fmt.Sprintf("/*!50605 EXPLAIN FORMAT=JSON %s*/", query)).Scan(&jsonExplain)
+	switch err {
+	case nil:
+		return jsonExplain, nil // json format supported
+	case sql.ErrNoRows:
+		return "", nil // json format unsupported
+	}
+
+	return "", err // failure
 }

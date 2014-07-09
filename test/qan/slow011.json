@@ -428,6 +428,7 @@
    "TotalQueries": 1,
    "Example": {
     "QueryTime": 0.000165,
+    "Db": "maindb",
     "Query": "INSERT INTO foo VALUES (NULL, 3)"
    }
   },
@@ -644,6 +645,7 @@
    "TotalQueries": 2,
    "Example": {
      "QueryTime": 0.000237,
+     "Db": "maindb",
      "Query": "SELECT foo FROM bar WHERE id=2"
     }
    }

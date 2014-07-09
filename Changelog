@@ -1,5 +1,12 @@
 percona-agent Changelog
 
+v1.0.4 released 2014-07-09
+
+  * PCT-629: Agent running but not connected
+  * PCT-637: Query Analytics does not handle MySQL restart
+  * PCT-671: Add support for real-time EXPLAIN to agent
+  * PCT-697: Agent is running but PCT says it's not
+
 v1.0.3 released 2014-06-04
 
   * PCT-617: Installer fails with "dial tcp: i/o timeout" error on CentOS and Fedora
