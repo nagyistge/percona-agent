@@ -12,6 +12,17 @@ percona-agent must be installed _and_ ran as root.
 1. Extract the tarball.
 1. Run the `install` script.
 
+Updating the Agent
+------------------
+
+Until we finsh implementing automatic self-update, updating the agent is a manual but quick and easy process.  As root:
+
+1. [Download the latest version of percona-agent](http://www.percona.com/downloads/percona-agent/LATEST/) to your server and extract the tarball.
+3. Run `service percona-agent stop`.  Make sure `percona-agent` is no longer running and that `/usr/local/percona/percona-agent.pid` was removed.  (There's currently a bug that sometimes causes the PID file not to be removed.)
+4. Copy `bin/percona-agent` from the extracted tarball to `/usr/local/percona/percona-agent/bin`.
+5. Run `/usr/local/percona/percona-agent/bin/percona-agent -version` to verify the new version.
+6. Run `service percona-agent start`.
+
 System Requirements
 -------------------
 
@@ -30,7 +41,7 @@ System Requirements
 
 ### Query Analytics
  * Agent and MySQL running on the same server
- * MySQL user account with `SUPER` and `USAGE` privileges
+ * MySQL user account with `SUPER`, `USAGE`, and `SELECT` privileges
 
 Supported Platforms and Versions
 --------------------------------
@@ -51,4 +62,4 @@ If you're a Percona Support customer, get help through the [Percona Customer Por
 
 For bugs, please create an issue at https://jira.percona.com.
 
-For everything else, email us at `cloud-tools` at our domain (percona.com).
+For everything else, please ask, share, and help others on the [Percona Cloud Tools Community Forum](http://www.percona.com/forums/questions-discussions/percona-cloud-tools).

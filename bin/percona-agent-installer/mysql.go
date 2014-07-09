@@ -33,7 +33,7 @@ func MakeGrant(dsn mysql.DSN, user string, pass string) string {
 	} else if dsn.Hostname == "127.0.0.1" {
 		host = "127.0.0.1"
 	}
-	return fmt.Sprintf("GRANT SUPER, PROCESS, USAGE ON *.* TO '%s'@'%s' IDENTIFIED BY '%s'", user, host, pass)
+	return fmt.Sprintf("GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO '%s'@'%s' IDENTIFIED BY '%s'", user, host, pass)
 }
 
 func (i *Installer) doMySQL(def *mysql.DSN) (dsn mysql.DSN, err error) {
