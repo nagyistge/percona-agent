@@ -85,7 +85,7 @@ func (c *WebsocketClient) Connect() {
 	c.connected = true
 }
 
-func (c *WebsocketClient) ConnectOnce() error {
+func (c *WebsocketClient) ConnectOnce(timeout uint) error {
 	c.TraceChan <- "ConnectOnce"
 	c.mux.Lock()
 	defer c.mux.Unlock()
