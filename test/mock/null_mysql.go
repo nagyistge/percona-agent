@@ -25,7 +25,7 @@ import (
 
 type NullMySQL struct {
 	set         []mysql.Query
-	explain     map[string][]*proto.ExplainRow
+	explain     map[string]*proto.ExplainResult
 	uptime      int64
 	uptimeCount uint
 }
@@ -33,7 +33,7 @@ type NullMySQL struct {
 func NewNullMySQL() *NullMySQL {
 	n := &NullMySQL{
 		set:     []mysql.Query{},
-		explain: make(map[string][]*proto.ExplainRow),
+		explain: make(map[string]*proto.ExplainResult),
 	}
 	return n
 }
@@ -54,11 +54,11 @@ func (n *NullMySQL) Close() {
 	return
 }
 
-func (n *NullMySQL) Explain(query string, db string) (explain []*proto.ExplainRow, err error) {
+func (n *NullMySQL) Explain(query string, db string) (explain *proto.ExplainResult, err error) {
 	return n.explain[query], nil
 }
 
-func (n *NullMySQL) SetExplain(query string, explain []*proto.ExplainRow) {
+func (n *NullMySQL) SetExplain(query string, explain *proto.ExplainResult) {
 	n.explain[query] = explain
 }
 

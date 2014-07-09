@@ -21,7 +21,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/arnehormann/mysql"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/pct"
 	"time"
@@ -32,7 +32,7 @@ type Connector interface {
 	DSN() string
 	Connect(tries uint) error
 	Close()
-	Explain(q string, db string) (explain []*proto.ExplainRow, err error)
+	Explain(q string, db string) (explain *proto.ExplainResult, err error)
 	Set([]Query) error
 	GetGlobalVarString(varName string) string
 	Uptime() (uptime int64)
@@ -100,7 +100,7 @@ func (c *Connection) Close() {
 	}
 }
 
-func (c *Connection) Explain(q string, db string) (explain []*proto.ExplainRow, err error) {
+func (c *Connection) Explain(query string, db string) (explain *proto.ExplainResult, err error) {
 	// Transaction because we need to ensure USE and EXPLAIN are run in one connection
 	tx, err := c.conn.Begin()
 	defer tx.Rollback()
@@ -116,10 +116,70 @@ func (c *Connection) Explain(q string, db string) (explain []*proto.ExplainRow, 
 		}
 	}
 
+	classicExplain, err := c.classicExplain(tx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	jsonExplain, err := c.jsonExplain(tx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	explain = &proto.ExplainResult{
+		Classic: classicExplain,
+		JSON:    jsonExplain,
+	}
+
+	return explain, nil
+}
+
+func (c *Connection) Set(queries []Query) error {
+	if c.conn == nil {
+		return errors.New("Not connected")
+	}
+	for _, query := range queries {
+		if _, err := c.conn.Exec(query.Set); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Connection) GetGlobalVarString(varName string) string {
+	if c.conn == nil {
+		return ""
+	}
+	var varValue string
+	c.conn.QueryRow("SELECT @@GLOBAL." + varName).Scan(&varValue)
+	return varValue
+}
+
+func (c *Connection) GetGlobalVarNumber(varName string) float64 {
+	if c.conn == nil {
+		return 0
+	}
+	var varValue float64
+	c.conn.QueryRow("SELECT @@GLOBAL." + varName).Scan(&varValue)
+	return varValue
+}
+
+func (c *Connection) Uptime() (uptime int64) {
+	if c.conn == nil {
+		return 0
+	}
+	// Result from SHOW STATUS includes two columns,
+	// Variable_name and Value, we ignore the first one as we need only Value
+	var varName string
+	c.conn.QueryRow("SHOW STATUS LIKE 'Uptime'").Scan(&varName, &uptime)
+	return uptime
+}
+
+func (c *Connection) classicExplain(tx *sql.Tx, query string) (classicExplain []*proto.ExplainRow, err error) {
 	// Partitions are introduced since MySQL 5.1
 	// We can simply run EXPLAIN /*!50100 PARTITIONS*/ to get this column when it's available
 	// without prior check for MySQL version.
-	rows, err := tx.Query(fmt.Sprintf("EXPLAIN /*!50100 PARTITIONS*/ %s", q))
+	rows, err := tx.Query(fmt.Sprintf("EXPLAIN /*!50100 PARTITIONS*/ %s", query))
 	if err != nil {
 		return nil, err
 	}
@@ -168,53 +228,25 @@ func (c *Connection) Explain(q string, db string) (explain []*proto.ExplainRow, 
 		if err != nil {
 			return nil, err
 		}
-		explain = append(explain, explainRow)
+		classicExplain = append(classicExplain, explainRow)
 	}
 	err = rows.Err()
 	if err != nil {
 		return nil, err
 	}
 
-	return explain, nil // success
+	return classicExplain, nil
 }
 
-func (c *Connection) Set(queries []Query) error {
-	if c.conn == nil {
-		return errors.New("Not connected")
+func (c *Connection) jsonExplain(tx *sql.Tx, query string) (jsonExplain string, err error) {
+	// EXPLAIN in JSON format is introduced since MySQL 5.6.5
+	err = tx.QueryRow(fmt.Sprintf("/*!50605 EXPLAIN FORMAT=JSON %s*/", query)).Scan(&jsonExplain)
+	switch err {
+	case nil:
+		return jsonExplain, nil // json format supported
+	case sql.ErrNoRows:
+		return "", nil // json format unsupported
 	}
-	for _, query := range queries {
-		if _, err := c.conn.Exec(query.Set); err != nil {
-			return err
-		}
-	}
-	return nil
-}
 
-func (c *Connection) GetGlobalVarString(varName string) string {
-	if c.conn == nil {
-		return ""
-	}
-	var varValue string
-	c.conn.QueryRow("SELECT @@GLOBAL." + varName).Scan(&varValue)
-	return varValue
-}
-
-func (c *Connection) GetGlobalVarNumber(varName string) float64 {
-	if c.conn == nil {
-		return 0
-	}
-	var varValue float64
-	c.conn.QueryRow("SELECT @@GLOBAL." + varName).Scan(&varValue)
-	return varValue
-}
-
-func (c *Connection) Uptime() (uptime int64) {
-	if c.conn == nil {
-		return 0
-	}
-	// Result from SHOW STATUS includes two columns,
-	// Variable_name and Value, we ignore the first one as we need only Value
-	var varName string
-	c.conn.QueryRow("SHOW STATUS LIKE 'Uptime'").Scan(&varName, &uptime)
-	return uptime
+	return "", err // failure
 }

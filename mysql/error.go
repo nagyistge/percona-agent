@@ -1,7 +1,7 @@
 package mysql
 
 import (
-	"github.com/go-sql-driver/mysql"
+	"github.com/arnehormann/mysql"
 )
 
 func MySQLErrorCode(err error) uint16 {

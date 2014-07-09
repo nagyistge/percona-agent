@@ -190,6 +190,7 @@ func (s *ManagerTestSuite) TestExplainWithoutDb(t *C) {
 				},
 			},
 		},
+		JSON: "{\n  \"query_block\": {\n    \"select_id\": 1,\n    \"table\": {\n      \"message\": \"No tables used\"\n    }\n  }\n}",
 	}
 
 	explainQuery := &proto.ExplainQuery{
@@ -294,6 +295,7 @@ func (s *ManagerTestSuite) TestExplainWithDb(t *C) {
 				},
 			},
 		},
+		JSON: "{\n  \"query_block\": {\n    \"select_id\": 1,\n    \"table\": {\n      \"table_name\": \"tables\",\n      \"access_type\": \"ALL\",\n      \"key\": \"TABLE_NAME\",\n      \"skip_open_table\": true,\n      \"scanned_databases\": \"1\",\n      \"attached_condition\": \"(`information_schema`.`tables`.`TABLE_NAME` = 'tables')\"\n    }\n  }\n}",
 	}
 
 	explainQuery := &proto.ExplainQuery{

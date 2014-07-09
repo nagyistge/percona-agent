@@ -79,11 +79,7 @@ func (e *Explain) Handle(cmd *proto.Cmd) *proto.Reply {
 		return cmd.Reply(nil, fmt.Errorf("Explain failed for %s: %s", name, err))
 	}
 
-	explainResult := &proto.ExplainResult{
-		Classic: explain,
-	}
-
-	return cmd.Reply(explainResult)
+	return cmd.Reply(explain)
 }
 
 /////////////////////////////////////////////////////////////////////////////
