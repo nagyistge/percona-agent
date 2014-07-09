@@ -47,11 +47,11 @@ func NewDataClient(dataChan chan []byte, respChan chan interface{}) *DataClient 
 }
 
 func (c *DataClient) Connect() {
-	c.ConnectOnce()
+	c.ConnectOnce(0)
 	return
 }
 
-func (c *DataClient) ConnectOnce() error {
+func (c *DataClient) ConnectOnce(timeout uint) error {
 	if c.testConnectChan != nil {
 		// Wait for test to let user/agent connect.
 		select {

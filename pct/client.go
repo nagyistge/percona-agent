@@ -24,7 +24,7 @@ import (
 
 type WebsocketClient interface {
 	Connect()
-	ConnectOnce() error
+	ConnectOnce(timeout uint) error
 	Disconnect() error
 	Status() map[string]string
 

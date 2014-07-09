@@ -24,6 +24,8 @@ import (
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
 	. "launchpad.net/gocheck"
+	"log"
+	"net"
 	"testing"
 	"time"
 )
@@ -33,18 +35,23 @@ import (
 func Test(t *testing.T) { TestingT(t) }
 
 type TestSuite struct {
-	logChan chan *proto.LogEntry
-	logger  *pct.Logger
-	server  *mock.WebsocketServer
-	api     *mock.API
+	logChan   chan *proto.LogEntry
+	logger    *pct.Logger
+	server    *mock.WebsocketServer
+	api       *mock.API
+	serverWss *mock.WebsocketServerWss
+	apiWss    *mock.API
 }
 
 var _ = Suite(&TestSuite{})
 
 const (
-	ADDR     = "127.0.0.1:8000" // make sure this port is free
-	URL      = "ws://" + ADDR
-	ENDPOINT = "/"
+	ADDR        = "localhost:8000" // make sure this port is free
+	URL         = "ws://" + ADDR
+	ENDPOINT    = "/"
+	WSSADDR     = "localhost:8443" // make sure this port is free
+	WSSENDPOINT = "/wss/"
+	WSSURL      = "wss://" + WSSADDR + WSSENDPOINT
 )
 
 func (s *TestSuite) SetUpSuite(t *C) {
@@ -55,16 +62,30 @@ func (s *TestSuite) SetUpSuite(t *C) {
 	mock.RecvChan = make(chan interface{}, 5)
 	s.server = new(mock.WebsocketServer)
 	go s.server.Run(ADDR, ENDPOINT)
-	time.Sleep(100 * time.Millisecond)
+
+	time.Sleep(1 * time.Second)
 
 	links := map[string]string{"agent": URL}
 	s.api = mock.NewAPI("http://localhost", ADDR, "apikey", "uuid", links)
+
+	mock.SendChanWss = make(chan interface{}, 5)
+	mock.RecvChanWss = make(chan interface{}, 5)
+	s.serverWss = new(mock.WebsocketServerWss)
+	go s.serverWss.RunWss(WSSADDR, WSSENDPOINT)
+
+	time.Sleep(1 * time.Second)
+
+	linksWss := map[string]string{"agent": WSSURL}
+	s.apiWss = mock.NewAPI("http://localhost", WSSADDR, "apikey", "uuid", linksWss)
 }
 
 func (s *TestSuite) TearDownTest(t *C) {
 	// Disconnect all clients.
 	for _, c := range mock.Clients {
 		mock.DisconnectClient(c)
+	}
+	for _, c := range mock.ClientsWss {
+		mock.DisconnectClientWss(c)
 	}
 }
 
@@ -372,4 +393,80 @@ func (s *TestSuite) TestChannelsAfterReconnect(t *C) {
 	ws.SendChan() <- reply
 	data = test.WaitData(c.RecvChan)
 	t.Assert(len(data), Equals, 1)
+}
+
+func (s *TestSuite) TestDialTimeout(t *C) {
+	/**
+	 * This test simulates a dial timeout by listening on a port that does nothing.
+	 * The TCP connection completes, but the TLS handshake times out because the
+	 * little goroutine below does nothing after net.Listen() (normally code would
+	 * net.Accept() after listening).  To simulate a lower-level dial timeout would
+	 * require a very low-level handling of the network socket: having the port open
+	 * but not completing the TCP syn-syn+ack-ack handshake; this is too complicate,
+	 * so breaking the TLS handshake is close enough.
+	 */
+	addr := "localhost:9443"
+	url := "wss://" + addr + "/"
+	links := map[string]string{"agent": url}
+	api := mock.NewAPI("http://localhost", url, "apikey", "uuid", links)
+	wss, err := client.NewWebsocketClient(s.logger, api, "agent")
+	t.Assert(err, IsNil)
+
+	doneChan := make(chan bool, 1)
+	go func() {
+		l, err := net.Listen("tcp", addr)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer l.Close()
+		<-doneChan
+	}()
+	time.Sleep(1 * time.Second)
+
+	err = wss.ConnectOnce(2)
+	t.Check(err, NotNil)
+
+	doneChan <- true
+}
+
+func (s *TestSuite) TestWssConnection(t *C) {
+	/**
+	 * This test ensures our slighly customized wss connectio handling works,
+	 * i.e. that TLS works.  Only drawback is: client disables cert verification
+	 * because the mock ws server uses a self-signed cert, but this only happens
+	 * when the remote addr is localhost:8443, so it shouldn't affect real connections.
+	 */
+	ws, err := client.NewWebsocketClient(s.logger, s.apiWss, "agent")
+	t.Assert(err, IsNil)
+
+	// Client sends state of connection (true=connected, false=disconnected)
+	// on its ConnectChan.
+	connected := false
+	doneChan := make(chan bool)
+	go func() {
+		connected = <-ws.ConnectChan()
+		doneChan <- true
+	}()
+
+	// Wait for connection in mock ws server.
+	ws.Connect()
+	c := <-mock.ClientConnectChanWss
+
+	<-doneChan
+	t.Check(connected, Equals, true)
+
+	// Send a log entry.
+	logEntry := &proto.LogEntry{
+		Level:   2,
+		Service: "qan",
+		Msg:     "Hello",
+	}
+	err = ws.Send(logEntry, 5)
+	t.Assert(err, IsNil)
+
+	// Recv what we just sent.
+	got := test.WaitData(c.RecvChanWss)
+	t.Assert(len(got), Equals, 1)
+
+	ws.Conn().Close()
 }
