@@ -24,7 +24,7 @@ import (
 	"github.com/percona/percona-agent/sysconfig"
 	"github.com/percona/percona-agent/sysconfig/mysql"
 	"github.com/percona/percona-agent/test"
-	. "launchpad.net/gocheck"
+	. "gopkg.in/check.v1"
 	"os"
 	"testing"
 	"time"

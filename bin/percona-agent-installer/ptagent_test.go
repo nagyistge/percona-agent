@@ -22,8 +22,8 @@ import (
 	i "github.com/percona/percona-agent/bin/percona-agent-installer"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/test"
+	. "gopkg.in/check.v1"
 	"io/ioutil"
-	. "launchpad.net/gocheck"
 )
 
 type PTAgentTestSuite struct {

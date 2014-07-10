@@ -26,7 +26,7 @@ import (
 	mysqlConn "github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test"
-	. "launchpad.net/gocheck"
+	. "gopkg.in/check.v1"
 	"os"
 	"testing"
 	"time"
