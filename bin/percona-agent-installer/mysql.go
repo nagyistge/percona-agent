@@ -19,7 +19,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/mewpkg/gopass"
+	//"github.com/mewpkg/gopass"
 	"github.com/percona/percona-agent/mysql"
 	"os/user"
 	"path/filepath"
@@ -114,7 +114,9 @@ CONNECT_MYSQL:
 
 		var password string
 		if creating {
-			password, err = gopass.GetPass("MySQL password: ")
+			// @todo: stty: standard input: Inappropriate ioctl for device
+			//password, err = gopass.GetPass("MySQL password: ")
+			password, err = i.term.PromptString("MySQL password", dsn.Password)
 		} else {
 			password, err = i.term.PromptString("MySQL password", dsn.Password)
 		}

@@ -64,47 +64,7 @@ func NewInstaller(term *Terminal, basedir string, api pct.APIConnector, agentCon
 }
 
 func (i *Installer) Run() error {
-
-	/**
-	 * Check for pt-agent, upgrade if found.
-	 */
-
 	var ptagentDSN *mysql.DSN
-	ptagentUpgrade := false
-	ptagentConf := "/root/.pt-agent.conf"
-	if pct.FileExists(ptagentConf) {
-		fmt.Println("Found pt-agent, upgrading and removing because it is no longer supported...")
-		ptagentUpgrade = true
-
-		// Stop pt-agent
-		if err := StopPTAgent(); err != nil {
-			fmt.Printf("Error stopping pt-agent: %s\n\n", err)
-			fmt.Println("WARNING: pt-agent must be stopped before installing percona-agent.  " +
-				"Please verify that pt-agent is not running and has been removed from cron.  " +
-				"Enter 'Y' to confirm and continue installing percona-agent.")
-			ok, err := i.term.PromptBool("pt-agent has stopped?", "N")
-			if err != nil {
-				return err
-			}
-			if !ok {
-				return fmt.Errorf("Failed to stop pt-agent")
-			}
-		}
-
-		// Get its settings (API key, UUID, etc.).
-		agent, dsn, err := GetPTAgentSettings(ptagentConf)
-		if err != nil {
-			return fmt.Errorf("Error upgrading pt-agent: %s", err)
-		}
-		if agent.ApiKey != "" {
-			i.agentConfig.ApiKey = agent.ApiKey
-		}
-		if agent.AgentUuid != "" {
-			i.agentConfig.AgentUuid = agent.AgentUuid
-			fmt.Printf("Upgrading pt-agent %s...\n", agent.AgentUuid)
-		}
-		ptagentDSN = dsn
-	}
 
 	/**
 	 * Get the API key.
@@ -311,16 +271,7 @@ VERIFY_API_KEY:
 	 * Create agent with initial service configs.
 	 */
 
-	if ptagentUpgrade {
-		agent, err := i.updateAgent(i.agentConfig.AgentUuid)
-		if err != nil {
-			return err
-		}
-		fmt.Println("pt-agent upgraded to percona-agent")
-		if err := i.writeConfigs(agent, configs); err != nil {
-			return fmt.Errorf("Upgraded pt-agent but failed to write percona-agent configs: %s", err)
-		}
-	} else if i.flags["create-agent"] {
+	if i.flags["create-agent"] {
 		agent, err := i.createAgent(configs)
 		if err != nil {
 			return err
@@ -332,15 +283,6 @@ VERIFY_API_KEY:
 		}
 	} else {
 		fmt.Println("Not creating agent (-create-agent=false)")
-	}
-
-	/**
-	 * Remove pt-agent if upgrading.
-	 */
-
-	if ptagentUpgrade {
-		RemovePTAgent(ptagentConf)
-		fmt.Println("pt-agent removed")
 	}
 
 	return nil // success

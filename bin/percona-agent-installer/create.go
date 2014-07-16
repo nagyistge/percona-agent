@@ -119,7 +119,7 @@ func (i *Installer) createServerInstance() (*proto.ServerInstance, error) {
 		return nil, fmt.Errorf("Failed to get new server instance (status code %d)", code)
 	}
 	if err := json.Unmarshal(data, si); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("err: %s, data: %s", err, data)
 	}
 	return si, nil
 }
