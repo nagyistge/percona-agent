@@ -119,7 +119,7 @@ func (i *Installer) createServerInstance() (*proto.ServerInstance, error) {
 		return nil, fmt.Errorf("Failed to get new server instance (status code %d)", code)
 	}
 	if err := json.Unmarshal(data, si); err != nil {
-		return nil, fmt.Errorf("err: %s, data: %s", err, data)
+		return nil, fmt.Errorf("Failed to parse server instance entity: %s", err)
 	}
 	return si, nil
 }
@@ -180,7 +180,7 @@ func (i *Installer) createMySQLInstance(dsn mysql.DSN) (*proto.MySQLInstance, er
 		return nil, fmt.Errorf("Failed to get new MySQL instance (status code %d)", code)
 	}
 	if err := json.Unmarshal(data, mi); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Failed to parse MySQL instance entity: %s", err)
 	}
 	return mi, nil
 }
@@ -235,7 +235,7 @@ func (i *Installer) createAgent(configs []proto.AgentConfig) (*proto.Agent, erro
 		return nil, fmt.Errorf("Failed to get new agent (status code %d)", code)
 	}
 	if err := json.Unmarshal(data, agent); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Failed to parse agent entity: %s", err)
 	}
 	return agent, nil
 }
