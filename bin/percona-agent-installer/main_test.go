@@ -18,18 +18,17 @@
 package main_test
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
-	"io"
+	"github.com/percona/percona-agent/test/cmdtest"
 	. "launchpad.net/gocheck"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
+	"regexp"
 	"testing"
-	"time"
 )
 
 func Test(t *testing.T) { TestingT(t) }
@@ -58,11 +57,11 @@ func (s *MainTestSuite) TestWrongApiKey(t *C) {
 	defer ts.Close()
 	cmd := exec.Command(
 		"./bin/percona-agent-installer/installer",
-		"--basedir", s.basedir,
-		"--api-host", ts.URL,
+		"-basedir="+s.basedir,
+		"-api-host="+ts.URL,
 	)
 
-	cmdTest := NewCmdTest(cmd)
+	cmdTest := cmdtest.NewCmdTest(cmd)
 
 	if err := cmd.Start(); err != nil {
 		log.Fatal(err)
@@ -88,12 +87,12 @@ func (s *MainTestSuite) TestWrongApiKey(t *C) {
 	t.Assert(err, ErrorMatches, "exit status 1")
 }
 
-func (s *MainTestSuite) TestBasicInstall(t *C) {
-	serverInstance := proto.ServerInstance{
+func (s *MainTestSuite) TestDefaultInstall(t *C) {
+	serverInstance := &proto.ServerInstance{
 		Id:       10,
 		Hostname: "localhost",
 	}
-	mysqlInstance := proto.MySQLInstance{
+	mysqlInstance := &proto.MySQLInstance{
 		Id:       10,
 		Hostname: "localhost",
 		DSN:      "",
@@ -111,52 +110,31 @@ func (s *MainTestSuite) TestBasicInstall(t *C) {
 			"log":  "ws://localhost:8000/agents/" + agentUuid + "/log",
 		},
 	}
-	url := ""
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/ping" {
-			w.WriteHeader(http.StatusOK)
-		} else if r.URL.Path == "/instances/server" {
-			w.Header().Set("Location", fmt.Sprintf("%s/instances/server/%d", url, serverInstance.Id))
-			w.WriteHeader(http.StatusCreated)
-		} else if r.URL.Path == fmt.Sprintf("/instances/server/%d", serverInstance.Id) {
-			w.WriteHeader(http.StatusOK)
-			data, _ := json.Marshal(&serverInstance)
-			w.Write(data)
-		} else if r.URL.Path == "/instances/mysql" {
-			w.Header().Set("Location", fmt.Sprintf("%s/instances/mysql/%d", url, mysqlInstance.Id))
-			w.WriteHeader(http.StatusCreated)
-		} else if r.URL.Path == fmt.Sprintf("/instances/mysql/%d", mysqlInstance.Id) {
-			w.WriteHeader(http.StatusOK)
-			data, _ := json.Marshal(&mysqlInstance)
-			w.Write(data)
-		} else if r.URL.Path == "/configs/mm/default-server" {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{ "Service": "server", "InstanceId": 0, "Collect": 10, "Report": 60 }`))
-		} else if r.URL.Path == "/configs/mm/default-mysql" {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{ "Service": "mysql", "InstanceId": 0, "Collect": 1, "Report": 60, "Status": {}, "UserStats": false }`))
-		} else if r.URL.Path == "/configs/sysconfig/default-mysql" {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{ "Service": "mysql", "InstanceId": 0, "Report": 3600 }`))
-		} else if r.URL.Path == "/agents" {
-			w.Header().Set("Location", fmt.Sprintf("%s/agents/%s", url, agent.Uuid))
-			w.WriteHeader(http.StatusCreated)
-		} else if r.URL.Path == fmt.Sprintf("/agents/%s", agentUuid) {
-			w.WriteHeader(http.StatusOK)
-			data, _ := json.Marshal(&agent)
-			w.Write(data)
-		}
 
-	}))
-	url = ts.URL
+	// Create fake http server
+	sm := NewServeMuxTest()
+	ts := httptest.NewServer(sm)
 	defer ts.Close()
+
+	// Register required mock http handlers
+	sm.appendPing()
+	sm.appendInstancesServer(ts.URL, serverInstance)
+	sm.appendInstancesServerId(serverInstance)
+	sm.appendInstancesMysql(ts.URL, mysqlInstance)
+	sm.appendInstancesMysqlId(mysqlInstance)
+	sm.appendConfigsMmDefaultServer()
+	sm.appendConfigsMmDefaultMysql()
+	sm.appendSysconfigDefaultMysql()
+	sm.appendAgents(ts.URL, agent)
+	sm.appendAgentsUuid(agent)
+
 	cmd := exec.Command(
 		"./bin/percona-agent-installer/installer",
-		"--basedir", s.basedir,
-		"--api-host", ts.URL,
+		"-basedir="+s.basedir,
+		"-api-host="+ts.URL,
 	)
 
-	cmdTest := NewCmdTest(cmd)
+	cmdTest := cmdtest.NewCmdTest(cmd)
 
 	if err := cmd.Start(); err != nil {
 		log.Fatal(err)
@@ -193,8 +171,9 @@ func (s *MainTestSuite) TestBasicInstall(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
 
-	//t.Check(cmdTest.ReadLine(), Equals, "Agent MySQL user: percona-agent:0xc2080a23f02596996162@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
-	cmdTest.ReadLine() // @todo ^
+	re := regexp.MustCompile("0x[^@]+")
+	lineWithoutPassword := re.ReplaceAllString(cmdTest.ReadLine(), "<pass>") // @todo read pass hash from db
+	t.Check(lineWithoutPassword, Equals, "Agent MySQL user: percona-agent:<pass>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, mysqlInstance.Hostname, mysqlInstance.Id))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", agent.Uuid))
@@ -205,76 +184,349 @@ func (s *MainTestSuite) TestBasicInstall(t *C) {
 	t.Assert(err, IsNil)
 }
 
-type CmdTest struct {
-	reader io.Reader
-	stdin  io.WriteCloser
-	stop   chan bool
-	output <-chan string
+func (s *MainTestSuite) TestDefaultInstallWithFlagOldPasswordsTrue(t *C) {
+	serverInstance := &proto.ServerInstance{
+		Id:       10,
+		Hostname: "localhost",
+	}
+	mysqlInstance := &proto.MySQLInstance{
+		Id:       10,
+		Hostname: "localhost",
+		DSN:      "",
+	}
+	agentUuid := "0001"
+	agent := &proto.Agent{
+		Uuid:     agentUuid,
+		Hostname: "host1",
+		Alias:    "master-db",
+		Version:  "1.0.0",
+		Links: map[string]string{
+			"self": "http://localhost:8000/agents/" + agentUuid,
+			"cmd":  "ws://localhost:8000/agents/" + agentUuid + "/cmd",
+			"data": "ws://localhost:8000/agents/" + agentUuid + "/data",
+			"log":  "ws://localhost:8000/agents/" + agentUuid + "/log",
+		},
+	}
+
+	// Create fake http server
+	sm := NewServeMuxTest()
+	ts := httptest.NewServer(sm)
+	defer ts.Close()
+
+	// Register required mock http handlers
+	sm.appendPing()
+	sm.appendInstancesServer(ts.URL, serverInstance)
+	sm.appendInstancesServerId(serverInstance)
+	sm.appendInstancesMysql(ts.URL, mysqlInstance)
+	sm.appendInstancesMysqlId(mysqlInstance)
+	sm.appendConfigsMmDefaultServer()
+	sm.appendConfigsMmDefaultMysql()
+	sm.appendSysconfigDefaultMysql()
+	sm.appendAgents(ts.URL, agent)
+	sm.appendAgentsUuid(agent)
+
+	cmd := exec.Command(
+		"./bin/percona-agent-installer/installer",
+		"-basedir="+s.basedir,
+		"-api-host="+ts.URL,
+		"-old-passwords=true",
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
+	apiKey := "00000000000000000000000000000001"
+	cmdTest.Write(apiKey + "\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", serverInstance.Hostname, serverInstance.Id))
+
+	t.Check(cmdTest.ReadLine(), Equals, "Create MySQL user for agent? ('N' to use existing user) (Y): ")
+	cmdTest.Write("Y\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "MySQL username: ")
+	mysqlUserName := "root"
+	cmdTest.Write(mysqlUserName + "\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "MySQL password: ")
+	mysqlPassword := ""
+	cmdTest.Write(mysqlPassword + "\n")
+
+	t.Assert(cmdTest.ReadLine(), Equals, "MySQL host[:port] or socket file (localhost): ")
+	mysqlHost := ""
+	cmdTest.Write(mysqlHost + "\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Testing MySQL connection root:...@unix(/var/run/mysqld/mysqld.sock)...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
+
+	re := regexp.MustCompile("0x[^@]+")
+	lineWithoutPassword := re.ReplaceAllString(cmdTest.ReadLine(), "<pass>") // @todo read pass hash from db
+	// Flag -old-passwords=true should add &allowOldPasswords=true to DSN
+	t.Check(lineWithoutPassword, Equals, "Agent MySQL user: percona-agent:<pass>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true&allowOldPasswords=true\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, mysqlInstance.Hostname, mysqlInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", agent.Uuid))
+	t.Check(cmdTest.ReadLine(), Equals, "Install successful\n")
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Assert(err, IsNil)
 }
 
-func NewCmdTest(cmd *exec.Cmd) *CmdTest {
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		panic(err)
+func (s *MainTestSuite) TestDefaultInstallWithFlagApiKey(t *C) {
+	serverInstance := &proto.ServerInstance{
+		Id:       10,
+		Hostname: "localhost",
 	}
-	pipeReader, pipeWriter := io.Pipe()
-	cmd.Stdout = pipeWriter
-	cmd.Stderr = pipeWriter
+	mysqlInstance := &proto.MySQLInstance{
+		Id:       10,
+		Hostname: "localhost",
+		DSN:      "",
+	}
+	agentUuid := "0001"
+	agent := &proto.Agent{
+		Uuid:     agentUuid,
+		Hostname: "host1",
+		Alias:    "master-db",
+		Version:  "1.0.0",
+		Links: map[string]string{
+			"self": "http://localhost:8000/agents/" + agentUuid,
+			"cmd":  "ws://localhost:8000/agents/" + agentUuid + "/cmd",
+			"data": "ws://localhost:8000/agents/" + agentUuid + "/data",
+			"log":  "ws://localhost:8000/agents/" + agentUuid + "/log",
+		},
+	}
 
-	cmdOutput := &CmdTest{
-		stop:   make(chan bool, 1),
-		reader: pipeReader,
-		stdin:  stdin,
+	// Create fake http server
+	sm := NewServeMuxTest()
+	ts := httptest.NewServer(sm)
+	defer ts.Close()
+
+	// Register required mock http handlers
+	sm.appendPing()
+	sm.appendInstancesServer(ts.URL, serverInstance)
+	sm.appendInstancesServerId(serverInstance)
+	sm.appendInstancesMysql(ts.URL, mysqlInstance)
+	sm.appendInstancesMysqlId(mysqlInstance)
+	sm.appendConfigsMmDefaultServer()
+	sm.appendConfigsMmDefaultMysql()
+	sm.appendSysconfigDefaultMysql()
+	sm.appendAgents(ts.URL, agent)
+	sm.appendAgentsUuid(agent)
+
+	apiKey := "00000000000000000000000000000001"
+	cmd := exec.Command(
+		"./bin/percona-agent-installer/installer",
+		"-basedir="+s.basedir,
+		"-api-host="+ts.URL,
+		"-api-key="+apiKey, // We are testing this flag
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
 	}
-	cmdOutput.output = cmdOutput.Run()
-	return cmdOutput
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
+
+	// Because of -api-key flag user don't provides it by hand
+	//t.Check(cmdTest.ReadLine(), Equals, "API key: ")
+	//cmdTest.Write(apiKey + "\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", serverInstance.Hostname, serverInstance.Id))
+
+	t.Check(cmdTest.ReadLine(), Equals, "Create MySQL user for agent? ('N' to use existing user) (Y): ")
+	cmdTest.Write("Y\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "MySQL username: ")
+	mysqlUserName := "root"
+	cmdTest.Write(mysqlUserName + "\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "MySQL password: ")
+	mysqlPassword := ""
+	cmdTest.Write(mysqlPassword + "\n")
+
+	t.Assert(cmdTest.ReadLine(), Equals, "MySQL host[:port] or socket file (localhost): ")
+	mysqlHost := ""
+	cmdTest.Write(mysqlHost + "\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Testing MySQL connection root:...@unix(/var/run/mysqld/mysqld.sock)...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
+
+	re := regexp.MustCompile("0x[^@]+")
+	lineWithoutPassword := re.ReplaceAllString(cmdTest.ReadLine(), "<pass>") // @todo read pass hash from db
+	t.Check(lineWithoutPassword, Equals, "Agent MySQL user: percona-agent:<pass>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, mysqlInstance.Hostname, mysqlInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", agent.Uuid))
+	t.Check(cmdTest.ReadLine(), Equals, "Install successful\n")
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Assert(err, IsNil)
 }
 
-func (c *CmdTest) Run() <-chan string {
-	output := make(chan string, 1024)
-	go func() {
-		x := 0
-		for {
-			x++
-			b := make([]byte, 8192)
-			n, err := c.reader.Read(b)
-			if n > 0 {
-				lines := bytes.SplitAfter(b[:n], []byte("\n"))
-				// Example: Split(a\nb\n\c\n) => ["a\n", "b\n", "c\n", ""]
-				// We are getting empty element because data for split was ending with delimeter (\n)
-				// We don't want it, so we remove it
-				lastPos := len(lines) - 1
-				if len(lines[lastPos]) == 0 {
-					lines = lines[:lastPos]
-				}
-				for i := range lines {
-					log.Printf("[%d] %#v", x, string(lines[i]))
-					output <- string(lines[i])
-				}
-			}
-			if err != nil {
-				break
-			}
+func (s *MainTestSuite) TestDefaultInstallWithFlagMysqlFalse(t *C) {
+	serverInstance := &proto.ServerInstance{
+		Id:       10,
+		Hostname: "localhost",
+	}
+	agentUuid := "0001"
+	agent := &proto.Agent{
+		Uuid:     agentUuid,
+		Hostname: "host1",
+		Alias:    "master-db",
+		Version:  "1.0.0",
+		Links: map[string]string{
+			"self": "http://localhost:8000/agents/" + agentUuid,
+			"cmd":  "ws://localhost:8000/agents/" + agentUuid + "/cmd",
+			"data": "ws://localhost:8000/agents/" + agentUuid + "/data",
+			"log":  "ws://localhost:8000/agents/" + agentUuid + "/log",
+		},
+	}
+
+	// Create fake http server
+	sm := NewServeMuxTest()
+	ts := httptest.NewServer(sm)
+	defer ts.Close()
+
+	// Register required mock http handlers
+	sm.appendPing()
+	sm.appendInstancesServer(ts.URL, serverInstance)
+	sm.appendInstancesServerId(serverInstance)
+	// Flag -mysql=false implies that there should be not below communication
+	//sm.appendInstancesMysql(ts.URL, mysqlInstance)
+	//sm.appendInstancesMysqlId(mysqlInstance)
+	//sm.appendConfigsMmDefaultMysql()
+	//sm.appendSysconfigDefaultMysql()
+	sm.appendConfigsMmDefaultServer()
+	sm.appendAgents(ts.URL, agent)
+	sm.appendAgentsUuid(agent)
+
+	cmd := exec.Command(
+		"./bin/percona-agent-installer/installer",
+		"-mysql=false", // We are testing this flag
+		"-basedir="+s.basedir,
+		"-api-host="+ts.URL,
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
+	apiKey := "00000000000000000000000000000001"
+	cmdTest.Write(apiKey + "\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", serverInstance.Hostname, serverInstance.Id))
+
+	// Flag -mysql=false implies below
+	t.Check(cmdTest.ReadLine(), Equals, "Not creating MySQL instance (-create-mysql-instance=false)\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Not starting MySQL services (-start-mysql-services=false)\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", agent.Uuid))
+	t.Check(cmdTest.ReadLine(), Equals, "Install successful\n")
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Assert(err, IsNil)
+}
+
+type ServeMuxTest struct {
+	*http.ServeMux
+}
+
+func NewServeMuxTest() *ServeMuxTest {
+	return &ServeMuxTest{
+		http.NewServeMux(),
+	}
+}
+
+func (sm *ServeMuxTest) appendPing() {
+	sm.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			w.WriteHeader(http.StatusOK)
 		}
-	}()
-	return output
+		w.WriteHeader(600)
+	})
 }
 
-func (c *CmdTest) Stop() {
-	c.stop <- true
+func (sm *ServeMuxTest) appendInstancesServer(url string, serverInstance *proto.ServerInstance) {
+	sm.HandleFunc("/instances/server", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", fmt.Sprintf("%s/instances/server/%d", url, serverInstance.Id))
+		w.WriteHeader(http.StatusCreated)
+	})
 }
-
-func (c *CmdTest) ReadLine() (line string) {
-	select {
-	case line = <-c.output:
-	case <-time.After(1 * time.Second):
-	}
-	return line
+func (sm *ServeMuxTest) appendInstancesServerId(serverInstance *proto.ServerInstance) {
+	sm.HandleFunc(fmt.Sprintf("/instances/server/%d", serverInstance.Id), func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		data, _ := json.Marshal(&serverInstance)
+		w.Write(data)
+	})
 }
-
-func (c *CmdTest) Write(data string) {
-	_, err := c.stdin.Write([]byte(data))
-	if err != nil {
-		panic(err)
-	}
+func (sm *ServeMuxTest) appendInstancesMysql(url string, mysqlInstance *proto.MySQLInstance) {
+	sm.HandleFunc("/instances/mysql", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", fmt.Sprintf("%s/instances/mysql/%d", url, mysqlInstance.Id))
+		w.WriteHeader(http.StatusCreated)
+	})
+}
+func (sm *ServeMuxTest) appendInstancesMysqlId(mysqlInstance *proto.MySQLInstance) {
+	sm.HandleFunc(fmt.Sprintf("/instances/mysql/%d", mysqlInstance.Id), func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		data, _ := json.Marshal(&mysqlInstance)
+		w.Write(data)
+	})
+}
+func (sm *ServeMuxTest) appendConfigsMmDefaultServer() {
+	sm.HandleFunc("/configs/mm/default-server", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{ "Service": "server", "InstanceId": 0, "Collect": 10, "Report": 60 }`))
+	})
+}
+func (sm *ServeMuxTest) appendConfigsMmDefaultMysql() {
+	sm.HandleFunc("/configs/mm/default-mysql", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{ "Service": "mysql", "InstanceId": 0, "Collect": 1, "Report": 60, "Status": {}, "UserStats": false }`))
+	})
+}
+func (sm *ServeMuxTest) appendSysconfigDefaultMysql() {
+	sm.HandleFunc("/configs/sysconfig/default-mysql", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{ "Service": "mysql", "InstanceId": 0, "Report": 3600 }`))
+	})
+}
+func (sm *ServeMuxTest) appendAgents(url string, agent *proto.Agent) {
+	sm.HandleFunc("/agents", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", fmt.Sprintf("%s/agents/%s", url, agent.Uuid))
+		w.WriteHeader(http.StatusCreated)
+	})
+}
+func (sm *ServeMuxTest) appendAgentsUuid(agent *proto.Agent) {
+	sm.HandleFunc(fmt.Sprintf("/agents/%s", agent.Uuid), func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		data, _ := json.Marshal(&agent)
+		w.Write(data)
+	})
 }
