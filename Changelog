@@ -1,5 +1,7 @@
 percona-agent Changelog
 
+  * PCT-765: App says "Agent not connected" but agent is running
+
 v1.0.4 released 2014-07-10
 
   * PCT-629: Agent running but not connected
