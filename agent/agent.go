@@ -233,9 +233,15 @@ func (agent *Agent) Run() error {
 				go agent.connect()
 			}
 		case <-agent.keepalive.C:
+			// Send keepalive (i.e. check if ws cmd chan is still open on API end).
 			logger.Debug("pong")
 			cmd := &proto.Cmd{Cmd: "Pong"}
 			agent.reply(cmd.Reply(nil, nil))
+
+			// Reset keepalive timer.
+			agent.configMux.RLock()
+			agent.keepalive.Reset(time.Duration(agent.config.Keepalive) * time.Second)
+			agent.configMux.RUnlock()
 		}
 	}
 }
