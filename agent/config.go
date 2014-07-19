@@ -19,11 +19,13 @@ package agent
 
 const (
 	DEFAULT_API_HOSTNAME = "v2-cloud-api.percona.com"
+	DEFAULT_KEEPALIVE    = 76
 )
 
 type Config struct {
 	AgentUuid   string
 	ApiHostname string
 	ApiKey      string
+	Keepalive   uint
 	Links       map[string]string `json:",omitempty"`
 }
