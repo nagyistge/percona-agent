@@ -24,17 +24,33 @@ import (
 	"time"
 )
 
+// slowlog|perf schema --> Result --> Report --> data.Spooler
+
+// Data for an interval from slow log or performance schema (pfs) parser,
+// passed to MakeReport() which wraps it in a Report{} with metadata.
+type Result struct {
+	Global     *mysqlLog.GlobalClass  // metrics for all data
+	Classes    []*mysqlLog.QueryClass // per-class metrics
+	RunTime    float64                // seconds parsing data, hopefully < interval
+	StopOffset int64                  // slow log offset where parsing stopped, should be <= end offset
+	Error      string                 `json:",omitempty"`
+}
+
+// Final QAN data struct, composed of a Result{} and metatdata, sent to the
+// data.Spooler by the manager running the slow log or perfomance schema
+// (pfs) parser.
 type Report struct {
-	proto.ServiceInstance
-	StartTs     time.Time // UTC
-	EndTs       time.Time // UTC
-	SlowLogFile string    // not slow_query_log_file if rotated
-	StartOffset int64     // parsing starts
-	EndOffset   int64     // parsing stops, but...
-	StopOffset  int64     // ...parsing didn't complete if stop < end
-	RunTime     float64   // seconds
-	Global      *mysqlLog.GlobalClass
-	Class       []*mysqlLog.QueryClass
+	proto.ServiceInstance                        // MySQL instance
+	StartTs               time.Time              // of interval, UTC
+	EndTs                 time.Time              // of interval, UTC
+	RunTime               float64                // seconds parsing data
+	Global                *mysqlLog.GlobalClass  // metrics for all data
+	Class                 []*mysqlLog.QueryClass // per-class metrics
+	// slow log:
+	SlowLogFile string `json:",omitempty"` // not slow_query_log_file if rotated
+	StartOffset int64  `json:",omitempty"` // parsing starts
+	EndOffset   int64  `json:",omitempty"` // parsing stops, but...
+	StopOffset  int64  `json:",omitempty"` // ...parsing didn't complete if stop < end
 }
 
 type ByQueryTime []*mysqlLog.QueryClass
@@ -48,28 +64,31 @@ func (a ByQueryTime) Less(i, j int) bool {
 }
 
 func MakeReport(it proto.ServiceInstance, interval *Interval, result *Result, config Config) *Report {
+	// Sort classes by Query_time_sum, descending.
 	sort.Sort(ByQueryTime(result.Classes))
 
+	// Make Report from Result and other metadata (e.g. Interval).
 	report := &Report{
 		ServiceInstance: it,
 		StartTs:         interval.StartTime,
 		EndTs:           interval.StopTime,
-		SlowLogFile:     interval.Filename,
-		StartOffset:     interval.StartOffset,
-		EndOffset:       interval.EndOffset,
-		StopOffset:      result.StopOffset,
 		RunTime:         result.RunTime,
 		Global:          result.Global,
 		Class:           result.Classes,
 	}
-
-	if config.ReportLimit == 0 {
-		return report
+	if interval != nil {
+		// slow log data
+		report.SlowLogFile = interval.Filename
+		report.StartOffset = interval.StartOffset
+		report.EndOffset = interval.EndOffset
+		report.StopOffset = result.StopOffset
 	}
 
+	// Return all query classes if there's no limit or number of classes is
+	// less than the limit.
 	n := len(result.Classes)
-	if config.ReportLimit > 0 && n <= int(config.ReportLimit) {
-		return report // no LRQ
+	if config.ReportLimit == 0 || n <= int(config.ReportLimit) {
+		return report // all classes, no LRQ
 	}
 
 	// Top queries
@@ -82,7 +101,7 @@ func MakeReport(it proto.ServiceInstance, interval *Interval, result *Result, co
 	}
 	report.Class = append(report.Class, lrq)
 
-	return report
+	return report // top classes, the rest as LRQ
 }
 
 func addQuery(dst, src *mysqlLog.QueryClass) {
