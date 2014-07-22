@@ -221,7 +221,7 @@ func (agent *Agent) Run() error {
 				// todo: return or exit?
 			}
 		case err := <-client.ErrorChan():
-			logger.Warn(err)
+			logger.Warn("ws error:", err)
 		case connected := <-client.ConnectChan():
 			if connected {
 				logger.Info("Connected to API")
