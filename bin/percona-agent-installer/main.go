@@ -39,6 +39,8 @@ var (
 	flagStartMySQLServices   bool
 	flagMySQL                bool
 	flagOldPasswords         bool
+	flagPlainPasswords       bool
+	flagNonInteractive       bool
 )
 
 func init() {
@@ -57,6 +59,8 @@ func init() {
 	flag.BoolVar(&flagStartMySQLServices, "start-mysql-services", true, "Start MySQL services")
 	flag.BoolVar(&flagCreateAgent, "create-agent", true, "Create agent")
 	flag.BoolVar(&flagOldPasswords, "old-passwords", false, "Old passwords")
+	flag.BoolVar(&flagPlainPasswords, "plain-passwords", false, "Plain passwords") // @todo: Workaround used in tests for "stty: standard input: Inappropriate ioctl for device"
+	flag.BoolVar(&flagNonInteractive, "non-interactive", false, "Non-interactive mode for headless installation")
 }
 
 func main() {
@@ -81,6 +85,8 @@ func main() {
 		"start-mysql-services":   flagStartMySQLServices,
 		"create-agent":           flagCreateAgent,
 		"old-passwords":          flagOldPasswords,
+		"plain-passwords":        flagPlainPasswords,
+		"non-interactive":        flagNonInteractive,
 	}
 
 	// Agent stores all its files in the basedir.  This must be called first

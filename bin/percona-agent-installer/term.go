@@ -19,19 +19,16 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"strings"
 )
 
-type InvalidResponseError struct {
-	Response string
-}
-
-func (e InvalidResponseError) Error() string {
-	return e.Response
-}
+var (
+	ErrNonInteractiveMode = errors.New("Refusing to prompt user in non-interactive mode")
+)
 
 type Terminal struct {
 	stdin *bufio.Reader
@@ -47,6 +44,9 @@ func NewTerminal(stdin io.Reader, flags Flags) *Terminal {
 }
 
 func (t *Terminal) PromptString(question string, defaultAnswer string) (string, error) {
+	if t.flags["non-interactive"] {
+		return "", ErrNonInteractiveMode
+	}
 	if defaultAnswer != "" {
 		fmt.Printf("%s (%s): ", question, defaultAnswer)
 	} else {
@@ -70,6 +70,9 @@ func (t *Terminal) PromptString(question string, defaultAnswer string) (string, 
 }
 
 func (t *Terminal) PromptStringRequired(question string, defaultAnswer string) (string, error) {
+	if t.flags["non-interactive"] {
+		return "", ErrNonInteractiveMode
+	}
 	var answer string
 	var err error
 	for {
@@ -86,6 +89,9 @@ func (t *Terminal) PromptStringRequired(question string, defaultAnswer string) (
 }
 
 func (t *Terminal) PromptBool(question string, defaultAnswer string) (bool, error) {
+	if t.flags["non-interactive"] {
+		return false, ErrNonInteractiveMode
+	}
 	for {
 		answer, err := t.PromptString(question, defaultAnswer)
 		if t.flags["debug"] {

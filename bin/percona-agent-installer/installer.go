@@ -22,7 +22,6 @@ import (
 	_ "github.com/arnehormann/mysql"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/agent"
-	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"log"
 	"net"
@@ -64,8 +63,6 @@ func NewInstaller(term *Terminal, basedir string, api pct.APIConnector, agentCon
 }
 
 func (i *Installer) Run() error {
-	var ptagentDSN *mysql.DSN
-
 	/**
 	 * Get the API key.
 	 */
@@ -193,7 +190,7 @@ VERIFY_API_KEY:
 
 	if i.flags["create-mysql-instance"] {
 		// Create MySQL user for agent, or using existing one, then verify MySQL connection.
-		agentDSN, err := i.doMySQL(ptagentDSN)
+		agentDSN, err := i.doMySQL()
 		if err != nil {
 			return err
 		}

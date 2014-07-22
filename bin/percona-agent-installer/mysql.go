@@ -19,7 +19,7 @@ package main
 
 import (
 	"fmt"
-	//"github.com/mewpkg/gopass"
+	"github.com/mewpkg/gopass"
 	"github.com/percona/percona-agent/mysql"
 	"os/user"
 	"path/filepath"
@@ -36,18 +36,11 @@ func MakeGrant(dsn mysql.DSN, user string, pass string) string {
 	return fmt.Sprintf("GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO '%s'@'%s' IDENTIFIED BY '%s'", user, host, pass)
 }
 
-func (i *Installer) doMySQL(def *mysql.DSN) (dsn mysql.DSN, err error) {
+func (i *Installer) doMySQL() (dsn mysql.DSN, err error) {
 	// XXX Using implicit return
-
-	var createUser bool
-	if def != nil {
-		createUser = false
-		dsn = *def
-	} else {
-		createUser, err = i.term.PromptBool("Create MySQL user for agent? ('N' to use existing user)", "Y")
-		if err != nil {
-			return
-		}
+	createUser, err := i.term.PromptBool("Create MySQL user for agent? ('N' to use existing user)", "Y")
+	if err != nil {
+		return
 	}
 	for {
 		if createUser {
@@ -69,6 +62,7 @@ func (i *Installer) doMySQL(def *mysql.DSN) (dsn mysql.DSN, err error) {
 			// Let user specify the MySQL account to use for the agent.
 			dsn, err = i.connectMySQL(&dsn, false)
 			if err == nil {
+				fmt.Println("Using existing MySQL user for agent...")
 				break // success
 			}
 			fmt.Println(err)
@@ -101,6 +95,7 @@ func (i *Installer) connectMySQL(def *mysql.DSN, creating bool) (mysql.DSN, erro
 			}
 		}
 	} else {
+		// @todo when this case actually happens?
 		fmt.Println("Specify an existing MySQL user to use for the agent")
 	}
 
@@ -113,12 +108,10 @@ CONNECT_MYSQL:
 		dsn.Username = username
 
 		var password string
-		if creating {
-			// @todo: stty: standard input: Inappropriate ioctl for device
-			//password, err = gopass.GetPass("MySQL password: ")
+		if i.flags["plain-passwords"] {
 			password, err = i.term.PromptString("MySQL password", dsn.Password)
 		} else {
-			password, err = i.term.PromptString("MySQL password", dsn.Password)
+			password, err = gopass.GetPass("MySQL password: ")
 		}
 		if err != nil {
 			return dsn, err
