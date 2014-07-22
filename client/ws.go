@@ -20,7 +20,6 @@ package client
 import (
 	"code.google.com/p/go.net/websocket"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/pct"
@@ -247,7 +246,7 @@ func (c *WebsocketClient) send() {
 
 	for {
 		// Wait to start (connect) or be told to stop.
-		c.logger.DebugOffline("send:start")
+		c.logger.DebugOffline("send:wait:start")
 		select {
 		case <-c.sendSync.StartChan:
 			c.sendSync.StartChan <- true
@@ -257,7 +256,7 @@ func (c *WebsocketClient) send() {
 
 	SEND_LOOP:
 		for {
-			c.logger.DebugOffline("send:wait")
+			c.logger.DebugOffline("send:idle")
 			select {
 			case reply := <-c.sendChan:
 				// Got Reply from agent, send to API.
@@ -292,7 +291,7 @@ func (c *WebsocketClient) recv() {
 
 	for {
 		// Wait to start (connect) or be told to stop.
-		c.logger.DebugOffline("recv:start")
+		c.logger.DebugOffline("recv:wait:start")
 		select {
 		case <-c.recvSync.StartChan:
 			c.recvSync.StartChan <- true
@@ -303,7 +302,6 @@ func (c *WebsocketClient) recv() {
 	RECV_LOOP:
 		for {
 			// Before blocking on Recv, see if we're supposed to stop.
-			c.logger.DebugOffline("recv:wait")
 			select {
 			case <-c.recvSync.StopChan:
 				c.logger.DebugOffline("recv:stop")
@@ -344,24 +342,12 @@ func (c *WebsocketClient) Send(data interface{}, timeout uint) error {
 	// These make the debug output a little too verbose:
 	// c.logger.DebugOffline("Send:call")
 	// defer c.logger.DebugOffline("Send:return")
-
-	/**
-	 * I cannot provoke an EOF error on websocket.Send(), only Receive().
-	 * Perhaps EOF errors are only reported on recv?  This only affects
-	 * the logger since it's ws send-only: it will need a goroutine blocking
-	 * on Recieve() that, upon error, notifies the sending goroutine
-	 * to reconnect.
-	 */
 	if timeout > 0 {
 		c.conn.SetWriteDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
 	} else {
 		c.conn.SetWriteDeadline(time.Time{})
 	}
-	if err := websocket.JSON.Send(c.conn, data); err != nil {
-		c.logger.DebugOffline("Send:err:", err)
-		return fmt.Errorf("Send:", err)
-	}
-	return nil
+	return websocket.JSON.Send(c.conn, data)
 }
 
 func (c *WebsocketClient) SendBytes(data []byte) error {
@@ -380,11 +366,7 @@ func (c *WebsocketClient) Recv(data interface{}, timeout uint) error {
 	} else {
 		c.conn.SetReadDeadline(time.Time{})
 	}
-	if err := websocket.JSON.Receive(c.conn, data); err != nil {
-		c.logger.DebugOffline("Recv:err:", err)
-		return errors.New(fmt.Sprint("Recv:", err))
-	}
-	return nil
+	return websocket.JSON.Receive(c.conn, data)
 }
 
 func (c *WebsocketClient) ConnectChan() chan bool {
