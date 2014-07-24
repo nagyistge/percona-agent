@@ -73,8 +73,17 @@ func (i *Installer) Run() error {
 	fmt.Printf("API host: %s\n", i.agentConfig.ApiHostname)
 
 	if i.flags.Bool["non-interactive"] && i.agentConfig.ApiKey == "" {
-		return fmt.Errorf("API key is required, please provide it with -api-key option.")
+		return fmt.Errorf(
+			"API key is required, please provide it with -api-key option.\n" +
+				"API Key is available at " + i.flags.String["app-host"] + "/api-key",
+		)
 	} else {
+		if i.agentConfig.ApiKey == "" {
+			fmt.Printf(
+				"No API Key Defined.\n" +
+					"Please Enter your API Key, it is available at https://cloud.percona.com/api-key\n",
+			)
+		}
 		for i.agentConfig.ApiKey == "" {
 			apiKey, err := i.term.PromptString("API key", "")
 			if err != nil {
@@ -156,7 +165,7 @@ VERIFY_API_KEY:
 		// Warn user if request took at least 5s
 		if elapsedTimeInSeconds >= 5 {
 			fmt.Printf(
-				"WARNING: Requset to API took %d seconds but it should have taken < 1 second."+
+				"WARNING: Request to API took %d seconds but it should have taken < 1 second."+
 					" There might be a connection problem, or resolving DNS is very slow."+
 					" Before continuing, please check the connection and DNS configuration"+
 					" as this could prevent percona-agent from installing or working properly."+

@@ -36,6 +36,7 @@ type MainTestSuite struct {
 	username       string
 	basedir        string
 	bin            string
+	apphost        string
 	serverInstance *proto.ServerInstance
 	mysqlInstance  *proto.MySQLInstance
 	agent          *proto.Agent
@@ -46,6 +47,7 @@ var _ = Suite(&MainTestSuite{
 	username: "root",
 	basedir:  "/tmp/percona-agent-installer-test",
 	bin:      "./installer",
+	apphost:  "https://cloud.percona.com",
 })
 
 func (s *MainTestSuite) SetUpSuite(t *C) {
@@ -139,6 +141,39 @@ func (s *MainTestSuite) TestNonInteractiveInstall(t *C) {
 
 	err := cmd.Wait()
 	t.Assert(err, IsNil)
+}
+
+func (s *MainTestSuite) TestNonInteractiveInstallWithMissingApiKey(t *C) {
+	// Create fake http server
+	sm := NewServeMuxTest()
+	ts := httptest.NewServer(sm)
+	defer ts.Close()
+
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+s.basedir,
+		"-api-host="+ts.URL,
+		"-plain-passwords=true",
+		"-non-interactive=true",
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "API key is required, please provide it with -api-key option.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API Key is available at "+s.apphost+"/api-key\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Install failed\n")
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Assert(err, ErrorMatches, "exit status 1")
 }
 
 func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t *C) {
@@ -235,6 +270,8 @@ func (s *MainTestSuite) TestInstall(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
 
+	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
 	apiKey := "00000000000000000000000000000001"
 	cmdTest.Write(apiKey + "\n")
@@ -308,6 +345,8 @@ func (s *MainTestSuite) TestInstallWithWrongApiKey(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
 
 	apiKey := "WrongApiKey"
+	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
 	t.Assert(cmdTest.ReadLine(), Equals, "API key: ")
 	cmdTest.Write(apiKey + "\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
@@ -358,6 +397,8 @@ func (s *MainTestSuite) TestInstallWithExistingMySQLUser(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
 
+	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
 	apiKey := "00000000000000000000000000000001"
 	cmdTest.Write(apiKey + "\n")
@@ -435,6 +476,8 @@ func (s *MainTestSuite) TestInstallWithFlagCreateAgentFalse(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
 
+	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
 	apiKey := "00000000000000000000000000000001"
 	cmdTest.Write(apiKey + "\n")
@@ -510,6 +553,8 @@ func (s *MainTestSuite) TestInstallWithFlagOldPasswordsTrue(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
 
+	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
 	apiKey := "00000000000000000000000000000001"
 	cmdTest.Write(apiKey + "\n")
@@ -664,6 +709,8 @@ func (s *MainTestSuite) TestInstallWithFlagMysqlFalse(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
 
+	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
 	apiKey := "00000000000000000000000000000001"
 	cmdTest.Write(apiKey + "\n")

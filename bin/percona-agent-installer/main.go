@@ -27,6 +27,10 @@ import (
 	"os/user"
 )
 
+const (
+	DEFAULT_APP_HOSTNAME = "https://cloud.percona.com"
+)
+
 var (
 	flagApiHostname          string
 	flagApiKey               string
@@ -53,7 +57,7 @@ func init() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
 
 	flag.StringVar(&flagApiHostname, "api-host", agent.DEFAULT_API_HOSTNAME, "API host")
-	flag.StringVar(&flagApiKey, "api-key", "", "API key")
+	flag.StringVar(&flagApiKey, "api-key", "", "API key, it is available at "+DEFAULT_APP_HOSTNAME+"/api-key")
 	flag.StringVar(&flagBasedir, "basedir", pct.DEFAULT_BASEDIR, "Agent basedir")
 	flag.BoolVar(&flagDebug, "debug", false, "Debug")
 	// --
@@ -116,6 +120,7 @@ func main() {
 			"non-interactive":        flagNonInteractive,
 		},
 		String: map[string]string{
+			"app-host":     DEFAULT_APP_HOSTNAME,
 			"mysql-user":   flagMySQLUser,
 			"mysql-pass":   flagMySQLPass,
 			"mysql-host":   flagMySQLHost,
