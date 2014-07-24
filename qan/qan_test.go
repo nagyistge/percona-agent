@@ -1449,8 +1449,6 @@ func (s *ReportTestSuite) TestResult001(t *C) {
 	start := time.Now().Add(-1 * time.Second)
 	stop := time.Now()
 
-	it := proto.ServiceInstance{Service: "mysql", InstanceId: 1}
-
 	interval := &qan.Interval{
 		Filename:    "slow.log",
 		StartTime:   start,
@@ -1459,9 +1457,10 @@ func (s *ReportTestSuite) TestResult001(t *C) {
 		EndOffset:   1000,
 	}
 	config := qan.Config{
-		ReportLimit: 10,
+		ServiceInstance: proto.ServiceInstance{Service: "mysql", InstanceId: 1},
+		ReportLimit:     10,
 	}
-	report := qan.MakeReport(it, interval, result, config)
+	report := qan.MakeReport(config, interval, result)
 
 	// 1st: 2.9
 	t.Check(report.Class[0].Id, Equals, "3000000000000003")
@@ -1476,7 +1475,7 @@ func (s *ReportTestSuite) TestResult001(t *C) {
 
 	// Limit=2 results in top 2 queries and the rest in 1 LRQ "query".
 	config.ReportLimit = 2
-	report = qan.MakeReport(it, interval, result, config)
+	report = qan.MakeReport(config, interval, result)
 	t.Check(len(report.Class), Equals, 3)
 
 	t.Check(report.Class[0].Id, Equals, "3000000000000003")
@@ -1507,7 +1506,6 @@ func (s *SlowLogWorkerTestSuite) TestResult014(t *C) {
 
 	start := time.Now().Add(-1 * time.Second)
 	stop := time.Now()
-	it := proto.ServiceInstance{Service: "mysql", InstanceId: 1}
 	interval := &qan.Interval{
 		Filename:    "slow.log",
 		StartTime:   start,
@@ -1516,9 +1514,10 @@ func (s *SlowLogWorkerTestSuite) TestResult014(t *C) {
 		EndOffset:   127118680,
 	}
 	config := qan.Config{
-		ReportLimit: 500,
+		ServiceInstance: proto.ServiceInstance{Service: "mysql", InstanceId: 1},
+		ReportLimit:     500,
 	}
-	report := qan.MakeReport(it, interval, result, config)
+	report := qan.MakeReport(config, interval, result)
 
 	t.Check(report.Global.TotalQueries, Equals, uint64(4))
 	t.Check(report.Global.UniqueQueries, Equals, uint64(4))

@@ -63,13 +63,13 @@ func (a ByQueryTime) Less(i, j int) bool {
 	return a[i].Metrics.TimeMetrics["Query_time"].Sum > a[j].Metrics.TimeMetrics["Query_time"].Sum
 }
 
-func MakeReport(it proto.ServiceInstance, interval *Interval, result *Result, config Config) *Report {
+func MakeReport(config Config, interval *Interval, result *Result) *Report {
 	// Sort classes by Query_time_sum, descending.
 	sort.Sort(ByQueryTime(result.Classes))
 
 	// Make Report from Result and other metadata (e.g. Interval).
 	report := &Report{
-		ServiceInstance: it,
+		ServiceInstance: config.ServiceInstance,
 		StartTs:         interval.StartTime,
 		EndTs:           interval.StopTime,
 		RunTime:         result.RunTime,

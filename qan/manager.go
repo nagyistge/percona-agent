@@ -340,7 +340,7 @@ func (m *Manager) run(config Config) {
 				}
 				result.RunTime = t1.Sub(t0).Seconds()
 
-				report := MakeReport(config.ServiceInstance, interval, result, config)
+				report := MakeReport(config, interval, result)
 				if err := m.spool.Write("qan", report); err != nil {
 					m.logger.Warn("Lost report:", err)
 				}
