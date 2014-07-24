@@ -102,7 +102,6 @@ type FileIntervalIter struct {
 	intervalNo   int
 	intervalChan chan *Interval
 	sync         *pct.SyncChan
-	running      bool
 }
 
 func NewFileIntervalIter(logger *pct.Logger, filename FilenameFunc, tickChan chan time.Time) *FileIntervalIter {
@@ -112,16 +111,12 @@ func NewFileIntervalIter(logger *pct.Logger, filename FilenameFunc, tickChan cha
 		tickChan: tickChan,
 		// --
 		intervalChan: make(chan *Interval, 1),
-		running:      false,
 		sync:         pct.NewSyncChan(),
 	}
 	return iter
 }
 
 func (i *FileIntervalIter) Start() {
-	if i.running {
-		return
-	}
 	go i.run()
 }
 
@@ -137,7 +132,6 @@ func (i *FileIntervalIter) IntervalChan() chan *Interval {
 
 func (i *FileIntervalIter) run() {
 	defer func() {
-		i.running = false
 		i.sync.Done()
 	}()
 
@@ -231,7 +225,6 @@ type PfsIntervalIter struct {
 	intervalNo   int
 	intervalChan chan *Interval
 	sync         *pct.SyncChan
-	running      bool
 }
 
 func NewPfsIntervalIter(logger *pct.Logger, tickChan chan time.Time) *PfsIntervalIter {
@@ -240,16 +233,12 @@ func NewPfsIntervalIter(logger *pct.Logger, tickChan chan time.Time) *PfsInterva
 		tickChan: tickChan,
 		// --
 		intervalChan: make(chan *Interval, 1),
-		running:      false,
 		sync:         pct.NewSyncChan(),
 	}
 	return iter
 }
 
 func (i *PfsIntervalIter) Start() {
-	if i.running {
-		return
-	}
 	go i.run()
 }
 
@@ -265,7 +254,6 @@ func (i *PfsIntervalIter) IntervalChan() chan *Interval {
 
 func (i *PfsIntervalIter) run() {
 	defer func() {
-		i.running = false
 		i.sync.Done()
 	}()
 
