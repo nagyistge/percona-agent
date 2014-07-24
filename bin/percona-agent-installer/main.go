@@ -24,6 +24,7 @@ import (
 	"github.com/percona/percona-agent/pct"
 	"log"
 	"os"
+	"os/user"
 )
 
 var (
@@ -41,6 +42,11 @@ var (
 	flagOldPasswords         bool
 	flagPlainPasswords       bool
 	flagNonInteractive       bool
+	flagMySQLUser            string
+	flagMySQLPass            string
+	flagMySQLHost            string
+	flagMySQLPort            string
+	flagMySQLSocket          string
 )
 
 func init() {
@@ -52,7 +58,6 @@ func init() {
 	flag.BoolVar(&flagDebug, "debug", false, "Debug")
 	// --
 	flag.BoolVar(&flagMySQL, "mysql", true, "Install for MySQL")
-	flag.BoolVar(&flagCreateMySQLUser, "create-mysql-user", true, "Create MySQL user for agent")
 	flag.BoolVar(&flagCreateMySQLInstance, "create-mysql-instance", true, "Create MySQL instance")
 	flag.BoolVar(&flagCreateServerInstance, "create-server-instance", true, "Create server instance")
 	flag.BoolVar(&flagStartServices, "start-services", true, "Start all services")
@@ -61,6 +66,17 @@ func init() {
 	flag.BoolVar(&flagOldPasswords, "old-passwords", false, "Old passwords")
 	flag.BoolVar(&flagPlainPasswords, "plain-passwords", false, "Plain passwords") // @todo: Workaround used in tests for "stty: standard input: Inappropriate ioctl for device"
 	flag.BoolVar(&flagNonInteractive, "non-interactive", false, "Non-interactive mode for headless installation")
+	flag.BoolVar(&flagCreateMySQLUser, "create-mysql-user", true, "Create MySQL user for agent")
+	username := ""
+	currentUser, _ := user.Current()
+	if currentUser != nil {
+		username = currentUser.Username
+	}
+	flag.StringVar(&flagMySQLUser, "mysql-user", username, "MySQL username")
+	flag.StringVar(&flagMySQLPass, "mysql-pass", "", "MySQL password")
+	flag.StringVar(&flagMySQLHost, "mysql-host", "localhost", "MySQL host")
+	flag.StringVar(&flagMySQLPort, "mysql-port", "3306", "MySQL port")
+	flag.StringVar(&flagMySQLSocket, "mysql-socket", "", "MySQL socket file")
 }
 
 func main() {
@@ -72,21 +88,40 @@ func main() {
 	}
 	// todo: do flags a better way
 	if !flagMySQL {
-		flagCreateMySQLUser = false
 		flagCreateMySQLInstance = false
 		flagStartMySQLServices = false
 	}
+
+	if flagMySQLSocket != "" && flagMySQLHost != "" {
+		log.Println("Options -mysql-socket and -mysql-host are exclusive\n")
+		os.Exit(1)
+	}
+
+	if flagMySQLSocket != "" && flagMySQLPort != "" {
+		log.Println("Options -mysql-socket and -mysql-port are exclusive\n")
+		os.Exit(1)
+	}
+
 	flags := Flags{
-		"debug":                  flagDebug,
-		"create-server-instance": flagCreateServerInstance,
-		"start-services":         flagStartServices,
-		"create-mysql-user":      flagCreateMySQLUser,
-		"create-mysql-instance":  flagCreateMySQLInstance,
-		"start-mysql-services":   flagStartMySQLServices,
-		"create-agent":           flagCreateAgent,
-		"old-passwords":          flagOldPasswords,
-		"plain-passwords":        flagPlainPasswords,
-		"non-interactive":        flagNonInteractive,
+		Bool: map[string]bool{
+			"debug":                  flagDebug,
+			"create-server-instance": flagCreateServerInstance,
+			"start-services":         flagStartServices,
+			"create-mysql-user":      flagCreateMySQLUser,
+			"create-mysql-instance":  flagCreateMySQLInstance,
+			"start-mysql-services":   flagStartMySQLServices,
+			"create-agent":           flagCreateAgent,
+			"old-passwords":          flagOldPasswords,
+			"plain-passwords":        flagPlainPasswords,
+			"non-interactive":        flagNonInteractive,
+		},
+		String: map[string]string{
+			"mysql-user":   flagMySQLUser,
+			"mysql-pass":   flagMySQLPass,
+			"mysql-host":   flagMySQLHost,
+			"mysql-port":   flagMySQLPort,
+			"mysql-socket": flagMySQLSocket,
+		},
 	}
 
 	// Agent stores all its files in the basedir.  This must be called first

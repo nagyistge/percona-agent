@@ -27,19 +27,19 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
-	"os/user"
-	"regexp"
 	"testing"
 )
 
 func Test(t *testing.T) { TestingT(t) }
 
 type MainTestSuite struct {
-	basedir string
+	username string
+	basedir  string
 }
 
 var _ = Suite(&MainTestSuite{
-	basedir: "/tmp/percona-agent-installer-test",
+	username: "root",
+	basedir:  "/tmp/percona-agent-installer-test",
 })
 
 func (s *MainTestSuite) SetUpSuite(t *C) {
@@ -90,12 +90,15 @@ func (s *MainTestSuite) TestNonInteractiveInstall(t *C) {
 	sm.appendAgents(ts.URL, agent)
 	sm.appendAgentsUuid(agent)
 
+	apiKey := "00000000000000000000000000000001"
 	cmd := exec.Command(
 		"./bin/percona-agent-installer/installer",
 		"-basedir="+s.basedir,
 		"-api-host="+ts.URL,
 		"-plain-passwords=true",
-		"-non-interactive=true",
+		"-non-interactive=true", // We are testing this flag
+		"-mysql-user="+s.username,
+		"-api-key="+apiKey, // Required because of non-interactive mode
 	)
 
 	cmdTest := cmdtest.NewCmdTest(cmd)
@@ -107,37 +110,102 @@ func (s *MainTestSuite) TestNonInteractiveInstall(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
-	apiKey := "00000000000000000000000000000001"
-	cmdTest.Write(apiKey + "\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", serverInstance.Hostname, serverInstance.Id))
 
-	t.Assert(cmdTest.ReadLine(), Equals, "Create MySQL user for agent? ('N' to use existing user) (Y): ")
-	cmdTest.Write("Y\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
 
-	t.Assert(cmdTest.ReadLine(), Equals, "MySQL username: ")
-	mysqlUserName := "root"
-	cmdTest.Write(mysqlUserName + "\n")
-
-	t.Assert(cmdTest.ReadLine(), Equals, "MySQL password: ")
-	mysqlPassword := ""
-	cmdTest.Write(mysqlPassword + "\n")
-
-	t.Assert(cmdTest.ReadLine(), Equals, "MySQL host[:port] or socket file (localhost): ")
-	mysqlHost := ""
-	cmdTest.Write(mysqlHost + "\n")
-
-	t.Check(cmdTest.ReadLine(), Equals, "Testing MySQL connection root:...@unix(/var/run/mysqld/mysqld.sock)...\n")
-
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":...@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
 
-	re := regexp.MustCompile("0x[^@]+")
-	lineWithoutPassword := re.ReplaceAllString(cmdTest.ReadLine(), "<pass>") // @todo read pass hash from db
-	t.Check(lineWithoutPassword, Equals, "Agent MySQL user: percona-agent:<pass>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:0x.*@unix(.*)/?parseTime=true\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, mysqlInstance.Hostname, mysqlInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", agent.Uuid))
+	t.Check(cmdTest.ReadLine(), Equals, "Install successful\n")
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Assert(err, IsNil)
+}
+
+func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t *C) {
+	serverInstance := &proto.ServerInstance{
+		Id:       10,
+		Hostname: "localhost",
+	}
+	mysqlInstance := &proto.MySQLInstance{
+		Id:       10,
+		Hostname: "localhost",
+		DSN:      "",
+	}
+	agentUuid := "0001"
+	agent := &proto.Agent{
+		Uuid:     agentUuid,
+		Hostname: "host1",
+		Alias:    "master-db",
+		Version:  "1.0.0",
+		Links: map[string]string{
+			"self": "http://localhost:8000/agents/" + agentUuid,
+			"cmd":  "ws://localhost:8000/agents/" + agentUuid + "/cmd",
+			"data": "ws://localhost:8000/agents/" + agentUuid + "/data",
+			"log":  "ws://localhost:8000/agents/" + agentUuid + "/log",
+		},
+	}
+
+	// Create fake http server
+	sm := NewServeMuxTest()
+	ts := httptest.NewServer(sm)
+	defer ts.Close()
+
+	// Register required mock http handlers
+	sm.appendPing()
+	sm.appendInstancesServer(ts.URL, serverInstance)
+	sm.appendInstancesServerId(serverInstance)
+	sm.appendInstancesMysql(ts.URL, mysqlInstance)
+	sm.appendInstancesMysqlId(mysqlInstance)
+	sm.appendConfigsMmDefaultServer()
+	sm.appendConfigsMmDefaultMysql()
+	sm.appendSysconfigDefaultMysql()
+	sm.appendAgents(ts.URL, agent)
+	sm.appendAgentsUuid(agent)
+
+	apiKey := "00000000000000000000000000000001"
+	cmd := exec.Command(
+		"./bin/percona-agent-installer/installer",
+		"-basedir="+s.basedir,
+		"-api-host="+ts.URL,
+		"-plain-passwords=true",
+		"-create-mysql-user=false", // We are testing this flag
+		"-non-interactive=true",    // -create-mysql-user=false works only in non-interactive mode
+		"-api-key="+apiKey,         // Required because of non-interactive mode
+		"-mysql-user=root",
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", serverInstance.Hostname, serverInstance.Id))
+
+	t.Check(cmdTest.ReadLine(), Equals, "Skip creating MySQL user (-create-mysql-user=false)\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Specify the existing MySQL user to use for the agent\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Using existing MySQL user for agent...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: "+s.username+"@unix(.*)/?parseTime=true\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, mysqlInstance.Hostname, mysqlInstance.Id))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", agent.Uuid))
@@ -214,6 +282,10 @@ func (s *MainTestSuite) TestInstall(t *C) {
 
 	t.Assert(cmdTest.ReadLine(), Equals, "Create MySQL user for agent? ('N' to use existing user) (Y): ")
 	cmdTest.Write("Y\n")
+
+	/**
+	 * MySQL super user credentials
+	 */
 	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
 
 	t.Assert(cmdTest.ReadLine(), Equals, "MySQL username: ")
@@ -228,117 +300,20 @@ func (s *MainTestSuite) TestInstall(t *C) {
 	mysqlHost := ""
 	cmdTest.Write(mysqlHost + "\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, "Testing MySQL connection root:...@unix(/var/run/mysqld/mysqld.sock)...\n")
-
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":...@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
+
+	/**
+	 * MySQL new user
+	 */
 	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
-
-	re := regexp.MustCompile("0x[^@]+")
-	lineWithoutPassword := re.ReplaceAllString(cmdTest.ReadLine(), "<pass>") // @todo read pass hash from db
-	t.Check(lineWithoutPassword, Equals, "Agent MySQL user: percona-agent:<pass>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
-
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, mysqlInstance.Hostname, mysqlInstance.Id))
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", agent.Uuid))
-	t.Check(cmdTest.ReadLine(), Equals, "Install successful\n")
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-
-	err := cmd.Wait()
-	t.Assert(err, IsNil)
-}
-
-// @todo I'm not getting create-mysql-user flag
-//       Why installer still asks for mysql super user credentials?
-//       Why we are later testing this connection?
-//       Also
-func (s *MainTestSuite) TestInstallWithFlagCreateMySQLUserFalse(t *C) {
-	serverInstance := &proto.ServerInstance{
-		Id:       10,
-		Hostname: "localhost",
-	}
-	mysqlInstance := &proto.MySQLInstance{
-		Id:       10,
-		Hostname: "localhost",
-		DSN:      "",
-	}
-	agentUuid := "0001"
-	agent := &proto.Agent{
-		Uuid:     agentUuid,
-		Hostname: "host1",
-		Alias:    "master-db",
-		Version:  "1.0.0",
-		Links: map[string]string{
-			"self": "http://localhost:8000/agents/" + agentUuid,
-			"cmd":  "ws://localhost:8000/agents/" + agentUuid + "/cmd",
-			"data": "ws://localhost:8000/agents/" + agentUuid + "/data",
-			"log":  "ws://localhost:8000/agents/" + agentUuid + "/log",
-		},
-	}
-
-	// Create fake http server
-	sm := NewServeMuxTest()
-	ts := httptest.NewServer(sm)
-	defer ts.Close()
-
-	// Register required mock http handlers
-	sm.appendPing()
-	sm.appendInstancesServer(ts.URL, serverInstance)
-	sm.appendInstancesServerId(serverInstance)
-	sm.appendInstancesMysql(ts.URL, mysqlInstance)
-	sm.appendInstancesMysqlId(mysqlInstance)
-	sm.appendConfigsMmDefaultServer()
-	sm.appendConfigsMmDefaultMysql()
-	sm.appendSysconfigDefaultMysql()
-	sm.appendAgents(ts.URL, agent)
-	sm.appendAgentsUuid(agent)
-
-	cmd := exec.Command(
-		"./bin/percona-agent-installer/installer",
-		"-basedir="+s.basedir,
-		"-api-host="+ts.URL,
-		"-plain-passwords=true",
-		"-create-mysql-user=false", // We are testing this flag
-	)
-
-	cmdTest := cmdtest.NewCmdTest(cmd)
-
-	if err := cmd.Start(); err != nil {
-		log.Fatal(err)
-	}
-
-	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
-
-	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
-	apiKey := "00000000000000000000000000000001"
-	cmdTest.Write(apiKey + "\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", serverInstance.Hostname, serverInstance.Id))
-
-	t.Assert(cmdTest.ReadLine(), Equals, "Create MySQL user for agent? ('N' to use existing user) (Y): ")
-	cmdTest.Write("Y\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
-
-	t.Assert(cmdTest.ReadLine(), Equals, "MySQL username: ")
-	mysqlUserName := "root"
-	cmdTest.Write(mysqlUserName + "\n")
-
-	t.Assert(cmdTest.ReadLine(), Equals, "MySQL password: ")
-	mysqlPassword := ""
-	cmdTest.Write(mysqlPassword + "\n")
-
-	t.Assert(cmdTest.ReadLine(), Equals, "MySQL host[:port] or socket file (localhost): ")
-	mysqlHost := ""
-	cmdTest.Write(mysqlHost + "\n")
-
-	t.Check(cmdTest.ReadLine(), Equals, "Testing MySQL connection root:...@unix(/var/run/mysqld/mysqld.sock)...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:...@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:0x.*@unix(.*)/?parseTime=true\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, "Skip creating MySQL user (-create-mysql-user=false)\n")
-	re := regexp.MustCompile("\\([^\\)]+\\)")
-	lineWithoutPassword := re.ReplaceAllString(cmdTest.ReadLine(), "(<path>)") // @todo read pass hash from db
-	t.Check(lineWithoutPassword, Equals, "Agent MySQL user: root@unix(<path>)/?parseTime=true\n")
-
+	/**
+	 * MySQL instance
+	 */
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, mysqlInstance.Hostname, mysqlInstance.Id))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", agent.Uuid))
 	t.Check(cmdTest.ReadLine(), Equals, "Install successful\n")
@@ -453,14 +428,12 @@ func (s *MainTestSuite) TestInstallWithExistingMySQLUser(t *C) {
 
 	t.Assert(cmdTest.ReadLine(), Equals, "Create MySQL user for agent? ('N' to use existing user) (Y): ")
 	cmdTest.Write("N\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Verify the existing MySQL user to use for the agent\n")
 
-	userName := ""
-	user, _ := user.Current()
-	if user != nil {
-		userName = user.Username
-	}
-	t.Assert(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL username (%s): ", userName))
+	/**
+	 * Using existing MySQL user
+	 */
+	t.Check(cmdTest.ReadLine(), Equals, "Specify the existing MySQL user to use for the agent\n")
+	t.Assert(cmdTest.ReadLine(), Equals, "MySQL username: ")
 	mysqlUserName := "root"
 	cmdTest.Write(mysqlUserName + "\n")
 
@@ -472,14 +445,10 @@ func (s *MainTestSuite) TestInstallWithExistingMySQLUser(t *C) {
 	mysqlHost := ""
 	cmdTest.Write(mysqlHost + "\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, "Testing MySQL connection root:...@unix(/var/run/mysqld/mysqld.sock)...\n")
-
-	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Using existing MySQL user for agent...\n")
-
-	re := regexp.MustCompile("\\([^\\)]+\\)")
-	lineWithoutPassword := re.ReplaceAllString(cmdTest.ReadLine(), "(<path>)") // @todo read pass hash from db
-	t.Check(lineWithoutPassword, Equals, "Agent MySQL user: root@unix(<path>)/?parseTime=true\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: "+s.username+"@unix(.*)/?parseTime=true\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, mysqlInstance.Hostname, mysqlInstance.Id))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", agent.Uuid))
@@ -560,14 +529,13 @@ func (s *MainTestSuite) TestInstallWithFlagCreateAgentFalse(t *C) {
 	mysqlHost := ""
 	cmdTest.Write(mysqlHost + "\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, "Testing MySQL connection root:...@unix(/var/run/mysqld/mysqld.sock)...\n")
-
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":...@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
 
-	re := regexp.MustCompile("0x[^@]+")
-	lineWithoutPassword := re.ReplaceAllString(cmdTest.ReadLine(), "<pass>") // @todo read pass hash from db
-	t.Check(lineWithoutPassword, Equals, "Agent MySQL user: percona-agent:<pass>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:0x.*@unix(.*)/?parseTime=true\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, mysqlInstance.Hostname, mysqlInstance.Id))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Not creating agent (-create-agent=false)\n"))
@@ -659,15 +627,14 @@ func (s *MainTestSuite) TestInstallWithFlagOldPasswordsTrue(t *C) {
 	mysqlHost := ""
 	cmdTest.Write(mysqlHost + "\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, "Testing MySQL connection root:...@unix(/var/run/mysqld/mysqld.sock)...\n")
-
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":...@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
 
-	re := regexp.MustCompile("0x[^@]+")
-	lineWithoutPassword := re.ReplaceAllString(cmdTest.ReadLine(), "<pass>") // @todo read pass hash from db
+	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
 	// Flag -old-passwords=true should add &allowOldPasswords=true to DSN
-	t.Check(lineWithoutPassword, Equals, "Agent MySQL user: percona-agent:<pass>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true&allowOldPasswords=true\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:0x.*@unix(.*)/?parseTime=true&allowOldPasswords=true\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, mysqlInstance.Hostname, mysqlInstance.Id))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", agent.Uuid))
@@ -760,14 +727,13 @@ func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) {
 	mysqlHost := ""
 	cmdTest.Write(mysqlHost + "\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, "Testing MySQL connection root:...@unix(/var/run/mysqld/mysqld.sock)...\n")
-
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":...@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
 
-	re := regexp.MustCompile("0x[^@]+")
-	lineWithoutPassword := re.ReplaceAllString(cmdTest.ReadLine(), "<pass>") // @todo read pass hash from db
-	t.Check(lineWithoutPassword, Equals, "Agent MySQL user: percona-agent:<pass>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:0x.*@unix(.*)/?parseTime=true\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, mysqlInstance.Hostname, mysqlInstance.Id))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", agent.Uuid))

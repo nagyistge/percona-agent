@@ -31,7 +31,10 @@ import (
 	"time"
 )
 
-type Flags map[string]bool
+type Flags struct {
+	Bool   map[string]bool
+	String map[string]string
+}
 
 var portNumberRe = regexp.MustCompile(`\.\d+$`)
 
@@ -69,17 +72,21 @@ func (i *Installer) Run() error {
 
 	fmt.Printf("API host: %s\n", i.agentConfig.ApiHostname)
 
-	for i.agentConfig.ApiKey == "" {
-		apiKey, err := i.term.PromptString("API key", "")
-		if err != nil {
-			return err
+	if i.flags.Bool["non-interactive"] && i.agentConfig.ApiKey == "" {
+		return fmt.Errorf("API key is required, please provide it with -api-key option.")
+	} else {
+		for i.agentConfig.ApiKey == "" {
+			apiKey, err := i.term.PromptString("API key", "")
+			if err != nil {
+				return err
+			}
+			if apiKey == "" {
+				fmt.Println("API key is required, please try again.")
+				continue
+			}
+			i.agentConfig.ApiKey = apiKey
+			break
 		}
-		if apiKey == "" {
-			fmt.Println("API key is required, please try again.")
-			continue
-		}
-		i.agentConfig.ApiKey = apiKey
-		break
 	}
 
 	/**
@@ -100,7 +107,7 @@ VERIFY_API_KEY:
 				timeout = true
 			}
 		}
-		if i.flags["debug"] {
+		if i.flags.Bool["debug"] {
 			log.Printf("code=%d\n", code)
 			log.Printf("err=%s\n", err)
 		}
@@ -178,7 +185,7 @@ VERIFY_API_KEY:
 
 	var err error
 
-	if i.flags["create-server-instance"] {
+	if i.flags.Bool["create-server-instance"] {
 		si, err = i.createServerInstance()
 		if err != nil {
 			return err
@@ -188,9 +195,12 @@ VERIFY_API_KEY:
 		fmt.Println("Not creating server instance (-create-server-instance=false)")
 	}
 
-	if i.flags["create-mysql-instance"] {
-		// Create MySQL user for agent, or using existing one, then verify MySQL connection.
-		agentDSN, err := i.doMySQL()
+	if i.flags.Bool["create-mysql-instance"] {
+		// Get MySQL DSN for agent to use.
+		// It is new MySQL user created just for agent
+		// or user is asked for existing one.
+		// DSN is verified prior returning by connecting to MySQL.
+		agentDSN, err := i.getAgentDSN()
 		if err != nil {
 			return err
 		}
@@ -214,7 +224,7 @@ VERIFY_API_KEY:
 
 	configs := []proto.AgentConfig{}
 
-	if i.flags["start-services"] {
+	if i.flags.Bool["start-services"] {
 		// Server metrics monitor
 		config, err := i.getMmServerConfig(si)
 		if err != nil {
@@ -224,7 +234,7 @@ VERIFY_API_KEY:
 			configs = append(configs, *config)
 		}
 
-		if i.flags["start-mysql-services"] {
+		if i.flags.Bool["start-mysql-services"] {
 			// MySQL metrics tracker
 			config, err = i.getMmMySQLConfig(mi)
 			if err != nil {
@@ -246,7 +256,7 @@ VERIFY_API_KEY:
 			// QAN
 			// MySQL is local if the server hostname == MySQL hostname without port number.
 			if i.hostname == portNumberRe.ReplaceAllLiteralString(mi.Hostname, "") {
-				if i.flags["debug"] {
+				if i.flags.Bool["debug"] {
 					log.Printf("MySQL is local")
 				}
 				config, err := i.getQanConfig(mi)
@@ -268,7 +278,7 @@ VERIFY_API_KEY:
 	 * Create agent with initial service configs.
 	 */
 
-	if i.flags["create-agent"] {
+	if i.flags.Bool["create-agent"] {
 		agent, err := i.createAgent(configs)
 		if err != nil {
 			return err

@@ -84,6 +84,9 @@ func (dsn DSN) DSN() (string, error) {
 			dsn.Port,
 		)
 	} else {
+		// @todo I don't get this - please comment
+		// If hostname and socket is not provided
+		// then what's this case?
 		user, err := user.Current()
 		if err != nil {
 			return "", err

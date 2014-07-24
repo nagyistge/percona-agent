@@ -36,7 +36,7 @@ func (i *Installer) createMySQLUser(dsn mysql.DSN) (mysql.DSN, error) {
 	userDSN := dsn
 	userDSN.Username = "percona-agent"
 	userDSN.Password = fmt.Sprintf("%p%d", &dsn, rand.Uint32())
-	userDSN.OldPasswords = i.flags["old-passwords"]
+	userDSN.OldPasswords = i.flags.Bool["old-passwords"]
 
 	dsnString, _ := dsn.DSN()
 	conn := mysql.NewConnection(dsnString)
@@ -46,7 +46,7 @@ func (i *Installer) createMySQLUser(dsn mysql.DSN) (mysql.DSN, error) {
 	defer conn.Close()
 
 	sql := MakeGrant(dsn, userDSN.Username, userDSN.Password)
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Println(sql)
 	}
 	_, err := conn.DB().Exec(sql)
@@ -61,7 +61,7 @@ func (i *Installer) createMySQLUser(dsn mysql.DSN) (mysql.DSN, error) {
 		dsn2 := dsn
 		dsn2.Hostname = "127.0.0.1"
 		sql := MakeGrant(dsn2, userDSN.Username, userDSN.Password)
-		if i.flags["debug"] {
+		if i.flags.Bool["debug"] {
 			log.Println(sql)
 		}
 		_, err := conn.DB().Exec(sql)
@@ -83,11 +83,11 @@ func (i *Installer) createServerInstance() (*proto.ServerInstance, error) {
 		return nil, err
 	}
 	url := pct.URL(i.agentConfig.ApiHostname, "instances", "server")
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Println(url)
 	}
 	resp, _, err := i.api.Post(i.agentConfig.ApiKey, url, data)
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Printf("resp=%#v\n", resp)
 		log.Printf("err=%s\n", err)
 	}
@@ -108,7 +108,7 @@ func (i *Installer) createServerInstance() (*proto.ServerInstance, error) {
 
 	// GET <api>/instances/server/id (URI)
 	code, data, err := i.api.Get(i.agentConfig.ApiKey, uri)
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Printf("code=%d\n", code)
 		log.Printf("err=%s\n", err)
 	}
@@ -132,7 +132,7 @@ func (i *Installer) createMySQLInstance(dsn mysql.DSN) (*proto.MySQLInstance, er
 		DSN:      dsnString,
 	}
 	if err := instance.GetMySQLInfo(mi); err != nil {
-		if i.flags["debug"] {
+		if i.flags.Bool["debug"] {
 			log.Printf("err=%s\n", err)
 		}
 		return nil, err
@@ -144,11 +144,11 @@ func (i *Installer) createMySQLInstance(dsn mysql.DSN) (*proto.MySQLInstance, er
 		return nil, err
 	}
 	url := pct.URL(i.agentConfig.ApiHostname, "instances", "mysql")
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Println(url)
 	}
 	resp, _, err := i.api.Post(i.agentConfig.ApiKey, url, data)
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Printf("resp=%#v\n", resp)
 		log.Printf("err=%s\n", err)
 	}
@@ -169,7 +169,7 @@ func (i *Installer) createMySQLInstance(dsn mysql.DSN) (*proto.MySQLInstance, er
 
 	// GET <api>/instances/mysql/id (URI)
 	code, data, err := i.api.Get(i.agentConfig.ApiKey, uri)
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Printf("code=%d\n", code)
 		log.Printf("err=%s\n", err)
 	}
@@ -196,11 +196,11 @@ func (i *Installer) createAgent(configs []proto.AgentConfig) (*proto.Agent, erro
 		return nil, err
 	}
 	url := pct.URL(i.agentConfig.ApiHostname, "agents")
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Println(url)
 	}
 	resp, _, err := i.api.Post(i.agentConfig.ApiKey, url, data)
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Printf("resp=%#v\n", resp)
 		log.Printf("err=%s\n", err)
 	}
@@ -224,7 +224,7 @@ func (i *Installer) createAgent(configs []proto.AgentConfig) (*proto.Agent, erro
 
 	// GET <api>/agents/:uuid
 	code, data, err := i.api.Get(i.agentConfig.ApiKey, uri)
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Printf("code=%d\n", code)
 		log.Printf("err=%s\n", err)
 	}
@@ -252,12 +252,12 @@ func (i *Installer) updateAgent(uuid string) (*proto.Agent, error) {
 		return nil, err
 	}
 	url := pct.URL(i.agentConfig.ApiHostname, "agents", uuid)
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Println(url)
 		log.Println(string(data))
 	}
 	resp, _, err := i.api.Put(i.agentConfig.ApiKey, url, data)
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Printf("resp=%#v\n", resp)
 		log.Printf("err=%s\n", err)
 	}
