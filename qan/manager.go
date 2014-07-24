@@ -113,7 +113,7 @@ func (m *Manager) Start() error {
 	}
 
 	// Validate the config.
-	if err := m.validateConfig(config); err != nil {
+	if err := ValidateConfig(config); err != nil {
 		m.logger.Error("Invalid qan config:", err)
 		return nil
 	}
@@ -461,7 +461,7 @@ func (m *Manager) rotateSlowLog(config Config, interval *Interval) error {
 	return nil
 }
 
-func (m *Manager) validateConfig(config *Config) error {
+func ValidateConfig(config *Config) error {
 	if config.CollectFrom != "slowlog" && config.CollectFrom != "perfschema" {
 		return fmt.Errorf("Invalid CollectFrom: '%s'.  Expected 'perfschema' or 'slowlog'.", config.CollectFrom)
 	}
@@ -471,7 +471,7 @@ func (m *Manager) validateConfig(config *Config) error {
 	if config.Stop == nil || len(config.Stop) == 0 {
 		return errors.New("qan.Config.Stop array is empty")
 	}
-	if config.MaxWorkers < 0 {
+	if config.MaxWorkers < 1 {
 		return errors.New("MaxWorkers must be > 0")
 	}
 	if config.MaxWorkers > 4 {
@@ -501,7 +501,7 @@ func (m *Manager) start(config *Config) error {
 	defer m.logger.Debug("start:return")
 
 	// Validate the config.
-	if err := m.validateConfig(config); err != nil {
+	if err := ValidateConfig(config); err != nil {
 		return err
 	}
 

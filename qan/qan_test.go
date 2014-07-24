@@ -1724,3 +1724,58 @@ func (s *PfsWorkerTestSuite) TestPrepareResult001(t *C) {
 		}
 	}
 }
+
+/////////////////////////////////////////////////////////////////////////////
+// ValidateConfig test suite
+/////////////////////////////////////////////////////////////////////////////
+
+type ValidateConfigTestSuite struct {
+}
+
+var _ = Suite(&ValidateConfigTestSuite{})
+
+func (s *ValidateConfigTestSuite) TestValidateConfig(t *C) {
+	config := &qan.Config{
+		ServiceInstance: proto.ServiceInstance{Service: "mysql", InstanceId: 1},
+		Start: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=0.123"},
+			mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+		},
+		Stop: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
+		},
+		Interval:          300,        // 5 min
+		MaxSlowLogSize:    1073741824, // 1 GiB
+		RemoveOldSlowLogs: true,
+		ExampleQueries:    true,
+		MaxWorkers:        2,
+		WorkerRunTime:     600, // 10 min
+		CollectFrom:       "slowlog",
+	}
+	err := qan.ValidateConfig(config)
+	t.Check(err, IsNil)
+
+	config = &qan.Config{
+		ServiceInstance: proto.ServiceInstance{Service: "mysql", InstanceId: 1},
+		Start: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=0.123"},
+			mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+		},
+		Stop: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
+		},
+		Interval:          300,        // 5 min
+		MaxSlowLogSize:    1073741824, // 1 GiB
+		RemoveOldSlowLogs: true,
+		ExampleQueries:    true,
+		MaxWorkers:        0,
+		WorkerRunTime:     600, // 10 min
+		CollectFrom:       "slowlog",
+	}
+	err = qan.ValidateConfig(config)
+	t.Check(err, NotNil)
+}
