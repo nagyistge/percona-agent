@@ -66,17 +66,17 @@ func init() {
 	flag.BoolVar(&flagOldPasswords, "old-passwords", false, "Old passwords")
 	flag.BoolVar(&flagPlainPasswords, "plain-passwords", false, "Plain passwords") // @todo: Workaround used in tests for "stty: standard input: Inappropriate ioctl for device"
 	flag.BoolVar(&flagNonInteractive, "non-interactive", false, "Non-interactive mode for headless installation")
-	flag.BoolVar(&flagCreateMySQLUser, "create-mysql-user", true, "Create MySQL user for agent")
+	flag.BoolVar(&flagCreateMySQLUser, "create-mysql-user", true, "Create MySQL user for agent (used with -non-interactive=true mode)")
 	username := ""
 	currentUser, _ := user.Current()
 	if currentUser != nil {
 		username = currentUser.Username
 	}
-	flag.StringVar(&flagMySQLUser, "mysql-user", username, "MySQL username")
-	flag.StringVar(&flagMySQLPass, "mysql-pass", "", "MySQL password")
-	flag.StringVar(&flagMySQLHost, "mysql-host", "localhost", "MySQL host")
-	flag.StringVar(&flagMySQLPort, "mysql-port", "3306", "MySQL port")
-	flag.StringVar(&flagMySQLSocket, "mysql-socket", "", "MySQL socket file")
+	flag.StringVar(&flagMySQLUser, "mysql-user", username, "MySQL username (used with -non-interactive=true mode)")
+	flag.StringVar(&flagMySQLPass, "mysql-pass", "", "MySQL password (used with -non-interactive=true mode)")
+	flag.StringVar(&flagMySQLHost, "mysql-host", "localhost", "MySQL host (used with -non-interactive=true mode)")
+	flag.StringVar(&flagMySQLPort, "mysql-port", "3306", "MySQL port (used with -non-interactive=true mode)")
+	flag.StringVar(&flagMySQLSocket, "mysql-socket", "", "MySQL socket file (used with -non-interactive=true mode)")
 }
 
 func main() {
