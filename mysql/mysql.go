@@ -135,10 +135,10 @@ func (c *Connection) Explain(query string, db string) (explain *proto.ExplainRes
 }
 
 func (c *Connection) Set(queries []Query) error {
-	if c.conn == nil {
-		return errors.New("Not connected")
-	}
 	for _, query := range queries {
+		if c.conn == nil {
+			return errors.New("Not connected")
+		}
 		if _, err := c.conn.Exec(query.Set); err != nil {
 			return err
 		}
