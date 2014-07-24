@@ -264,7 +264,7 @@ func (m *Manager) run(config Config) {
 	intervalChan := m.iter.IntervalChan()
 	lastTs := time.Time{}
 	for {
-		m.logger.Debug("run:wait")
+		m.logger.Debug("run:idle")
 
 		m.workersMux.RLock()
 		runningWorkers := len(m.workers)

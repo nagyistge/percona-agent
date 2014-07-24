@@ -145,7 +145,7 @@ func (i *FileIntervalIter) run() {
 	cur := &Interval{}
 
 	for {
-		i.logger.Debug("run:wait")
+		i.logger.Debug("run:idle")
 
 		select {
 		case now := <-i.tickChan:
