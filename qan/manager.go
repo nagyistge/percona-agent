@@ -419,7 +419,7 @@ func (m *Manager) mysqlConnClose() {
 	m.connected--
 	if m.connected < 1 {
 		m.mysqlConn.Close()
-		m.connected = false
+		m.connected = 0
 	}
 }
 
