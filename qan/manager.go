@@ -405,6 +405,11 @@ func (m *Manager) createMysqlConn(service string, instanceId uint) error {
 func (m *Manager) mysqlConnect(tries uint) error {
 	m.connectionMux.Lock()
 	defer m.connectionMux.Unlock()
+	if m.connected > 0 {
+		// already have opened connection
+		m.connected++
+		return nil
+	}
 	if err := m.mysqlConn.Connect(tries); err != nil {
 		m.logger.Warn("Unable to connect to MySQL: ", err)
 		return err
@@ -417,6 +422,7 @@ func (m *Manager) mysqlConnClose() {
 	m.connectionMux.Lock()
 	defer m.connectionMux.Unlock()
 	if m.connected == 0 {
+		// connection closed already
 		return
 	}
 	m.connected--
