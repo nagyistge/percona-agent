@@ -416,8 +416,11 @@ func (m *Manager) mysqlConnect(tries uint) error {
 func (m *Manager) mysqlConnClose() {
 	m.connectionMux.Lock()
 	defer m.connectionMux.Unlock()
+	if m.connected == 0 {
+		return
+	}
 	m.connected--
-	if m.connected < 1 {
+	if m.connected == 0 {
 		m.mysqlConn.Close()
 	}
 }
