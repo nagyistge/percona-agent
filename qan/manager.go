@@ -58,8 +58,6 @@ type Manager struct {
 	status          *pct.Status
 	sync            *pct.SyncChan
 	oldSlowLogs     map[string]int
-	connectionMux   *sync.RWMutex
-	connected       uint
 }
 
 func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock ticker.Manager, iterFactory IntervalIterFactory, workerFactory WorkerFactory, spool data.Spooler, im *instance.Repo, mrm mrms.Monitor) *Manager {
@@ -81,7 +79,6 @@ func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock 
 		status:         pct.NewStatus([]string{"qan", "qan-log-parser", "qan-last-interval", "qan-next-interval"}),
 		sync:           pct.NewSyncChan(),
 		oldSlowLogs:    make(map[string]int),
-		connectionMux:  new(sync.RWMutex),
 	}
 	return m
 }
@@ -275,7 +272,7 @@ func (m *Manager) run(config Config) {
 	lastTs := time.Time{}
 
 	for {
-		m.logger.Debug("run:wait")
+		m.logger.Debug("run:idle")
 
 		m.workersMux.RLock()
 		runningWorkers := len(m.workers)
@@ -402,40 +399,12 @@ func (m *Manager) createMysqlConn(service string, instanceId uint) error {
 	return nil // success
 }
 
-func (m *Manager) mysqlConnect(tries uint) error {
-	m.connectionMux.Lock()
-	defer m.connectionMux.Unlock()
-	if m.connected > 0 {
-		// already have opened connection
-		m.connected++
-		return nil
-	}
-	if err := m.mysqlConn.Connect(tries); err != nil {
-		m.logger.Warn("Unable to connect to MySQL: ", err)
-		return err
-	}
-	m.connected++
-	return nil
-}
-
-func (m *Manager) mysqlConnClose() {
-	m.connectionMux.Lock()
-	defer m.connectionMux.Unlock()
-	if m.connected == 0 {
-		// connection closed already
-		return
-	}
-	m.connected--
-	if m.connected == 0 {
-		m.mysqlConn.Close()
-	}
-}
-
 func (m *Manager) mysqlSetup(config Config) error {
-	if err := m.mysqlConnect(2); err != nil {
+	if err := m.mysqlConn.Connect(2); err != nil {
+		m.logger.Warn("Unable to connect to MySQL: %s", err)
 		return err
 	}
-	defer m.mysqlConnClose()
+	defer m.mysqlConn.Close()
 
 	// Set global vars to config/enable slow log.
 	if err := m.mysqlConn.Set(config.Start); err != nil {
@@ -453,10 +422,11 @@ func (m *Manager) rotateSlowLog(config Config, interval *Interval) error {
 
 	m.status.Update("qan-log-parser", "Rotating slow log")
 
-	if err := m.mysqlConnect(2); err != nil {
+	if err := m.mysqlConn.Connect(2); err != nil {
+		m.logger.Warn(err)
 		return err
 	}
-	defer m.mysqlConnClose()
+	defer m.mysqlConn.Close()
 
 	// Stop slow log so we don't move it while MySQL is using it.
 	if err := m.mysqlConn.Set(config.Stop); err != nil {
@@ -550,10 +520,10 @@ func (m *Manager) start(config *Config) error {
 
 	// Make an iterator for the slow log file at interval ticks.
 	filenameFunc := func() (string, error) {
-		if err := m.mysqlConnect(1); err != nil {
+		if err := m.mysqlConn.Connect(1); err != nil {
 			return "", err
 		}
-		defer m.mysqlConnClose()
+		defer m.mysqlConn.Close()
 		file := m.mysqlConn.GetGlobalVarString("slow_query_log_file")
 		return file, nil
 	}
@@ -588,10 +558,10 @@ func (m *Manager) stop() error {
 
 	// Turn off MySQL slow log.
 	m.logger.Debug("stop:mysql")
-	if err := m.mysqlConnect(2); err != nil {
+	if err := m.mysqlConn.Connect(2); err != nil {
 		return err
 	}
-	defer m.mysqlConnClose()
+	defer m.mysqlConn.Close()
 	if err := m.mysqlConn.Set(m.config.Stop); err != nil {
 		return err
 	}
