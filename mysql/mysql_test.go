@@ -22,7 +22,6 @@ import (
 	"testing"
 	"os"
 	"github.com/percona/percona-agent/mysql"
-	"reflect"
 )
 
 func Test(t *testing.T) { TestingT(t) }
@@ -44,12 +43,12 @@ func (s *MysqlTestSuite) TestConnection(t *C) {
 	conn := mysql.NewConnection(s.dsn)
 	err := conn.Connect(1)
 	t.Assert(err, IsNil)
-	conn1 := reflect.ValueOf(conn.DB())
+	conn1 := conn.DB()
 
 	err = conn.Connect(1)
 	t.Assert(err, IsNil)
-	conn2 := reflect.ValueOf(conn.DB())
-	t.Check(conn1.Pointer(), Equals, conn2.Pointer())
+	conn2 := conn.DB()
+	t.Check(conn1, Equals, conn2)
 
 	conn.Close()
 	t.Assert(conn.DB(), NotNil)
