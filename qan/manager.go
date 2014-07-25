@@ -59,7 +59,7 @@ type Manager struct {
 	sync            *pct.SyncChan
 	oldSlowLogs     map[string]int
 	connectionMux   *sync.RWMutex
-	connected       bool
+	connected       uint
 }
 
 func NewManager(logger *pct.Logger, mysqlFactory mysql.ConnectionFactory, clock ticker.Manager, iterFactory IntervalIterFactory, workerFactory WorkerFactory, spool data.Spooler, im *instance.Repo, mrm mrms.Monitor) *Manager {
@@ -409,14 +409,15 @@ func (m *Manager) mysqlConnect(tries uint) error {
 		m.logger.Warn("Unable to connect to MySQL: ", err)
 		return err
 	}
-	m.connected = true
+	m.connected++
 	return nil
 }
 
 func (m *Manager) mysqlConnClose() {
 	m.connectionMux.Lock()
 	defer m.connectionMux.Unlock()
-	if !m.connected {
+	m.connected--
+	if m.connected < 1 {
 		m.mysqlConn.Close()
 		m.connected = false
 	}
