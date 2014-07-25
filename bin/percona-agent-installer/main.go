@@ -36,7 +36,6 @@ var (
 	flagApiKey               string
 	flagBasedir              string
 	flagDebug                bool
-	flagCreateMySQLUser      bool
 	flagCreateMySQLInstance  bool
 	flagCreateServerInstance bool
 	flagStartServices        bool
@@ -46,6 +45,8 @@ var (
 	flagOldPasswords         bool
 	flagPlainPasswords       bool
 	flagNonInteractive       bool
+	flagAutoDetectMySQL      bool
+	flagCreateMySQLUser      bool
 	flagMySQLUser            string
 	flagMySQLPass            string
 	flagMySQLHost            string
@@ -70,6 +71,7 @@ func init() {
 	flag.BoolVar(&flagOldPasswords, "old-passwords", false, "Old passwords")
 	flag.BoolVar(&flagPlainPasswords, "plain-passwords", false, "Plain passwords") // @todo: Workaround used in tests for "stty: standard input: Inappropriate ioctl for device"
 	flag.BoolVar(&flagNonInteractive, "non-interactive", false, "Non-interactive mode for headless installation")
+	flag.BoolVar(&flagAutoDetectMySQL, "auto-detect-mysql", true, "Try to auto detect MySQL connection (used with -non-interactive=true mode)")
 	flag.BoolVar(&flagCreateMySQLUser, "create-mysql-user", true, "Create MySQL user for agent (used with -non-interactive=true mode)")
 	username := ""
 	currentUser, _ := user.Current()
@@ -111,13 +113,14 @@ func main() {
 			"debug":                  flagDebug,
 			"create-server-instance": flagCreateServerInstance,
 			"start-services":         flagStartServices,
-			"create-mysql-user":      flagCreateMySQLUser,
 			"create-mysql-instance":  flagCreateMySQLInstance,
 			"start-mysql-services":   flagStartMySQLServices,
 			"create-agent":           flagCreateAgent,
 			"old-passwords":          flagOldPasswords,
 			"plain-passwords":        flagPlainPasswords,
 			"non-interactive":        flagNonInteractive,
+			"create-mysql-user":      flagCreateMySQLUser,
+			"auto-detect-mysql":      flagAutoDetectMySQL,
 		},
 		String: map[string]string{
 			"app-host":     DEFAULT_APP_HOSTNAME,

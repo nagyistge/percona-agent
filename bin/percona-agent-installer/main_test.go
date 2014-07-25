@@ -125,6 +125,7 @@ func (s *MainTestSuite) TestNonInteractiveInstall(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Using auto detected DSN\n")
 
 	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":...@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
@@ -221,6 +222,7 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t 
 
 	t.Check(cmdTest.ReadLine(), Equals, "Skip creating MySQL user (-create-mysql-user=false)\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Specify the existing MySQL user to use for the agent\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Using auto detected DSN\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Using existing MySQL user for agent...\n")
 	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":...@unix(.*)...\n")
@@ -286,6 +288,10 @@ func (s *MainTestSuite) TestInstall(t *C) {
 	 * MySQL super user credentials
 	 */
 	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
+
+	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:...@unix(.+)\n")
+	t.Assert(cmdTest.ReadLine(), Equals, "Use auto-detected connection details? (Y): ")
+	cmdTest.Write("N\n")
 
 	t.Assert(cmdTest.ReadLine(), Equals, "MySQL username: ")
 	mysqlUserName := "root"
@@ -413,6 +419,11 @@ func (s *MainTestSuite) TestInstallWithExistingMySQLUser(t *C) {
 	 * Using existing MySQL user
 	 */
 	t.Check(cmdTest.ReadLine(), Equals, "Specify the existing MySQL user to use for the agent\n")
+
+	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:...@unix(.+)\n")
+	t.Assert(cmdTest.ReadLine(), Equals, "Use auto-detected connection details? (Y): ")
+	cmdTest.Write("N\n")
+
 	t.Assert(cmdTest.ReadLine(), Equals, "MySQL username: ")
 	mysqlUserName := "root"
 	cmdTest.Write(mysqlUserName + "\n")
@@ -488,6 +499,10 @@ func (s *MainTestSuite) TestInstallWithFlagCreateAgentFalse(t *C) {
 	t.Assert(cmdTest.ReadLine(), Equals, "Create MySQL user for agent? ('N' to use existing user) (Y): ")
 	cmdTest.Write("Y\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
+
+	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:...@unix(.+)\n")
+	t.Assert(cmdTest.ReadLine(), Equals, "Use auto-detected connection details? (Y): ")
+	cmdTest.Write("N\n")
 
 	t.Assert(cmdTest.ReadLine(), Equals, "MySQL username: ")
 	mysqlUserName := "root"
@@ -566,6 +581,10 @@ func (s *MainTestSuite) TestInstallWithFlagOldPasswordsTrue(t *C) {
 	cmdTest.Write("Y\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
 
+	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:...@unix(.+)\n")
+	t.Assert(cmdTest.ReadLine(), Equals, "Use auto-detected connection details? (Y): ")
+	cmdTest.Write("N\n")
+
 	t.Assert(cmdTest.ReadLine(), Equals, "MySQL username: ")
 	mysqlUserName := "root"
 	cmdTest.Write(mysqlUserName + "\n")
@@ -642,6 +661,10 @@ func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) {
 	t.Assert(cmdTest.ReadLine(), Equals, "Create MySQL user for agent? ('N' to use existing user) (Y): ")
 	cmdTest.Write("Y\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
+
+	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:...@unix(.+)\n")
+	t.Assert(cmdTest.ReadLine(), Equals, "Use auto-detected connection details? (Y): ")
+	cmdTest.Write("N\n")
 
 	t.Assert(cmdTest.ReadLine(), Equals, "MySQL username: ")
 	mysqlUserName := "root"
@@ -742,10 +765,12 @@ func NewServeMuxTest() *ServeMuxTest {
 
 func (sm *ServeMuxTest) appendPing() {
 	sm.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "GET" {
+		switch r.Method {
+		case "GET":
 			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(600)
 		}
-		w.WriteHeader(600)
 	})
 }
 

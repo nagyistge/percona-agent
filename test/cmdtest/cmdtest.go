@@ -34,9 +34,7 @@ func NewCmdTest(cmd *exec.Cmd) *CmdTest {
 func (c *CmdTest) Run() <-chan string {
 	output := make(chan string, 1024)
 	go func() {
-		x := 0
 		for {
-			x++
 			b := make([]byte, 8192)
 			n, err := c.reader.Read(b)
 			if n > 0 {
@@ -49,8 +47,9 @@ func (c *CmdTest) Run() <-chan string {
 					lines = lines[:lastPos]
 				}
 				for i := range lines {
-					log.Printf("[%d] %#v", x, string(lines[i]))
-					output <- string(lines[i])
+					line := string(lines[i])
+					log.Printf("%#v", line)
+					output <- line
 				}
 			}
 			if err != nil {

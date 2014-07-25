@@ -21,7 +21,9 @@ import (
 	"fmt"
 	"github.com/mewpkg/gopass"
 	"github.com/percona/percona-agent/mysql"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -136,16 +138,46 @@ func (i *Installer) useExistingMySQLUser() (dsn mysql.DSN, err error) {
 }
 
 func (i *Installer) getDSNFromUser() (dsn mysql.DSN, err error) {
-	var password, username string
+	if i.flags.Bool["auto-detect-mysql"] {
+		autoDSN, err := i.autodetectDSN()
+		if err == nil {
+			if i.flags.Bool["non-interactive"] {
+				fmt.Printf("Using auto detected DSN\n")
+				return *autoDSN, nil
+			} else {
+				fmt.Printf("Auto detected MySQL connection details: %s\n", autoDSN)
+				useAuto, err := i.term.PromptBool("Use auto-detected connection details?", "Y")
+				if err != nil {
+					return dsn, err
+				}
+				if useAuto {
+					fmt.Printf("Using auto detected DSN\n")
+					return *autoDSN, nil
+				}
+			}
+		}
+	}
+
 	if i.flags.Bool["non-interactive"] {
-		password = i.flags.String["mysql-pass"]
-		username = i.flags.String["mysql-user"]
+		dsn.Username = i.flags.String["mysql-user"]
+		dsn.Password = i.flags.String["mysql-pass"]
+
+		if i.flags.String["mysql-socket"] != "" {
+			dsn.Socket = i.flags.String["mysql-socket"]
+		} else {
+			dsn.Hostname = i.flags.String["mysql-host"]
+			dsn.Port = i.flags.String["mysql-port"]
+		}
 	} else {
-		username, err = i.term.PromptString("MySQL username", "")
+		// Ask for username
+		username, err := i.term.PromptString("MySQL username", "")
 		if err != nil {
 			return dsn, err
 		}
+		dsn.Username = username
 
+		// Ask for password
+		var password string
 		if i.flags.Bool["plain-passwords"] {
 			password, err = i.term.PromptString("MySQL password", "")
 		} else {
@@ -154,18 +186,9 @@ func (i *Installer) getDSNFromUser() (dsn mysql.DSN, err error) {
 		if err != nil {
 			return dsn, err
 		}
-	}
-	dsn.Username = username
-	dsn.Password = password
+		dsn.Password = password
 
-	if i.flags.Bool["non-interactive"] {
-		if i.flags.String["mysql-socket"] != "" {
-			dsn.Socket = i.flags.String["mysql-socket"]
-		} else {
-			dsn.Hostname = i.flags.String["mysql-host"]
-			dsn.Port = i.flags.String["mysql-port"]
-		}
-	} else {
+		// Ask for hostname / socket path
 		hostname, err := i.term.PromptStringRequired(
 			"MySQL host[:port] or socket file",
 			dsn.To(),
@@ -185,6 +208,61 @@ func (i *Installer) getDSNFromUser() (dsn mysql.DSN, err error) {
 				dsn.Port = "3306"
 			}
 			dsn.Socket = ""
+		}
+	}
+
+	return dsn, nil
+}
+
+func (i *Installer) autodetectDSN() (dsn *mysql.DSN, err error) {
+	cmd := exec.Command(
+		"mysql",
+		"--print-defaults",
+	)
+	byteOutput, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	output := string(byteOutput)
+
+	var re *regexp.Regexp
+	var result []string // Result of FindStringSubmatch
+	dsn = &mysql.DSN{}
+
+	// Note: Since output of mysql --print-defaults
+	//       doesn't use quotation marks for values
+	//       then we use "space" as a separator
+	//       this implies that we are unable to properly detect
+	//       e.g. passwords with spaces
+	re = regexp.MustCompile("--user=([^ ]+)")
+	result = re.FindStringSubmatch(output)
+	if result != nil {
+		dsn.Username = result[1]
+	}
+
+	re = regexp.MustCompile("--password=([^ ]+)")
+	result = re.FindStringSubmatch(output)
+	if result != nil {
+		dsn.Password = result[1]
+	}
+
+	re = regexp.MustCompile("--socket=([^ ]+)")
+	result = re.FindStringSubmatch(output)
+	if result != nil {
+		dsn.Socket = result[1]
+	}
+
+	if dsn.Socket == "" {
+		re = regexp.MustCompile("--host=([^ ]+)")
+		result = re.FindStringSubmatch(output)
+		if result != nil {
+			dsn.Hostname = result[1]
+		}
+
+		re = regexp.MustCompile("--port=([^ ]+)")
+		result = re.FindStringSubmatch(output)
+		if result != nil {
+			dsn.Port = result[1]
 		}
 	}
 
