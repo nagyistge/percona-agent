@@ -1603,7 +1603,7 @@ func (s *PfsWorkerTestSuite) TestPrepareResult001(t *C) {
 			SumLockTime:             119000000,
 			SumRowsAffected:         0,
 			SumRowsSent:             0,
-			SumRowsExemined:         0,
+			SumRowsExamined:         0,
 			SumSelectFullJoin:       0,
 			SumSelectScan:           0,
 			SumSortMergePasses:      0,
@@ -1623,7 +1623,7 @@ func (s *PfsWorkerTestSuite) TestPrepareResult001(t *C) {
 			SumLockTime:             0,
 			SumRowsAffected:         0,
 			SumRowsSent:             1,
-			SumRowsExemined:         0,
+			SumRowsExamined:         0,
 			SumSelectFullJoin:       0,
 			SumSelectScan:           0,
 			SumSortMergePasses:      0,
@@ -1643,7 +1643,7 @@ func (s *PfsWorkerTestSuite) TestPrepareResult001(t *C) {
 			SumLockTime:             0,
 			SumRowsAffected:         0,
 			SumRowsSent:             1,
-			SumRowsExemined:         0,
+			SumRowsExamined:         0,
 			SumSelectFullJoin:       0,
 			SumSelectScan:           0,
 			SumSortMergePasses:      0,
@@ -1663,7 +1663,7 @@ func (s *PfsWorkerTestSuite) TestPrepareResult001(t *C) {
 			SumLockTime:             38000000,
 			SumRowsAffected:         0,
 			SumRowsSent:             3,
-			SumRowsExemined:         3,
+			SumRowsExamined:         3,
 			SumSelectFullJoin:       0,
 			SumSelectScan:           1,
 			SumSortMergePasses:      0,
@@ -1683,7 +1683,7 @@ func (s *PfsWorkerTestSuite) TestPrepareResult001(t *C) {
 			SumLockTime:             0,
 			SumRowsAffected:         0,
 			SumRowsSent:             0,
-			SumRowsExemined:         0,
+			SumRowsExamined:         0,
 			SumSelectFullJoin:       0,
 			SumSelectScan:           0,
 			SumSortMergePasses:      0,
@@ -1696,32 +1696,15 @@ func (s *PfsWorkerTestSuite) TestPrepareResult001(t *C) {
 	}
 
 	w := qan.NewPfsWorker(s.logger, "pfs-worker", mock.NewNullMySQL())
-	gotPfsResult, err := w.PrepareResult(pfsData)
+	got, err := w.PrepareResult(pfsData)
 	t.Assert(err, IsNil)
-	t.Assert(gotPfsResult, NotNil)
-
-	expectPfsResult := &qan.Result{}
-	if err := test.LoadMmReport(sample+"pfs001.json", expectPfsResult); err != nil {
-		t.Fatal(err)
-	}
-
-	for i := range gotPfsResult.Classes {
-		found := 0
-	EXPECT_LOOP:
-		for j := range expectPfsResult.Classes {
-			if gotPfsResult.Classes[i].Id == expectPfsResult.Classes[j].Id {
-				found++
-				if same, diff := test.IsDeeply(gotPfsResult.Classes[i], expectPfsResult.Classes[j]); !same {
-					testlog.Dump(gotPfsResult.Classes[i])
-					testlog.Dump(expectPfsResult.Classes[j])
-					t.Error(diff)
-				}
-				break EXPECT_LOOP
-			}
-		}
-		if found == 0 {
-			t.Error(fmt.Sprintf("gotPfsResult.Classes[%d].Id '%s' was not found in expected result.", i, gotPfsResult.Classes[i].Id))
-		}
+	t.Assert(got, NotNil)
+	expect := &qan.Result{}
+	err = test.LoadMmReport(sample+"pfs001.json", expect)
+	t.Assert(err, IsNil)
+	if ok, diff := test.IsDeeply(got, expect); !ok {
+		test.Dump(got)
+		t.Error(diff)
 	}
 }
 
