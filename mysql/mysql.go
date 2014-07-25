@@ -44,14 +44,14 @@ type Connection struct {
 	conn            *sql.DB
 	backoff         *pct.Backoff
 	connectedAmount uint
-	connectionMux   *sync.RWMutex
+	connectionMux   *sync.Mutex
 }
 
 func NewConnection(dsn string) *Connection {
 	c := &Connection{
 		dsn:           dsn,
 		backoff:       pct.NewBackoff(20 * time.Second),
-		connectionMux: new(sync.RWMutex),
+		connectionMux: new(sync.Mutex),
 	}
 	return c
 }

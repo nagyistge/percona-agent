@@ -20,6 +20,49 @@ package mysql_test
 import (
 	. "launchpad.net/gocheck"
 	"testing"
+	"os"
+	"github.com/percona/percona-agent/mysql"
+	"reflect"
 )
 
 func Test(t *testing.T) { TestingT(t) }
+
+type MysqlTestSuite struct {
+	dsn string
+}
+
+var _ = Suite(&MysqlTestSuite{})
+
+func (s *MysqlTestSuite) SetUpSuite(t *C) {
+	s.dsn = os.Getenv("PCT_TEST_MYSQL_DSN")
+	if s.dsn == "" {
+		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
+	}
+}
+
+func (s *MysqlTestSuite) TestConnection(t *C) {
+	conn := mysql.NewConnection(s.dsn)
+	err := conn.Connect(1)
+	t.Assert(err, IsNil)
+	conn1 := reflect.ValueOf(conn.DB())
+
+	err = conn.Connect(1)
+	t.Assert(err, IsNil)
+	conn2 := reflect.ValueOf(conn.DB())
+	t.Check(conn1.Pointer(), Equals, conn2.Pointer())
+
+	conn.Close()
+	t.Assert(conn.DB(), NotNil)
+
+	/**
+	 * we still have open connection,
+	 * because we used Connect twice,
+	 * so let's close it
+	 */
+	conn.Close()
+	t.Assert(conn.DB(), IsNil)
+
+	// lets test accidental extra closing
+	conn.Close()
+	t.Assert(conn.DB(), IsNil)
+}
