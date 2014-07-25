@@ -72,7 +72,7 @@ func (c *Connection) Connect(tries uint) error {
 	defer c.connectionMux.Unlock()
 	if c.connectedAmount > 0 {
 		// already have opened connection
-		m.connectedAmount++
+		c.connectedAmount++
 		return nil
 	}
 	var err error
@@ -97,7 +97,7 @@ func (c *Connection) Connect(tries uint) error {
 		// Connected
 		c.conn = db
 		c.backoff.Success()
-		m.connectedAmount++
+		c.connectedAmount++
 		return nil
 	}
 
