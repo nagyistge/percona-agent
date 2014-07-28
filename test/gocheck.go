@@ -19,7 +19,7 @@ package test
 
 import (
 	"fmt"
-	"launchpad.net/gocheck"
+	"gopkg.in/check.v1"
 	"os/exec"
 	"reflect"
 	"strings"
@@ -30,11 +30,11 @@ import (
 /////////////////////////////////////////////////////////////////////////////
 
 type eventsChecker struct {
-	*gocheck.CheckerInfo
+	*check.CheckerInfo
 }
 
-var DeepEquals gocheck.Checker = &eventsChecker{
-	&gocheck.CheckerInfo{Name: "DeepEquals", Params: []string{"got", "expected"}},
+var DeepEquals check.Checker = &eventsChecker{
+	&check.CheckerInfo{Name: "DeepEquals", Params: []string{"got", "expected"}},
 }
 
 // Location of first inequality, if any
@@ -249,11 +249,11 @@ func checkPrimitives(got reflect.Value, expect reflect.Value) (bool, string) {
 /////////////////////////////////////////////////////////////////////////////
 
 type fileChecker struct {
-	*gocheck.CheckerInfo
+	*check.CheckerInfo
 }
 
-var FileEquals gocheck.Checker = &fileChecker{
-	&gocheck.CheckerInfo{Name: "FileEquals", Params: []string{"got", "expected"}},
+var FileEquals check.Checker = &fileChecker{
+	&check.CheckerInfo{Name: "FileEquals", Params: []string{"got", "expected"}},
 }
 
 func (checker *fileChecker) Check(params []interface{}, names []string) (result bool, error string) {

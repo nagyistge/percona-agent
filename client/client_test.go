@@ -23,7 +23,7 @@ import (
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
-	. "launchpad.net/gocheck"
+	. "gopkg.in/check.v1"
 	"log"
 	"net"
 	"testing"
@@ -31,7 +31,6 @@ import (
 )
 
 // Hook gocheck into the "go test" runner.
-// http://labix.org/gocheck
 func Test(t *testing.T) { TestingT(t) }
 
 type TestSuite struct {
