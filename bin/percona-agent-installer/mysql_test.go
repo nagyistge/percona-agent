@@ -39,15 +39,35 @@ func (s *MySQLTestSuite) TestMakeGrant(t *C) {
 	}
 
 	dsn.Hostname = "localhost"
-	t.Check(i.MakeGrant(dsn, user, pass), Equals, "GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'new-user'@'localhost' IDENTIFIED BY 'some pass'")
+	got := i.MakeGrant(dsn, user, pass)
+	expect := []string{
+		"GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'new-user'@'localhost' IDENTIFIED BY 'some pass'",
+		"GRANT UPDATE, DELETE, DROP ON performance_schema.* TO 'new-user'@'localhost' IDENTIFIED BY 'some pass'",
+	}
+	t.Check(got, DeepEquals, expect)
 
 	dsn.Hostname = "127.0.0.1"
-	t.Check(i.MakeGrant(dsn, user, pass), Equals, "GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'new-user'@'127.0.0.1' IDENTIFIED BY 'some pass'")
+	got = i.MakeGrant(dsn, user, pass)
+	expect = []string{
+		"GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'new-user'@'127.0.0.1' IDENTIFIED BY 'some pass'",
+		"GRANT UPDATE, DELETE, DROP ON performance_schema.* TO 'new-user'@'127.0.0.1' IDENTIFIED BY 'some pass'",
+	}
+	t.Check(got, DeepEquals, expect)
 
 	dsn.Hostname = "10.1.1.1"
-	t.Check(i.MakeGrant(dsn, user, pass), Equals, "GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'new-user'@'%' IDENTIFIED BY 'some pass'")
+	got = i.MakeGrant(dsn, user, pass)
+	expect = []string{
+		"GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'new-user'@'%' IDENTIFIED BY 'some pass'",
+		"GRANT UPDATE, DELETE, DROP ON performance_schema.* TO 'new-user'@'%' IDENTIFIED BY 'some pass'",
+	}
+	t.Check(got, DeepEquals, expect)
 
 	dsn.Hostname = ""
 	dsn.Socket = "/var/lib/mysql.sock"
-	t.Check(i.MakeGrant(dsn, user, pass), Equals, "GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'new-user'@'localhost' IDENTIFIED BY 'some pass'")
+	got = i.MakeGrant(dsn, user, pass)
+	expect = []string{
+		"GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'new-user'@'localhost' IDENTIFIED BY 'some pass'",
+		"GRANT UPDATE, DELETE, DROP ON performance_schema.* TO 'new-user'@'localhost' IDENTIFIED BY 'some pass'",
+	}
+	t.Check(got, DeepEquals, expect)
 }
