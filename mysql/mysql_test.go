@@ -18,10 +18,10 @@
 package mysql_test
 
 import (
-	. "launchpad.net/gocheck"
-	"testing"
-	"os"
 	"github.com/percona/percona-agent/mysql"
+	. "launchpad.net/gocheck"
+	"os"
+	"testing"
 )
 
 func Test(t *testing.T) { TestingT(t) }

@@ -24,8 +24,8 @@ import (
 	_ "github.com/arnehormann/mysql"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/pct"
-	"time"
 	"sync"
+	"time"
 )
 
 type Connector interface {
