@@ -29,7 +29,7 @@ type IntervalIterFactory struct {
 	TickChans map[qan.IntervalIter]chan time.Time
 }
 
-func (tf *IntervalIterFactory) Make(filename qan.FilenameFunc, tickChan chan time.Time) qan.IntervalIter {
+func (tf *IntervalIterFactory) Make(collectFrom string, filename qan.FilenameFunc, tickChan chan time.Time) qan.IntervalIter {
 	if tf.iterNo >= len(tf.Iters) {
 		return tf.Iters[tf.iterNo-1]
 	}

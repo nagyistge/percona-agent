@@ -44,32 +44,27 @@ func Test(t *testing.T) { TestingT(t) }
 var sample = test.RootDir + "/qan/"
 
 /////////////////////////////////////////////////////////////////////////////
-// Worker test suite
+// SlowLogWorker test suite
 /////////////////////////////////////////////////////////////////////////////
 
-type WorkerTestSuite struct {
+type SlowLogWorkerTestSuite struct {
 	logChan chan *proto.LogEntry
 	logger  *pct.Logger
 }
 
-var _ = Suite(&WorkerTestSuite{})
+var _ = Suite(&SlowLogWorkerTestSuite{})
 
-func (s *WorkerTestSuite) SetUpSuite(t *C) {
+func (s *SlowLogWorkerTestSuite) SetUpSuite(t *C) {
 	s.logChan = make(chan *proto.LogEntry, 100)
 	s.logger = pct.NewLogger(s.logChan, "qan-worker")
 }
 
-func (s *WorkerTestSuite) RunWorker(job *qan.Job) string {
+func (s *SlowLogWorkerTestSuite) RunSlowLogWorker(job *qan.Job) (*qan.Result, error) {
 	w := qan.NewSlowLogWorker(s.logger, "qan-worker-1")
-	result, _ := w.Run(job)
-
-	// Write the result as formatted JSON to a file...
-	tmpFilename := fmt.Sprintf("/tmp/pct-test.%d", os.Getpid())
-	test.WriteData(result, tmpFilename)
-	return tmpFilename
+	return w.Run(job)
 }
 
-func (s *WorkerTestSuite) TestWorkerSlow001(t *C) {
+func (s *SlowLogWorkerTestSuite) TestWorkerSlow001(t *C) {
 	job := &qan.Job{
 		SlowLogFile:    testlog.Sample + "slow001.log",
 		StartOffset:    0,
@@ -78,15 +73,17 @@ func (s *WorkerTestSuite) TestWorkerSlow001(t *C) {
 		ZeroRunTime:    true,
 		ExampleQueries: true,
 	}
-	tmpFilename := s.RunWorker(job)
-	defer os.Remove(tmpFilename)
-
-	// ...then diff <result file> <expected result file>
-	// @todo need a generic testlog.DeeplEquals
-	t.Assert(tmpFilename, testlog.FileEquals, sample+"slow001.json")
+	got, err := s.RunSlowLogWorker(job)
+	t.Check(err, IsNil)
+	expect := &qan.Result{}
+	test.LoadMmReport(sample+"slow001.json", expect)
+	if ok, diff := test.IsDeeply(got, expect); !ok {
+		test.Dump(got)
+		t.Error(diff)
+	}
 }
 
-func (s *WorkerTestSuite) TestWorkerSlow001NoExamples(t *C) {
+func (s *SlowLogWorkerTestSuite) TestWorkerSlow001NoExamples(t *C) {
 	job := &qan.Job{
 		Id:             "99",
 		SlowLogFile:    testlog.Sample + "slow001.log",
@@ -98,7 +95,6 @@ func (s *WorkerTestSuite) TestWorkerSlow001NoExamples(t *C) {
 	}
 	w := qan.NewSlowLogWorker(s.logger, "qan-worker-1")
 	got, _ := w.Run(job)
-
 	expect := &qan.Result{}
 	if err := test.LoadMmReport(sample+"slow001-no-examples.json", expect); err != nil {
 		t.Fatal(err)
@@ -109,12 +105,12 @@ func (s *WorkerTestSuite) TestWorkerSlow001NoExamples(t *C) {
 		t.Error(diff)
 	}
 
-	// Worker should be able to report its name and status.
+	// SlowLogWorker should be able to report its name and status.
 	t.Check(w.Name(), Equals, "qan-worker-1")
 	t.Check(w.Status(), Equals, "Done job "+job.Id)
 }
 
-func (s *WorkerTestSuite) TestWorkerSlow001Half(t *C) {
+func (s *SlowLogWorkerTestSuite) TestWorkerSlow001Half(t *C) {
 	// This tests that the worker will stop processing events before
 	// the end of the slow log file.  358 is the last byte of the first
 	// (of 2) events.
@@ -126,12 +122,19 @@ func (s *WorkerTestSuite) TestWorkerSlow001Half(t *C) {
 		ZeroRunTime:    true,
 		ExampleQueries: true,
 	}
-	tmpFilename := s.RunWorker(job)
-	defer os.Remove(tmpFilename)
-	t.Assert(tmpFilename, testlog.FileEquals, sample+"slow001-half.json")
+	got, err := s.RunSlowLogWorker(job)
+	t.Check(err, IsNil)
+	expect := &qan.Result{}
+	if err := test.LoadMmReport(sample+"slow001-half.json", expect); err != nil {
+		t.Fatal(err)
+	}
+	if ok, diff := test.IsDeeply(got, expect); !ok {
+		test.Dump(got)
+		t.Error(diff)
+	}
 }
 
-func (s *WorkerTestSuite) TestWorkerSlow001Resume(t *C) {
+func (s *SlowLogWorkerTestSuite) TestSlowLogWorkerSlow001Resume(t *C) {
 	// This tests that the worker will resume processing events from
 	// somewhere in the slow log file.  359 is the first byte of the
 	// second (of 2) events.
@@ -143,12 +146,17 @@ func (s *WorkerTestSuite) TestWorkerSlow001Resume(t *C) {
 		ZeroRunTime:    true,
 		ExampleQueries: true,
 	}
-	tmpFilename := s.RunWorker(job)
-	defer os.Remove(tmpFilename)
-	t.Assert(tmpFilename, testlog.FileEquals, sample+"slow001-resume.json")
+	got, err := s.RunSlowLogWorker(job)
+	t.Check(err, IsNil)
+	expect := &qan.Result{}
+	test.LoadMmReport(sample+"slow001-resume.json", expect)
+	if ok, diff := test.IsDeeply(got, expect); !ok {
+		test.Dump(got)
+		t.Error(diff)
+	}
 }
 
-func (s *WorkerTestSuite) TestWorkerSlow011(t *C) {
+func (s *SlowLogWorkerTestSuite) TestWorkerSlow011(t *C) {
 	// Percona Server rate limit
 	job := &qan.Job{
 		SlowLogFile:    testlog.Sample + "slow011.log",
@@ -229,7 +237,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 
 	s.dataChan = make(chan interface{}, 2)
 	s.spool = mock.NewSpooler(s.dataChan)
-	s.workerFactory = &qan.SlowLogWorkerFactory{}
+	s.workerFactory = &qan.RealWorkerFactory{}
 
 	var err error
 	s.tmpDir, err = ioutil.TempDir("/tmp", "agent-test")
@@ -313,6 +321,7 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 		ExampleQueries:    true,
 		MaxWorkers:        2,
 		WorkerRunTime:     600, // 10 min
+		CollectFrom:       "slowlog",
 	}
 
 	// Create the StartService cmd which contains the qan config.
@@ -345,10 +354,10 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	}
 
 	// And status should be "Running" and "Idle".
-	test.WaitStatus(1, m, "qan-log-parser", "Idle (0 of 2 running)")
+	test.WaitStatus(1, m, "qan-parser", "Idle (0 of 2 running)")
 	status := m.Status()
 	t.Check(status["qan"], Equals, "Running")
-	t.Check(status["qan-log-parser"], Equals, "Idle (0 of 2 running)")
+	t.Check(status["qan-parser"], Equals, "Idle (0 of 2 running)")
 
 	// It should have enabled the slow log.
 	slowLog := s.realmysql.GetGlobalVarNumber("slow_query_log")
@@ -382,16 +391,22 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	t.Assert(v, HasLen, 1)
 	report := v[0].(*qan.Report)
 
-	result := &qan.Result{
+	got := &qan.Result{
 		StopOffset: report.StopOffset,
 		Global:     report.Global,
 		Classes:    report.Class,
 	}
-	test.WriteData(result, tmpFile)
-	t.Check(tmpFile, testlog.FileEquals, sample+"slow001.json")
+	expect := &qan.Result{}
+	if err := test.LoadMmReport(sample+"slow001.json", expect); err != nil {
+		t.Fatal(err)
+	}
+	if ok, diff := test.IsDeeply(got, expect); !ok {
+		test.Dump(got)
+		t.Error(diff)
+	}
 
 	/**
-	 * Send StopService cmd to stop qan/qan-log-parser.
+	 * Send StopService cmd to stop qan/qan-parser.
 	 */
 
 	now = time.Now()
@@ -420,11 +435,11 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	t.Check(s.clock.Added, HasLen, 1)
 	t.Check(s.clock.Removed, HasLen, 1)
 
-	// qan still running, but qan-log-parser stopped.
-	test.WaitStatus(1, m, "qan-log-parser", "Stopped")
+	// qan still running, but qan-parser stopped.
+	test.WaitStatus(1, m, "qan-parser", "Stopped")
 	status = m.Status()
 	t.Check(status["qan"], Equals, "Running")
-	t.Check(status["qan-log-parser"], Equals, "Stopped")
+	t.Check(status["qan-parser"], Equals, "Stopped")
 }
 
 func (s *ManagerTestSuite) TestStartServiceFast(t *C) {
@@ -452,6 +467,7 @@ func (s *ManagerTestSuite) TestStartServiceFast(t *C) {
 		MaxSlowLogSize: 1073741824, // 1 GiB
 		MaxWorkers:     1,
 		WorkerRunTime:  600, // 10 min
+		CollectFrom:    "slowlog",
 	}
 	now := time.Now()
 	qanConfig, _ := json.Marshal(config)
@@ -465,7 +481,7 @@ func (s *ManagerTestSuite) TestStartServiceFast(t *C) {
 	}
 	reply := m.Handle(cmd)
 	t.Assert(reply.Error, Equals, "")
-	test.WaitStatus(1, m, "qan-log-parser", "Starting")
+	test.WaitStatus(1, m, "qan-parser", "Starting")
 	tickChan := s.iterFactory.TickChans[s.iter]
 	t.Assert(tickChan, NotNil)
 
@@ -529,6 +545,7 @@ func (s *ManagerTestSuite) TestMySQLRestart(t *C) {
 		ExampleQueries:    true,
 		MaxWorkers:        2,
 		WorkerRunTime:     600, // 10 min
+		CollectFrom:       "slowlog",
 	}
 
 	// Create the StartService cmd which contains the qan config.
@@ -549,10 +566,10 @@ func (s *ManagerTestSuite) TestMySQLRestart(t *C) {
 	t.Assert(reply.Error, Equals, "")
 
 	// And status should be "Running" and "Idle".
-	test.WaitStatus(1, m, "qan-log-parser", "Idle (0 of 2 running)")
+	test.WaitStatus(1, m, "qan-parser", "Idle (0 of 2 running)")
 	status := m.Status()
 	t.Check(status["qan"], Equals, "Running")
-	t.Check(status["qan-log-parser"], Equals, "Idle (0 of 2 running)")
+	t.Check(status["qan-parser"], Equals, "Idle (0 of 2 running)")
 
 	// Stop QAN when we are done
 	cmd = &proto.Cmd{
@@ -660,6 +677,7 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(t *C) {
 			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
 			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
 		},
+		CollectFrom: "slowlog",
 	}
 	qanConfig, _ := json.Marshal(config)
 	cmd := &proto.Cmd{
@@ -670,7 +688,7 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(t *C) {
 	reply := m.Handle(cmd)
 	t.Assert(reply.Error, Equals, "")
 
-	test.WaitStatusPrefix(1, m, "qan-log-parser", "Idle")
+	test.WaitStatusPrefix(1, m, "qan-parser", "Idle")
 
 	// Make copy of slow log because test will mv/rename it.
 	cp := exec.Command("cp", testlog.Sample+slowlog, "/tmp/"+slowlog)
@@ -714,7 +732,7 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(t *C) {
 		t.Error("Second interval has 2 unique queries, got ", report.Global.UniqueQueries)
 	}
 
-	test.WaitStatus(1, m, "qan-log-parser", "Idle (0 of 2 running)")
+	test.WaitStatus(1, m, "qan-parser", "Idle (0 of 2 running)")
 
 	// Original slow log should no longer exist; it was rotated away.
 	if _, err := os.Stat("/tmp/" + slowlog); !os.IsNotExist(err) {
@@ -782,6 +800,7 @@ func (s *ManagerTestSuite) TestRotateSlowLog(t *C) {
 			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
 			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
 		},
+		CollectFrom: "slowlog",
 	}
 	qanConfig, _ := json.Marshal(config)
 	cmd := &proto.Cmd{
@@ -792,7 +811,7 @@ func (s *ManagerTestSuite) TestRotateSlowLog(t *C) {
 	reply := m.Handle(cmd)
 	t.Assert(reply.Error, Equals, "")
 
-	test.WaitStatusPrefix(1, m, "qan-log-parser", "Idle")
+	test.WaitStatusPrefix(1, m, "qan-parser", "Idle")
 	s.nullmysql.Reset()
 	cp := exec.Command("cp", testlog.Sample+slowlog, "/tmp/"+slowlog)
 	cp.Run()
@@ -835,7 +854,7 @@ func (s *ManagerTestSuite) TestRotateSlowLog(t *C) {
 		t.Error("Second interval has 2 unique queries, got ", report.Global.UniqueQueries)
 	}
 
-	test.WaitStatus(1, m, "qan-log-parser", "Idle (0 of 2 running)")
+	test.WaitStatus(1, m, "qan-parser", "Idle (0 of 2 running)")
 
 	// Original slow log should no longer exist; it was rotated away.
 	if _, err := os.Stat("/tmp/" + slowlog); !os.IsNotExist(err) {
@@ -915,6 +934,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(t *C) {
 		Stop: []mysql.Query{
 			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
 		},
+		CollectFrom: "slowlog",
 	}
 	qanConfig, _ := json.Marshal(config)
 	cmd := &proto.Cmd{
@@ -925,7 +945,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(t *C) {
 	reply := m.Handle(cmd)
 	t.Assert(reply.Error, Equals, "")
 
-	test.WaitStatusPrefix(1, m, "qan-log-parser", "Idle")
+	test.WaitStatusPrefix(1, m, "qan-parser", "Idle")
 
 	// Start first mock worker (w1) with interval 0 - 736.  The worker's Run()
 	// func won't return until we send true to its stop chan, so manager will
@@ -953,7 +973,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(t *C) {
 	s.intervalChan <- i2
 	<-w2.Running()
 
-	test.WaitStatus(1, m, "qan-log-parser", "Idle (2 of 2 running)")
+	test.WaitStatus(1, m, "qan-parser", "Idle (2 of 2 running)")
 
 	/**
 	 * Worker status test
@@ -971,7 +991,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(t *C) {
 	test.DrainLogChan(s.logChan)
 	s.intervalChan <- i2
 	logs := test.WaitLogChan(s.logChan, 3)
-	test.WaitStatus(1, m, "qan-log-parser", "Idle (2 of 2 running)")
+	test.WaitStatus(1, m, "qan-parser", "Idle (2 of 2 running)")
 	gotWarning := false
 	for _, log := range logs {
 		if log.Level == proto.LOG_WARNING && strings.Contains(log.Msg, "All workers busy") {
@@ -1004,7 +1024,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(t *C) {
 	// w1 is still running, manager should not remove the old log yet because
 	// w1 could still be parsing it.
 	w2StopChan <- true
-	test.WaitStatus(1, m, "qan-log-parser", "Idle (1 of 2 running)")
+	test.WaitStatus(1, m, "qan-parser", "Idle (1 of 2 running)")
 	if _, err := os.Stat(files[0]); os.IsNotExist(err) {
 		t.Errorf("w1 still running so old slow log not removed")
 	}
@@ -1012,7 +1032,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(t *C) {
 	// Stop w1 and now, even though slow log was rotated for w2, manager
 	// should remove old slow log.
 	w1StopChan <- true
-	test.WaitStatus(1, m, "qan-log-parser", "Idle (0 of 2 running)")
+	test.WaitStatus(1, m, "qan-parser", "Idle (0 of 2 running)")
 	if _, err := os.Stat(files[0]); !os.IsNotExist(err) {
 		t.Errorf("w1 done running so old slow log removed")
 	}
@@ -1043,6 +1063,7 @@ func (s *ManagerTestSuite) TestRecoverWorkerPanic(t *C) {
 		Stop: []mysql.Query{
 			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
 		},
+		CollectFrom: "slowlog",
 	}
 	qanConfig, _ := json.Marshal(config)
 	cmd := &proto.Cmd{
@@ -1053,7 +1074,7 @@ func (s *ManagerTestSuite) TestRecoverWorkerPanic(t *C) {
 	reply := m.Handle(cmd)
 	t.Assert(reply.Error, Equals, "")
 
-	test.WaitStatusPrefix(1, m, "qan-log-parser", "Idle")
+	test.WaitStatusPrefix(1, m, "qan-parser", "Idle")
 	test.DrainLogChan(s.logChan)
 
 	// Start mock worker.  All it does is panic, much like fipar.
@@ -1110,6 +1131,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
 			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
 		},
+		CollectFrom: "slowlog",
 	}
 	qanConfig, _ := json.Marshal(config)
 	cmd := &proto.Cmd{
@@ -1119,7 +1141,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	}
 	reply := m.Handle(cmd)
 	t.Assert(reply.Error, Equals, "")
-	test.WaitStatusPrefix(1, m, "qan-log-parser", "Idle")
+	test.WaitStatusPrefix(1, m, "qan-parser", "Idle")
 
 	s.nullmysql.Reset()
 
@@ -1161,7 +1183,7 @@ func (s *ManagerTestSuite) TestStart(t *C) {
 	t.Check(err, IsNil)
 
 	status := m.Status()
-	t.Check(status["qan-log-parser"], Equals, "")
+	t.Check(status["qan-parser"], Equals, "")
 	t.Check(status["qan-last-interval"], Equals, "")
 	t.Check(status["qan-next-interval"], Equals, "")
 
@@ -1180,6 +1202,7 @@ func (s *ManagerTestSuite) TestStart(t *C) {
 			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
 			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
 		},
+		CollectFrom: "slowlog",
 	}
 	err = pct.Basedir.WriteConfig("qan", config)
 	t.Assert(err, IsNil)
@@ -1188,12 +1211,12 @@ func (s *ManagerTestSuite) TestStart(t *C) {
 	err = m.Start()
 	t.Check(err, IsNil)
 
-	if !test.WaitStatusPrefix(1, m, "qan-log-parser", "Idle") {
-		t.Error("WaitStatusPrefix(qan-log-parser, Idle) failed")
+	if !test.WaitStatusPrefix(1, m, "qan-parser", "Idle") {
+		t.Error("WaitStatusPrefix(qan-parser, Idle) failed")
 	}
 
 	status = m.Status()
-	t.Check(status["qan-log-parser"], Equals, "Idle (0 of 1 running)")
+	t.Check(status["qan-parser"], Equals, "Idle (0 of 1 running)")
 	t.Check(status["qan-last-interval"], Equals, "")
 	t.Check(status["qan-next-interval"], Not(Equals), "")
 
@@ -1201,6 +1224,99 @@ func (s *ManagerTestSuite) TestStart(t *C) {
 	err = m.Stop()
 	t.Assert(err, IsNil)
 	t.Check(test.FileExists(pct.Basedir.ConfigFile("qan")), Equals, true)
+}
+
+func (s *ManagerTestSuite) TestStartPfs(t *C) {
+	if s.dsn == "" {
+		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
+	}
+	mysqlConn := mysql.NewConnection(s.dsn)
+	err := mysqlConn.Connect(1)
+	t.Assert(err, IsNil)
+	defer mysqlConn.Close()
+
+	// These queries eanble/configure perfomance_schema:
+	start := []mysql.Query{
+		mysql.Query{Verify: "performance_schema", Expect: "1"},
+		mysql.Query{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'YES' WHERE NAME = 'statements_digest'"},
+		mysql.Query{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'YES', TIMED = 'YES' WHERE NAME LIKE 'statement/sql/%'"},
+		mysql.Query{Set: "TRUNCATE performance_schema.events_statements_summary_by_digest"},
+	}
+
+	// These queries disable performance_schema:
+	stop := []mysql.Query{
+		mysql.Query{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'NO' WHERE NAME = 'statements_digest'"},
+		mysql.Query{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'NO', TIMED = 'NO' WHERE NAME LIKE 'statement/sql/%'"},
+	}
+
+	// Disable perf schema because the qan manager should enable it when we start the pfs parser.
+	if err := mysqlConn.Set(stop); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make a qan manager.
+	m := qan.NewManager(s.logger, &mysql.RealConnectionFactory{}, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im, s.mrmsMonitor)
+	t.Assert(m, NotNil)
+
+	// Create the qan config for perf schema.
+	config := &qan.Config{
+		CollectFrom:     "perfschema", // <-- the magic
+		ServiceInstance: s.mysqlInstance,
+		Interval:        60, // 1m
+		ExampleQueries:  true,
+		MaxWorkers:      1,
+		WorkerRunTime:   50, // 50s
+		Start:           start,
+		Stop:            stop,
+	}
+
+	// Create the StartService cmd which contains the qan config.
+	now := time.Now()
+	qanConfig, _ := json.Marshal(config)
+	cmd := &proto.Cmd{
+		User:      "Oleg",
+		Ts:        now,
+		AgentUuid: "123",
+		Service:   "agent",
+		Cmd:       "StartService",
+		Data:      qanConfig,
+	}
+
+	// Have the qan manager start the pfs parser.
+	reply := m.Handle(cmd)
+	t.Assert(reply.Error, Equals, "")
+
+	test.WaitStatus(1, m, "qan-parser", "Starting")
+	tickChan := s.iterFactory.TickChans[s.iter]
+	t.Assert(tickChan, NotNil)
+
+	// Exec any query so there's at least 1 row/class in the pfs table.
+	db := mysqlConn.DB()
+	_, err = db.Exec("SELECT 1")
+
+	// Send a fake interval to make qan manager run a pfs parser/worker.
+	stopTs := time.Now()
+	startTs := stopTs.Add(-1 * time.Minute)
+	interv := &qan.Interval{
+		StartTime: startTs,
+		StopTime:  stopTs,
+	}
+	s.intervalChan <- interv
+
+	// The pfs parser/worker parser the pfs interval and sends the result.
+	v := test.WaitData(s.dataChan)
+	t.Assert(v, HasLen, 1)
+	report := v[0].(*qan.Report)
+	t.Check(report.StartTs, Equals, startTs)
+	t.Check(report.EndTs, Equals, stopTs)
+	if len(report.Class) == 0 {
+		t.Error("Report has no classes")
+	}
+
+	// Stop the pfs parser.
+	cmd.Cmd = "StopService"
+	reply = m.Handle(cmd)
+	t.Assert(reply.Error, Equals, "")
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -1333,8 +1449,6 @@ func (s *ReportTestSuite) TestResult001(t *C) {
 	start := time.Now().Add(-1 * time.Second)
 	stop := time.Now()
 
-	it := proto.ServiceInstance{Service: "mysql", InstanceId: 1}
-
 	interval := &qan.Interval{
 		Filename:    "slow.log",
 		StartTime:   start,
@@ -1343,9 +1457,10 @@ func (s *ReportTestSuite) TestResult001(t *C) {
 		EndOffset:   1000,
 	}
 	config := qan.Config{
-		ReportLimit: 10,
+		ServiceInstance: proto.ServiceInstance{Service: "mysql", InstanceId: 1},
+		ReportLimit:     10,
 	}
-	report := qan.MakeReport(it, interval, result, config)
+	report := qan.MakeReport(config, interval, result)
 
 	// 1st: 2.9
 	t.Check(report.Class[0].Id, Equals, "3000000000000003")
@@ -1360,7 +1475,7 @@ func (s *ReportTestSuite) TestResult001(t *C) {
 
 	// Limit=2 results in top 2 queries and the rest in 1 LRQ "query".
 	config.ReportLimit = 2
-	report = qan.MakeReport(it, interval, result, config)
+	report = qan.MakeReport(config, interval, result)
 	t.Check(len(report.Class), Equals, 3)
 
 	t.Check(report.Class[0].Id, Equals, "3000000000000003")
@@ -1377,7 +1492,7 @@ func (s *ReportTestSuite) TestResult001(t *C) {
 	t.Check(report.Class[2].Metrics.TimeMetrics["Query_time"].Avg, Equals, float64(0.505))
 }
 
-func (s *WorkerTestSuite) TestResult014(t *C) {
+func (s *SlowLogWorkerTestSuite) TestResult014(t *C) {
 	job := &qan.Job{
 		SlowLogFile:    testlog.Sample + "slow014.log",
 		StartOffset:    0,
@@ -1391,7 +1506,6 @@ func (s *WorkerTestSuite) TestResult014(t *C) {
 
 	start := time.Now().Add(-1 * time.Second)
 	stop := time.Now()
-	it := proto.ServiceInstance{Service: "mysql", InstanceId: 1}
 	interval := &qan.Interval{
 		Filename:    "slow.log",
 		StartTime:   start,
@@ -1400,13 +1514,251 @@ func (s *WorkerTestSuite) TestResult014(t *C) {
 		EndOffset:   127118680,
 	}
 	config := qan.Config{
-		ReportLimit: 500,
+		ServiceInstance: proto.ServiceInstance{Service: "mysql", InstanceId: 1},
+		ReportLimit:     500,
 	}
-	report := qan.MakeReport(it, interval, result, config)
+	report := qan.MakeReport(config, interval, result)
 
 	t.Check(report.Global.TotalQueries, Equals, uint64(4))
 	t.Check(report.Global.UniqueQueries, Equals, uint64(4))
 	t.Assert(report.Class, HasLen, 4)
 	// This query required improving the log parser to get the correct checksum ID:
 	t.Check(report.Class[0].Id, Equals, "DB9EF18846547B8C")
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// PfsWorker test suite
+/////////////////////////////////////////////////////////////////////////////
+
+type PfsWorkerTestSuite struct {
+	dsn     string
+	logChan chan *proto.LogEntry
+	logger  *pct.Logger
+}
+
+var _ = Suite(&PfsWorkerTestSuite{})
+
+func (s *PfsWorkerTestSuite) SetUpSuite(t *C) {
+	s.dsn = os.Getenv("PCT_TEST_MYSQL_DSN")
+	s.logChan = make(chan *proto.LogEntry, 100)
+	s.logger = pct.NewLogger(s.logChan, "qan-worker")
+}
+
+func (s *PfsWorkerTestSuite) TestCollectData(t *C) {
+	if s.dsn == "" {
+		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
+	}
+	mysqlConn := mysql.NewConnection(s.dsn)
+	err := mysqlConn.Connect(1)
+	t.Assert(err, IsNil)
+	defer mysqlConn.Close()
+
+	enablePfs := []mysql.Query{
+		mysql.Query{Verify: "performance_schema", Expect: "1"},
+		mysql.Query{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'YES' WHERE NAME = 'statements_digest'"},
+		mysql.Query{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'YES', TIMED = 'YES' WHERE NAME LIKE 'statement/sql/%'"},
+		mysql.Query{Set: "TRUNCATE performance_schema.events_statements_summary_by_digest"},
+	}
+	if err := mysqlConn.Set(enablePfs); err != nil {
+		t.Fatal(err)
+	}
+
+	db := mysqlConn.DB()
+	_, err = db.Exec("SELECT NOW()")
+	_, err = db.Exec("SELECT 1")
+	_, err = db.Exec("SELECT * FROM `events_statements_summary_by_digest`")
+
+	/**
+	 * as we don't have consistent order in maps from Go v1.3,
+	 * let's use pre-defined map with queries
+	 */
+	expectedResult := make(map[string]bool)
+	expectedResult["TRUNCATE `performance_schema` . `events_statements_summary_by_digest` "] = true
+	expectedResult["SELECT NOW ( ) "] = true
+	expectedResult["SELECT ? "] = true
+	expectedResult["SELECT * FROM `events_statements_summary_by_digest` "] = true
+
+	w := qan.NewPfsWorker(s.logger, "pfs-worker", mysqlConn)
+	gotPfsData, err := w.CollectData()
+	t.Assert(err, IsNil)
+	t.Assert(gotPfsData, NotNil)
+	for i := range gotPfsData {
+		if !expectedResult[gotPfsData[i].DigestText] {
+			t.Errorf("Missing %s", gotPfsData[i].DigestText)
+			test.Dump(gotPfsData)
+		}
+	}
+}
+
+func (s *PfsWorkerTestSuite) TestPrepareResult001(t *C) {
+	parsedTime, _ := time.Parse("2006-01-02T15:04:05Z", "2014-07-10T19:14:30Z")
+	pfsData := []*qan.PfsRow{
+		{
+			Digest:                  "d082a30b349166452cd1148310124d77",
+			DigestText:              "TRUNCATE `events_statements_summary_by_digest` ",
+			SumTimerWait:            588631000,
+			MinTimerWait:            588631000,
+			AvgTimerWait:            588631000,
+			MaxTimerWait:            588631000,
+			SumLockTime:             119000000,
+			SumRowsAffected:         0,
+			SumRowsSent:             0,
+			SumRowsExamined:         0,
+			SumSelectFullJoin:       0,
+			SumSelectScan:           0,
+			SumSortMergePasses:      0,
+			SumCreatedTmpDiskTables: 0,
+			SumCreatedTmpTables:     0,
+			CountStar:               1,
+			FirstSeen:               parsedTime,
+			LastSeen:                parsedTime,
+		},
+		{
+			Digest:                  "973f7f10f95fc62e80148f2845ceca42",
+			DigestText:              "SELECT NOW ( ) ",
+			SumTimerWait:            41687000,
+			MinTimerWait:            41687000,
+			AvgTimerWait:            41687000,
+			MaxTimerWait:            41687000,
+			SumLockTime:             0,
+			SumRowsAffected:         0,
+			SumRowsSent:             1,
+			SumRowsExamined:         0,
+			SumSelectFullJoin:       0,
+			SumSelectScan:           0,
+			SumSortMergePasses:      0,
+			SumCreatedTmpDiskTables: 0,
+			SumCreatedTmpTables:     0,
+			CountStar:               1,
+			FirstSeen:               parsedTime,
+			LastSeen:                parsedTime,
+		},
+		{
+			Digest:                  "93eaedb019bdfcf59f7aea8a25486ef0",
+			DigestText:              "SELECT ? ",
+			SumTimerWait:            20274000,
+			MinTimerWait:            20274000,
+			AvgTimerWait:            20274000,
+			MaxTimerWait:            20274000,
+			SumLockTime:             0,
+			SumRowsAffected:         0,
+			SumRowsSent:             1,
+			SumRowsExamined:         0,
+			SumSelectFullJoin:       0,
+			SumSelectScan:           0,
+			SumSortMergePasses:      0,
+			SumCreatedTmpDiskTables: 0,
+			SumCreatedTmpTables:     0,
+			CountStar:               1,
+			FirstSeen:               parsedTime,
+			LastSeen:                parsedTime,
+		},
+		{
+			Digest:                  "fcc2b877639138358ef059551099f0d0",
+			DigestText:              "SELECT * FROM `events_statements_summary_by_digest` ",
+			SumTimerWait:            155949000,
+			MinTimerWait:            155949000,
+			AvgTimerWait:            155949000,
+			MaxTimerWait:            155949000,
+			SumLockTime:             38000000,
+			SumRowsAffected:         0,
+			SumRowsSent:             3,
+			SumRowsExamined:         3,
+			SumSelectFullJoin:       0,
+			SumSelectScan:           1,
+			SumSortMergePasses:      0,
+			SumCreatedTmpDiskTables: 0,
+			SumCreatedTmpTables:     0,
+			CountStar:               1,
+			FirstSeen:               parsedTime,
+			LastSeen:                parsedTime,
+		},
+		{
+			Digest:                  "2ea7017783cf24845827fd4e2cff1a5b",
+			DigestText:              "USE `performance_schema` ",
+			SumTimerWait:            24017000,
+			MinTimerWait:            24017000,
+			AvgTimerWait:            24017000,
+			MaxTimerWait:            24017000,
+			SumLockTime:             0,
+			SumRowsAffected:         0,
+			SumRowsSent:             0,
+			SumRowsExamined:         0,
+			SumSelectFullJoin:       0,
+			SumSelectScan:           0,
+			SumSortMergePasses:      0,
+			SumCreatedTmpDiskTables: 0,
+			SumCreatedTmpTables:     0,
+			CountStar:               1,
+			FirstSeen:               parsedTime,
+			LastSeen:                parsedTime,
+		},
+	}
+
+	w := qan.NewPfsWorker(s.logger, "pfs-worker", mock.NewNullMySQL())
+	got, err := w.PrepareResult(pfsData)
+	t.Assert(err, IsNil)
+	t.Assert(got, NotNil)
+	expect := &qan.Result{}
+	err = test.LoadMmReport(sample+"pfs001.json", expect)
+	t.Assert(err, IsNil)
+	if ok, diff := test.IsDeeply(got, expect); !ok {
+		test.Dump(got)
+		t.Error(diff)
+	}
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// ValidateConfig test suite
+/////////////////////////////////////////////////////////////////////////////
+
+type ValidateConfigTestSuite struct {
+}
+
+var _ = Suite(&ValidateConfigTestSuite{})
+
+func (s *ValidateConfigTestSuite) TestValidateConfig(t *C) {
+	config := &qan.Config{
+		ServiceInstance: proto.ServiceInstance{Service: "mysql", InstanceId: 1},
+		Start: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=0.123"},
+			mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+		},
+		Stop: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
+		},
+		Interval:          300,        // 5 min
+		MaxSlowLogSize:    1073741824, // 1 GiB
+		RemoveOldSlowLogs: true,
+		ExampleQueries:    true,
+		MaxWorkers:        2,
+		WorkerRunTime:     600, // 10 min
+		CollectFrom:       "slowlog",
+	}
+	err := qan.ValidateConfig(config)
+	t.Check(err, IsNil)
+
+	config = &qan.Config{
+		ServiceInstance: proto.ServiceInstance{Service: "mysql", InstanceId: 1},
+		Start: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=0.123"},
+			mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+		},
+		Stop: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
+		},
+		Interval:          300,        // 5 min
+		MaxSlowLogSize:    1073741824, // 1 GiB
+		RemoveOldSlowLogs: true,
+		ExampleQueries:    true,
+		MaxWorkers:        0,
+		WorkerRunTime:     600, // 10 min
+		CollectFrom:       "slowlog",
+	}
+	err = qan.ValidateConfig(config)
+	t.Check(err, NotNil)
 }

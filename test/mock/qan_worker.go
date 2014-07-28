@@ -18,6 +18,7 @@
 package mock
 
 import (
+	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/qan"
 )
 
@@ -33,7 +34,7 @@ func NewQanWorkerFactory(workers []*QanWorker) qan.WorkerFactory {
 	return f
 }
 
-func (f *QanWorkerFactory) Make(name string) qan.Worker {
+func (f *QanWorkerFactory) Make(collectFrom, name string, mysqlConn mysql.Connector) qan.Worker {
 	if f.workerNo > len(f.workers) {
 		return f.workers[f.workerNo-1]
 	}

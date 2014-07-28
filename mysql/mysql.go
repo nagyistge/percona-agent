@@ -28,6 +28,12 @@ import (
 	"time"
 )
 
+type Query struct {
+	Set    string // SET GLOBAL long_query_time=0
+	Verify string // SELECT @@long_query_time
+	Expect string // 0
+}
+
 type Connector interface {
 	DB() *sql.DB
 	DSN() string
@@ -157,8 +163,16 @@ func (c *Connection) Set(queries []Query) error {
 		return errors.New("Not connected")
 	}
 	for _, query := range queries {
-		if _, err := c.conn.Exec(query.Set); err != nil {
-			return err
+		if query.Set != "" {
+			if _, err := c.conn.Exec(query.Set); err != nil {
+				return err
+			}
+		}
+		if query.Verify != "" {
+			got := c.GetGlobalVarString(query.Verify)
+			if got != query.Expect {
+				return fmt.Errorf("@@GLOBAL.%s = '%s', expected '%s'", got, query.Expect)
+			}
 		}
 	}
 	return nil

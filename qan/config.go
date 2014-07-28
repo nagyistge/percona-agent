@@ -25,6 +25,7 @@ import (
 type Config struct {
 	proto.ServiceInstance
 	// Manager
+	CollectFrom       string // "slowlog" or "perfschema"
 	Start             []mysql.Query
 	Stop              []mysql.Query
 	MaxWorkers        int
