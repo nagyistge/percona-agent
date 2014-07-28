@@ -35,7 +35,7 @@ import (
 // REV="$(git rev-parse HEAD)"
 // go build -ldflags "-X github.com/percona/percon-agent/agnet.REVISION $REV"
 var REVISION string = "0"
-var VERSION string = "1.0.4"
+var VERSION string = "1.0.5"
 
 const (
 	CMD_QUEUE_SIZE    = 10
@@ -52,6 +52,7 @@ type Agent struct {
 	api       pct.APIConnector
 	services  map[string]pct.ServiceManager
 	updater   *pct.Updater
+	keepalive *time.Timer
 	// --
 	cmdSync        *pct.SyncChan
 	cmdChan        chan *proto.Cmd
@@ -119,10 +120,14 @@ func (agent *Agent) Run() error {
 	cmdHandlerErrors := 0
 	statusHandlerErrors := 0
 
+	// Send Pong to API to keep cmd ws open or detect if API end is closed.
+	// https://jira.percona.com/browse/PCT-765
+	agent.keepalive = time.NewTimer(time.Duration(agent.config.Keepalive) * time.Second)
+
 	logger.Info("Started")
 
 	for {
-		logger.Debug("wait")
+		logger.Debug("idle")
 		agent.status.Update("agent", "Idle")
 
 		select {
@@ -216,7 +221,7 @@ func (agent *Agent) Run() error {
 				// todo: return or exit?
 			}
 		case err := <-client.ErrorChan():
-			logger.Warn(err)
+			logger.Warn("ws error:", err)
 		case connected := <-client.ConnectChan():
 			if connected {
 				logger.Info("Connected to API")
@@ -227,6 +232,16 @@ func (agent *Agent) Run() error {
 				logger.Warn("Lost connection to API")
 				go agent.connect()
 			}
+		case <-agent.keepalive.C:
+			// Send keepalive (i.e. check if ws cmd chan is still open on API end).
+			logger.Debug("pong")
+			cmd := &proto.Cmd{Cmd: "Pong"}
+			agent.reply(cmd.Reply(nil, nil))
+
+			// Reset keepalive timer.
+			agent.configMux.RLock()
+			agent.keepalive.Reset(time.Duration(agent.config.Keepalive) * time.Second)
+			agent.configMux.RUnlock()
 		}
 	}
 }
@@ -269,6 +284,9 @@ func LoadConfig() ([]byte, error) {
 	}
 	if config.ApiHostname == "" {
 		config.ApiHostname = DEFAULT_API_HOSTNAME
+	}
+	if config.Keepalive == 0 {
+		config.Keepalive = DEFAULT_KEEPALIVE
 	}
 	if config.ApiKey == "" {
 		return nil, errors.New("Missing ApiKey")
@@ -383,10 +401,11 @@ func (agent *Agent) cmdHandler() {
 }
 
 func (agent *Agent) reply(reply *proto.Reply) {
-	// replyChan is buffered
-	replyChan := agent.client.SendChan()
 	select {
-	case replyChan <- reply:
+	case agent.client.SendChan() <- reply:
+		// SendChan is buffered so this should be very quick.
+		// On error, client closes connection and sends false
+		// to ConnectChan which is polled in main Run() loop.
 	case <-time.After(20 * time.Second):
 		agent.logger.Warn("Failed to send reply:", reply)
 	}
@@ -547,6 +566,13 @@ func (agent *Agent) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 		} else {
 			finalConfig.ApiHostname = newConfig.ApiHostname
 		}
+	}
+
+	// Change keepalive if valid.
+	if newConfig.Keepalive > 0 {
+		agent.logger.Warn("Changing keepalive from", finalConfig.Keepalive, "to", newConfig.Keepalive)
+		agent.keepalive.Reset(time.Duration(newConfig.Keepalive) * time.Second)
+		finalConfig.Keepalive = newConfig.Keepalive
 	}
 
 	// Write the new, updated config.  If this fails, agent will use old config if restarted.

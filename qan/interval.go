@@ -20,17 +20,18 @@ package qan
 import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"os"
 	"time"
 )
 
-// A slice of the MySQL slow log:
+// A slice of the MySQL slow log or a snapshot of the performanc schema:
 type Interval struct {
 	Number      int
-	Filename    string    // slow_query_log_file
 	StartTime   time.Time // UTC
 	StopTime    time.Time // UTC
+	Filename    string    // slow_query_log_file
 	StartOffset int64     // bytes @ StartTime
 	EndOffset   int64     // bytes @ StopTime
 }
@@ -38,11 +39,16 @@ type Interval struct {
 func (i *Interval) String() string {
 	t0 := i.StartTime.Format("2006-01-02 15:04:05 MST")
 	t1 := i.StopTime.Format("2006-01-02 15:04:05 MST")
-	return fmt.Sprintf("%d %s %s to %s (%d-%d)", i.Number, i.Filename, t0, t1, i.StartOffset, i.EndOffset)
+	if i.Filename != "" {
+		return fmt.Sprintf("%d %s %s to %s (%d-%d)", i.Number, i.Filename, t0, t1, i.StartOffset, i.EndOffset)
+	} else {
+		return fmt.Sprintf("%d performance_schema %s to %s", i.Number, t0, t1)
+	}
 }
 
-// Returns slow_query_log_file, or error:
-type FilenameFunc func() (string, error)
+/////////////////////////////////////////////////////////////////////////////
+// Interval iterator interface
+/////////////////////////////////////////////////////////////////////////////
 
 // Used by Manager.run() to start a Worker:
 type IntervalIter interface {
@@ -51,27 +57,43 @@ type IntervalIter interface {
 	IntervalChan() chan *Interval
 }
 
+/////////////////////////////////////////////////////////////////////////////
+// Interval iterator factory
+/////////////////////////////////////////////////////////////////////////////
+
+// Returns slow_query_log_file, or error:
+type FilenameFunc func() (string, error)
+
 // Used by Manager.Start() to create an IntervalIter that ticks at Config.Interval minutes:
 type IntervalIterFactory interface {
-	Make(filename FilenameFunc, tickChan chan time.Time) IntervalIter
+	Make(collectFrom string, filename FilenameFunc, tickChan chan time.Time) IntervalIter
 }
 
-type FileIntervalIterFactory struct {
+type RealIntervalIterFactory struct {
 	logChan chan *proto.LogEntry
 }
 
-func NewFileIntervalIterFactory(logChan chan *proto.LogEntry) *FileIntervalIterFactory {
-	f := &FileIntervalIterFactory{
+func NewRealIntervalIterFactory(logChan chan *proto.LogEntry) *RealIntervalIterFactory {
+	f := &RealIntervalIterFactory{
 		logChan: logChan,
 	}
 	return f
 }
 
-func (f *FileIntervalIterFactory) Make(filename FilenameFunc, tickChan chan time.Time) IntervalIter {
-	return NewFileIntervalIter(pct.NewLogger(f.logChan, "qan-interval"), filename, tickChan)
+func (f *RealIntervalIterFactory) Make(collectFrom string, filename FilenameFunc, tickChan chan time.Time) IntervalIter {
+	switch collectFrom {
+	case "slowlog":
+		return NewFileIntervalIter(pct.NewLogger(f.logChan, "qan-interval"), filename, tickChan)
+	case "perfschema":
+		return NewPfsIntervalIter(pct.NewLogger(f.logChan, "qan-interval"), tickChan)
+	}
+	return nil
 }
 
-// Implements IntervalIter:
+/////////////////////////////////////////////////////////////////////////////
+// Slow log iterator
+/////////////////////////////////////////////////////////////////////////////
+
 type FileIntervalIter struct {
 	logger   *pct.Logger
 	filename FilenameFunc
@@ -80,7 +102,6 @@ type FileIntervalIter struct {
 	intervalNo   int
 	intervalChan chan *Interval
 	sync         *pct.SyncChan
-	running      bool
 }
 
 func NewFileIntervalIter(logger *pct.Logger, filename FilenameFunc, tickChan chan time.Time) *FileIntervalIter {
@@ -90,16 +111,12 @@ func NewFileIntervalIter(logger *pct.Logger, filename FilenameFunc, tickChan cha
 		tickChan: tickChan,
 		// --
 		intervalChan: make(chan *Interval, 1),
-		running:      false,
 		sync:         pct.NewSyncChan(),
 	}
 	return iter
 }
 
 func (i *FileIntervalIter) Start() {
-	if i.running {
-		return
-	}
 	go i.run()
 }
 
@@ -115,7 +132,6 @@ func (i *FileIntervalIter) IntervalChan() chan *Interval {
 
 func (i *FileIntervalIter) run() {
 	defer func() {
-		i.running = false
 		i.sync.Done()
 	}()
 
@@ -123,7 +139,7 @@ func (i *FileIntervalIter) run() {
 	cur := &Interval{}
 
 	for {
-		i.logger.Debug("run:wait")
+		i.logger.Debug("run:idle")
 
 		select {
 		case now := <-i.tickChan:
@@ -189,6 +205,89 @@ func (i *FileIntervalIter) run() {
 				cur.StartOffset = curSize
 				cur.StartTime = now
 				prevFileInfo, _ = os.Stat(curFile)
+			}
+		case <-i.sync.StopChan:
+			i.logger.Debug("run:stop")
+			return
+		}
+	}
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// performance_schema iterator
+/////////////////////////////////////////////////////////////////////////////
+
+type PfsIntervalIter struct {
+	logger    *pct.Logger
+	msyqlConn mysql.Connector
+	tickChan  chan time.Time
+	// --
+	intervalNo   int
+	intervalChan chan *Interval
+	sync         *pct.SyncChan
+}
+
+func NewPfsIntervalIter(logger *pct.Logger, tickChan chan time.Time) *PfsIntervalIter {
+	iter := &PfsIntervalIter{
+		logger:   logger,
+		tickChan: tickChan,
+		// --
+		intervalChan: make(chan *Interval, 1),
+		sync:         pct.NewSyncChan(),
+	}
+	return iter
+}
+
+func (i *PfsIntervalIter) Start() {
+	go i.run()
+}
+
+func (i *PfsIntervalIter) Stop() {
+	i.sync.Stop()
+	i.sync.Wait()
+	return
+}
+
+func (i *PfsIntervalIter) IntervalChan() chan *Interval {
+	return i.intervalChan
+}
+
+func (i *PfsIntervalIter) run() {
+	defer func() {
+		i.sync.Done()
+	}()
+
+	cur := &Interval{}
+	for {
+		i.logger.Debug("run:wait")
+
+		select {
+		case now := <-i.tickChan:
+			i.logger.Debug("run:tick")
+
+			if !cur.StartTime.IsZero() { // StartTime is set
+				i.logger.Debug("run:next")
+				i.intervalNo++
+
+				cur.StopTime = now
+				cur.Number = i.intervalNo
+
+				// Send interval to manager which should be ready to receive it.
+				select {
+				case i.intervalChan <- cur:
+				case <-time.After(1 * time.Second):
+					i.logger.Warn(fmt.Sprintf("Lost interval: %+v", cur))
+				}
+
+				// Next interval:
+				cur = &Interval{
+					StartTime: now,
+				}
+			} else {
+				// First interval, either due to first tick or because an error
+				// occurred earlier so a new interval was started.
+				i.logger.Debug("run:first")
+				cur.StartTime = now
 			}
 		case <-i.sync.StopChan:
 			i.logger.Debug("run:stop")

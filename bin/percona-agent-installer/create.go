@@ -45,13 +45,15 @@ func (i *Installer) createMySQLUser(dsn mysql.DSN) (mysql.DSN, error) {
 	}
 	defer conn.Close()
 
-	sql := MakeGrant(dsn, userDSN.Username, userDSN.Password)
-	if i.flags["debug"] {
-		log.Println(sql)
-	}
-	_, err := conn.DB().Exec(sql)
-	if err != nil {
-		return userDSN, err
+	grants := MakeGrant(dsn, userDSN.Username, userDSN.Password)
+	for _, grant := range grants {
+		if i.flags["debug"] {
+			log.Println(grant)
+		}
+		_, err := conn.DB().Exec(grant)
+		if err != nil {
+			return userDSN, err
+		}
 	}
 
 	// Go MySQL driver resolves localhost to 127.0.0.1 but localhost is a special
@@ -60,13 +62,15 @@ func (i *Installer) createMySQLUser(dsn mysql.DSN) (mysql.DSN, error) {
 	if dsn.Hostname == "localhost" {
 		dsn2 := dsn
 		dsn2.Hostname = "127.0.0.1"
-		sql := MakeGrant(dsn2, userDSN.Username, userDSN.Password)
-		if i.flags["debug"] {
-			log.Println(sql)
-		}
-		_, err := conn.DB().Exec(sql)
-		if err != nil {
-			return userDSN, err
+		grants := MakeGrant(dsn2, userDSN.Username, userDSN.Password)
+		for _, grant := range grants {
+			if i.flags["debug"] {
+				log.Println(grant)
+			}
+			_, err := conn.DB().Exec(grant)
+			if err != nil {
+				return userDSN, err
+			}
 		}
 	}
 

@@ -25,8 +25,8 @@ import (
 	"github.com/percona/percona-agent/qan"
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
+	. "gopkg.in/check.v1"
 	"io/ioutil"
-	. "launchpad.net/gocheck"
 	golog "log"
 	"os"
 	"path/filepath"
@@ -86,6 +86,7 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 		AgentUuid:   "abc-123-def",
 		ApiKey:      "789",
 		ApiHostname: agent.DEFAULT_API_HOSTNAME,
+		Keepalive:   3600, // don't send while testing
 	}
 
 	s.sendChan = make(chan *proto.Cmd, 5)
@@ -459,6 +460,7 @@ func (s *AgentTestSuite) TestLoadConfig(t *C) {
 		AgentUuid:   "abc-123-def",
 		ApiHostname: agent.DEFAULT_API_HOSTNAME,
 		ApiKey:      "123",
+		Keepalive:   agent.DEFAULT_KEEPALIVE,
 	}
 	if same, diff := test.IsDeeply(got, expect); !same {
 		// @todo: if expect is not ptr, IsDeeply dies with "got ptr, expected struct"
@@ -479,6 +481,7 @@ func (s *AgentTestSuite) TestLoadConfig(t *C) {
 		ApiHostname: "agent hostname",
 		ApiKey:      "api key",
 		AgentUuid:   "agent uuid",
+		Keepalive:   agent.DEFAULT_KEEPALIVE,
 	}
 	if same, diff := test.IsDeeply(got, expect); !same {
 		test.Dump(got)
@@ -683,4 +686,52 @@ func (s *AgentTestSuite) TestSetConfigApiHostname(t *C) {
 	gotCalled = test.WaitTrace(s.client.TraceChan)
 	expectCalled = []string{"Disconnect", "Connect"}
 	t.Check(gotCalled, DeepEquals, expectCalled)
+}
+
+func (s *AgentTestSuite) TestKeepalive(t *C) {
+	newConfig := *s.config
+	newConfig.Keepalive = 1 // 1s
+	data, err := json.Marshal(newConfig)
+	t.Assert(err, IsNil)
+
+	cmd := &proto.Cmd{
+		Ts:      time.Now(),
+		User:    "daniel",
+		Cmd:     "SetConfig",
+		Service: "agent",
+		Data:    data,
+	}
+	s.sendChan <- cmd
+
+	reply := test.WaitReply(s.recvChan)
+	t.Assert(reply, HasLen, 1)
+	t.Assert(reply[0].Error, Equals, "")
+	t.Assert(reply[0].Cmd, Equals, "SetConfig") // is reply to SetConfig not a Pong...
+
+	// Agent should be sending a Pong every 1s now which is sent as a
+	// reply to no cmd (it's a platypus).
+	<-time.After(2 * time.Second)
+	reply = test.WaitReply(s.recvChan)
+	if len(reply) < 1 {
+		t.Fatal("No Pong recieved")
+	}
+	t.Check(reply[0].Cmd, Equals, "Pong")
+
+	// Restore Keepalive to high value so DrainSendChan() in TearDownTest()
+	// doesn't keep receiving Pongs (on fast machine it should be able to drain
+	// chan between Pongs but on slow test machine maybe not).
+	data, err = json.Marshal(s.config)
+	t.Assert(err, IsNil)
+	cmd = &proto.Cmd{
+		Ts:      time.Now(),
+		User:    "daniel",
+		Cmd:     "SetConfig",
+		Service: "agent",
+		Data:    data,
+	}
+	s.sendChan <- cmd
+	reply = test.WaitReply(s.recvChan)
+	t.Assert(reply, HasLen, 1)
+	t.Assert(reply[0].Error, Equals, "")
+	t.Assert(reply[0].Cmd, Equals, "SetConfig")
 }

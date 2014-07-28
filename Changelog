@@ -1,5 +1,12 @@
 percona-agent Changelog
 
+v1.0.5 released 2014-07-28
+
+  * PCT-687: Query Analytics support for Performance Schema
+  * PCT-743: Use gopkg.in/check.v1 instead of launchpad.net/gocheck
+  * PCT-748: Agent panic in mysql.(*Connection).Set
+  * PCT-765: App says "Agent not connected" but agent is running
+
 v1.0.4 released 2014-07-10
 
   * PCT-629: Agent running but not connected

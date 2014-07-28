@@ -135,7 +135,7 @@ func main() {
 				if err := runCmd("hg", "clone", "-r", dep.Rev, "https://"+dep.Pkg, pkgDir); err != nil {
 					log.Fatal(err)
 				}
-			case "github.com":
+			case "github.com", "gopkg.in":
 				chDir(pkgDir)
 				if !FileExists(".git") {
 					if err := runCmd("git", "clone", "https://"+dep.Pkg, "."); err != nil {

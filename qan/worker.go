@@ -22,6 +22,7 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 	mysqlLog "github.com/percona/mysql-log-parser/log"
 	"github.com/percona/mysql-log-parser/log/parser"
+	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"os"
 	"time"
@@ -42,14 +43,6 @@ func (j *Job) String() string {
 	return fmt.Sprintf("%s %d-%d", j.SlowLogFile, j.StartOffset, j.EndOffset)
 }
 
-type Result struct {
-	StopOffset int64
-	RunTime    float64
-	Error      string `json:",omitempty"`
-	Global     *mysqlLog.GlobalClass
-	Classes    []*mysqlLog.QueryClass
-}
-
 type Worker interface {
 	Name() string
 	Status() string
@@ -57,24 +50,30 @@ type Worker interface {
 }
 
 type WorkerFactory interface {
-	Make(name string) Worker
+	Make(collectFrom, name string, mysqlConn mysql.Connector) Worker
 }
 
 // --------------------------------------------------------------------------
 
-type SlowLogWorkerFactory struct {
+type RealWorkerFactory struct {
 	logChan chan *proto.LogEntry
 }
 
-func NewSlowLogWorkerFactory(logChan chan *proto.LogEntry) *SlowLogWorkerFactory {
-	f := &SlowLogWorkerFactory{
+func NewRealWorkerFactory(logChan chan *proto.LogEntry) *RealWorkerFactory {
+	f := &RealWorkerFactory{
 		logChan: logChan,
 	}
 	return f
 }
 
-func (f *SlowLogWorkerFactory) Make(name string) Worker {
-	return NewSlowLogWorker(pct.NewLogger(f.logChan, "qan-worker"), name)
+func (f *RealWorkerFactory) Make(collectFrom, name string, mysqlConn mysql.Connector) Worker {
+	switch collectFrom {
+	case "slowlog":
+		return NewSlowLogWorker(pct.NewLogger(f.logChan, "qan-worker"), name)
+	case "perfschema":
+		return NewPfsWorker(pct.NewLogger(f.logChan, "qan-worker"), name, mysqlConn)
+	}
+	return nil
 }
 
 // --------------------------------------------------------------------------
