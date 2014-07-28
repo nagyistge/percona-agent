@@ -159,11 +159,11 @@ start() {
    # so let's give an agent some time to start
    echo "Waiting for $SERVICE to start..."
    for x in $(_seq 5); do
+       sleep 1
        getpid
        if [ -n "$pid" ]; then
            break
        fi
-       sleep 1
    done
 
    # Process is started in background so $? does not have its exit status.
