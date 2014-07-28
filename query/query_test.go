@@ -23,7 +23,7 @@ import (
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/query"
 	"github.com/percona/percona-agent/test/mock"
-	. "launchpad.net/gocheck"
+	. "gopkg.in/check.v1"
 	"testing"
 )
 

@@ -21,12 +21,12 @@ import (
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
 	"github.com/percona/percona-agent/ticker"
-	"launchpad.net/gocheck"
+	"gopkg.in/check.v1"
 	"testing"
 	"time"
 )
 
-func Test(t *testing.T) { gocheck.TestingT(t) }
+func Test(t *testing.T) { check.TestingT(t) }
 
 /////////////////////////////////////////////////////////////////////////////
 // Ticker test suite
@@ -34,7 +34,7 @@ func Test(t *testing.T) { gocheck.TestingT(t) }
 
 type TickerTestSuite struct{}
 
-var _ = gocheck.Suite(&TickerTestSuite{})
+var _ = check.Suite(&TickerTestSuite{})
 
 // Fake time.Sleep()
 var slept time.Duration
@@ -44,7 +44,7 @@ func sleep(t time.Duration) {
 	return
 }
 
-func (s *TickerTestSuite) TestSleepTime2s(t *gocheck.C) {
+func (s *TickerTestSuite) TestSleepTime2s(t *check.C) {
 	/*
 	 * To sync at intervals, we must first sleep N number of nanoseconds
 	 * until the next interval.  So we specify the curren time (now) in
@@ -82,7 +82,7 @@ func (s *TickerTestSuite) TestSleepTime2s(t *gocheck.C) {
 	et.Stop()
 }
 
-func (s *TickerTestSuite) TestSleepTime60s(t *gocheck.C) {
+func (s *TickerTestSuite) TestSleepTime60s(t *check.C) {
 	// Fri Sep 27 18:11:37.385120 -0700 PDT 2013 =
 	now := int64(1380330697385120263)
 
@@ -99,7 +99,7 @@ func (s *TickerTestSuite) TestSleepTime60s(t *gocheck.C) {
 	et.Stop()
 }
 
-func (s *TickerTestSuite) TestTickerTime(t *gocheck.C) {
+func (s *TickerTestSuite) TestTickerTime(t *check.C) {
 	/*
 	 * The ticker returned by the syncer should tick at this given interval,
 	 * 2s in this case.  We test this by ensuring that the current time at
@@ -175,9 +175,9 @@ type ManagerTestSuite struct {
 	tickerFactory *mock.TickerFactory
 }
 
-var _ = gocheck.Suite(&ManagerTestSuite{})
+var _ = check.Suite(&ManagerTestSuite{})
 
-func (s *ManagerTestSuite) SetUpSuite(t *gocheck.C) {
+func (s *ManagerTestSuite) SetUpSuite(t *check.C) {
 	s.tickerChan = make(chan time.Time)
 	s.mockTicker = mock.NewTicker(nil)
 	s.tickerFactory = mock.NewTickerFactory()
@@ -190,7 +190,7 @@ func nowFunc() int64 {
 	return now
 }
 
-func (s *ManagerTestSuite) TestAddWatcher(t *gocheck.C) {
+func (s *ManagerTestSuite) TestAddWatcher(t *check.C) {
 	now = int64(1380330697385120263) // Fri Sep 27 18:11:37.385120 -0700 PDT 2013
 	s.tickerFactory.Set([]ticker.Ticker{s.mockTicker})
 
@@ -220,20 +220,20 @@ func (s *ManagerTestSuite) TestAddWatcher(t *gocheck.C) {
 	m.Remove(c)
 }
 
-func (s *ManagerTestSuite) TestBegan(t *gocheck.C) {
+func (s *ManagerTestSuite) TestBegan(t *check.C) {
 	var began time.Time
 
 	// between intervals
 	began = ticker.Began(300, 1388577750)
-	t.Check(began.Unix(), gocheck.Equals, int64(1388577600))
+	t.Check(began.Unix(), check.Equals, int64(1388577600))
 
 	// 1s before next interval
 	began = ticker.Began(300, 1388577899)
-	t.Check(began.Unix(), gocheck.Equals, int64(1388577600))
+	t.Check(began.Unix(), check.Equals, int64(1388577600))
 
 	// at interval
 	began = ticker.Began(300, 1388577900)
-	t.Check(began.Unix(), gocheck.Equals, int64(1388577900))
+	t.Check(began.Unix(), check.Equals, int64(1388577900))
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -242,9 +242,9 @@ func (s *ManagerTestSuite) TestBegan(t *gocheck.C) {
 
 type WaitTickerTestSuite struct{}
 
-var _ = gocheck.Suite(&WaitTickerTestSuite{})
+var _ = check.Suite(&WaitTickerTestSuite{})
 
-func (s *WaitTickerTestSuite) TestWaitTicker(t *gocheck.C) {
+func (s *WaitTickerTestSuite) TestWaitTicker(t *check.C) {
 	wt := ticker.NewWaitTicker(2)
 
 	tickChan := make(chan time.Time)
@@ -258,7 +258,7 @@ func (s *WaitTickerTestSuite) TestWaitTicker(t *gocheck.C) {
 	}
 	wt.Stop()
 
-	t.Assert(len(ticks), gocheck.Equals, 3)
+	t.Assert(len(ticks), check.Equals, 3)
 
 	d := ticks[1].Sub(ticks[0])
 	if d.Seconds() >= 1.0 {

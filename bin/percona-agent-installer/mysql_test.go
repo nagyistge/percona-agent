@@ -20,7 +20,7 @@ package main_test
 import (
 	i "github.com/percona/percona-agent/bin/percona-agent-installer"
 	"github.com/percona/percona-agent/mysql"
-	. "launchpad.net/gocheck"
+	. "gopkg.in/check.v1"
 )
 
 type MySQLTestSuite struct {

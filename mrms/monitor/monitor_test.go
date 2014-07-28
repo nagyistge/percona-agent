@@ -22,7 +22,7 @@ import (
 	"github.com/percona/percona-agent/mrms/monitor"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test/mock"
-	. "launchpad.net/gocheck"
+	. "gopkg.in/check.v1"
 	"testing"
 	"time"
 )
