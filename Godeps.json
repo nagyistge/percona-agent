@@ -20,7 +20,7 @@
 		},
 		{
 			"Pkg": "github.com/percona/mysql-log-parser",
-			"Rev": "aaf2ea1f034ede37bb34fbaa46fa7ecdd00be5cd"
+			"Rev": "80595e2c93d6bad71f1fce366e70b7cf7279001c"
 		},
 		{
 			"Pkg": "github.com/petar/GoLLRB",
@@ -29,6 +29,10 @@
 		{
 			"Pkg": "github.com/peterbourgon/diskv",
 			"Rev": "76403dd2469f77ad100a10d955a73592066a2660"
+		},
+		{
+			"Pkg": "gopkg.in/check.v1",
+			"Rev": "5b76b26efe7f426789852e983fbde4de62c42282"
 		}
 	]
 }

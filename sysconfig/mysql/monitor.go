@@ -119,7 +119,7 @@ func (m *Monitor) run() {
 
 	var lastTs int64
 	for {
-		m.logger.Debug("run:wait")
+		m.logger.Debug("run:idle")
 		m.status.Update(m.name, fmt.Sprintf("Idle (last collected at %s)", time.Unix(lastTs, 0)))
 
 		select {

@@ -19,7 +19,7 @@ package pct_test
 
 import (
 	"github.com/percona/percona-agent/pct"
-	. "launchpad.net/gocheck"
+	. "gopkg.in/check.v1"
 	"os"
 )
 

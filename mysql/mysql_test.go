@@ -19,7 +19,7 @@ package mysql_test
 
 import (
 	"github.com/percona/percona-agent/mysql"
-	. "launchpad.net/gocheck"
+	. "gopkg.in/check.v1"
 	"os"
 	"testing"
 )
