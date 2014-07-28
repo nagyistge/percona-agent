@@ -462,6 +462,11 @@ func (m *Manager) rotateSlowLog(config Config, interval *Interval) error {
 }
 
 func ValidateConfig(config *Config) error {
+	if config.CollectFrom == "" {
+		// Before perf schema, CollectFrom didn't exist, so existing default QAN configs
+		// don't have it.  To be backwards-compatible, no CollectFrom == slowlog.
+		config.CollectFrom = "slowlog"
+	}
 	if config.CollectFrom != "slowlog" && config.CollectFrom != "perfschema" {
 		return fmt.Errorf("Invalid CollectFrom: '%s'.  Expected 'perfschema' or 'slowlog'.", config.CollectFrom)
 	}
