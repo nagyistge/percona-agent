@@ -158,7 +158,7 @@ start() {
    # we can check service too quickly (or we can create pid file before agent will check it),
    # so let's give an agent some time to start
    echo "Waiting for $SERVICE to start..."
-   for x in $(_seq 5); do
+   for x in $(seq 5); do
        getpid
        if [ -n "$pid" ]; then
            break
@@ -168,7 +168,6 @@ start() {
 
    # Process is started in background so $? does not have its exit status.
    # Instead, check that it's running by trying to get its PID.
-   getpid
    if [ -z "$pid" ]; then
       echo "Fail.  Check $LOGFILE for details."
       exit 1
