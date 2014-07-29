@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/cmdtest"
 	. "launchpad.net/gocheck"
 	"log"
@@ -107,7 +108,7 @@ func (s *MainTestSuite) TestNonInteractiveInstall(t *C) {
 		"-api-host="+ts.URL,
 		"-plain-passwords=true",
 		"-non-interactive=true", // We are testing this flag
-		"-mysql-user="+s.username,
+		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
 		"-api-key="+apiKey, // Required because of non-interactive mode
 	)
 
@@ -125,7 +126,7 @@ func (s *MainTestSuite) TestNonInteractiveInstall(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Using auto detected DSN\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Using auto-detected DSN\n")
 
 	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":...@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
@@ -204,7 +205,7 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t 
 		"-create-mysql-user=false", // We are testing this flag
 		"-non-interactive=true",    // -create-mysql-user=false works only in non-interactive mode
 		"-api-key="+apiKey,         // Required because of non-interactive mode
-		"-mysql-user=root",
+		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-percona_user",
 	)
 
 	cmdTest := cmdtest.NewCmdTest(cmd)
@@ -222,12 +223,12 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t 
 
 	t.Check(cmdTest.ReadLine(), Equals, "Skip creating MySQL user (-create-mysql-user=false)\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Specify the existing MySQL user to use for the agent\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Using auto detected DSN\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Using auto-detected DSN\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Using existing MySQL user for agent...\n")
-	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona:...@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
-	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: "+s.username+"@unix(.*)/?parseTime=true\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona:percona@unix(.*)/?parseTime=true\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", s.mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))

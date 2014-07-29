@@ -45,6 +45,7 @@ var (
 	flagOldPasswords         bool
 	flagPlainPasswords       bool
 	flagNonInteractive       bool
+	flagMySQLDefaultsFile    string
 	flagAutoDetectMySQL      bool
 	flagCreateMySQLUser      bool
 	flagMySQLUser            string
@@ -73,6 +74,7 @@ func init() {
 	flag.BoolVar(&flagNonInteractive, "non-interactive", false, "Non-interactive mode for headless installation")
 	flag.BoolVar(&flagAutoDetectMySQL, "auto-detect-mysql", true, "Try to auto detect MySQL connection (used with -non-interactive=true mode)")
 	flag.BoolVar(&flagCreateMySQLUser, "create-mysql-user", true, "Create MySQL user for agent (used with -non-interactive=true mode)")
+	flag.StringVar(&flagMySQLDefaultsFile, "mysql-defaults-file", "", "Path to my.cnf, used for auto detection of connection details")
 	username := ""
 	currentUser, _ := user.Current()
 	if currentUser != nil {
@@ -119,16 +121,17 @@ func main() {
 			"old-passwords":          flagOldPasswords,
 			"plain-passwords":        flagPlainPasswords,
 			"non-interactive":        flagNonInteractive,
-			"create-mysql-user":      flagCreateMySQLUser,
 			"auto-detect-mysql":      flagAutoDetectMySQL,
+			"create-mysql-user":      flagCreateMySQLUser,
 		},
 		String: map[string]string{
-			"app-host":     DEFAULT_APP_HOSTNAME,
-			"mysql-user":   flagMySQLUser,
-			"mysql-pass":   flagMySQLPass,
-			"mysql-host":   flagMySQLHost,
-			"mysql-port":   flagMySQLPort,
-			"mysql-socket": flagMySQLSocket,
+			"app-host":            DEFAULT_APP_HOSTNAME,
+			"mysql-defaults-file": flagMySQLDefaultsFile,
+			"mysql-user":          flagMySQLUser,
+			"mysql-pass":          flagMySQLPass,
+			"mysql-host":          flagMySQLHost,
+			"mysql-port":          flagMySQLPort,
+			"mysql-socket":        flagMySQLSocket,
 		},
 	}
 

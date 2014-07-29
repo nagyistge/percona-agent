@@ -1,5 +1,0 @@
-[client]
-user=pt_agent
-#pass=wrongpass
-pass=correctpass
-host=localhost

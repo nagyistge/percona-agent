@@ -142,7 +142,7 @@ func (i *Installer) getDSNFromUser() (dsn mysql.DSN, err error) {
 		autoDSN, err := i.autodetectDSN()
 		if err == nil {
 			if i.flags.Bool["non-interactive"] {
-				fmt.Printf("Using auto detected DSN\n")
+				fmt.Printf("Using auto-detected DSN\n")
 				return *autoDSN, nil
 			} else {
 				fmt.Printf("Auto detected MySQL connection details: %s\n", autoDSN)
@@ -151,7 +151,7 @@ func (i *Installer) getDSNFromUser() (dsn mysql.DSN, err error) {
 					return dsn, err
 				}
 				if useAuto {
-					fmt.Printf("Using auto detected DSN\n")
+					fmt.Printf("Using auto-detected DSN\n")
 					return *autoDSN, nil
 				}
 			}
@@ -215,10 +215,13 @@ func (i *Installer) getDSNFromUser() (dsn mysql.DSN, err error) {
 }
 
 func (i *Installer) autodetectDSN() (dsn *mysql.DSN, err error) {
-	cmd := exec.Command(
-		"mysql",
-		"--print-defaults",
-	)
+	params := []string{}
+	if i.flags.String["mysql-defaults-file"] != "" {
+		params = append(params, "--defaults-file="+i.flags.String["mysql-defaults-file"])
+	}
+	// --print-defaults needs to be last param
+	params = append(params, "--print-defaults")
+	cmd := exec.Command("mysql", params...)
 	byteOutput, err := cmd.Output()
 	if err != nil {
 		return nil, err
