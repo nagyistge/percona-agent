@@ -24,7 +24,6 @@ import (
 	"github.com/percona/percona-agent/pct"
 	"log"
 	"os"
-	"os/user"
 )
 
 const (
@@ -75,16 +74,12 @@ func init() {
 	flag.BoolVar(&flagAutoDetectMySQL, "auto-detect-mysql", true, "Try to auto detect MySQL connection (used with -non-interactive=true mode)")
 	flag.BoolVar(&flagCreateMySQLUser, "create-mysql-user", true, "Create MySQL user for agent (used with -non-interactive=true mode)")
 	flag.StringVar(&flagMySQLDefaultsFile, "mysql-defaults-file", "", "Path to my.cnf, used for auto detection of connection details")
-	username := ""
-	currentUser, _ := user.Current()
-	if currentUser != nil {
-		username = currentUser.Username
-	}
-	flag.StringVar(&flagMySQLUser, "mysql-user", username, "MySQL username (used with -non-interactive=true mode)")
-	flag.StringVar(&flagMySQLPass, "mysql-pass", "", "MySQL password (used with -non-interactive=true mode)")
-	flag.StringVar(&flagMySQLHost, "mysql-host", "localhost", "MySQL host (used with -non-interactive=true mode)")
-	flag.StringVar(&flagMySQLPort, "mysql-port", "3306", "MySQL port (used with -non-interactive=true mode)")
-	flag.StringVar(&flagMySQLSocket, "mysql-socket", "", "MySQL socket file (used with -non-interactive=true mode)")
+	credentialDetailsNote := "(sets -non-interactive=true and -auto-detect-mysql=false)"
+	flag.StringVar(&flagMySQLUser, "mysql-user", "", "MySQL username "+credentialDetailsNote)
+	flag.StringVar(&flagMySQLPass, "mysql-pass", "", "MySQL password "+credentialDetailsNote)
+	flag.StringVar(&flagMySQLHost, "mysql-host", "", "MySQL host "+credentialDetailsNote)
+	flag.StringVar(&flagMySQLPort, "mysql-port", "", "MySQL port "+credentialDetailsNote)
+	flag.StringVar(&flagMySQLSocket, "mysql-socket", "", "MySQL socket file "+credentialDetailsNote)
 }
 
 func main() {
@@ -108,6 +103,14 @@ func main() {
 	if flagMySQLSocket != "" && flagMySQLPort != "" {
 		log.Println("Options -mysql-socket and -mysql-port are exclusive\n")
 		os.Exit(1)
+	}
+
+	// If any credential was provided
+	// then enable non-interactive mode
+	// and disable MySQL credentials auto-detection
+	if flagMySQLUser != "" || flagMySQLPass != "" || flagMySQLHost != "" || flagMySQLPort != "" || flagMySQLSocket != "" {
+		flagNonInteractive = true
+		flagAutoDetectMySQL = false
 	}
 
 	flags := Flags{

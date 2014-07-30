@@ -83,7 +83,6 @@ func (s *MainTestSuite) SetUpSuite(t *C) {
 
 // --------------------------------------------------------------------------
 func (s *MainTestSuite) TestNonInteractiveInstall(t *C) {
-
 	// Create fake http server
 	sm := NewServeMuxTest()
 	ts := httptest.NewServer(sm)
@@ -145,6 +144,68 @@ func (s *MainTestSuite) TestNonInteractiveInstall(t *C) {
 	t.Assert(err, IsNil)
 }
 
+func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(t *C) {
+	// Create fake http server
+	sm := NewServeMuxTest()
+	ts := httptest.NewServer(sm)
+	defer ts.Close()
+
+	// Register required mock http handlers
+	sm.appendPing()
+	sm.appendInstancesServer(ts.URL, s.serverInstance)
+	sm.appendInstancesServerId(s.serverInstance)
+	sm.appendInstancesMysql(ts.URL, s.mysqlInstance)
+	sm.appendInstancesMysqlId(s.mysqlInstance)
+	sm.appendConfigsMmDefaultServer()
+	sm.appendConfigsMmDefaultMysql()
+	sm.appendSysconfigDefaultMysql()
+	sm.appendAgents(ts.URL, s.agent)
+	sm.appendAgentsUuid(s.agent)
+
+	apiKey := "00000000000000000000000000000001"
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+s.basedir,
+		"-api-host="+ts.URL,
+		"-plain-passwords=true",
+		// "-non-interactive=true", // This flag is automatically enabled when flags with credentials are provided
+		// "-auto-detect-mysql=false", // This flag is automatically disabled when flags with credentials are provided
+		"-mysql-user=root",
+		"-mysql-socket=/var/run/mysqld/mysqld.sock",
+		"-api-key="+apiKey, // Required because of non-interactive mode
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
+
+	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
+
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:0x.*@unix(.*)/?parseTime=true\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", s.mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
+	t.Check(cmdTest.ReadLine(), Equals, "Install successful\n")
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Assert(err, IsNil)
+}
 func (s *MainTestSuite) TestNonInteractiveInstallWithMissingApiKey(t *C) {
 	// Create fake http server
 	sm := NewServeMuxTest()
