@@ -125,6 +125,7 @@ func (s *MainTestSuite) TestNonInteractiveInstall(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Auto detected DSN using `mysql --print-defaults` (use ~/.my.cnf to adjust results)\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Using auto-detected DSN\n")
 
 	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":<password-hidden>@unix(.*)...\n")
@@ -284,6 +285,8 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t 
 
 	t.Check(cmdTest.ReadLine(), Equals, "Skip creating MySQL user (-create-mysql-user=false)\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Specify the existing MySQL user to use for the agent\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Auto detected DSN using `mysql --print-defaults` (use ~/.my.cnf to adjust results)\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Using auto-detected DSN\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Using existing MySQL user for agent...\n")
@@ -351,6 +354,7 @@ func (s *MainTestSuite) TestInstall(t *C) {
 	 */
 	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
 
+	t.Check(cmdTest.ReadLine(), Equals, "Auto detected DSN using `mysql --print-defaults` (use ~/.my.cnf to adjust results)\n")
 	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:<password-hidden>@unix(.+)\n")
 	t.Assert(cmdTest.ReadLine(), Equals, "Use auto-detected connection details? (Y): ")
 	cmdTest.Write("N\n")
@@ -482,6 +486,7 @@ func (s *MainTestSuite) TestInstallWithExistingMySQLUser(t *C) {
 	 */
 	t.Check(cmdTest.ReadLine(), Equals, "Specify the existing MySQL user to use for the agent\n")
 
+	t.Check(cmdTest.ReadLine(), Equals, "Auto detected DSN using `mysql --print-defaults` (use ~/.my.cnf to adjust results)\n")
 	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:<password-hidden>@unix(.+)\n")
 	t.Assert(cmdTest.ReadLine(), Equals, "Use auto-detected connection details? (Y): ")
 	cmdTest.Write("N\n")
@@ -562,6 +567,7 @@ func (s *MainTestSuite) TestInstallWithFlagCreateAgentFalse(t *C) {
 	cmdTest.Write("Y\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
 
+	t.Check(cmdTest.ReadLine(), Equals, "Auto detected DSN using `mysql --print-defaults` (use ~/.my.cnf to adjust results)\n")
 	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:<password-hidden>@unix(.+)\n")
 	t.Assert(cmdTest.ReadLine(), Equals, "Use auto-detected connection details? (Y): ")
 	cmdTest.Write("N\n")
@@ -643,6 +649,7 @@ func (s *MainTestSuite) TestInstallWithFlagOldPasswordsTrue(t *C) {
 	cmdTest.Write("Y\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
 
+	t.Check(cmdTest.ReadLine(), Equals, "Auto detected DSN using `mysql --print-defaults` (use ~/.my.cnf to adjust results)\n")
 	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:<password-hidden>@unix(.+)\n")
 	t.Assert(cmdTest.ReadLine(), Equals, "Use auto-detected connection details? (Y): ")
 	cmdTest.Write("N\n")
@@ -724,6 +731,7 @@ func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) {
 	cmdTest.Write("Y\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
 
+	t.Check(cmdTest.ReadLine(), Equals, "Auto detected DSN using `mysql --print-defaults` (use ~/.my.cnf to adjust results)\n")
 	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:<password-hidden>@unix(.+)\n")
 	t.Assert(cmdTest.ReadLine(), Equals, "Use auto-detected connection details? (Y): ")
 	cmdTest.Write("N\n")

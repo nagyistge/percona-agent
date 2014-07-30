@@ -225,6 +225,7 @@ func (i *Installer) autodetectDSN() (dsn *mysql.DSN, err error) {
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("Auto detected DSN using `mysql --print-defaults` (use ~/.my.cnf to adjust results)\n")
 	output := string(byteOutput)
 
 	var re *regexp.Regexp
