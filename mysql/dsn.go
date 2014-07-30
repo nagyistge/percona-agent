@@ -103,6 +103,9 @@ func (dsn DSN) To() string {
 }
 
 func (dsn DSN) String() string {
+	if dsn.Username == "" {
+		dsn.Username = "<anonymous-user>"
+	}
 	dsn.Password = "<password-hidden>"
 	dsnString, _ := dsn.DSN()
 	dsnString = strings.TrimSuffix(dsnString, allowOldPasswords)
@@ -111,6 +114,9 @@ func (dsn DSN) String() string {
 }
 
 func (dsn DSN) StringWithSuffixes() string {
+	if dsn.Username == "" {
+		dsn.Username = "<anonymous-user>"
+	}
 	dsn.Password = "<password-hidden>"
 	dsnString, _ := dsn.DSN()
 	return dsnString
