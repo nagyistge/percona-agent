@@ -127,11 +127,11 @@ func (s *MainTestSuite) TestNonInteractiveInstall(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Using auto-detected DSN\n")
 
-	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
-	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
 	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:0x.*@unix(.*)/?parseTime=true\n")
 
@@ -168,7 +168,7 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(
 		"-basedir="+s.basedir,
 		"-api-host="+ts.URL,
 		"-plain-passwords=true",
-		// "-non-interactive=true", // This flag is automatically enabled when flags with credentials are provided
+		// "-non-interactive=true",    // This flag is automatically enabled when flags with credentials are provided
 		// "-auto-detect-mysql=false", // This flag is automatically disabled when flags with credentials are provided
 		"-mysql-user=root",
 		"-mysql-socket=/var/run/mysqld/mysqld.sock",
@@ -190,11 +190,11 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(
 
 	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
 
-	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
-	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
 	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:0x.*@unix(.*)/?parseTime=true\n")
 
@@ -287,7 +287,7 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t 
 	t.Check(cmdTest.ReadLine(), Equals, "Using auto-detected DSN\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Using existing MySQL user for agent...\n")
-	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona:...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona:<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
 	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona:percona@unix(.*)/?parseTime=true\n")
 
@@ -351,7 +351,7 @@ func (s *MainTestSuite) TestInstall(t *C) {
 	 */
 	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
 
-	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:...@unix(.+)\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:<password-hidden>@unix(.+)\n")
 	t.Assert(cmdTest.ReadLine(), Equals, "Use auto-detected connection details? (Y): ")
 	cmdTest.Write("N\n")
 
@@ -367,14 +367,14 @@ func (s *MainTestSuite) TestInstall(t *C) {
 	mysqlHost := ""
 	cmdTest.Write(mysqlHost + "\n")
 
-	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
 
 	/**
 	 * MySQL new user
 	 */
 	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
-	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
 	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:0x.*@unix(.*)/?parseTime=true\n")
 
@@ -482,7 +482,7 @@ func (s *MainTestSuite) TestInstallWithExistingMySQLUser(t *C) {
 	 */
 	t.Check(cmdTest.ReadLine(), Equals, "Specify the existing MySQL user to use for the agent\n")
 
-	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:...@unix(.+)\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:<password-hidden>@unix(.+)\n")
 	t.Assert(cmdTest.ReadLine(), Equals, "Use auto-detected connection details? (Y): ")
 	cmdTest.Write("N\n")
 
@@ -499,7 +499,7 @@ func (s *MainTestSuite) TestInstallWithExistingMySQLUser(t *C) {
 	cmdTest.Write(mysqlHost + "\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Using existing MySQL user for agent...\n")
-	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
 	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: "+s.username+"@unix(.*)/?parseTime=true\n")
 
@@ -562,7 +562,7 @@ func (s *MainTestSuite) TestInstallWithFlagCreateAgentFalse(t *C) {
 	cmdTest.Write("Y\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
 
-	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:...@unix(.+)\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:<password-hidden>@unix(.+)\n")
 	t.Assert(cmdTest.ReadLine(), Equals, "Use auto-detected connection details? (Y): ")
 	cmdTest.Write("N\n")
 
@@ -578,11 +578,11 @@ func (s *MainTestSuite) TestInstallWithFlagCreateAgentFalse(t *C) {
 	mysqlHost := ""
 	cmdTest.Write(mysqlHost + "\n")
 
-	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
-	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
 	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:0x.*@unix(.*)/?parseTime=true\n")
 
@@ -643,7 +643,7 @@ func (s *MainTestSuite) TestInstallWithFlagOldPasswordsTrue(t *C) {
 	cmdTest.Write("Y\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
 
-	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:...@unix(.+)\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:<password-hidden>@unix(.+)\n")
 	t.Assert(cmdTest.ReadLine(), Equals, "Use auto-detected connection details? (Y): ")
 	cmdTest.Write("N\n")
 
@@ -659,11 +659,11 @@ func (s *MainTestSuite) TestInstallWithFlagOldPasswordsTrue(t *C) {
 	mysqlHost := ""
 	cmdTest.Write(mysqlHost + "\n")
 
-	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
-	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
 	// Flag -old-passwords=true should add &allowOldPasswords=true to DSN
 	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:0x.*@unix(.*)/?parseTime=true&allowOldPasswords=true\n")
@@ -724,7 +724,7 @@ func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) {
 	cmdTest.Write("Y\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
 
-	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:...@unix(.+)\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:<password-hidden>@unix(.+)\n")
 	t.Assert(cmdTest.ReadLine(), Equals, "Use auto-detected connection details? (Y): ")
 	cmdTest.Write("N\n")
 
@@ -740,11 +740,11 @@ func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) {
 	mysqlHost := ""
 	cmdTest.Write(mysqlHost + "\n")
 
-	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
-	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:...@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
 	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:0x.*@unix(.*)/?parseTime=true\n")
 

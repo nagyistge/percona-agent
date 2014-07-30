@@ -103,7 +103,7 @@ func (dsn DSN) To() string {
 }
 
 func (dsn DSN) String() string {
-	dsn.Password = "..."
+	dsn.Password = "<password-hidden>"
 	dsnString, _ := dsn.DSN()
 	dsnString = strings.TrimSuffix(dsnString, allowOldPasswords)
 	dsnString = strings.TrimSuffix(dsnString, dsnSuffix)
