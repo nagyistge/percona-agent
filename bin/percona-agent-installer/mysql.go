@@ -84,8 +84,7 @@ func (i *Installer) getAgentDSN() (dsn mysql.DSN, err error) {
 			return dsn, fmt.Errorf("Failed to create new MySQL account for agent")
 		}
 	}
-	dsnString, _ := dsn.DSN()
-	fmt.Printf("Agent MySQL user: %s\n", dsnString)
+	fmt.Printf("Agent MySQL user: %s\n", dsn.StringWithSuffixes())
 	return dsn, nil
 }
 

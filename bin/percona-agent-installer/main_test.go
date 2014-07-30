@@ -133,7 +133,7 @@ func (s *MainTestSuite) TestNonInteractiveInstall(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
 	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
-	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:0x.*@unix(.*)/?parseTime=true\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:<password-hidden>@unix(.*)/?parseTime=true\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", s.mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
@@ -196,7 +196,7 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(
 	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
 	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
-	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:0x.*@unix(.*)/?parseTime=true\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:<password-hidden>@unix(.*)\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", s.mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
@@ -289,7 +289,7 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t 
 	t.Check(cmdTest.ReadLine(), Equals, "Using existing MySQL user for agent...\n")
 	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona:<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
-	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona:percona@unix(.*)/?parseTime=true\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona:<password-hidden>@unix(.*)\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", s.mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
@@ -376,7 +376,7 @@ func (s *MainTestSuite) TestInstall(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
 	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
-	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:0x.*@unix(.*)/?parseTime=true\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:<password-hidden>@unix(.*)\n")
 
 	/**
 	 * MySQL instance
@@ -501,7 +501,7 @@ func (s *MainTestSuite) TestInstallWithExistingMySQLUser(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "Using existing MySQL user for agent...\n")
 	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
-	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: "+s.username+"@unix(.*)/?parseTime=true\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: "+s.username+":<password-hidden>@unix(.*)/?parseTime=true\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", s.mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
@@ -584,7 +584,7 @@ func (s *MainTestSuite) TestInstallWithFlagCreateAgentFalse(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
 	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
-	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:0x.*@unix(.*)/?parseTime=true\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:<password-hidden>@unix(.*)\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", s.mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Not creating agent (-create-agent=false)\n"))
@@ -666,7 +666,7 @@ func (s *MainTestSuite) TestInstallWithFlagOldPasswordsTrue(t *C) {
 	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
 	// Flag -old-passwords=true should add &allowOldPasswords=true to DSN
-	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:0x.*@unix(.*)/?parseTime=true&allowOldPasswords=true\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:<password-hidden>@unix(.*)/?parseTime=true&allowOldPasswords=true\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", s.mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
@@ -746,7 +746,7 @@ func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
 	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:<password-hidden>@unix(.*)...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
-	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:0x.*@unix(.*)/?parseTime=true\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:<password-hidden>@unix(.*)\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", s.mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))

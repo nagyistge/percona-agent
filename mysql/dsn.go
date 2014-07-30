@@ -110,6 +110,12 @@ func (dsn DSN) String() string {
 	return dsnString
 }
 
+func (dsn DSN) StringWithSuffixes() string {
+	dsn.Password = "<password-hidden>"
+	dsnString, _ := dsn.DSN()
+	return dsnString
+}
+
 func ParseSocketFromNetstat(out string) string {
 	lines := strings.Split(out, "\n")
 	for _, line := range lines {
