@@ -15,12 +15,13 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package main
+package term
 
 import (
 	"bufio"
 	"errors"
 	"fmt"
+	"github.com/percona/percona-agent/bin/percona-agent-installer/flags"
 	"io"
 	"log"
 	"strings"
@@ -32,10 +33,10 @@ var (
 
 type Terminal struct {
 	stdin *bufio.Reader
-	flags Flags
+	flags flags.Flags
 }
 
-func NewTerminal(stdin io.Reader, flags Flags) *Terminal {
+func NewTerminal(stdin io.Reader, flags flags.Flags) *Terminal {
 	t := &Terminal{
 		stdin: bufio.NewReader(stdin),
 		flags: flags,

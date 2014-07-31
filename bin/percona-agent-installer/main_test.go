@@ -26,6 +26,7 @@ import (
 	. "launchpad.net/gocheck"
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
 	"testing"
 )
@@ -47,7 +48,7 @@ type MainTestSuite struct {
 var _ = Suite(&MainTestSuite{
 	username: "root",
 	basedir:  "/tmp/percona-agent-installer-test",
-	bin:      "./installer",
+	bin:      "/tmp/test-agent-installer",
 	apphost:  "https://cloud.percona.com",
 })
 
@@ -79,6 +80,13 @@ func (s *MainTestSuite) SetUpSuite(t *C) {
 			"log":  "ws://localhost:8000/agents/" + s.agentUuid + "/log",
 		},
 	}
+}
+
+func (s *MainTestSuite) TearDownSuite(c *C) {
+
+	// Remove test installer binary
+	err := os.Remove(s.bin)
+	c.Check(err, IsNil)
 }
 
 func (s *MainTestSuite) SetUpTest(c *C) {

@@ -21,6 +21,9 @@ import (
 	"flag"
 	"fmt"
 	"github.com/percona/percona-agent/agent"
+	"github.com/percona/percona-agent/bin/percona-agent-installer/flags"
+	"github.com/percona/percona-agent/bin/percona-agent-installer/installer"
+	"github.com/percona/percona-agent/bin/percona-agent-installer/term"
 	"github.com/percona/percona-agent/pct"
 	"log"
 	"os"
@@ -113,7 +116,7 @@ func main() {
 		flagAutoDetectMySQL = false
 	}
 
-	flags := Flags{
+	flags := flags.Flags{
 		Bool: map[string]bool{
 			"debug":                  flagDebug,
 			"create-server-instance": flagCreateServerInstance,
@@ -145,10 +148,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	installer := NewInstaller(NewTerminal(os.Stdin, flags), flagBasedir, pct.NewAPI(), agentConfig, flags)
+	agentInstaller := installer.NewInstaller(term.NewTerminal(os.Stdin, flags), flagBasedir, pct.NewAPI(), agentConfig, flags)
 	fmt.Println("CTRL-C at any time to quit")
 	// todo: catch SIGINT and clean up
-	if err := installer.Run(); err != nil {
+	if err := agentInstaller.Run(); err != nil {
 		fmt.Println(err)
 		fmt.Println("Install failed")
 		os.Exit(1)

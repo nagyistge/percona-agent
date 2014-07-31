@@ -15,13 +15,15 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package main
+package installer
 
 import (
 	"fmt"
 	_ "github.com/arnehormann/mysql"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/agent"
+	"github.com/percona/percona-agent/bin/percona-agent-installer/flags"
+	"github.com/percona/percona-agent/bin/percona-agent-installer/term"
 	"github.com/percona/percona-agent/pct"
 	"log"
 	"net"
@@ -31,30 +33,25 @@ import (
 	"time"
 )
 
-type Flags struct {
-	Bool   map[string]bool
-	String map[string]string
-}
-
 var portNumberRe = regexp.MustCompile(`\.\d+$`)
 
 type Installer struct {
-	term        *Terminal
+	term        *term.Terminal
 	basedir     string
 	api         pct.APIConnector
 	agentConfig *agent.Config
-	flags       Flags
+	flags       flags.Flags
 	// --
 	hostname string
 }
 
-func NewInstaller(term *Terminal, basedir string, api pct.APIConnector, agentConfig *agent.Config, flags Flags) *Installer {
+func NewInstaller(terminal *term.Terminal, basedir string, api pct.APIConnector, agentConfig *agent.Config, flags flags.Flags) *Installer {
 	if agentConfig.ApiHostname == "" {
 		agentConfig.ApiHostname = agent.DEFAULT_API_HOSTNAME
 	}
 	hostname, _ := os.Hostname()
 	installer := &Installer{
-		term:        term,
+		term:        terminal,
 		basedir:     basedir,
 		api:         api,
 		agentConfig: agentConfig,

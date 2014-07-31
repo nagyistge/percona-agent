@@ -15,10 +15,10 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package main_test
+package installer_test
 
 import (
-	i "github.com/percona/percona-agent/bin/percona-agent-installer"
+	i "github.com/percona/percona-agent/bin/percona-agent-installer/installer"
 	"github.com/percona/percona-agent/mysql"
 	. "launchpad.net/gocheck"
 )
