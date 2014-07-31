@@ -18,15 +18,14 @@
 package main_test
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/cmdtest"
+	"github.com/percona/percona-agent/test/fakeapi"
 	. "launchpad.net/gocheck"
 	"log"
 	"net/http"
-	"net/http/httptest"
 	"os/exec"
 	"testing"
 )
@@ -42,6 +41,7 @@ type MainTestSuite struct {
 	mysqlInstance  *proto.MySQLInstance
 	agent          *proto.Agent
 	agentUuid      string
+	fakeApi        *fakeapi.FakeApi
 }
 
 var _ = Suite(&MainTestSuite{
@@ -81,30 +81,35 @@ func (s *MainTestSuite) SetUpSuite(t *C) {
 	}
 }
 
+func (s *MainTestSuite) SetUpTest(c *C) {
+	// Create fake api server
+	s.fakeApi = fakeapi.NewFakeApi()
+}
+
+func (s *MainTestSuite) TearDownTest(c *C) {
+	// Shutdown fake api server
+	s.fakeApi.Close()
+}
+
 // --------------------------------------------------------------------------
 func (s *MainTestSuite) TestNonInteractiveInstall(t *C) {
-	// Create fake http server
-	sm := NewServeMuxTest()
-	ts := httptest.NewServer(sm)
-	defer ts.Close()
-
-	// Register required mock http handlers
-	sm.appendPing()
-	sm.appendInstancesServer(ts.URL, s.serverInstance)
-	sm.appendInstancesServerId(s.serverInstance)
-	sm.appendInstancesMysql(ts.URL, s.mysqlInstance)
-	sm.appendInstancesMysqlId(s.mysqlInstance)
-	sm.appendConfigsMmDefaultServer()
-	sm.appendConfigsMmDefaultMysql()
-	sm.appendSysconfigDefaultMysql()
-	sm.appendAgents(ts.URL, s.agent)
-	sm.appendAgentsUuid(s.agent)
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	s.fakeApi.AppendInstancesServer(s.serverInstance)
+	s.fakeApi.AppendInstancesServerId(s.serverInstance)
+	s.fakeApi.AppendInstancesMysql(s.mysqlInstance)
+	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance)
+	s.fakeApi.AppendConfigsMmDefaultServer()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendAgents(s.agent)
+	s.fakeApi.AppendAgentsUuid(s.agent)
 
 	apiKey := "00000000000000000000000000000001"
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+s.basedir,
-		"-api-host="+ts.URL,
+		"-api-host="+s.fakeApi.URL(),
 		"-plain-passwords=true",
 		"-non-interactive=true", // We are testing this flag
 		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
@@ -118,7 +123,7 @@ func (s *MainTestSuite) TestNonInteractiveInstall(t *C) {
 	}
 
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
@@ -146,28 +151,23 @@ func (s *MainTestSuite) TestNonInteractiveInstall(t *C) {
 }
 
 func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(t *C) {
-	// Create fake http server
-	sm := NewServeMuxTest()
-	ts := httptest.NewServer(sm)
-	defer ts.Close()
-
-	// Register required mock http handlers
-	sm.appendPing()
-	sm.appendInstancesServer(ts.URL, s.serverInstance)
-	sm.appendInstancesServerId(s.serverInstance)
-	sm.appendInstancesMysql(ts.URL, s.mysqlInstance)
-	sm.appendInstancesMysqlId(s.mysqlInstance)
-	sm.appendConfigsMmDefaultServer()
-	sm.appendConfigsMmDefaultMysql()
-	sm.appendSysconfigDefaultMysql()
-	sm.appendAgents(ts.URL, s.agent)
-	sm.appendAgentsUuid(s.agent)
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	s.fakeApi.AppendInstancesServer(s.serverInstance)
+	s.fakeApi.AppendInstancesServerId(s.serverInstance)
+	s.fakeApi.AppendInstancesMysql(s.mysqlInstance)
+	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance)
+	s.fakeApi.AppendConfigsMmDefaultServer()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendAgents(s.agent)
+	s.fakeApi.AppendAgentsUuid(s.agent)
 
 	apiKey := "00000000000000000000000000000001"
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+s.basedir,
-		"-api-host="+ts.URL,
+		"-api-host="+s.fakeApi.URL(),
 		"-plain-passwords=true",
 		// "-non-interactive=true",    // This flag is automatically enabled when flags with credentials are provided
 		// "-auto-detect-mysql=false", // This flag is automatically disabled when flags with credentials are provided
@@ -183,7 +183,7 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(
 	}
 
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
@@ -208,15 +208,10 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(
 	t.Assert(err, IsNil)
 }
 func (s *MainTestSuite) TestNonInteractiveInstallWithMissingApiKey(t *C) {
-	// Create fake http server
-	sm := NewServeMuxTest()
-	ts := httptest.NewServer(sm)
-	defer ts.Close()
-
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+s.basedir,
-		"-api-host="+ts.URL,
+		"-api-host="+s.fakeApi.URL(),
 		"-plain-passwords=true",
 		"-non-interactive=true",
 	)
@@ -228,7 +223,7 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithMissingApiKey(t *C) {
 	}
 
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "API key is required, please provide it with -api-key option.\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API Key is available at "+s.apphost+"/api-key\n")
@@ -241,28 +236,23 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithMissingApiKey(t *C) {
 }
 
 func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t *C) {
-	// Create fake http server
-	sm := NewServeMuxTest()
-	ts := httptest.NewServer(sm)
-	defer ts.Close()
-
-	// Register required mock http handlers
-	sm.appendPing()
-	sm.appendInstancesServer(ts.URL, s.serverInstance)
-	sm.appendInstancesServerId(s.serverInstance)
-	sm.appendInstancesMysql(ts.URL, s.mysqlInstance)
-	sm.appendInstancesMysqlId(s.mysqlInstance)
-	sm.appendConfigsMmDefaultServer()
-	sm.appendConfigsMmDefaultMysql()
-	sm.appendSysconfigDefaultMysql()
-	sm.appendAgents(ts.URL, s.agent)
-	sm.appendAgentsUuid(s.agent)
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	s.fakeApi.AppendInstancesServer(s.serverInstance)
+	s.fakeApi.AppendInstancesServerId(s.serverInstance)
+	s.fakeApi.AppendInstancesMysql(s.mysqlInstance)
+	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance)
+	s.fakeApi.AppendConfigsMmDefaultServer()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendAgents(s.agent)
+	s.fakeApi.AppendAgentsUuid(s.agent)
 
 	apiKey := "00000000000000000000000000000001"
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+s.basedir,
-		"-api-host="+ts.URL,
+		"-api-host="+s.fakeApi.URL(),
 		"-plain-passwords=true",
 		"-create-mysql-user=false", // We are testing this flag
 		"-non-interactive=true",    // -create-mysql-user=false works only in non-interactive mode
@@ -277,7 +267,7 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t 
 	}
 
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
@@ -304,27 +294,22 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t 
 }
 
 func (s *MainTestSuite) TestInstall(t *C) {
-	// Create fake http server
-	sm := NewServeMuxTest()
-	ts := httptest.NewServer(sm)
-	defer ts.Close()
-
-	// Register required mock http handlers
-	sm.appendPing()
-	sm.appendInstancesServer(ts.URL, s.serverInstance)
-	sm.appendInstancesServerId(s.serverInstance)
-	sm.appendInstancesMysql(ts.URL, s.mysqlInstance)
-	sm.appendInstancesMysqlId(s.mysqlInstance)
-	sm.appendConfigsMmDefaultServer()
-	sm.appendConfigsMmDefaultMysql()
-	sm.appendSysconfigDefaultMysql()
-	sm.appendAgents(ts.URL, s.agent)
-	sm.appendAgentsUuid(s.agent)
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	s.fakeApi.AppendInstancesServer(s.serverInstance)
+	s.fakeApi.AppendInstancesServerId(s.serverInstance)
+	s.fakeApi.AppendInstancesMysql(s.mysqlInstance)
+	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance)
+	s.fakeApi.AppendConfigsMmDefaultServer()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendAgents(s.agent)
+	s.fakeApi.AppendAgentsUuid(s.agent)
 
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+s.basedir,
-		"-api-host="+ts.URL,
+		"-api-host="+s.fakeApi.URL(),
 		"-plain-passwords=true",
 	)
 
@@ -335,7 +320,7 @@ func (s *MainTestSuite) TestInstall(t *C) {
 	}
 
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
@@ -395,16 +380,14 @@ func (s *MainTestSuite) TestInstall(t *C) {
 }
 
 func (s *MainTestSuite) TestInstallWithWrongApiKey(t *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/ping" {
-			w.WriteHeader(http.StatusInternalServerError)
-		}
+	s.fakeApi.Append("/ping", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
 	}))
-	defer ts.Close()
+
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+s.basedir,
-		"-api-host="+ts.URL,
+		"-api-host="+s.fakeApi.URL(),
 	)
 
 	cmdTest := cmdtest.NewCmdTest(cmd)
@@ -414,7 +397,7 @@ func (s *MainTestSuite) TestInstallWithWrongApiKey(t *C) {
 	}
 
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 
 	apiKey := "WrongApiKey"
 	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
@@ -436,27 +419,22 @@ func (s *MainTestSuite) TestInstallWithWrongApiKey(t *C) {
 }
 
 func (s *MainTestSuite) TestInstallWithExistingMySQLUser(t *C) {
-	// Create fake http server
-	sm := NewServeMuxTest()
-	ts := httptest.NewServer(sm)
-	defer ts.Close()
-
-	// Register required mock http handlers
-	sm.appendPing()
-	sm.appendInstancesServer(ts.URL, s.serverInstance)
-	sm.appendInstancesServerId(s.serverInstance)
-	sm.appendInstancesMysql(ts.URL, s.mysqlInstance)
-	sm.appendInstancesMysqlId(s.mysqlInstance)
-	sm.appendConfigsMmDefaultServer()
-	sm.appendConfigsMmDefaultMysql()
-	sm.appendSysconfigDefaultMysql()
-	sm.appendAgents(ts.URL, s.agent)
-	sm.appendAgentsUuid(s.agent)
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	s.fakeApi.AppendInstancesServer(s.serverInstance)
+	s.fakeApi.AppendInstancesServerId(s.serverInstance)
+	s.fakeApi.AppendInstancesMysql(s.mysqlInstance)
+	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance)
+	s.fakeApi.AppendConfigsMmDefaultServer()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendAgents(s.agent)
+	s.fakeApi.AppendAgentsUuid(s.agent)
 
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+s.basedir,
-		"-api-host="+ts.URL,
+		"-api-host="+s.fakeApi.URL(),
 		"-plain-passwords=true",
 	)
 
@@ -467,7 +445,7 @@ func (s *MainTestSuite) TestInstallWithExistingMySQLUser(t *C) {
 	}
 
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
@@ -518,29 +496,24 @@ func (s *MainTestSuite) TestInstallWithExistingMySQLUser(t *C) {
 }
 
 func (s *MainTestSuite) TestInstallWithFlagCreateAgentFalse(t *C) {
-	// Create fake http server
-	sm := NewServeMuxTest()
-	ts := httptest.NewServer(sm)
-	defer ts.Close()
-
-	// Register required mock http handlers
-	sm.appendPing()
-	sm.appendInstancesServer(ts.URL, s.serverInstance)
-	sm.appendInstancesServerId(s.serverInstance)
-	sm.appendInstancesMysql(ts.URL, s.mysqlInstance)
-	sm.appendInstancesMysqlId(s.mysqlInstance)
-	sm.appendConfigsMmDefaultServer()
-	sm.appendConfigsMmDefaultMysql()
-	sm.appendSysconfigDefaultMysql()
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	s.fakeApi.AppendInstancesServer(s.serverInstance)
+	s.fakeApi.AppendInstancesServerId(s.serverInstance)
+	s.fakeApi.AppendInstancesMysql(s.mysqlInstance)
+	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance)
+	s.fakeApi.AppendConfigsMmDefaultServer()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
 	// Flag -create-agent=false implies that agent
 	// shouldn't query below api routes
-	//sm.appendAgents(ts.URL, s.agent)
-	//sm.appendAgentsUuid(s.agent)
+	//s.fakeApi.AppendAgents(s.agent)
+	//s.fakeApi.AppendAgentsUuid(s.agent)
 
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+s.basedir,
-		"-api-host="+ts.URL,
+		"-api-host="+s.fakeApi.URL(),
 		"-plain-passwords=true",
 		"-create-agent=false", // we are testing this flag
 	)
@@ -552,7 +525,7 @@ func (s *MainTestSuite) TestInstallWithFlagCreateAgentFalse(t *C) {
 	}
 
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
@@ -602,27 +575,22 @@ func (s *MainTestSuite) TestInstallWithFlagCreateAgentFalse(t *C) {
 }
 
 func (s *MainTestSuite) TestInstallWithFlagOldPasswordsTrue(t *C) {
-	// Create fake http server
-	sm := NewServeMuxTest()
-	ts := httptest.NewServer(sm)
-	defer ts.Close()
-
-	// Register required mock http handlers
-	sm.appendPing()
-	sm.appendInstancesServer(ts.URL, s.serverInstance)
-	sm.appendInstancesServerId(s.serverInstance)
-	sm.appendInstancesMysql(ts.URL, s.mysqlInstance)
-	sm.appendInstancesMysqlId(s.mysqlInstance)
-	sm.appendConfigsMmDefaultServer()
-	sm.appendConfigsMmDefaultMysql()
-	sm.appendSysconfigDefaultMysql()
-	sm.appendAgents(ts.URL, s.agent)
-	sm.appendAgentsUuid(s.agent)
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	s.fakeApi.AppendInstancesServer(s.serverInstance)
+	s.fakeApi.AppendInstancesServerId(s.serverInstance)
+	s.fakeApi.AppendInstancesMysql(s.mysqlInstance)
+	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance)
+	s.fakeApi.AppendConfigsMmDefaultServer()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendAgents(s.agent)
+	s.fakeApi.AppendAgentsUuid(s.agent)
 
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+s.basedir,
-		"-api-host="+ts.URL,
+		"-api-host="+s.fakeApi.URL(),
 		"-plain-passwords=true",
 		"-old-passwords=true",
 	)
@@ -634,7 +602,7 @@ func (s *MainTestSuite) TestInstallWithFlagOldPasswordsTrue(t *C) {
 	}
 
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
@@ -685,28 +653,23 @@ func (s *MainTestSuite) TestInstallWithFlagOldPasswordsTrue(t *C) {
 }
 
 func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) {
-	// Create fake http server
-	sm := NewServeMuxTest()
-	ts := httptest.NewServer(sm)
-	defer ts.Close()
-
-	// Register required mock http handlers
-	sm.appendPing()
-	sm.appendInstancesServer(ts.URL, s.serverInstance)
-	sm.appendInstancesServerId(s.serverInstance)
-	sm.appendInstancesMysql(ts.URL, s.mysqlInstance)
-	sm.appendInstancesMysqlId(s.mysqlInstance)
-	sm.appendConfigsMmDefaultServer()
-	sm.appendConfigsMmDefaultMysql()
-	sm.appendSysconfigDefaultMysql()
-	sm.appendAgents(ts.URL, s.agent)
-	sm.appendAgentsUuid(s.agent)
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	s.fakeApi.AppendInstancesServer(s.serverInstance)
+	s.fakeApi.AppendInstancesServerId(s.serverInstance)
+	s.fakeApi.AppendInstancesMysql(s.mysqlInstance)
+	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance)
+	s.fakeApi.AppendConfigsMmDefaultServer()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendAgents(s.agent)
+	s.fakeApi.AppendAgentsUuid(s.agent)
 
 	apiKey := "00000000000000000000000000000001"
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+s.basedir,
-		"-api-host="+ts.URL,
+		"-api-host="+s.fakeApi.URL(),
 		"-plain-passwords=true",
 		"-api-key="+apiKey, // We are testing this flag
 	)
@@ -718,7 +681,7 @@ func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) {
 	}
 
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 
 	// Because of -api-key flag user don't provides it by hand
 	//t.Check(cmdTest.ReadLine(), Equals, "API key: ")
@@ -766,29 +729,24 @@ func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) {
 }
 
 func (s *MainTestSuite) TestInstallWithFlagMysqlFalse(t *C) {
-	// Create fake http server
-	sm := NewServeMuxTest()
-	ts := httptest.NewServer(sm)
-	defer ts.Close()
-
-	// Register required mock http handlers
-	sm.appendPing()
-	sm.appendInstancesServer(ts.URL, s.serverInstance)
-	sm.appendInstancesServerId(s.serverInstance)
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	s.fakeApi.AppendInstancesServer(s.serverInstance)
+	s.fakeApi.AppendInstancesServerId(s.serverInstance)
 	// Flag -mysql=false implies that agent
 	// shouldn't query below api routes
-	//sm.appendInstancesMysql(ts.URL, s.mysqlInstance)
-	//sm.appendInstancesMysqlId(s.mysqlInstance)
-	//sm.appendConfigsMmDefaultMysql()
-	//sm.appendSysconfigDefaultMysql()
-	sm.appendConfigsMmDefaultServer()
-	sm.appendAgents(ts.URL, s.agent)
-	sm.appendAgentsUuid(s.agent)
+	//s.fakeApi.AppendInstancesMysql(s.mysqlInstance)
+	//s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance)
+	//s.fakeApi.AppendConfigsMmDefaultMysql()
+	//s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendConfigsMmDefaultServer()
+	s.fakeApi.AppendAgents(s.agent)
+	s.fakeApi.AppendAgentsUuid(s.agent)
 
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+s.basedir,
-		"-api-host="+ts.URL,
+		"-api-host="+s.fakeApi.URL(),
 		"-plain-passwords=true",
 		"-mysql=false", // We are testing this flag
 	)
@@ -800,7 +758,7 @@ func (s *MainTestSuite) TestInstallWithFlagMysqlFalse(t *C) {
 	}
 
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API host: "+ts.URL+"\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
@@ -821,83 +779,4 @@ func (s *MainTestSuite) TestInstallWithFlagMysqlFalse(t *C) {
 
 	err := cmd.Wait()
 	t.Assert(err, IsNil)
-}
-
-type ServeMuxTest struct {
-	*http.ServeMux
-}
-
-func NewServeMuxTest() *ServeMuxTest {
-	return &ServeMuxTest{
-		http.NewServeMux(),
-	}
-}
-
-func (sm *ServeMuxTest) appendPing() {
-	sm.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case "GET":
-			w.WriteHeader(http.StatusOK)
-		default:
-			w.WriteHeader(600)
-		}
-	})
-}
-
-func (sm *ServeMuxTest) appendInstancesServer(url string, serverInstance *proto.ServerInstance) {
-	sm.HandleFunc("/instances/server", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Location", fmt.Sprintf("%s/instances/server/%d", url, serverInstance.Id))
-		w.WriteHeader(http.StatusCreated)
-	})
-}
-func (sm *ServeMuxTest) appendInstancesServerId(serverInstance *proto.ServerInstance) {
-	sm.HandleFunc(fmt.Sprintf("/instances/server/%d", serverInstance.Id), func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		data, _ := json.Marshal(&serverInstance)
-		w.Write(data)
-	})
-}
-func (sm *ServeMuxTest) appendInstancesMysql(url string, mysqlInstance *proto.MySQLInstance) {
-	sm.HandleFunc("/instances/mysql", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Location", fmt.Sprintf("%s/instances/mysql/%d", url, mysqlInstance.Id))
-		w.WriteHeader(http.StatusCreated)
-	})
-}
-func (sm *ServeMuxTest) appendInstancesMysqlId(mysqlInstance *proto.MySQLInstance) {
-	sm.HandleFunc(fmt.Sprintf("/instances/mysql/%d", mysqlInstance.Id), func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		data, _ := json.Marshal(&mysqlInstance)
-		w.Write(data)
-	})
-}
-func (sm *ServeMuxTest) appendConfigsMmDefaultServer() {
-	sm.HandleFunc("/configs/mm/default-server", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{ "Service": "server", "InstanceId": 0, "Collect": 10, "Report": 60 }`))
-	})
-}
-func (sm *ServeMuxTest) appendConfigsMmDefaultMysql() {
-	sm.HandleFunc("/configs/mm/default-mysql", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{ "Service": "mysql", "InstanceId": 0, "Collect": 1, "Report": 60, "Status": {}, "UserStats": false }`))
-	})
-}
-func (sm *ServeMuxTest) appendSysconfigDefaultMysql() {
-	sm.HandleFunc("/configs/sysconfig/default-mysql", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{ "Service": "mysql", "InstanceId": 0, "Report": 3600 }`))
-	})
-}
-func (sm *ServeMuxTest) appendAgents(url string, agent *proto.Agent) {
-	sm.HandleFunc("/agents", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Location", fmt.Sprintf("%s/agents/%s", url, agent.Uuid))
-		w.WriteHeader(http.StatusCreated)
-	})
-}
-func (sm *ServeMuxTest) appendAgentsUuid(agent *proto.Agent) {
-	sm.HandleFunc(fmt.Sprintf("/agents/%s", agent.Uuid), func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		data, _ := json.Marshal(&agent)
-		w.Write(data)
-	})
 }
