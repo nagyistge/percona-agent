@@ -115,10 +115,11 @@ _seq() {
 
 getpid() {
    if [ -f $PIDFILE ]; then
-      if [ ! -f $PIDFILE ]; then
-         echo "Cannot read $PIDFILE." >&2
-         exit 1
-      fi
+      # not sure why we need this at all
+      # if [ ! -f $PIDFILE ]; then
+      #   echo "Cannot read $PIDFILE." >&2
+      #   exit 1
+      # fi
       pid=`cat $PIDFILE`
       # Verify that a process with this pid is still running.
       pid=`$PSEXE -p $pid | grep $pid | grep -v grep | tail -1 | awk '{print $1}'`
@@ -127,9 +128,12 @@ getpid() {
          rm -f $PIDFILE
          echo "Removed stale pid file: $PIDFILE"
       fi
-   elif [ "$(pidof $SERVICE 2>/dev/null)" ]; then
-      pid=`pidof $SERVICE`
-   fi
+    fi
+   # as we have pid file creating in agent,
+   # we should wait for pid file from an agent
+   # elif [ "$(pidof $SERVICE 2>/dev/null)" ]; then
+      # pid=`pidof $SERVICE`
+   # fi
 }
 
 testpid() {
@@ -155,15 +159,14 @@ start() {
    $CMD -basedir "$BASEDIR" -pidfile "$PIDFILE" >> "$LOGFILE" 2>&1 &
 
    # as we are starting agent in background,
-   # we can check service too quickly (or we can create pid file before agent will check it),
    # so let's give an agent some time to start
    echo "Waiting for $SERVICE to start..."
    for x in $(_seq 5); do
-       sleep 1
        getpid
        if [ -n "$pid" ]; then
            break
        fi
+       sleep 1
    done
 
    # Process is started in background so $? does not have its exit status.
@@ -172,7 +175,9 @@ start() {
       echo "Fail.  Check $LOGFILE for details."
       exit 1
    else
-      echo $! > "$PIDFILE"
+      # agent will create pid file itself,
+      # let's disable same stuff here for now
+      # echo $! > "$PIDFILE"
       echo "OK"
    fi
 }
