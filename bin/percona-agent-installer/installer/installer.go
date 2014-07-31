@@ -62,11 +62,60 @@ func NewInstaller(terminal *term.Terminal, basedir string, api pct.APIConnector,
 	return installer
 }
 
-func (i *Installer) Run() error {
+func (i *Installer) Run() (err error) {
 	/**
 	 * Get the API key.
 	 */
+	err = i.InstallerGetApiKey()
+	if err != nil {
+		return err
+	}
 
+	/**
+	 * Verify the API key by pinging the API.
+	 */
+	err = i.InstallerVerifyApiKeyByPingingTheApi()
+	if err != nil {
+		return err
+	}
+
+	/**
+	 * Create new service instances.
+	 */
+	si, err := i.InstallerCreateServerInstance()
+	if err != nil {
+		return err
+	}
+
+	mi, err := i.InstallerCreateMySQLInstance()
+	if err != nil {
+		return err
+	}
+
+	if err = i.writeInstances(si, mi); err != nil {
+		return fmt.Errorf("Created agent but failed to write service instances: %s", err)
+	}
+
+	/**
+	 * Get default configs for all services.
+	 */
+	configs, err := i.InstallerGetDefaultConfigs(si, mi)
+	if err != nil {
+		return err
+	}
+
+	/**
+	 * Create agent with initial service configs.
+	 */
+	err = i.InstallerCreateAgentWithInitialServiceConfigs(configs)
+	if err != nil {
+		return err
+	}
+
+	return nil // success
+}
+
+func (i *Installer) InstallerGetApiKey() error {
 	fmt.Printf("API host: %s\n", i.agentConfig.ApiHostname)
 
 	if i.flags.Bool["non-interactive"] && i.agentConfig.ApiKey == "" {
@@ -95,10 +144,10 @@ func (i *Installer) Run() error {
 		}
 	}
 
-	/**
-	 * Verify the API key by pinging the API.
-	 */
+	return nil
+}
 
+func (i *Installer) InstallerVerifyApiKeyByPingingTheApi() error {
 VERIFY_API_KEY:
 	for {
 		startTime := time.Now()
@@ -182,25 +231,24 @@ VERIFY_API_KEY:
 		break
 	}
 
-	var si *proto.ServerInstance
-	var mi *proto.MySQLInstance
+	return nil
+}
 
-	/**
-	 * Create new service instances.
-	 */
-
-	var err error
-
+func (i *Installer) InstallerCreateServerInstance() (si *proto.ServerInstance, err error) {
 	if i.flags.Bool["create-server-instance"] {
 		si, err = i.createServerInstance()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		fmt.Printf("Created server instance: hostname=%s id=%d\n", si.Hostname, si.Id)
 	} else {
 		fmt.Println("Not creating server instance (-create-server-instance=false)")
 	}
 
+	return si, nil
+}
+
+func (i *Installer) InstallerCreateMySQLInstance() (mi *proto.MySQLInstance, err error) {
 	if i.flags.Bool["create-mysql-instance"] {
 		// Get MySQL DSN for agent to use.
 		// It is new MySQL user created just for agent
@@ -208,27 +256,22 @@ VERIFY_API_KEY:
 		// DSN is verified prior returning by connecting to MySQL.
 		agentDSN, err := i.getAgentDSN()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		// Create MySQL instance in API.
 		mi, err = i.createMySQLInstance(agentDSN)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		fmt.Printf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mi.DSN, mi.Hostname, si.Id)
+		fmt.Printf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mi.DSN, mi.Hostname, mi.Id)
 	} else {
 		fmt.Println("Not creating MySQL instance (-create-mysql-instance=false)")
 	}
 
-	if err := i.writeInstances(si, mi); err != nil {
-		return fmt.Errorf("Created agent but failed to write service instances: %s", err)
-	}
+	return mi, nil
+}
 
-	/**
-	 * Get default configs for all services.
-	 */
-
-	configs := []proto.AgentConfig{}
+func (i *Installer) InstallerGetDefaultConfigs(si *proto.ServerInstance, mi *proto.MySQLInstance) (configs []proto.AgentConfig, err error) {
 
 	if i.flags.Bool["start-services"] {
 		// Server metrics monitor
@@ -280,10 +323,10 @@ VERIFY_API_KEY:
 		fmt.Println("Not starting default services (-start-services=false)")
 	}
 
-	/**
-	 * Create agent with initial service configs.
-	 */
+	return configs, nil
+}
 
+func (i *Installer) InstallerCreateAgentWithInitialServiceConfigs(configs []proto.AgentConfig) (err error) {
 	if i.flags.Bool["create-agent"] {
 		agent, err := i.createAgent(configs)
 		if err != nil {
@@ -298,5 +341,5 @@ VERIFY_API_KEY:
 		fmt.Println("Not creating agent (-create-agent=false)")
 	}
 
-	return nil // success
+	return nil
 }
