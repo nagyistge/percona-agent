@@ -115,11 +115,6 @@ _seq() {
 
 getpid() {
    if [ -f $PIDFILE ]; then
-      # not sure why we need this at all
-      # if [ ! -f $PIDFILE ]; then
-      #   echo "Cannot read $PIDFILE." >&2
-      #   exit 1
-      # fi
       pid=`cat $PIDFILE`
       # Verify that a process with this pid is still running.
       pid=`$PSEXE -p $pid | grep $pid | grep -v grep | tail -1 | awk '{print $1}'`
@@ -129,11 +124,6 @@ getpid() {
          echo "Removed stale pid file: $PIDFILE"
       fi
     fi
-   # as we have pid file creating in agent,
-   # we should wait for pid file from an agent
-   # elif [ "$(pidof $SERVICE 2>/dev/null)" ]; then
-      # pid=`pidof $SERVICE`
-   # fi
 }
 
 testpid() {
@@ -175,9 +165,6 @@ start() {
       echo "Fail.  Check $LOGFILE for details."
       exit 1
    else
-      # agent will create pid file itself,
-      # let's disable same stuff here for now
-      # echo $! > "$PIDFILE"
       echo "OK"
    fi
 }
