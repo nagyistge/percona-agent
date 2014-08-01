@@ -58,6 +58,7 @@ var (
 )
 
 func init() {
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
 
 	flag.StringVar(&flagApiHostname, "api-host", agent.DEFAULT_API_HOSTNAME, "API host")
@@ -86,7 +87,14 @@ func init() {
 }
 
 func main() {
-	flag.Parse()
+	// It flag is unknown it exist with os.Exit(10),
+	// so exit code=10 is strictly reserved for flags
+	// Don't use it anywhere else, as shell script install.sh depends on it
+	// NOTE: standard flag.Parse() was using os.Exit(2)
+	//       which was the same as returned with ctrl+c
+	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
+		os.Exit(10)
+	}
 
 	agentConfig := &agent.Config{
 		ApiHostname: flagApiHostname,
