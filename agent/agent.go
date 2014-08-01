@@ -248,6 +248,11 @@ func (agent *Agent) Run() error {
 
 // @goroutine[0]
 func (agent *Agent) connect() {
+	defer func() {
+		if r := recover(); r != nil {
+			agent.logger.Error("Recovered in func (agent *Agent) connect(): ", r)
+		}
+	}()
 	agent.logger.Info("Connecting to API")
 	agent.client.Connect()
 }
@@ -336,6 +341,9 @@ func (agent *Agent) cmdHandler() {
 	cmdReply := make(chan *proto.Reply, 1)
 
 	defer func() {
+		if r := recover(); r != nil {
+			agent.logger.Error("Recovered in func (agent *Agent) cmdHandler(): ", r)
+		}
 		agent.status.Update("agent-cmd-handler", "Stopped")
 		agent.cmdHandlerSync.Done()
 	}()
@@ -363,6 +371,9 @@ func (agent *Agent) cmdHandler() {
 
 			// Handle the cmd in a separate goroutine so if it gets stuck it won't affect us.
 			go func() {
+				if r := recover(); r != nil {
+					agent.logger.Error("Recovered in cmd handler func (agent *Agent) cmdHandler(): ", r)
+				}
 				var reply *proto.Reply
 				if cmd.Service == "agent" {
 					reply = agent.Handle(cmd)
@@ -624,8 +635,12 @@ func (agent *Agent) handleUpdate(cmd *proto.Cmd) (interface{}, []error) {
 // Run:@goroutine[2]
 func (agent *Agent) statusHandler() {
 	replyChan := agent.client.SendChan()
-
-	defer agent.statusHandlerSync.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			agent.logger.Error("Recovered in func (agent *Agent) statusHandler(): ", r)
+		}
+		agent.statusHandlerSync.Done()
+	}()
 
 	// Status handler doesn't have its own status because that's circular,
 	// e.g. "How am I? I'm good!".

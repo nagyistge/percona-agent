@@ -75,6 +75,9 @@ func (s *Sender) Status() map[string]string {
 // @goroutine[1]
 func (s *Sender) run() {
 	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Recovered in func (s *Sender) run(): ", r)
+		}
 		if s.sync.IsGraceful() {
 			s.logger.Info("Stop")
 			s.status.Update("data-sender", "Stopped")

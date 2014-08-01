@@ -92,7 +92,12 @@ func (r *Relay) Status() map[string]string {
 
 func (r *Relay) Run() {
 	r.status.Update("log-relay", "Running")
-	defer r.status.Update("log-relay", "Stopped")
+	defer func() {
+		if r := recover(); r != nil {
+			golog.Println("Recovered in func (r *Relay) Run(): ", r)
+		}
+		r.status.Update("log-relay", "Stopped")
+	}()
 
 	r.setLogLevel(r.logLevel)
 	r.setLogFile(r.logFile)
@@ -156,6 +161,11 @@ func (r *Relay) internal(msg string) {
 
 // @goroutine[1]
 func (r *Relay) connect() {
+	defer func() {
+		if r := recover(); r != nil {
+			golog.Println("Recovered in func (r *Relay) connect(): ", r)
+		}
+	}()
 	if r.client == nil || r.offline {
 		// log file only
 		return
@@ -166,6 +176,11 @@ func (r *Relay) connect() {
 
 // @goroutine[1]
 func (r *Relay) waitErr() {
+	defer func() {
+		if r := recover(); r != nil {
+			golog.Println("Recovered in func (r *Relay) waitErr(): ", r)
+		}
+	}()
 	// When a websocket closes, the err is returned on recv,
 	// so we block on recv, not expecting any data, just
 	// waiting for error/disconenct.

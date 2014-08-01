@@ -22,6 +22,7 @@ import (
 	"math"
 	"sync"
 	"time"
+	"log"
 )
 
 type Ticker interface {
@@ -68,7 +69,12 @@ func NewEvenTicker(atInterval uint, sleep func(time.Duration)) *EvenTicker {
 }
 
 func (et *EvenTicker) Run(nowNanosecond int64) {
-	defer et.sync.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			log.Println("Recovered in func (et *EvenTicker) Run(nowNanosecond int64): ", r)
+		}
+		et.sync.Done()
+	}()
 	i := float64(time.Duration(et.atInterval) * time.Second)
 	d := i - math.Mod(float64(nowNanosecond), i)
 	et.sleep(time.Duration(d) * time.Nanosecond)

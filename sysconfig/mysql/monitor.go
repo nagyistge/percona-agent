@@ -113,6 +113,9 @@ func (m *Monitor) Config() interface{} {
 // @goroutine[2]
 func (m *Monitor) run() {
 	defer func() {
+		if r := recover(); r != nil {
+			m.logger.Error("Recovered in func (m *Monitor) run(): ", r)
+		}
 		m.status.Update(m.name, "Stopped")
 		m.sync.Done()
 	}()

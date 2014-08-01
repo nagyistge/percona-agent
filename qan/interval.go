@@ -132,6 +132,9 @@ func (i *FileIntervalIter) IntervalChan() chan *Interval {
 
 func (i *FileIntervalIter) run() {
 	defer func() {
+		if r := recover(); r != nil {
+			i.logger.Error("Recovered in func (i *FileIntervalIter) run(): ", r)
+		}
 		i.sync.Done()
 	}()
 

@@ -281,7 +281,12 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 // --------------------------------------------------------------------------
 
 func (m *Manager) spooler() {
-	defer m.status.Update("sysconfig-spooler", "Stopped")
+	defer func() {
+		if r := recover(); r != nil {
+			m.logger.Error("Recovered in func (m *Manager) spooler(): ", r)
+		}
+		m.status.Update("sysconfig-spooler", "Stopped")
+	}()
 	m.status.Update("sysconfig-spooler", "Running")
 	for s := range m.reportChan {
 		if err := m.spool.Write("sysconfig", s); err != nil {
