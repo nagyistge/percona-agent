@@ -54,7 +54,7 @@ if [ "$KERNEL" != "Darwin" ]; then
            echo "Using update-rc.d to uninstall $BIN service"
            update-rc.d -f "$BIN" remove
    elif hash chkconfig 2>/dev/null; then
-           echo "Using chkconfig to install $BIN service" 
+           echo "Using chkconfig to uninstall $BIN service"
            chkconfig --del "$BIN"
    else
       echo "Cannot find chkconfig or update-rc.d.  $BIN is installed but"
