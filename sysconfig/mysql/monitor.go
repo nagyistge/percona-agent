@@ -114,7 +114,7 @@ func (m *Monitor) Config() interface{} {
 func (m *Monitor) run() {
 	defer func() {
 		if err := recover(); err != nil {
-			m.logger.Error("Recovered while running sysconfig monitor: ", r)
+			m.logger.Error("Recovered while running sysconfig monitor: ", err)
 		}
 		m.status.Update(m.name, "Stopped")
 		m.sync.Done()
