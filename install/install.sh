@@ -14,32 +14,6 @@ error() {
 BIN="percona-agent"
 
 # ###########################################################################
-# Version comparision
-# https://gist.github.com/livibetter/1861384
-# ###########################################################################
-_ver_cmp_1() {
-  (( "10#$1" == "10#$2" )) && return 0
-  (( "10#$1" >  "10#$2" )) && return 1
-  (( "10#$1" <  "10#$2" )) && return 2
-  exit 1
-}
-
-ver_cmp() {
-  local A B i result
-  A=(${1//./ })
-  B=(${2//./ })
-  i=0
-  while (( i < ${#A[@]} )) && (( i < ${#B[@]})); do
-    _ver_cmp_1 "${A[i]}" "${B[i]}"
-    result=$?
-    [[ $result =~ [12] ]] && return $result
-    let i++
-  done
-  _ver_cmp_1 "${#A[i]}" "${#B[i]}"
-  return $?
-}
-
-# ###########################################################################
 # Sanity checks and setup
 # ###########################################################################
 
@@ -65,13 +39,35 @@ echo "Detected $KERNEL $PLATFORM"
 INSTALLER_DIR=$(dirname $0)
 INSTALL_DIR="/usr/local/percona"
 
-# ###########################################################################
-# Create dir structure if not exist
-# ###########################################################################
-
 # BASEDIR here must match BASEDIR in percona-agent sys-init script.
 BASEDIR="$INSTALL_DIR/$BIN"
 INIT_SCRIPT="/etc/init.d/$BIN"
+
+# ###########################################################################
+# Version comparision
+# https://gist.github.com/livibetter/1861384
+# ###########################################################################
+_ver_cmp_1() {
+  (( "10#$1" == "10#$2" )) && return 0
+  (( "10#$1" >  "10#$2" )) && return 1
+  (( "10#$1" <  "10#$2" )) && return 2
+  exit 1
+}
+
+ver_cmp() {
+  local A B i result
+  A=(${1//./ })
+  B=(${2//./ })
+  i=0
+  while (( i < ${#A[@]} )) && (( i < ${#B[@]})); do
+    _ver_cmp_1 "${A[i]}" "${B[i]}"
+    result=$?
+    [[ $result =~ [12] ]] && return $result
+    let i++
+  done
+  _ver_cmp_1 "${#A[i]}" "${#B[i]}"
+  return $?
+}
 
 install() {
     # ###########################################################################
@@ -120,11 +116,15 @@ install() {
     fi
 
     # ###########################################################################
-    # Run installer and forward all remaining parameters to it with "$@"
+    # Create dir structure if not exist
     # ###########################################################################
 
     mkdir -p "$BASEDIR/"{bin,init.d} \
         || error "'mkdir -p $BASEDIR/{bin,init.d}' failed"
+
+    # ###########################################################################
+    # Run installer and forward all remaining parameters to it with "$@"
+    # ###########################################################################
 
     "$INSTALLER_DIR/bin/$BIN-installer" -basedir "$BASEDIR" $@
     if [ "$?" == "10" ]; then
