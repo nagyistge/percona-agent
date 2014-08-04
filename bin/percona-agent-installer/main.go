@@ -55,6 +55,7 @@ var (
 	flagMySQLHost            string
 	flagMySQLPort            string
 	flagMySQLSocket          string
+	flagIgnoreFailures       bool
 )
 
 func init() {
@@ -84,6 +85,7 @@ func init() {
 	flag.StringVar(&flagMySQLHost, "mysql-host", "", "MySQL host "+credentialDetailsNote)
 	flag.StringVar(&flagMySQLPort, "mysql-port", "", "MySQL port "+credentialDetailsNote)
 	flag.StringVar(&flagMySQLSocket, "mysql-socket", "", "MySQL socket file "+credentialDetailsNote)
+	flag.BoolVar(&flagIgnoreFailures, "ignore-failures", false, "Ignore failures for additionial components e.g. MySQL instance")
 }
 
 func main() {
@@ -137,6 +139,7 @@ func main() {
 			"non-interactive":        flagNonInteractive,
 			"auto-detect-mysql":      flagAutoDetectMySQL,
 			"create-mysql-user":      flagCreateMySQLUser,
+			"ignore-failures":        flagIgnoreFailures,
 		},
 		String: map[string]string{
 			"app-host":            DEFAULT_APP_HOSTNAME,

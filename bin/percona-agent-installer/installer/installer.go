@@ -87,9 +87,17 @@ func (i *Installer) Run() (err error) {
 		return err
 	}
 
+	// MySQL instance is extra component,
+	// so if error happens, and flag -ignore-failures is set to true
+	// then installation can be continued without this additional component
 	mi, err := i.InstallerCreateMySQLInstance()
 	if err != nil {
-		return err
+		if i.flags.Bool["ignore-failures"] {
+			fmt.Printf("%s\n", err)
+			fmt.Printf("Skipping creation of MySQL instance because of previous errors\n")
+		} else {
+			return err
+		}
 	}
 
 	if err = i.writeInstances(si, mi); err != nil {
@@ -284,36 +292,38 @@ func (i *Installer) InstallerGetDefaultConfigs(si *proto.ServerInstance, mi *pro
 		}
 
 		if i.flags.Bool["start-mysql-services"] {
-			// MySQL metrics tracker
-			config, err = i.getMmMySQLConfig(mi)
-			if err != nil {
-				fmt.Println(err)
-				fmt.Println("WARNING: cannot start MySQL metrics monitor")
-			} else {
-				configs = append(configs, *config)
-			}
-
-			// MySQL config tracker
-			config, err = i.getSysconfigMySQLConfig(mi)
-			if err != nil {
-				fmt.Println(err)
-				fmt.Println("WARNING: cannot start MySQL configuration monitor")
-			} else {
-				configs = append(configs, *config)
-			}
-
-			// QAN
-			// MySQL is local if the server hostname == MySQL hostname without port number.
-			if i.hostname == portNumberRe.ReplaceAllLiteralString(mi.Hostname, "") {
-				if i.flags.Bool["debug"] {
-					log.Printf("MySQL is local")
-				}
-				config, err := i.getQanConfig(mi)
+			if mi != nil {
+				// MySQL metrics tracker
+				config, err = i.getMmMySQLConfig(mi)
 				if err != nil {
 					fmt.Println(err)
-					fmt.Println("WARNING: cannot start Query Analytics")
+					fmt.Println("WARNING: cannot start MySQL metrics monitor")
 				} else {
 					configs = append(configs, *config)
+				}
+
+				// MySQL config tracker
+				config, err = i.getSysconfigMySQLConfig(mi)
+				if err != nil {
+					fmt.Println(err)
+					fmt.Println("WARNING: cannot start MySQL configuration monitor")
+				} else {
+					configs = append(configs, *config)
+				}
+
+				// QAN
+				// MySQL is local if the server hostname == MySQL hostname without port number.
+				if i.hostname == portNumberRe.ReplaceAllLiteralString(mi.Hostname, "") {
+					if i.flags.Bool["debug"] {
+						log.Printf("MySQL is local")
+					}
+					config, err := i.getQanConfig(mi)
+					if err != nil {
+						fmt.Println(err)
+						fmt.Println("WARNING: cannot start Query Analytics")
+					} else {
+						configs = append(configs, *config)
+					}
 				}
 			}
 		} else {

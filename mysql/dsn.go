@@ -32,7 +32,6 @@ type DSN struct {
 	Port         string
 	Socket       string
 	OldPasswords bool
-	Protocol     string
 }
 
 const (
@@ -50,7 +49,7 @@ func (dsn DSN) DSN() (string, error) {
 
 	// http://dev.mysql.com/doc/refman/5.0/en/connecting.html#option_general_protocol:
 	// "connections on Unix to localhost are made using a Unix socket file by default"
-	if dsn.Hostname == "localhost" && (dsn.Protocol == "" || dsn.Protocol == "socket") {
+	if dsn.Socket == "" && dsn.Hostname == "localhost" {
 		if dsn.Socket == "" {
 			// Try to auto-detect MySQL socket from netstat output.
 			out, err := exec.Command("netstat", "-anp").Output()

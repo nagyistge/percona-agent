@@ -39,17 +39,20 @@ if [ "$PLATFORM" == "i686" ]; then
     PLATFORM="i386"
 fi
 PACKAGE_LOCATION="http://www.percona.com/redir/downloads/percona-agent/LATEST/percona-agent-${VERSION}-${PLATFORM}.tar.gz"
+TAR_GZ_FILE="/tmp/percona-agent-${VERSION}-${PLATFORM}.tar.gz"
 echo "Downloading required data..."
 if hash curl 2>/dev/null; then
-    curl -L -o "/tmp/percona-agent-${VERSION}-${PLATFORM}.tar.gz" "${PACKAGE_LOCATION}"
+    curl -L -o "${TAR_GZ_FILE}" "${PACKAGE_LOCATION}"
 elif hash wget 2>/dev/null; then
-    wget -cO "/tmp/percona-agent-${VERSION}-${PLATFORM}.tar.gz" "${PACKAGE_LOCATION}"
+    wget -cO "${TAR_GZ_FILE}" "${PACKAGE_LOCATION}"
 else
     error "Unable to download installer data. Please install wget or curl."
 fi
 INSTALLER_DIR="/tmp/percona-agent-${VERSION}-${PLATFORM}"
 tar -C "/tmp" -xzf "/tmp/percona-agent-${VERSION}-${PLATFORM}.tar.gz"
-"/tmp/percona-agent-${VERSION}-${PLATFORM}/install" $@
+"/tmp/percona-agent-${VERSION}-${PLATFORM}/install" -non-interactive=true -ignore-failures=true $@
 
 # Cleanup
 rm -rf "${INSTALLER_DIR}"
+rm "${TAR_GZ_FILE}"
+

@@ -118,7 +118,6 @@ func (s *MainTestSuite) TestNonInteractiveInstall(t *C) {
 		s.bin,
 		"-basedir="+s.basedir,
 		"-api-host="+s.fakeApi.URL(),
-		"-plain-passwords=true",
 		"-non-interactive=true", // We are testing this flag
 		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
 		"-api-key="+apiKey, // Required because of non-interactive mode
@@ -158,6 +157,62 @@ func (s *MainTestSuite) TestNonInteractiveInstall(t *C) {
 	t.Assert(err, IsNil)
 }
 
+func (s *MainTestSuite) TestNonInteractiveInstallWithIgnoreFailures(t *C) {
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	s.fakeApi.AppendInstancesServer(s.serverInstance)
+	s.fakeApi.AppendInstancesServerId(s.serverInstance)
+	s.fakeApi.AppendInstancesMysql(s.mysqlInstance)
+	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance)
+	s.fakeApi.AppendConfigsMmDefaultServer()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendAgents(s.agent)
+	s.fakeApi.AppendAgentsUuid(s.agent)
+
+	apiKey := "00000000000000000000000000000001"
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+s.basedir,
+		"-api-host="+s.fakeApi.URL(),
+		"-non-interactive=true",
+		"-ignore-failures=true", // We are testing this flag
+		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-wrong_user",
+		"-api-key="+apiKey, // Required because of non-interactive mode
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
+
+	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Auto detected DSN using `mysql --print-defaults` (use ~/.my.cnf to adjust results)\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Using auto-detected DSN\n")
+
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection wrong_user:<password-hidden>@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "\\[MySQL\\] .* write unix .* broken pipe\n") // @todo Why "broken pipe" on wrong credentials?
+	t.Check(cmdTest.ReadLine(), Matches, "Error connecting to MySQL wrong_user:<password-hidden>@unix(.*): Failed to connect to MySQL after 1 tries \\(Error 1045: Access denied for user 'wrong_user'@'localhost' \\(using password: YES\\)\\)\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Failed to connect to MySQL\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Failed to create new MySQL account for agent\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Skipping creation of MySQL instance because of previous errors\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
+	t.Check(cmdTest.ReadLine(), Equals, "Install successful\n")
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Assert(err, IsNil)
+}
+
 func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(t *C) {
 	// Register required api handlers
 	s.fakeApi.AppendPing()
@@ -176,7 +231,6 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(
 		s.bin,
 		"-basedir="+s.basedir,
 		"-api-host="+s.fakeApi.URL(),
-		"-plain-passwords=true",
 		// "-non-interactive=true",    // This flag is automatically enabled when flags with credentials are provided
 		// "-auto-detect-mysql=false", // This flag is automatically disabled when flags with credentials are provided
 		"-mysql-user=root",
@@ -220,7 +274,6 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithMissingApiKey(t *C) {
 		s.bin,
 		"-basedir="+s.basedir,
 		"-api-host="+s.fakeApi.URL(),
-		"-plain-passwords=true",
 		"-non-interactive=true",
 	)
 
@@ -261,7 +314,6 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t 
 		s.bin,
 		"-basedir="+s.basedir,
 		"-api-host="+s.fakeApi.URL(),
-		"-plain-passwords=true",
 		"-create-mysql-user=false", // We are testing this flag
 		"-non-interactive=true",    // -create-mysql-user=false works only in non-interactive mode
 		"-api-key="+apiKey,         // Required because of non-interactive mode
