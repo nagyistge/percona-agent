@@ -70,8 +70,8 @@ func NewEvenTicker(atInterval uint, sleep func(time.Duration)) *EvenTicker {
 
 func (et *EvenTicker) Run(nowNanosecond int64) {
 	defer func() {
-		if r := recover(); r != nil {
-			log.Println("Recovered while rinning event ticker: ", r)
+		if err := recover(); err != nil {
+			log.Println("Recovered while rinning event ticker: ", err)
 		}
 		et.sync.Done()
 	}()

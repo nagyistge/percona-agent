@@ -252,8 +252,8 @@ func (m *Manager) GetRestartChan() chan bool {
 // @goroutine[1]
 func (m *Manager) run(config Config) {
 	defer func() {
-		if r := recover(); r != nil {
-			m.logger.Error("Recovered while running manager: ", r)
+		if err := recover(); err != nil {
+			m.logger.Error("Recovered while running manager: ", err)
 		}
 		if m.sync.IsGraceful() {
 			m.status.Update("qan-parser", "Stopped")

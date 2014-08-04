@@ -128,8 +128,8 @@ func (m *Monitor) Config() interface{} {
 func (m *Monitor) connect(err error) {
 	m.logger.Debug("connect:call")
 	defer func() {
-		if r := recover(); r != nil {
-			m.logger.Error("Recovered while monitor connecting: ", r)
+		if err := recover(); err != nil {
+			m.logger.Error("Recovered while monitor connecting: ", err)
 		}
 		m.logger.Debug("connect:return")
 	}()
@@ -184,8 +184,8 @@ func (m *Monitor) connect(err error) {
 func (m *Monitor) run() {
 	m.logger.Debug("run:call")
 	defer func() {
-		if r := recover(); r != nil {
-			m.logger.Error("Recovered while running mysql monitor: ", r)
+		if err := recover(); err != nil {
+			m.logger.Error("Recovered while running mysql monitor: ", err)
 		}
 		m.conn.Close()
 		m.status.Update(m.name, "Stopped")

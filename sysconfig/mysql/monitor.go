@@ -113,7 +113,7 @@ func (m *Monitor) Config() interface{} {
 // @goroutine[2]
 func (m *Monitor) run() {
 	defer func() {
-		if r := recover(); r != nil {
+		if err := recover(); err != nil {
 			m.logger.Error("Recovered while running sysconfig monitor: ", r)
 		}
 		m.status.Update(m.name, "Stopped")

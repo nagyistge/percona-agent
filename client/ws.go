@@ -242,8 +242,8 @@ func (c *WebsocketClient) send() {
 
 	c.logger.DebugOffline("send:call")
 	defer func() {
-		if r := recover(); r != nil {
-			c.logger.Error("Recovered while sending reply to API: ", r)
+		if err := recover(); err != nil {
+			c.logger.Error("Recovered while sending reply to API: ", err)
 		}
 	}()
 	defer c.logger.DebugOffline("send:return")
@@ -292,8 +292,8 @@ func (c *WebsocketClient) recv() {
 
 	c.logger.DebugOffline("recv:call")
 	defer func() {
-		if r := recover(); r != nil {
-			c.logger.Error("Recovered while recieveing cmd from API: ", r)
+		if err := recover(); err != nil {
+			c.logger.Error("Recovered while recieveing cmd from API: ", err)
 		}
 	}()
 	defer c.logger.DebugOffline("recv:return")

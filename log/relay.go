@@ -93,8 +93,8 @@ func (r *Relay) Status() map[string]string {
 func (r *Relay) Run() {
 	r.status.Update("log-relay", "Running")
 	defer func() {
-		if r := recover(); r != nil {
-			golog.Println("Recovered while running log-relay: ", r)
+		if err := recover(); err != nil {
+			golog.Println("Recovered while running log-relay: ", err)
 		}
 		r.status.Update("log-relay", "Stopped")
 	}()
@@ -162,8 +162,8 @@ func (r *Relay) internal(msg string) {
 // @goroutine[1]
 func (r *Relay) connect() {
 	defer func() {
-		if r := recover(); r != nil {
-			golog.Println("Recovered while relay connectiong: ", r)
+		if err := recover(); err!= nil {
+			golog.Println("Recovered while relay connectiong: ", err)
 		}
 	}()
 	if r.client == nil || r.offline {
@@ -177,8 +177,8 @@ func (r *Relay) connect() {
 // @goroutine[1]
 func (r *Relay) waitErr() {
 	defer func() {
-		if r := recover(); r != nil {
-			golog.Println("Recovered in realy waitErr: ", r)
+		if err := recover(); err != nil {
+			golog.Println("Recovered in realy waitErr: ", err)
 		}
 	}()
 	// When a websocket closes, the err is returned on recv,

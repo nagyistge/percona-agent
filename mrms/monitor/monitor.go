@@ -140,8 +140,8 @@ func (m *Monitor) Check() {
 func (m *Monitor) run(interval time.Duration) {
 	m.logger.Debug("run:call")
 	defer func() {
-		if r := recover(); r != nil {
-			m.logger.Error("Recovered while running monitor: ", r)
+		if err := recover(); err != nil {
+			m.logger.Error("Recovered while running monitor: ", err)
 		}
 	}()
 	defer m.logger.Debug("run:return")

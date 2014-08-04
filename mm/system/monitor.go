@@ -137,8 +137,8 @@ func StrToFloat(s string) float64 {
 func (m *Monitor) run() {
 	m.logger.Debug("run:call")
 	defer func() {
-		if r := recover(); r != nil {
-			Printlnror("Recovered while running system monitor: ", r)
+		if err := recover(); err != nil {
+			Printlnror("Recovered while running system monitor: ", err)
 		}
 		m.status.Update(m.name, "Stopped")
 		m.sync.Done()
