@@ -141,12 +141,14 @@ func (m *Monitor) run(interval time.Duration) {
 	m.logger.Debug("run:call")
 	defer func() {
 		if r := recover(); r != nil {
-			m.logger.Error("Recovered in func (m *Monitor) run(interval time.Duration): ", r)
+			m.logger.Error("Recovered while running monitor: ", r)
 		}
 	}()
 	defer m.logger.Debug("run:return")
+
 	// After finishing signal manager that we are done
 	defer m.sync.Done()
+
 	m.status.Update(MONITOR_NAME, "Started")
 	defer m.status.Update(MONITOR_NAME, "Stopped")
 

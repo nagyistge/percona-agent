@@ -179,7 +179,7 @@ func (s *DiskvSpooler) Remove(file string) error {
 func (s *DiskvSpooler) run() {
 	defer func() {
 		if r := recover(); r != nil {
-			s.logger.Error("Recovered in func (s *DiskvSpooler) run(): ", r)
+			s.logger.Error("Recovered while running spooler: ", r)
 		}
 		if s.sync.IsGraceful() {
 			s.logger.Info("spoolData stop")

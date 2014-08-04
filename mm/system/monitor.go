@@ -138,7 +138,7 @@ func (m *Monitor) run() {
 	m.logger.Debug("run:call")
 	defer func() {
 		if r := recover(); r != nil {
-			Printlnror("Recovered in func (m *Monitor) run(): ", r)
+			Printlnror("Recovered while running system monitor: ", r)
 		}
 		m.status.Update(m.name, "Stopped")
 		m.sync.Done()

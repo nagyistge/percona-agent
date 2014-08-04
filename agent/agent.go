@@ -250,7 +250,7 @@ func (agent *Agent) Run() error {
 func (agent *Agent) connect() {
 	defer func() {
 		if r := recover(); r != nil {
-			agent.logger.Error("Recovered in func (agent *Agent) connect(): ", r)
+			agent.logger.Error("Recovered while connection to API: ", r)
 		}
 	}()
 	agent.logger.Info("Connecting to API")
@@ -342,7 +342,7 @@ func (agent *Agent) cmdHandler() {
 
 	defer func() {
 		if r := recover(); r != nil {
-			agent.logger.Error("Recovered in func (agent *Agent) cmdHandler(): ", r)
+			agent.logger.Error("Recovered in command handler: ", r)
 		}
 		agent.status.Update("agent-cmd-handler", "Stopped")
 		agent.cmdHandlerSync.Done()
@@ -372,7 +372,7 @@ func (agent *Agent) cmdHandler() {
 			// Handle the cmd in a separate goroutine so if it gets stuck it won't affect us.
 			go func() {
 				if r := recover(); r != nil {
-					agent.logger.Error("Recovered in cmd handler func (agent *Agent) cmdHandler(): ", r)
+					agent.logger.Error("Recovered in command handler routine: ", r)
 				}
 				var reply *proto.Reply
 				if cmd.Service == "agent" {
@@ -637,7 +637,7 @@ func (agent *Agent) statusHandler() {
 	replyChan := agent.client.SendChan()
 	defer func() {
 		if r := recover(); r != nil {
-			agent.logger.Error("Recovered in func (agent *Agent) statusHandler(): ", r)
+			agent.logger.Error("Recovered in status handler: ", r)
 		}
 		agent.statusHandlerSync.Done()
 	}()
