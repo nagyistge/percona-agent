@@ -245,9 +245,9 @@ func (c *WebsocketClient) send() {
 		if r := recover(); r != nil {
 			c.logger.Error("Recovered in func (c *WebsocketClient) send(): ", r)
 		}
-		c.logger.DebugOffline("send:return")
-		c.sendSync.Done()
 	}()
+	defer c.logger.DebugOffline("send:return")
+	defer c.sendSync.Done()
 
 	for {
 		// Wait to start (connect) or be told to stop.
@@ -293,11 +293,11 @@ func (c *WebsocketClient) recv() {
 	c.logger.DebugOffline("recv:call")
 	defer func() {
 		if r := recover(); r != nil {
-			c.logger.Error("Recovered in func (c *WebsocketClient) recv(): ", r)
+			c.logger.Error("Recovered in func (c *WebsocketClient) send(): ", r)
 		}
-		c.logger.DebugOffline("recv:return")
-		c.recvSync.Done()
 	}()
+	defer c.logger.DebugOffline("recv:return")
+	defer c.recvSync.Done()
 
 	for {
 		// Wait to start (connect) or be told to stop.
