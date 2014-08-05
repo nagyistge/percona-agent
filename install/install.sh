@@ -169,7 +169,7 @@ install() {
           cat /etc/*release
        fi
 
-       {$INIT_SCRIPT} start
+       ${INIT_SCRIPT} start
        if [ $? -ne 0 ]; then
           error "Failed to start $BIN"
        fi
