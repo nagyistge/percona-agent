@@ -24,8 +24,15 @@ import (
 	_ "github.com/arnehormann/mysql"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/pct"
+	"sync"
 	"time"
 )
+
+type Query struct {
+	Set    string // SET GLOBAL long_query_time=0
+	Verify string // SELECT @@long_query_time
+	Expect string // 0
+}
 
 type Connector interface {
 	DB() *sql.DB
@@ -39,15 +46,18 @@ type Connector interface {
 }
 
 type Connection struct {
-	dsn     string
-	conn    *sql.DB
-	backoff *pct.Backoff
+	dsn             string
+	conn            *sql.DB
+	backoff         *pct.Backoff
+	connectedAmount uint
+	connectionMux   *sync.Mutex
 }
 
 func NewConnection(dsn string) *Connection {
 	c := &Connection{
-		dsn:     dsn,
-		backoff: pct.NewBackoff(20 * time.Second),
+		dsn:           dsn,
+		backoff:       pct.NewBackoff(20 * time.Second),
+		connectionMux: new(sync.Mutex),
 	}
 	return c
 }
@@ -64,7 +74,13 @@ func (c *Connection) Connect(tries uint) error {
 	if tries == 0 {
 		return nil
 	}
-
+	c.connectionMux.Lock()
+	defer c.connectionMux.Unlock()
+	if c.connectedAmount > 0 {
+		// already have opened connection
+		c.connectedAmount++
+		return nil
+	}
 	var err error
 	var db *sql.DB
 	for i := tries; i > 0; i-- {
@@ -87,6 +103,7 @@ func (c *Connection) Connect(tries uint) error {
 		// Connected
 		c.conn = db
 		c.backoff.Success()
+		c.connectedAmount++
 		return nil
 	}
 
@@ -94,7 +111,14 @@ func (c *Connection) Connect(tries uint) error {
 }
 
 func (c *Connection) Close() {
-	if c.conn != nil {
+	c.connectionMux.Lock()
+	defer c.connectionMux.Unlock()
+	if c.connectedAmount == 0 {
+		// connection closed already
+		return
+	}
+	c.connectedAmount--
+	if c.connectedAmount == 0 && c.conn != nil {
 		c.conn.Close()
 		c.conn = nil
 	}
@@ -139,8 +163,16 @@ func (c *Connection) Set(queries []Query) error {
 		return errors.New("Not connected")
 	}
 	for _, query := range queries {
-		if _, err := c.conn.Exec(query.Set); err != nil {
-			return err
+		if query.Set != "" {
+			if _, err := c.conn.Exec(query.Set); err != nil {
+				return err
+			}
+		}
+		if query.Verify != "" {
+			got := c.GetGlobalVarString(query.Verify)
+			if got != query.Expect {
+				return fmt.Errorf("@@GLOBAL.%s = '%s', expected '%s'", got, query.Expect)
+			}
 		}
 	}
 	return nil

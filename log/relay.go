@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	BUFFER_SIZE int = 10
+	BUFFER_SIZE int = 50
 )
 
 type Relay struct {
