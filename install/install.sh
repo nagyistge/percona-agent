@@ -127,10 +127,11 @@ install() {
     # ###########################################################################
 
     "$INSTALLER_DIR/bin/$BIN-installer" -basedir "$BASEDIR" $@
-    if [ "$?" == "10" ]; then
+    exitStatus=$?
+    if [ "$exitStatus" -eq "10" ]; then
        echo "  -uninstall: Stop agent and uninstall it (USE WITH CAUTION!)"
        exit $?
-    elif [ $? -ne 0 ]; then
+    elif [ "$exitStatus" -ne "0" ]; then
        echo
        error "Failed to install $BIN"
     fi
