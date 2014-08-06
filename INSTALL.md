@@ -1,22 +1,22 @@
 Installation Guide
 ==================
 
-- [One Line Install](#user-content-one-line-install)
+- [Quick Install](#user-content-one-line-install)
 - [Interactive Installation](#user-content-interactive-installation)
 - [Automatic Non-Interactive Installation](#user-content-automatic-non-interactive-installation)
-  - [With One Line Install](#user-content-with-one-line-install)
+  - [With Quick Install](#user-content-with-one-line-install)
   - [With Regular Installer](#user-content-with-regular-installer)
     - [For installation on MySQL Master:](#user-content-for-installation-on-mysql-master)
     - [For installation on MySQL Slave:](#user-content-for-installation-on-mysql-slave)
     - [For installation on Non-MySQL server:](#user-content-for-installation-on-non-mysql-server)
 - [Updating the Agent](#user-content-updating-the-agent)
-  - [With One Line Install](#user-content-with-one-line-install-1)
+  - [With Quick Install](#user-content-with-one-line-install-1)
   - [With Regular Installer](#user-content-with-regular-installer-1)
 - [Uninstalling the Agent](#user-content-uninstalling-the-agent)
-  - [With One Line Install](#user-content-with-one-line-install-2)
+  - [With Quick Install](#user-content-with-one-line-install-2)
   - [With Regular Installer](#user-content-with-regular-installer-2)
 
-One Line Install
+Quick Install
 ----------------
 
 1. [Get your api-key](https://cloud.percona.com/api-key)
@@ -48,7 +48,7 @@ GRANT UPDATE, DELETE, DROP ON performance_schema.* TO percona-agent@localhost ID
 Interactive Installation
 ------------------------
 
-Instead of our *One Line Install* you can also use our *Regular Installer* for more traditional, interactive installation.
+Instead of our *Quick Install* you can also use our *Regular Installer* for more traditional, interactive installation.
 
 1. [Download the latest version of percona-agent](http://www.percona.com/downloads/percona-agent/LATEST/) to your server.
 2. Extract the tarball.
@@ -58,17 +58,17 @@ Automatic Non-Interactive Installation
 --------------------------------------
 
 To automate installation of *percona-agent* to multiple servers (e.g. installation with Chef/Puppet)
-you can use either *One Line Install* or *Regular Installer*.
+you can use either *Quick Install* or *Regular Installer*.
 
-### With *One Line Install*
+### With *Quick Install*
 
-Use our *One Line Install* method, so:
+Use our *Quick Install* method, so:
 
 1. [Get your api-key](https://cloud.percona.com/api-key)
 2. Run in terminal:
    `curl -s https://cloud.percona.com/get | sudo bash /dev/stdin -api-key your-api-key-here`
 
-For MySQL instance ensure `~/.my.cnf` is properly set before running *One Line Install*.
+For MySQL instance ensure `~/.my.cnf` is properly set before running *Quick Install*.
 However, have in mind, that if installer fails to setup MySQL it will still continue and enable only Server Metrics Monitor
 
 ### With *Regular Installer*
@@ -126,7 +126,7 @@ Example:
 Updating the Agent
 ------------------
 
-### With *One Line Install*
+### With *Quick Install*
 
   When new version is available
   
@@ -142,7 +142,7 @@ Updating the Agent
 Uninstalling the Agent
 ----------------------
 
-### With *One Line Install*
+### With *Quick Install*
 
   1. Run in terminal `curl -s https://cloud.percona.com/get | sudo bash /dev/stdin -uninstall`
 

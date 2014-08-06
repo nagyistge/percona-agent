@@ -2,7 +2,7 @@ percona/percona-agent
 =====================
 
 - [About](#user-content-about)
-- [One Line Install](#user-content-one-line-install)
+- [Quick Install](#user-content-one-line-install)
 - [Updating the Agent](#user-content-updating-the-agent)
 - [System Requirements](#user-content-system-requirements)
   - [MySQL monitor](#user-content-mysql-monitor)
@@ -17,19 +17,19 @@ About
 
 This is percona-agent for [Percona Cloud Tools](https://cloud.percona.com).  It's a real-time client-side agent written in [Go](http://golang.org/) which implements the various servcies provided by Percona Cloud Tools (PCT).  You need a PCT account to install and use the agent.  [Sign up for free](https://cloud.percona.com/signup)!
 
-One Line Install
+Quick Install
 -------------
 
 1. [Get your api-key](https://cloud.percona.com/api-key)
 2. Run in terminal:
    `curl -s https://cloud.percona.com/get | sudo bash /dev/stdin -api-key your-api-key-here`
 
-More about *One Line Install* and other installation options can be found in our [Installation Guide](INSTALL.md)
+More about *Quick Install* and other installation options can be found in our [Installation Guide](INSTALL.md)
 
 Updating the Agent
 ------------------
 
-Just use the same command as for `One Line Install` when new version is available, so:
+Just use the same command as for `Quick Install` when new version is available, so:
 
 1. [Get your api-key](https://cloud.percona.com/api-key)
 2. Run in terminal:
