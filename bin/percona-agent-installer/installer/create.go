@@ -215,7 +215,11 @@ func (i *Installer) createAgent(configs []proto.AgentConfig) (*proto.Agent, erro
 	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusConflict {
 		// agent was created or already exist - either is ok, continue
 	} else if resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-Percona-Agents-Limit") != "" {
-		return nil, fmt.Errorf("Maximum number of %s agents exceeded. Remove unused agents or contact Percona to increase limit.", resp.Header.Get("X-Percona-Agents-Limit"))
+		return nil, fmt.Errorf(
+			"Maximum number of %s agents exceeded.\n" +
+			"Go to https://cloud.percona.com/agents and remove unused agents or contact Percona to increase limit.",
+			resp.Header.Get("X-Percona-Agents-Limit",
+		))
 	} else {
 		return nil, fmt.Errorf("Failed to create agent instance (status code %d)", resp.StatusCode)
 	}
