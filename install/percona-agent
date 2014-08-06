@@ -115,6 +115,10 @@ _seq() {
 
 getpid() {
    if [ -f $PIDFILE ]; then
+      if [ ! -r $PIDFILE ]; then
+         echo "Cannot read $PIDFILE." >&2
+         exit 1
+      fi
       pid=`cat $PIDFILE`
       # Verify that a process with this pid is still running.
       pid=`$PSEXE -p $pid | grep $pid | grep -v grep | tail -1 | awk '{print $1}'`
