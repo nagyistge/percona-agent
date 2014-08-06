@@ -7,7 +7,8 @@ One Line Install
 -------------
 
 1. [Get your api-key](https://cloud.percona.com/api-key)
-2. Run in terminal `curl -s https://cloud.percona.com/get | sudo bash /dev/stdin -api-key your-api-key-here`
+2. Run in terminal:
+   `curl -s https://cloud.percona.com/get | sudo bash /dev/stdin -api-key your-api-key-here`
 
 More about *One Line Install* and other installation options can be found in our [Installation Guide](INSTALL.md)
 
@@ -15,8 +16,10 @@ Updating the Agent
 ------------------
 
 Just use the same command as for `One Line Install` when new version is available, so:
+
 1. [Get your api-key](https://cloud.percona.com/api-key)
-2. Run in terminal `curl -s https://cloud.percona.com/get | sudo bash /dev/stdin -api-key your-api-key-here`
+2. Run in terminal:
+   `curl -s https://cloud.percona.com/get | sudo bash /dev/stdin -api-key your-api-key-here`
 
 System Requirements
 -------------------
