@@ -1,6 +1,21 @@
 Installation Guide
 ==================
 
+- [One Line Install](#user-content-one-line-install)
+- [Interactive Installation](#user-content-interactive-installation)
+- [Automatic Non-Interactive Installation](#user-content-automatic-non-interactive-installation)
+  - [With One Line Install](#user-content-with-one-line-install)
+  - [With Regular Installer](#user-content-with-regular-installer)
+    - [For installation on MySQL Master:](#user-content-for-installation-on-mysql-master)
+    - [For installation on MySQL Slave:](#user-content-for-installation-on-mysql-slave)
+    - [For installation on Non-MySQL server:](#user-content-for-installation-on-non-mysql-server)
+- [Updating the Agent](#user-content-updating-the-agent)
+  - [With One Line Install](#user-content-with-one-line-install-1)
+  - [With Regular Installer](#user-content-with-regular-installer-1)
+- [Uninstalling the Agent](#user-content-uninstalling-the-agent)
+  - [With One Line Install](#user-content-with-one-line-install-2)
+  - [With Regular Installer](#user-content-with-regular-installer-2)
+
 One Line Install
 ----------------
 
