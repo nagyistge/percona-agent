@@ -238,7 +238,7 @@ uninstall() {
     exit 0
 }
 
-[[ "$#" != "0" && "$1" == "-uninstall" ]] && uninstall
+[[ $* == *-uninstall* ]] && uninstall
 install $@
 
 

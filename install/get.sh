@@ -42,7 +42,7 @@ PACKAGE_LOCATION="http://www.percona.com/redir/downloads/percona-agent/LATEST/pe
 TAR_GZ_FILE="/tmp/percona-agent-${VERSION}-${PLATFORM}.tar.gz"
 echo "Downloading required data..."
 if hash curl 2>/dev/null; then
-    curl -L -o "${TAR_GZ_FILE}" "${PACKAGE_LOCATION}"
+    curl --progress-bar -L -o "${TAR_GZ_FILE}" "${PACKAGE_LOCATION}"
 elif hash wget 2>/dev/null; then
     wget -cO "${TAR_GZ_FILE}" "${PACKAGE_LOCATION}"
 else
