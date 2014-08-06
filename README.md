@@ -1,8 +1,7 @@
 percona/percona-agent
 =====================
 
-This is percona-agent for [Percona Cloud Tools](https://cloud.percona.com).  It's a real-time client-side agent written in [Go](http://golang.org/) which implements the various servcies provided by Percona Cloud Tools (PCT).  You need a PCT account to install and use the agent.  [Sign up for free](https://cloud.percona.com/signup)!
-
+- [About](#user-content-about)
 - [One Line Install](#user-content-one-line-install)
 - [Updating the Agent](#user-content-updating-the-agent)
 - [System Requirements](#user-content-system-requirements)
@@ -12,6 +11,11 @@ This is percona-agent for [Percona Cloud Tools](https://cloud.percona.com).  It'
   - [Query Analytics for Performance Schema](#user-content-query-analytics-for-performance-schema)
 - [Supported Platforms and Versions](#user-content-supported-platforms-and-versions)
 - [Help and Support](#user-content-help-and-support)
+
+About
+-----
+
+This is percona-agent for [Percona Cloud Tools](https://cloud.percona.com).  It's a real-time client-side agent written in [Go](http://golang.org/) which implements the various servcies provided by Percona Cloud Tools (PCT).  You need a PCT account to install and use the agent.  [Sign up for free](https://cloud.percona.com/signup)!
 
 One Line Install
 -------------
