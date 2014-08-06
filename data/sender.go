@@ -76,7 +76,7 @@ func (s *Sender) Status() map[string]string {
 func (s *Sender) run() {
 	defer func() {
 		if err := recover(); err != nil {
-			s.logger.Error("Recovered while running sender: ", err)
+			s.logger.Error("Data sender crashed: ", err)
 		}
 		if s.sync.IsGraceful() {
 			s.logger.Info("Stop")

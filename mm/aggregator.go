@@ -71,7 +71,7 @@ func (a *Aggregator) Stop() {
 func (a *Aggregator) run() {
 	defer func() {
 		if err := recover(); err != nil {
-			a.logger.Error("Recovered while running aggregator: ", err)
+			a.logger.Error("Aggregator crashed: ", err)
 		}
 		a.running = false // XXX: not guarded
 		a.sync.Done()

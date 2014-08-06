@@ -19,10 +19,10 @@ package ticker
 
 import (
 	"github.com/percona/percona-agent/pct"
+	"log"
 	"math"
 	"sync"
 	"time"
-	"log"
 )
 
 type Ticker interface {
@@ -71,7 +71,7 @@ func NewEvenTicker(atInterval uint, sleep func(time.Duration)) *EvenTicker {
 func (et *EvenTicker) Run(nowNanosecond int64) {
 	defer func() {
 		if err := recover(); err != nil {
-			log.Println("Recovered while rinning event ticker: ", err)
+			log.Println("EvenTicker.Run crashed: ", err)
 		}
 		et.sync.Done()
 	}()

@@ -128,7 +128,7 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 	go func() {
 		defer func() {
 			if err := recover(); err != nil {
-				errMsg := fmt.Sprintf("Error parsing %s: %s", job, err)
+				errMsg := fmt.Sprintf("Slow log parser for %s crashed: %s", job, err)
 				w.logger.Error(errMsg)
 				result.Error = errMsg
 			}

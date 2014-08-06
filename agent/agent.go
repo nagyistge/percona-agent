@@ -250,7 +250,7 @@ func (agent *Agent) Run() error {
 func (agent *Agent) connect() {
 	defer func() {
 		if err := recover(); err != nil {
-			agent.logger.Error("Recovered while connection to API: ", err)
+			agent.logger.Error("Agent websocket client crashed: ", err)
 		}
 	}()
 	agent.logger.Info("Connecting to API")
@@ -342,7 +342,7 @@ func (agent *Agent) cmdHandler() {
 
 	defer func() {
 		if err := recover(); err != nil {
-			agent.logger.Error("Recovered in command handler: ", err)
+			agent.logger.Error("Agent command handler crashed: ", err)
 		}
 		agent.status.Update("agent-cmd-handler", "Stopped")
 		agent.cmdHandlerSync.Done()
@@ -371,10 +371,14 @@ func (agent *Agent) cmdHandler() {
 
 			// Handle the cmd in a separate goroutine so if it gets stuck it won't affect us.
 			go func() {
-				if err := recover(); err != nil {
-					agent.logger.Error("Recovered in command handler routine: ", err)
-				}
 				var reply *proto.Reply
+				defer func() {
+					if err := recover(); err != nil {
+						agent.logger.Error(fmt.Sprintf("Command %s crashed: %s", cmd, err))
+						reply = cmd.Reply(nil, fmt.Errorf("%s", err))
+					}
+					cmdReply <- reply
+				}()
 				if cmd.Service == "agent" {
 					reply = agent.Handle(cmd)
 				} else {
@@ -384,7 +388,6 @@ func (agent *Agent) cmdHandler() {
 						reply = cmd.Reply(nil, pct.UnknownServiceError{Service: cmd.Service})
 					}
 				}
-				cmdReply <- reply
 			}()
 
 			// Wait for the cmd to complete.
@@ -637,7 +640,7 @@ func (agent *Agent) statusHandler() {
 	replyChan := agent.client.SendChan()
 	defer func() {
 		if err := recover(); err != nil {
-			agent.logger.Error("Recovered in status handler: ", err)
+			agent.logger.Error("Agent status handler crashed: ", err)
 		}
 		agent.statusHandlerSync.Done()
 	}()
