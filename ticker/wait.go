@@ -19,6 +19,7 @@ package ticker
 
 import (
 	"github.com/percona/percona-agent/pct"
+	"log"
 	"time"
 )
 
@@ -38,7 +39,12 @@ func NewWaitTicker(atInterval uint) *WaitTicker {
 }
 
 func (wt *WaitTicker) Run(nowNanosecond int64) {
-	defer wt.sync.Done()
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println("WaitTicker.Run crashed: ", err)
+		}
+		wt.sync.Done()
+	}()
 
 	// Wait for watcher (the code using this ticker) to recv the first tick.
 	select {

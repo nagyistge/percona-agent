@@ -19,6 +19,7 @@ package ticker
 
 import (
 	"github.com/percona/percona-agent/pct"
+	"log"
 	"math"
 	"sync"
 	"time"
@@ -68,7 +69,12 @@ func NewEvenTicker(atInterval uint, sleep func(time.Duration)) *EvenTicker {
 }
 
 func (et *EvenTicker) Run(nowNanosecond int64) {
-	defer et.sync.Done()
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println("EvenTicker.Run crashed: ", err)
+		}
+		et.sync.Done()
+	}()
 	i := float64(time.Duration(et.atInterval) * time.Second)
 	d := i - math.Mod(float64(nowNanosecond), i)
 	et.sleep(time.Duration(d) * time.Nanosecond)

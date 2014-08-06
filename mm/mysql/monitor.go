@@ -127,7 +127,12 @@ func (m *Monitor) Config() interface{} {
 // run:@goroutine[3]
 func (m *Monitor) connect(err error) {
 	m.logger.Debug("connect:call")
-	defer m.logger.Debug("connect:return")
+	defer func() {
+		if err := recover(); err != nil {
+			m.logger.Error("MySQL connection crashed: ", err)
+		}
+		m.logger.Debug("connect:return")
+	}()
 
 	// Close/release previous connection, if any.
 	m.conn.Close()
@@ -179,6 +184,9 @@ func (m *Monitor) connect(err error) {
 func (m *Monitor) run() {
 	m.logger.Debug("run:call")
 	defer func() {
+		if err := recover(); err != nil {
+			m.logger.Error("MySQL monitor crashed: ", err)
+		}
 		m.conn.Close()
 		m.status.Update(m.name, "Stopped")
 		m.sync.Done()

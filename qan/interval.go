@@ -132,6 +132,9 @@ func (i *FileIntervalIter) IntervalChan() chan *Interval {
 
 func (i *FileIntervalIter) run() {
 	defer func() {
+		if err := recover(); err != nil {
+			i.logger.Error("QAN file iterator crashed: ", err)
+		}
 		i.sync.Done()
 	}()
 
@@ -254,6 +257,9 @@ func (i *PfsIntervalIter) IntervalChan() chan *Interval {
 
 func (i *PfsIntervalIter) run() {
 	defer func() {
+		if err := recover(); err != nil {
+			i.logger.Error("QAN performance schema iterator crashed: ", err)
+		}
 		i.sync.Done()
 	}()
 

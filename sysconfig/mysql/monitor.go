@@ -113,6 +113,9 @@ func (m *Monitor) Config() interface{} {
 // @goroutine[2]
 func (m *Monitor) run() {
 	defer func() {
+		if err := recover(); err != nil {
+			m.logger.Error("MySQL sysconfig monitor crashed: ", err)
+		}
 		m.status.Update(m.name, "Stopped")
 		m.sync.Done()
 	}()

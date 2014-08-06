@@ -70,6 +70,9 @@ func (a *Aggregator) Stop() {
 // @goroutine[1]
 func (a *Aggregator) run() {
 	defer func() {
+		if err := recover(); err != nil {
+			a.logger.Error("Aggregator crashed: ", err)
+		}
 		a.running = false // XXX: not guarded
 		a.sync.Done()
 	}()
