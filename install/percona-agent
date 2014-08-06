@@ -127,7 +127,7 @@ getpid() {
          rm -f $PIDFILE
          echo "Removed stale pid file: $PIDFILE"
       fi
-    fi
+   fi
 }
 
 testpid() {
