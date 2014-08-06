@@ -39,9 +39,10 @@ Instead of our *One Line Install* you can also use our *Regular Installer* for m
 Automatic Non-Interactive Installation
 --------------------------------------
 
-To automate installation of *percona-agent* to multiple servers (e.g. installation with Chef/Puppet) you can use either *One Line Install* or *Regular Installer*
+To automate installation of *percona-agent* to multiple servers (e.g. installation with Chef/Puppet)
+you can use either *One Line Install* or *Regular Installer*.
 
-## *One Line Install*
+# With *One Line Install*
 
 Use our *One Line Install* method, so:
 
@@ -52,7 +53,7 @@ Use our *One Line Install* method, so:
 For MySQL instance ensure `~/.my.cnf` is properly set before running *One Line Install*.
 However, have in mind, that if installer fails to setup MySQL it will still continue and enable only Server Metrics Monitor
 
-## *Regular Installer*
+# With *Regular Installer*
 
 Use our *Regular Installer* in non-interactive mode (`-non-interactive=true`) and pass all required parameters as flags, so:
 
@@ -75,7 +76,7 @@ Useful flags:
 
 To get list of all flags run `./install -help`
 
-### For installation on MySQL Master:
+## For installation on MySQL Master:
 
 1. Provide credentials for super user with flags `-mysql-user`, `-mysql-pass`, `-mysql-host` or `-mysql-socket`.  
 
@@ -84,7 +85,7 @@ Example:
 ./install -non-interactive=true -mysql-user=root -mysql-pass=secretpass -mysql-socket=/var/run/mysqld/mysqld.sock
 ```
 
-### For installation on MySQL Slave:
+## For installation on MySQL Slave:
 
 1. Use `-create-mysql-user=false` flag
 2. Provide credentials for existing `percona-agent` user replicated from master. Do this with flags `-mysql-user`, `-mysql-pass`, `-mysql-host` or `-mysql-socket`.
@@ -95,7 +96,7 @@ Example:
 ./install -non-interactive=true -create-mysql-user=false -mysql-user=percona-agent -mysql-pass=secretpass -mysql-socket=/var/run/mysqld/mysqld.sock
 ```
 
-### For installation on Non-MySQL server:
+## For installation on Non-MySQL server:
 
 1. Use `-mysql=false` flag
 
@@ -107,11 +108,14 @@ Example:
 Updating the Agent
 ------------------
 
-## For *One Line Install*, when new version is available
+# With *One Line Install*
 
+  When new version is available
+  
   1. [Get your api-key](https://cloud.percona.com/api-key)
   2. Run in terminal `curl -s https://cloud.percona.com/get | sudo bash /dev/stdin -api-key your-api-key-here`
-## For *Regular Installer*
+
+# With *Regular Installer*
 
   1. [Download the latest version of percona-agent](http://www.percona.com/downloads/percona-agent/LATEST/) to your server.
   2. Extract the tarball.
@@ -120,12 +124,13 @@ Updating the Agent
 Uninstalling the Agent
 ------------------
 
-## For *One Line Install*
+# With *One Line Install*
 
   1. Run in terminal `curl -s https://cloud.percona.com/get | sudo bash /dev/stdin -uninstall`
 
-## For *Regular Installer*
+# With *Regular Installer*
 
   1. [Download the latest version of percona-agent](http://www.percona.com/downloads/percona-agent/LATEST/) to your server.
   2. Extract the tarball.
   3. Run in terminal `./install -uninstall`.
+
