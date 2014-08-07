@@ -142,6 +142,10 @@ Updating the Agent
 Uninstalling the Agent
 ----------------------
 
+Please have in mind this section refers to **only** removing *Percona Agent* from physical server, all collected data and additional configuration will be still kept in [cloud.percona.com](https://cloud.percona.com). To also remove all related data please remove respective *Percona Agent* on [Percona Agents list](https://cloud.percona.com/agents) and *MySQL instance* on [MySQL instaces list](https://cloud.percona.com/instances/mysql).
+
+To remove *Percona Agent* from physical server you can use either *Quick Install* method, or our *Regular Installer*
+
 ### With *Quick Install*
 
   1. Run in terminal `curl -s https://cloud.percona.com/get | sudo bash /dev/stdin -uninstall`
