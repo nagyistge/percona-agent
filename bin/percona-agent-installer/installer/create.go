@@ -159,13 +159,31 @@ func (i *Installer) createMySQLInstance(dsn mysql.DSN) (*proto.MySQLInstance, er
 	if err != nil {
 		return nil, err
 	}
-	// Create new instance, if it already exist then just use it
-	// todo: better handling of duplicate instance
-	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusConflict {
+
+	// Create new instance, if it already exist then update it
+	if resp.StatusCode == http.StatusConflict {
+		// API returns URI of existing resource in Location header
+		uri := resp.Header.Get("Location")
+		if uri == "" {
+			return nil, fmt.Errorf("API did not return location of exisiting MySQL instance")
+		}
+
+		resp, _, err := i.api.Put(i.agentConfig.ApiKey, uri, data)
+		if i.flags.Bool["debug"] {
+			log.Printf("resp=%#v\n", resp)
+			log.Printf("err=%s\n", err)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("Failed to update MySQL instance (status code %d)", resp.StatusCode)
+		}
+	} else if resp.StatusCode != http.StatusCreated {
 		return nil, fmt.Errorf("Failed to create MySQL instance (status code %d)", resp.StatusCode)
 	}
 
-	// API returns URI of new resource in Location header
+	// API returns URI of new (or already existing one) resource in Location header
 	uri := resp.Header.Get("Location")
 	if uri == "" {
 		return nil, fmt.Errorf("API did not return location of new MySQL instance")

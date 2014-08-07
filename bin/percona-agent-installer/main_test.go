@@ -18,6 +18,7 @@
 package main_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/test"
@@ -437,6 +438,202 @@ func (s *MainTestSuite) TestInstall(t *C) {
 
 	err := cmd.Wait()
 	t.Assert(err, IsNil)
+}
+
+func (s *MainTestSuite) TestInstallWorksWithExistingMySQLInstanceAndInstanceIsUpdated(t *C) {
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	s.fakeApi.AppendInstancesServer(s.serverInstance)
+	s.fakeApi.AppendInstancesServerId(s.serverInstance)
+	s.fakeApi.Append("/instances/mysql", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", fmt.Sprintf("%s/instances/mysql/%d", s.fakeApi.URL(), s.mysqlInstance.Id))
+		w.WriteHeader(http.StatusConflict) // Instance already exists
+	})
+	s.fakeApi.Append(fmt.Sprintf("/instances/mysql/%d", s.mysqlInstance.Id), func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case "GET":
+			w.WriteHeader(http.StatusOK)
+			data, _ := json.Marshal(&s.mysqlInstance)
+			w.Write(data)
+		case "PUT":
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(600)
+		}
+	})
+	s.fakeApi.AppendConfigsMmDefaultServer()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendAgents(s.agent)
+	s.fakeApi.AppendAgentsUuid(s.agent)
+
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+s.basedir,
+		"-api-host="+s.fakeApi.URL(),
+		"-plain-passwords=true",
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
+	apiKey := "00000000000000000000000000000001"
+	cmdTest.Write(apiKey + "\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
+
+	t.Assert(cmdTest.ReadLine(), Equals, "Create MySQL user for agent? ('N' to use existing user) (Y): ")
+	cmdTest.Write("Y\n")
+
+	/**
+	 * MySQL super user credentials
+	 */
+	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Auto detected DSN using `mysql --print-defaults` (use ~/.my.cnf to adjust results)\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:<password-hidden>@unix(.+)\n")
+	t.Assert(cmdTest.ReadLine(), Equals, "Use auto-detected connection details? (Y): ")
+	cmdTest.Write("N\n")
+
+	t.Assert(cmdTest.ReadLine(), Equals, "MySQL username: ")
+	mysqlUserName := "root"
+	cmdTest.Write(mysqlUserName + "\n")
+
+	t.Assert(cmdTest.ReadLine(), Equals, "MySQL password: ")
+	mysqlPassword := ""
+	cmdTest.Write(mysqlPassword + "\n")
+
+	t.Assert(cmdTest.ReadLine(), Equals, "MySQL host[:port] or socket file (localhost): ")
+	mysqlHost := ""
+	cmdTest.Write(mysqlHost + "\n")
+
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":<password-hidden>@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
+
+	/**
+	 * MySQL new user
+	 */
+	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:<password-hidden>@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:<password-hidden>@unix(.*)\n")
+
+	/**
+	 * MySQL instance
+	 */
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", s.mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
+	t.Check(cmdTest.ReadLine(), Equals, "Install successful\n")
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Assert(err, IsNil)
+}
+
+func (s *MainTestSuite) TestInstallFailsOnUpdatingMySQLInstance(t *C) {
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	s.fakeApi.AppendInstancesServer(s.serverInstance)
+	s.fakeApi.AppendInstancesServerId(s.serverInstance)
+	s.fakeApi.Append("/instances/mysql", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", fmt.Sprintf("%s/instances/mysql/%d", s.fakeApi.URL(), s.mysqlInstance.Id))
+		w.WriteHeader(http.StatusConflict) // Instance already exists
+	})
+	s.fakeApi.Append(fmt.Sprintf("/instances/mysql/%d", s.mysqlInstance.Id), func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case "PUT":
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			w.WriteHeader(600)
+		}
+	})
+	s.fakeApi.AppendConfigsMmDefaultServer()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendAgents(s.agent)
+	s.fakeApi.AppendAgentsUuid(s.agent)
+
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+s.basedir,
+		"-api-host="+s.fakeApi.URL(),
+		"-plain-passwords=true",
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
+	apiKey := "00000000000000000000000000000001"
+	cmdTest.Write(apiKey + "\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
+
+	t.Assert(cmdTest.ReadLine(), Equals, "Create MySQL user for agent? ('N' to use existing user) (Y): ")
+	cmdTest.Write("Y\n")
+
+	/**
+	 * MySQL super user credentials
+	 */
+	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Auto detected DSN using `mysql --print-defaults` (use ~/.my.cnf to adjust results)\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Auto detected MySQL connection details: .*:<password-hidden>@unix(.+)\n")
+	t.Assert(cmdTest.ReadLine(), Equals, "Use auto-detected connection details? (Y): ")
+	cmdTest.Write("N\n")
+
+	t.Assert(cmdTest.ReadLine(), Equals, "MySQL username: ")
+	mysqlUserName := "root"
+	cmdTest.Write(mysqlUserName + "\n")
+
+	t.Assert(cmdTest.ReadLine(), Equals, "MySQL password: ")
+	mysqlPassword := ""
+	cmdTest.Write(mysqlPassword + "\n")
+
+	t.Assert(cmdTest.ReadLine(), Equals, "MySQL host[:port] or socket file (localhost): ")
+	mysqlHost := ""
+	cmdTest.Write(mysqlHost + "\n")
+
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection "+s.username+":<password-hidden>@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
+
+	/**
+	 * MySQL new user
+	 */
+	t.Check(cmdTest.ReadLine(), Equals, "Creating new MySQL user for agent...\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Testing MySQL connection percona-agent:<password-hidden>@unix(.*)...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "MySQL connection OK\n")
+	t.Check(cmdTest.ReadLine(), Matches, "Agent MySQL user: percona-agent:<password-hidden>@unix(.*)\n")
+
+	/**
+	 * MySQL instance
+	 */
+	t.Check(cmdTest.ReadLine(), Equals, "Failed to update MySQL instance (status code 500)\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Install failed\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Assert(err, ErrorMatches, "exit status 1")
 }
 
 func (s *MainTestSuite) TestInstallWithWrongApiKey(t *C) {
