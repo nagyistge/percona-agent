@@ -38,11 +38,11 @@ socket=/var/run/mysqld/mysqld.sock
 ```
 
 MySQL super user credentials are used for creating MySQL user which is specifically used by agent.
-If you are interested, below are GRANT options with which it is created:
+If you are interested, below are GRANT options with which it is created. **Don't add this user manually**, this is done by installer automatically.
 
 ```sql
-GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO percona-agent@localhost IDENTIFIED BY <random-password>
-GRANT UPDATE, DELETE, DROP ON performance_schema.* TO percona-agent@localhost IDENTIFIED BY <random-password>
+GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'percona-agent'@'localhost' IDENTIFIED BY <random-password>
+GRANT UPDATE, DELETE, DROP ON performance_schema.* TO 'percona-agent'@'localhost' IDENTIFIED BY <random-password>
 ```
 
 Interactive Installation
