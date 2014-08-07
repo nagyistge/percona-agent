@@ -72,7 +72,6 @@ func (s *MainTestSuite) SetUpSuite(t *C) {
 	s.agent = &proto.Agent{
 		Uuid:     s.agentUuid,
 		Hostname: "host1",
-		Alias:    "master-db",
 		Version:  "1.0.0",
 		Links: map[string]string{
 			"self": "http://localhost:8000/agents/" + s.agentUuid,

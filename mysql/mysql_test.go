@@ -18,9 +18,11 @@
 package mysql_test
 
 import (
+	"fmt"
 	"github.com/percona/percona-agent/mysql"
 	. "gopkg.in/check.v1"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -64,4 +66,13 @@ func (s *MysqlTestSuite) TestConnection(t *C) {
 	// lets test accidental extra closing
 	conn.Close()
 	t.Assert(conn.DB(), IsNil)
+}
+
+func (s *MysqlTestSuite) TestDSNString(t *C) {
+	dsn := mysql.DSN{
+		Username: "root",
+	}
+	got := fmt.Sprintf("%s", dsn)
+	t.Log(got) // only printed if teset fails:
+	t.Check(strings.HasPrefix(got, "root:<password-hidden>@unix"), Equals, true)
 }

@@ -270,7 +270,6 @@ func (i *Installer) updateAgent(uuid string) (*proto.Agent, error) {
 	agent := &proto.Agent{
 		Uuid:     uuid,
 		Hostname: i.hostname,
-		Alias:    i.hostname,
 		Version:  agent.VERSION,
 	}
 	data, err := json.Marshal(agent)

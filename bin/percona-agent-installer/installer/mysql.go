@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"github.com/mewpkg/gopass"
 	"github.com/percona/percona-agent/mysql"
+	"log"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -217,7 +218,7 @@ func (i *Installer) getDSNFromUser() (dsn mysql.DSN, err error) {
 	return dsn, nil
 }
 
-func (i *Installer) autodetectDSN() (dsn *mysql.DSN, err error) {
+func (i *Installer) autodetectDSN() (*mysql.DSN, error) {
 	params := []string{}
 	if i.flags.String["mysql-defaults-file"] != "" {
 		params = append(params, "--defaults-file="+i.flags.String["mysql-defaults-file"])
@@ -231,10 +232,17 @@ func (i *Installer) autodetectDSN() (dsn *mysql.DSN, err error) {
 	}
 	fmt.Printf("Auto detected DSN using `mysql --print-defaults` (use ~/.my.cnf to adjust results)\n")
 	output := string(byteOutput)
+	if i.flags.Bool["debug"] {
+		log.Println(output)
+	}
+	dsn := ParseMySQLDefaults(output)
+	return dsn, nil
+}
 
+func ParseMySQLDefaults(output string) *mysql.DSN {
 	var re *regexp.Regexp
 	var result []string // Result of FindStringSubmatch
-	dsn = &mysql.DSN{}
+	dsn := &mysql.DSN{}
 
 	// Note: Since output of mysql --print-defaults
 	//       doesn't use quotation marks for values
@@ -273,7 +281,13 @@ func (i *Installer) autodetectDSN() (dsn *mysql.DSN, err error) {
 		}
 	}
 
-	return dsn, nil
+	// Hostname always defaults to localhost.  If localhost means 127.0.0.1 or socket
+	// is handled by mysql/DSN.DSN().
+	if dsn.Hostname == "" && dsn.Socket == "" {
+		dsn.Hostname = "localhost"
+	}
+
+	return dsn
 }
 
 func (i *Installer) verifyMySQLConnection(dsn mysql.DSN) (err error) {

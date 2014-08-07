@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"os/user"
 	"path"
 	"strings"
 )
@@ -32,6 +33,7 @@ type DSN struct {
 	Port         string
 	Socket       string
 	OldPasswords bool
+	Protocol     string
 }
 
 const (
@@ -47,9 +49,15 @@ func (dsn DSN) DSN() (string, error) {
 		dsn.Password = ":" + dsn.Password
 	}
 
+	// Hostname always defaults to localhost.  If localhost means 127.0.0.1 or socket
+	// is handled next.
+	if dsn.Hostname == "" && dsn.Socket == "" {
+		dsn.Hostname = "localhost"
+	}
+
 	// http://dev.mysql.com/doc/refman/5.0/en/connecting.html#option_general_protocol:
 	// "connections on Unix to localhost are made using a Unix socket file by default"
-	if dsn.Socket == "" && dsn.Hostname == "localhost" {
+	if dsn.Hostname == "localhost" && (dsn.Protocol == "" || dsn.Protocol == "socket") {
 		if dsn.Socket == "" {
 			// Try to auto-detect MySQL socket from netstat output.
 			out, err := exec.Command("netstat", "-anp").Output()
@@ -81,6 +89,12 @@ func (dsn DSN) DSN() (string, error) {
 			dsn.Hostname,
 			dsn.Port,
 		)
+	} else {
+		user, err := user.Current()
+		if err != nil {
+			return "", err
+		}
+		dsnString = fmt.Sprintf("%s@", user.Username)
 	}
 	dsnString = dsnString + dsnSuffix
 	if dsn.OldPasswords {
