@@ -43,6 +43,8 @@ If you are interested, below are GRANT options with which it is created. **Don't
 ```sql
 GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'percona-agent'@'localhost' IDENTIFIED BY <random-password>
 GRANT UPDATE, DELETE, DROP ON performance_schema.* TO 'percona-agent'@'localhost' IDENTIFIED BY <random-password>
+GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'percona-agent'@'127.0.0.1' IDENTIFIED BY <random-password>
+GRANT UPDATE, DELETE, DROP ON performance_schema.* TO 'percona-agent'@'127.0.0.1' IDENTIFIED BY <random-password>
 ```
 
 Interactive Installation
@@ -142,7 +144,11 @@ Updating the Agent
 Uninstalling the Agent
 ----------------------
 
-Please have in mind this section refers to **only** removing *Percona Agent* from physical server, all collected data and additional configuration will be still kept in [cloud.percona.com](https://cloud.percona.com). To also remove all related data please remove respective *Percona Agent* on [Percona Agents list](https://cloud.percona.com/agents) and *MySQL instance* on [MySQL instaces list](https://cloud.percona.com/instances/mysql).
+Please have in mind this section refers to **only** removing *Percona Agent* from physical server, all collected data and additional configuration will be still kept in [cloud.percona.com](https://cloud.percona.com). To also remove all related data please remove respective *Percona Agent* on [Percona Agents list](https://cloud.percona.com/agents) and *MySQL instance* on [MySQL instaces list](https://cloud.percona.com/instances/mysql). For removed MySQL instances you will need also remove manually `percona-agent` MySQL user, you can do this with the following query:
+```sql
+DROP USER 'percona-agent'@'localhost';
+DROP USER 'percona-agent'@'127.0.0.1';
+```
 
 To remove *Percona Agent* from physical server you can use either *Quick Install* method, or our *Regular Installer*
 
