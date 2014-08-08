@@ -80,6 +80,11 @@ func (s *Stats) Add(m *Metric, ts int64) {
 				s.prevVal = m.Number
 			}
 		} else {
+			// This is the first value. There is nothing to subtract
+			inc := m.Number
+			dur := ts - s.prevTs
+			val := inc / float64(dur)
+			s.vals = append(s.vals, val)
 			s.prevTs = ts
 			s.prevVal = m.Number
 			s.firstVal = false
