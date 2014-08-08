@@ -2,7 +2,7 @@ percona/percona-agent
 =====================
 
 - [About](#user-content-about)
-- [Quick Install](#user-content-one-line-install)
+- [Quick Install](#user-content-quick-install)
 - [Updating the Agent](#user-content-updating-the-agent)
 - [System Requirements](#user-content-system-requirements)
   - [MySQL monitor](#user-content-mysql-monitor)
