@@ -52,7 +52,7 @@ func (i *Installer) createMySQLUser(dsn mysql.DSN) (mysql.DSN, error) {
 		}
 		_, err := conn.DB().Exec(grant)
 		if err != nil {
-			return userDSN, err
+			return userDSN, fmt.Errorf("Error executing %s: %s", grant, err)
 		}
 	}
 
@@ -69,7 +69,7 @@ func (i *Installer) createMySQLUser(dsn mysql.DSN) (mysql.DSN, error) {
 			}
 			_, err := conn.DB().Exec(grant)
 			if err != nil {
-				return userDSN, err
+				return userDSN, fmt.Errorf("Error executing %s: %s", grant, err)
 			}
 		}
 	}

@@ -21,7 +21,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/percona/percona-agent/agent"
-	"github.com/percona/percona-agent/bin/percona-agent-installer/flags"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/installer"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/term"
 	"github.com/percona/percona-agent/pct"
@@ -46,7 +45,7 @@ var (
 	flagMySQL                bool
 	flagOldPasswords         bool
 	flagPlainPasswords       bool
-	flagNonInteractive       bool
+	flagInteractive          bool
 	flagMySQLDefaultsFile    string
 	flagAutoDetectMySQL      bool
 	flagCreateMySQLUser      bool
@@ -75,16 +74,15 @@ func init() {
 	flag.BoolVar(&flagCreateAgent, "create-agent", true, "Create agent")
 	flag.BoolVar(&flagOldPasswords, "old-passwords", false, "Old passwords")
 	flag.BoolVar(&flagPlainPasswords, "plain-passwords", false, "Plain passwords") // @todo: Workaround used in tests for "stty: standard input: Inappropriate ioctl for device"
-	flag.BoolVar(&flagNonInteractive, "non-interactive", false, "Non-interactive mode for headless installation")
-	flag.BoolVar(&flagAutoDetectMySQL, "auto-detect-mysql", true, "Try to auto detect MySQL connection (used with -non-interactive=true mode)")
-	flag.BoolVar(&flagCreateMySQLUser, "create-mysql-user", true, "Create MySQL user for agent (used with -non-interactive=true mode)")
+	flag.BoolVar(&flagInteractive, "interactive", true, "Prompt for input on STDIN")
+	flag.BoolVar(&flagAutoDetectMySQL, "auto-detect-mysql", true, "Auto detect MySQL options")
+	flag.BoolVar(&flagCreateMySQLUser, "create-mysql-user", true, "Create MySQL user for agent")
 	flag.StringVar(&flagMySQLDefaultsFile, "mysql-defaults-file", "", "Path to my.cnf, used for auto detection of connection details")
-	credentialDetailsNote := "(sets -non-interactive=true and -auto-detect-mysql=false)"
-	flag.StringVar(&flagMySQLUser, "mysql-user", "", "MySQL username "+credentialDetailsNote)
-	flag.StringVar(&flagMySQLPass, "mysql-pass", "", "MySQL password "+credentialDetailsNote)
-	flag.StringVar(&flagMySQLHost, "mysql-host", "", "MySQL host "+credentialDetailsNote)
-	flag.StringVar(&flagMySQLPort, "mysql-port", "", "MySQL port "+credentialDetailsNote)
-	flag.StringVar(&flagMySQLSocket, "mysql-socket", "", "MySQL socket file "+credentialDetailsNote)
+	flag.StringVar(&flagMySQLUser, "mysql-user", "", "MySQL username")
+	flag.StringVar(&flagMySQLPass, "mysql-pass", "", "MySQL password")
+	flag.StringVar(&flagMySQLHost, "mysql-host", "", "MySQL host")
+	flag.StringVar(&flagMySQLPort, "mysql-port", "", "MySQL port")
+	flag.StringVar(&flagMySQLSocket, "mysql-socket", "", "MySQL socket file")
 	flag.BoolVar(&flagIgnoreFailures, "ignore-failures", false, "Ignore failures for additionial components e.g. MySQL instance")
 }
 
@@ -118,15 +116,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// If any credential was provided
-	// then enable non-interactive mode
-	// and disable MySQL credentials auto-detection
-	if flagMySQLUser != "" || flagMySQLPass != "" || flagMySQLHost != "" || flagMySQLPort != "" || flagMySQLSocket != "" {
-		flagNonInteractive = true
-		flagAutoDetectMySQL = false
-	}
-
-	flags := flags.Flags{
+	flags := installer.Flags{
 		Bool: map[string]bool{
 			"debug":                  flagDebug,
 			"create-server-instance": flagCreateServerInstance,
@@ -136,7 +126,7 @@ func main() {
 			"create-agent":           flagCreateAgent,
 			"old-passwords":          flagOldPasswords,
 			"plain-passwords":        flagPlainPasswords,
-			"non-interactive":        flagNonInteractive,
+			"interactive":            flagInteractive,
 			"auto-detect-mysql":      flagAutoDetectMySQL,
 			"create-mysql-user":      flagCreateMySQLUser,
 			"ignore-failures":        flagIgnoreFailures,
@@ -159,14 +149,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	agentInstaller := installer.NewInstaller(term.NewTerminal(os.Stdin, flags), flagBasedir, pct.NewAPI(), agentConfig, flags)
+	agentInstaller := installer.NewInstaller(term.NewTerminal(os.Stdin, flagInteractive, flagDebug), flagBasedir, pct.NewAPI(), agentConfig, flags)
 	fmt.Println("CTRL-C at any time to quit")
 	// todo: catch SIGINT and clean up
 	if err := agentInstaller.Run(); err != nil {
 		fmt.Println(err)
-		fmt.Println("Install failed")
 		os.Exit(1)
 	}
-	fmt.Println("Install successful")
 	os.Exit(0)
 }

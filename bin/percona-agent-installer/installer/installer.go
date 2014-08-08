@@ -22,8 +22,8 @@ import (
 	_ "github.com/arnehormann/mysql"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/agent"
-	"github.com/percona/percona-agent/bin/percona-agent-installer/flags"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/term"
+	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"log"
 	"net"
@@ -35,21 +35,34 @@ import (
 
 var portNumberRe = regexp.MustCompile(`\.\d+$`)
 
+type Flags struct {
+	Bool   map[string]bool
+	String map[string]string
+}
+
 type Installer struct {
 	term        *term.Terminal
 	basedir     string
 	api         pct.APIConnector
 	agentConfig *agent.Config
-	flags       flags.Flags
+	flags       Flags
 	// --
-	hostname string
+	hostname   string
+	defaultDSN mysql.DSN
 }
 
-func NewInstaller(terminal *term.Terminal, basedir string, api pct.APIConnector, agentConfig *agent.Config, flags flags.Flags) *Installer {
+func NewInstaller(terminal *term.Terminal, basedir string, api pct.APIConnector, agentConfig *agent.Config, flags Flags) *Installer {
 	if agentConfig.ApiHostname == "" {
 		agentConfig.ApiHostname = agent.DEFAULT_API_HOSTNAME
 	}
 	hostname, _ := os.Hostname()
+	defaultDSN := mysql.DSN{
+		Username: flags.String["mysql-user"],
+		Password: flags.String["mysql-pass"],
+		Hostname: flags.String["mysql-host"],
+		Port:     flags.String["mysql-port"],
+		Socket:   flags.String["mysql-socket"],
+	}
 	installer := &Installer{
 		term:        terminal,
 		basedir:     basedir,
@@ -57,7 +70,8 @@ func NewInstaller(terminal *term.Terminal, basedir string, api pct.APIConnector,
 		agentConfig: agentConfig,
 		flags:       flags,
 		// --
-		hostname: hostname,
+		hostname:   hostname,
+		defaultDSN: defaultDSN,
 	}
 	return installer
 }
@@ -74,7 +88,7 @@ func (i *Installer) Run() (err error) {
 	/**
 	 * Verify the API key by pinging the API.
 	 */
-	err = i.InstallerVerifyApiKeyByPingingTheApi()
+	err = i.VerifyApiKey()
 	if err != nil {
 		return err
 	}
@@ -126,7 +140,7 @@ func (i *Installer) Run() (err error) {
 func (i *Installer) InstallerGetApiKey() error {
 	fmt.Printf("API host: %s\n", i.agentConfig.ApiHostname)
 
-	if i.flags.Bool["non-interactive"] && i.agentConfig.ApiKey == "" {
+	if !i.flags.Bool["interactive"] && i.agentConfig.ApiKey == "" {
 		return fmt.Errorf(
 			"API key is required, please provide it with -api-key option.\n" +
 				"API Key is available at " + i.flags.String["app-host"] + "/api-key",
@@ -155,7 +169,7 @@ func (i *Installer) InstallerGetApiKey() error {
 	return nil
 }
 
-func (i *Installer) InstallerVerifyApiKeyByPingingTheApi() error {
+func (i *Installer) VerifyApiKey() error {
 VERIFY_API_KEY:
 	for {
 		startTime := time.Now()
@@ -212,8 +226,6 @@ VERIFY_API_KEY:
 			}
 			continue VERIFY_API_KEY
 		}
-
-		fmt.Printf("API key %s is OK\n", i.agentConfig.ApiKey)
 
 		// https://jira.percona.com/browse/PCT-617
 		// Warn user if request took at least 5s

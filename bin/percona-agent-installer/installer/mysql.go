@@ -23,6 +23,7 @@ import (
 	"github.com/percona/percona-agent/mysql"
 	"log"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -43,182 +44,159 @@ func MakeGrant(dsn mysql.DSN, user string, pass string) []string {
 }
 
 func (i *Installer) getAgentDSN() (dsn mysql.DSN, err error) {
-	// Should we create new MySQL user or use existing one?
-	var createUser bool
-	if i.flags.Bool["non-interactive"] {
-		if !i.flags.Bool["create-mysql-user"] {
-			fmt.Println("Skip creating MySQL user (-create-mysql-user=false)")
-		}
-		createUser = i.flags.Bool["create-mysql-user"]
-	} else {
-		createUser, err = i.term.PromptBool(
-			"Create MySQL user for agent? ('N' to use existing user)",
-			"Y",
-		)
+	if i.flags.Bool["create-mysql-user"] {
+		// Connect as root, create percona-agent MySQL user.
+		dsn, err = i.createNewMySQLUser()
 		if err != nil {
-			return dsn, err
+			fmt.Println(err)
+			return dsn, fmt.Errorf("Failed to create MySQL user for agent")
 		}
-	}
-
-	for {
-		// Ask user about connection details:
-		// user name, password, host name and port, or socket file
-		if createUser {
-			dsn, err = i.createNewMySQLUser()
-		} else {
+		fmt.Printf("Created MySQL user: %s\n", dsn.StringWithSuffixes())
+	} else {
+		if i.flags.Bool["interactive"] {
+			// Prompt for existing percona-agent MySQL user.
 			dsn, err = i.useExistingMySQLUser()
-		}
-		if err == nil {
-			break // success
-		}
-
-		// If something went wrong then print error
-		// and ask user if he wants to try again
-		fmt.Println(err)
-
-		var again bool
-		if i.flags.Bool["non-interactive"] {
-			again = false
-		} else {
-			again, err = i.term.PromptBool("Try again?", "Y")
 			if err != nil {
-				return dsn, err
+				fmt.Println(err)
+				return dsn, fmt.Errorf("Failed to get MySQL user for agent")
 			}
-		}
-		if !again {
-			return dsn, fmt.Errorf("Failed to create new MySQL account for agent")
+			fmt.Printf("Using MySQL user: %s\n", dsn.StringWithSuffixes())
+		} else {
+			// Non-MySQL install (e.g. only system metrics).
+			fmt.Println("Skip creating MySQL user (-create-mysql-user=false)")
+			return dsn, nil
 		}
 	}
-	fmt.Printf("Agent MySQL user: %s\n", dsn.StringWithSuffixes())
 	return dsn, nil
 }
 
 func (i *Installer) createNewMySQLUser() (dsn mysql.DSN, err error) {
-	// Get super user credentials
-	fmt.Println("Specify a root/super MySQL user to create a user for the agent")
-	superUserDsn, err := i.getDSNFromUser()
-	if err != nil {
-		return dsn, err
+	// Auto-detect the root MySQL user connection options.
+	superUserDSN := i.defaultDSN
+	if i.flags.Bool["auto-detect-mysql"] {
+		if err := i.autodetectDSN(&superUserDSN); err != nil {
+			if i.flags.Bool["debug"] {
+				log.Println(err)
+			}
+		}
+	}
+	fmt.Printf("MySQL root DSN: %s\n", superUserDSN)
+
+	// Try to connect as root automatically.  If this fails and interacive is true,
+	// start prompting user to enter valid root MySQL connection info.
+	if err = i.verifyMySQLConnection(superUserDSN); err != nil {
+		fmt.Printf("Error connecting to MySQL %s: %s\n", superUserDSN, err)
+		if i.flags.Bool["interactive"] {
+			if again, err := i.term.PromptBool("Try again?", "Y"); err != nil {
+				return superUserDSN, err
+			} else if !again {
+				return superUserDSN, fmt.Errorf("Failed to connect to MySQL")
+			}
+			fmt.Println("Specify a root/super MySQL user to create a user for the agent")
+			if err := i.getDSNFromUser(&superUserDSN); err != nil {
+				return dsn, err
+			}
+		} else {
+			// Can't auto-detect MySQL root user and not interactive, fail.
+			return dsn, err
+		}
 	}
 
-	// Verify super user connection
-	err = i.verifyMySQLConnection(superUserDsn)
-	if err != nil {
-		return dsn, err
-	}
-
-	fmt.Println("Creating new MySQL user for agent...")
-	// Create new user using super user access
-	dsn, err = i.createMySQLUser(superUserDsn)
+	dsn, err = i.createMySQLUser(superUserDSN)
 	if err != nil {
 		return dsn, err
 	}
 
 	// Verify new DSN
-	err = i.verifyMySQLConnection(dsn)
-	if err != nil {
+	if err := i.verifyMySQLConnection(dsn); err != nil {
 		return dsn, err
 	}
 
 	return dsn, nil
 }
 
-func (i *Installer) useExistingMySQLUser() (dsn mysql.DSN, err error) {
-	// Let user specify the MySQL account to use for the agent.
-	fmt.Println("Specify the existing MySQL user to use for the agent")
-	dsn, err = i.getDSNFromUser()
-	if err != nil {
-		return dsn, nil
-	}
-
-	fmt.Println("Using existing MySQL user for agent...")
-	// Verify DSN provided by user
-	err = i.verifyMySQLConnection(dsn)
-	if err != nil {
-		return dsn, err
-	}
-
-	return dsn, nil
-}
-
-func (i *Installer) getDSNFromUser() (dsn mysql.DSN, err error) {
+func (i *Installer) useExistingMySQLUser() (mysql.DSN, error) {
+	userDSN := i.defaultDSN
+	userDSN.Username = "percona-agent"
+	userDSN.Password = ""
 	if i.flags.Bool["auto-detect-mysql"] {
-		autoDSN, err := i.autodetectDSN()
-		if err == nil {
-			if i.flags.Bool["non-interactive"] {
-				fmt.Printf("Using auto-detected DSN\n")
-				return *autoDSN, nil
-			} else {
-				fmt.Printf("Auto detected MySQL connection details: %s\n", autoDSN)
-				useAuto, err := i.term.PromptBool("Use auto-detected connection details?", "Y")
-				if err != nil {
-					return dsn, err
-				}
-				if useAuto {
-					fmt.Printf("Using auto-detected DSN\n")
-					return *autoDSN, nil
-				}
+		if err := i.autodetectDSN(&userDSN); err != nil {
+			if i.flags.Bool["debug"] {
+				log.Println(err)
 			}
 		}
 	}
+	for {
+		// Let user specify the MySQL account to use for the agent.
+		fmt.Println("Specify the existing MySQL user to use for the agent")
+		if err := i.getDSNFromUser(&userDSN); err != nil {
+			return userDSN, nil
+		}
 
-	if i.flags.Bool["non-interactive"] {
-		dsn.Username = i.flags.String["mysql-user"]
-		dsn.Password = i.flags.String["mysql-pass"]
-
-		if i.flags.String["mysql-socket"] != "" {
-			dsn.Socket = i.flags.String["mysql-socket"]
-		} else {
-			dsn.Hostname = i.flags.String["mysql-host"]
-			dsn.Port = i.flags.String["mysql-port"]
-		}
-	} else {
-		// Ask for username
-		username, err := i.term.PromptString("MySQL username", "")
-		if err != nil {
-			return dsn, err
-		}
-		dsn.Username = username
-
-		// Ask for password
-		var password string
-		if i.flags.Bool["plain-passwords"] {
-			password, err = i.term.PromptString("MySQL password", "")
-		} else {
-			password, err = gopass.GetPass("MySQL password: ")
-		}
-		if err != nil {
-			return dsn, err
-		}
-		dsn.Password = password
-
-		// Ask for hostname / socket path
-		hostname, err := i.term.PromptStringRequired(
-			"MySQL host[:port] or socket file",
-			dsn.To(),
-		)
-		if err != nil {
-			return dsn, err
-		}
-		if filepath.IsAbs(hostname) {
-			dsn.Socket = hostname
-			dsn.Hostname = ""
-		} else {
-			f := strings.Split(hostname, ":")
-			dsn.Hostname = f[0]
-			if len(f) > 1 {
-				dsn.Port = f[1]
+		// Verify DSN provided by user
+		if err := i.verifyMySQLConnection(userDSN); err != nil {
+			fmt.Printf("Error connecting to MySQL %s: %s\n", userDSN, err)
+			if i.flags.Bool["interactive"] {
+				if again, err := i.term.PromptBool("Try again?", "Y"); err != nil {
+					return userDSN, err
+				} else if !again {
+					return userDSN, fmt.Errorf("Failed to connect to MySQL")
+				}
+				continue // again
 			} else {
-				dsn.Port = "3306"
+				// Can't auto-detect MySQL root user and not interactive, fail.
+				return userDSN, err
 			}
-			dsn.Socket = ""
 		}
+		return userDSN, nil // success
 	}
-
-	return dsn, nil
 }
 
-func (i *Installer) autodetectDSN() (*mysql.DSN, error) {
+func (i *Installer) getDSNFromUser(dsn *mysql.DSN) error {
+	// Ask for username
+	username, err := i.term.PromptString("MySQL username", dsn.Username)
+	if err != nil {
+		return err
+	}
+	dsn.Username = username
+
+	// Ask for password
+	var password string
+	if i.flags.Bool["plain-passwords"] {
+		password, err = i.term.PromptString("MySQL password", "")
+	} else {
+		password, err = gopass.GetPass("MySQL password: ")
+	}
+	if err != nil {
+		return err
+	}
+	dsn.Password = password
+
+	// Ask for hostname / socket path
+	hostname, err := i.term.PromptStringRequired(
+		"MySQL host[:port] or socket file",
+		dsn.To(),
+	)
+	if err != nil {
+		return err
+	}
+	if filepath.IsAbs(hostname) {
+		dsn.Socket = hostname
+		dsn.Hostname = ""
+	} else {
+		f := strings.Split(hostname, ":")
+		dsn.Hostname = f[0]
+		if len(f) > 1 {
+			dsn.Port = f[1]
+		} else {
+			dsn.Port = "3306"
+		}
+		dsn.Socket = ""
+	}
+	return nil
+}
+
+func (i *Installer) autodetectDSN(dsn *mysql.DSN) error {
 	params := []string{}
 	if i.flags.String["mysql-defaults-file"] != "" {
 		params = append(params, "--defaults-file="+i.flags.String["mysql-defaults-file"])
@@ -228,15 +206,42 @@ func (i *Installer) autodetectDSN() (*mysql.DSN, error) {
 	cmd := exec.Command("mysql", params...)
 	byteOutput, err := cmd.Output()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	fmt.Printf("Auto detected DSN using `mysql --print-defaults` (use ~/.my.cnf to adjust results)\n")
 	output := string(byteOutput)
 	if i.flags.Bool["debug"] {
 		log.Println(output)
 	}
-	dsn := ParseMySQLDefaults(output)
-	return dsn, nil
+	autoDSN := ParseMySQLDefaults(output)
+	if i.flags.Bool["debug"] {
+		log.Printf("autoDSN: %#v\n", autoDSN)
+	}
+	// Fill in the given DSN with auto-detected options.
+	if dsn.Username == "" {
+		dsn.Username = autoDSN.Username
+	}
+	if dsn.Password == "" {
+		dsn.Password = autoDSN.Password
+	}
+	if dsn.Hostname == "" {
+		dsn.Hostname = autoDSN.Hostname
+	}
+	if dsn.Port == "" {
+		dsn.Port = autoDSN.Port
+	}
+	if dsn.Socket == "" {
+		dsn.Socket = autoDSN.Socket
+	}
+	if dsn.Username == "" {
+		user, err := user.Current()
+		if err == nil {
+			dsn.Username = user.Username
+		}
+	}
+	if i.flags.Bool["debug"] {
+		log.Printf("dsn: %#v\n", dsn)
+	}
+	return nil
 }
 
 func ParseMySQLDefaults(output string) *mysql.DSN {
@@ -291,41 +296,17 @@ func ParseMySQLDefaults(output string) *mysql.DSN {
 }
 
 func (i *Installer) verifyMySQLConnection(dsn mysql.DSN) (err error) {
-	for {
-		fmt.Printf("Testing MySQL connection %s...\n", dsn)
-		if err := TestMySQLConnection(dsn); err != nil {
-			fmt.Printf("Error connecting to MySQL %s: %s\n", dsn, err)
-			var again bool
-			if i.flags.Bool["non-interactive"] {
-				again = false
-			} else {
-				again, err = i.term.PromptBool("Try again to connect?", "Y")
-				if err != nil {
-					return err
-				}
-			}
-			if !again {
-				return fmt.Errorf("Failed to connect to MySQL")
-			}
-			continue // Try again
-		}
-		break // success
-	}
-
-	fmt.Printf("MySQL connection OK\n")
-	return nil
-}
-
-func TestMySQLConnection(dsn mysql.DSN) error {
 	dsnString, err := dsn.DSN()
 	if err != nil {
 		return err
 	}
-
+	if i.flags.Bool["debug"] {
+		log.Printf("verifyMySQLConnection: %#v %s\n", dsn, dsnString)
+	}
 	conn := mysql.NewConnection(dsnString)
 	if err := conn.Connect(1); err != nil {
 		return err
 	}
-	defer conn.Close()
+	conn.Close()
 	return nil
 }

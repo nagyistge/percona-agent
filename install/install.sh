@@ -75,15 +75,14 @@ install() {
     # ###########################################################################
 
     newVersion=$("$INSTALLER_DIR/bin/$BIN" -version | cut -f2 -d" ")
-    echo "Version provided with this installer: $newVersion"
+    echo "Verion provided by installer: $newVersion"
     if [ -x "$BASEDIR/bin/$BIN" ]; then
         currentVersion=$("$BASEDIR/bin/$BIN" -version | cut -f2 -d" ")
+        echo "Version currently installed: $currentVersion"
         cmpVer=0
         ver_cmp "$currentVersion" "$newVersion" || cmpVer=$?
-        echo "Currently installed version: $currentVersion"
-
         if [ "$cmpVer" == "2" ]; then
-            echo "Upgrading $BIN to: $newVersion"
+            echo "Upgrading to $newVersion..."
             if [ "$KERNEL" != "Darwin" ]; then
                 ${INIT_SCRIPT} stop
             else
@@ -104,13 +103,15 @@ install() {
                echo "Mac OS detected, not installing sys-init script.  To start $BIN:"
                echo "$BASEDIR/bin/$BIN -basedir $BASEDIR"
             fi
-            echo "$BIN upgrade successful"
+            echo
+            echo "Success! $BIN was upgraded to $newVersion and restarted."
+            echo
             exit 0
         elif [ "$cmpVer" == "1" ]; then
             echo "Never version already installed, exiting."
             exit 1
         else
-            echo "Already installed, exiting."
+            echo "Same version already installed, exiting."
             exit 1
         fi
     fi
@@ -146,7 +147,7 @@ install() {
     # Copy init script (for backup, as we are going to install it in /etc/init.d)
     cp -f "$INSTALLER_DIR/init.d/$BIN" "$BASEDIR/init.d/"
 
-    "$BASEDIR/bin/$BIN" -ping
+    "$BASEDIR/bin/$BIN" -ping >/dev/null
     if [ $? -ne 0 ]; then
        error "Installed $BIN but ping test failed"
     fi
@@ -158,10 +159,10 @@ install() {
        # Check if the system has chkconfig or update-rc.d.
        if hash update-rc.d 2>/dev/null; then
                echo "Using update-rc.d to install $BIN service"
-               update-rc.d  $BIN defaults
+               update-rc.d  $BIN defaults >/dev/null
        elif hash chkconfig 2>/dev/null; then
                echo "Using chkconfig to install $BIN service"
-               chkconfig $BIN on
+               chkconfig $BIN on >/dev/null
        else
           echo "Cannot find chkconfig or update-rc.d.  $BIN is installed but"
           echo "it will not restart automatically with the server on reboot.  Please"
@@ -181,8 +182,11 @@ install() {
     # ###########################################################################
     # Cleanup
     # ###########################################################################
-
-    echo "$BIN install successful"
+    hostname=$(hostname)
+    echo
+    echo "Success! $BIN $newVersion is installed and running."
+    echo "Go to https://cloud.percona.com and look for $hostname."
+    echo
     exit 0
 }
 
