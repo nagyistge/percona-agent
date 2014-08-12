@@ -79,6 +79,12 @@ func (f *FakeApi) AppendSysconfigDefaultMysql() {
 		w.Write([]byte(`{ "Service": "mysql", "InstanceId": 0, "Report": 3600 }`))
 	})
 }
+func (f *FakeApi) AppendConfigsQanDefault() {
+	f.Append("/configs/qan/default", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{ "Service": "mysql", "InstanceId": 0, "Interval": 60}`))
+	})
+}
 func (f *FakeApi) AppendAgents(agent *proto.Agent) {
 	f.Append("/agents", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Location", fmt.Sprintf("%s/agents/%s", f.URL(), agent.Uuid))

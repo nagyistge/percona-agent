@@ -50,8 +50,10 @@ type MainTestSuite struct {
 	agent           *proto.Agent
 	agentUuid       string
 	fakeApi         *fakeapi.FakeApi
+	apiKey          string
 	rootConn        *sql.DB
 	agentConfigFile string
+	qanConfigFile   string
 }
 
 var _ = Suite(&MainTestSuite{})
@@ -76,15 +78,20 @@ func (s *MainTestSuite) SetUpSuite(t *C) {
 	s.username = "root"
 	s.apphost = "https://cloud.percona.com"
 	s.agentConfigFile = path.Join(s.basedir, pct.CONFIG_DIR, "agent.conf")
+	s.qanConfigFile = path.Join(s.basedir, pct.CONFIG_DIR, "qan.conf")
+	s.apiKey = "00000000000000000000000000000001"
 
 	// Default data
+	// Hostname must be correct because installer checks that
+	// hostname == mysql hostname to enable QAN.
+	hostname, _ := os.Hostname()
 	s.serverInstance = &proto.ServerInstance{
 		Id:       10,
-		Hostname: "localhost",
+		Hostname: hostname,
 	}
 	s.mysqlInstance = &proto.MySQLInstance{
 		Id:       10,
-		Hostname: "localhost",
+		Hostname: hostname,
 		DSN:      "",
 	}
 	s.agentUuid = "0001"
@@ -116,6 +123,12 @@ func (s *MainTestSuite) SetUpTest(t *C) {
 	t.Assert(err, IsNil)
 	s.rootConn.Exec("FLUSH PRIVILEGES")
 	t.Assert(err, IsNil)
+
+	// Remove config dir between tests.
+	err = os.RemoveAll(path.Join(s.basedir, pct.CONFIG_DIR))
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func (s *MainTestSuite) TearDownTest(t *C) {
@@ -182,16 +195,17 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 	s.fakeApi.AppendConfigsMmDefaultServer()
 	s.fakeApi.AppendConfigsMmDefaultMysql()
 	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendConfigsQanDefault()
 	s.fakeApi.AppendAgents(s.agent)
 	s.fakeApi.AppendAgentsUuid(s.agent)
 
-	apiKey := "00000000000000000000000000000001"
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+s.basedir,
 		"-api-host="+s.fakeApi.URL(),
 		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
-		"-api-key="+apiKey,
+		"-api-key="+s.apiKey,
+		//"-debug",
 	)
 
 	cmdTest := cmdtest.NewCmdTest(cmd)
@@ -207,6 +221,12 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 	if !pct.FileExists(s.agentConfigFile) {
 		t.Log(output)
 		t.Errorf("%s does not exist", s.agentConfigFile)
+	}
+
+	// Should write basedir/config/qan.conf.
+	if !pct.FileExists(s.qanConfigFile) {
+		t.Log(output)
+		t.Errorf("%s does not exist", s.qanConfigFile)
 	}
 
 	// Should create percona-agent user with grants on *.* and performance_schema.*.
@@ -233,7 +253,6 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithIgnoreFailures(t *C) {
 	s.fakeApi.AppendAgents(s.agent)
 	s.fakeApi.AppendAgentsUuid(s.agent)
 
-	apiKey := "00000000000000000000000000000001"
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+s.basedir,
@@ -241,7 +260,7 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithIgnoreFailures(t *C) {
 		"-non-interactive=true",
 		"-ignore-failures=true", // We are testing this flag
 		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-wrong_user",
-		"-api-key="+apiKey, // Required because of non-interactive mode
+		"-api-key="+s.apiKey, // Required because of non-interactive mode
 	)
 
 	cmdTest := cmdtest.NewCmdTest(cmd)
@@ -253,8 +272,8 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithIgnoreFailures(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key "+s.apiKey+" is OK\n")
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
@@ -291,7 +310,6 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(
 	s.fakeApi.AppendAgents(s.agent)
 	s.fakeApi.AppendAgentsUuid(s.agent)
 
-	apiKey := "00000000000000000000000000000001"
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+s.basedir,
@@ -300,7 +318,7 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(
 		// "-auto-detect-mysql=false", // This flag is automatically disabled when flags with credentials are provided
 		"-mysql-user=root",
 		"-mysql-socket=/var/run/mysqld/mysqld.sock",
-		"-api-key="+apiKey, // Required because of non-interactive mode
+		"-api-key="+s.apiKey, // Required because of non-interactive mode
 	)
 
 	cmdTest := cmdtest.NewCmdTest(cmd)
@@ -312,8 +330,8 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key "+s.apiKey+" is OK\n")
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Check(cmdTest.ReadLine(), Equals, "Specify a root/super MySQL user to create a user for the agent\n")
@@ -378,14 +396,13 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t 
 	s.fakeApi.AppendAgents(s.agent)
 	s.fakeApi.AppendAgentsUuid(s.agent)
 
-	apiKey := "00000000000000000000000000000001"
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+s.basedir,
 		"-api-host="+s.fakeApi.URL(),
 		"-create-mysql-user=false", // We are testing this flag
 		"-non-interactive=true",    // -create-mysql-user=false works only in non-interactive mode
-		"-api-key="+apiKey,         // Required because of non-interactive mode
+		"-api-key="+s.apiKey,       // Required because of non-interactive mode
 		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-percona_user",
 	)
 
@@ -398,8 +415,8 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t 
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key "+s.apiKey+" is OK\n")
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Check(cmdTest.ReadLine(), Equals, "Skip creating MySQL user (-create-mysql-user=false)\n")
@@ -456,10 +473,9 @@ func (s *MainTestSuite) TestInstall(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
-	apiKey := "00000000000000000000000000000001"
-	cmdTest.Write(apiKey + "\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
+	cmdTest.Write(s.apiKey + "\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key "+s.apiKey+" is OK\n")
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Assert(cmdTest.ReadLine(), Equals, "Create MySQL user for agent? ('N' to use existing user) (Y): ")
@@ -558,10 +574,9 @@ func (s *MainTestSuite) TestInstallWorksWithExistingMySQLInstanceAndInstanceIsUp
 	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
-	apiKey := "00000000000000000000000000000001"
-	cmdTest.Write(apiKey + "\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
+	cmdTest.Write(s.apiKey + "\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key "+s.apiKey+" is OK\n")
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Assert(cmdTest.ReadLine(), Equals, "Create MySQL user for agent? ('N' to use existing user) (Y): ")
@@ -656,10 +671,9 @@ func (s *MainTestSuite) TestInstallFailsOnUpdatingMySQLInstance(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
-	apiKey := "00000000000000000000000000000001"
-	cmdTest.Write(apiKey + "\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
+	cmdTest.Write(s.apiKey + "\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key "+s.apiKey+" is OK\n")
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Assert(cmdTest.ReadLine(), Equals, "Create MySQL user for agent? ('N' to use existing user) (Y): ")
@@ -785,10 +799,9 @@ func (s *MainTestSuite) TestInstallWithExistingMySQLUser(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
-	apiKey := "00000000000000000000000000000001"
-	cmdTest.Write(apiKey + "\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
+	cmdTest.Write(s.apiKey + "\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key "+s.apiKey+" is OK\n")
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Assert(cmdTest.ReadLine(), Equals, "Create MySQL user for agent? ('N' to use existing user) (Y): ")
@@ -867,10 +880,9 @@ func (s *MainTestSuite) TestInstallWithFlagCreateAgentFalse(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
-	apiKey := "00000000000000000000000000000001"
-	cmdTest.Write(apiKey + "\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
+	cmdTest.Write(s.apiKey + "\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key "+s.apiKey+" is OK\n")
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Assert(cmdTest.ReadLine(), Equals, "Create MySQL user for agent? ('N' to use existing user) (Y): ")
@@ -946,10 +958,9 @@ func (s *MainTestSuite) TestInstallWithFlagOldPasswordsTrue(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
-	apiKey := "00000000000000000000000000000001"
-	cmdTest.Write(apiKey + "\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
+	cmdTest.Write(s.apiKey + "\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key "+s.apiKey+" is OK\n")
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Assert(cmdTest.ReadLine(), Equals, "Create MySQL user for agent? ('N' to use existing user) (Y): ")
@@ -1006,13 +1017,12 @@ func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) {
 	s.fakeApi.AppendAgents(s.agent)
 	s.fakeApi.AppendAgentsUuid(s.agent)
 
-	apiKey := "00000000000000000000000000000001"
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+s.basedir,
 		"-api-host="+s.fakeApi.URL(),
 		"-plain-passwords=true",
-		"-api-key="+apiKey, // We are testing this flag
+		"-api-key="+s.apiKey, // We are testing this flag
 	)
 
 	cmdTest := cmdtest.NewCmdTest(cmd)
@@ -1026,9 +1036,9 @@ func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) {
 
 	// Because of -api-key flag user don't provides it by hand
 	//t.Check(cmdTest.ReadLine(), Equals, "API key: ")
-	//cmdTest.Write(apiKey + "\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
+	//cmdTest.Write(s.apiKey + "\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key "+s.apiKey+" is OK\n")
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Assert(cmdTest.ReadLine(), Equals, "Create MySQL user for agent? ('N' to use existing user) (Y): ")
@@ -1070,8 +1080,6 @@ func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) {
 }
 
 func (s *MainTestSuite) TestInstallWithFlagMysqlFalse(t *C) {
-	t.Skip("todo")
-
 	// Register required api handlers
 	s.fakeApi.AppendPing()
 	s.fakeApi.AppendInstancesServer(s.serverInstance)
@@ -1080,9 +1088,10 @@ func (s *MainTestSuite) TestInstallWithFlagMysqlFalse(t *C) {
 	// shouldn't query below api routes
 	//s.fakeApi.AppendInstancesMysql(s.mysqlInstance)
 	//s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance)
+	s.fakeApi.AppendConfigsMmDefaultServer()
 	//s.fakeApi.AppendConfigsMmDefaultMysql()
 	//s.fakeApi.AppendSysconfigDefaultMysql()
-	s.fakeApi.AppendConfigsMmDefaultServer()
+	//s.fakeApi.AppendConfigsQanDefault()
 	s.fakeApi.AppendAgents(s.agent)
 	s.fakeApi.AppendAgentsUuid(s.agent)
 
@@ -1090,36 +1099,33 @@ func (s *MainTestSuite) TestInstallWithFlagMysqlFalse(t *C) {
 		s.bin,
 		"-basedir="+s.basedir,
 		"-api-host="+s.fakeApi.URL(),
-		"-plain-passwords=true",
+		"-api-key="+s.apiKey,
 		"-mysql=false", // We are testing this flag
 	)
 
 	cmdTest := cmdtest.NewCmdTest(cmd)
+	output := cmdTest.Output()
 
-	if err := cmd.Start(); err != nil {
+	// Should exit zero.
+	if err := cmd.Run(); err != nil {
+		t.Log(output)
 		log.Fatal(err)
 	}
 
-	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
+	// Should write basedir/config/agent.conf.
+	if !pct.FileExists(s.agentConfigFile) {
+		t.Log(output)
+		t.Errorf("%s does not exist", s.agentConfigFile)
+	}
 
-	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
-	apiKey := "00000000000000000000000000000001"
-	cmdTest.Write(apiKey + "\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API key "+apiKey+" is OK\n")
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
+	// Should NOT write basedir/config/qan.conf.
+	if pct.FileExists(s.qanConfigFile) {
+		t.Log(output)
+		t.Errorf("%s exists", s.qanConfigFile)
+	}
 
-	// Flag -mysql=false implies below
-	t.Check(cmdTest.ReadLine(), Equals, "Not creating MySQL instance (-create-mysql-instance=false)\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Not starting MySQL services (-start-mysql-services=false)\n")
-
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
-	t.Check(cmdTest.ReadLine(), Equals, "Install successful\n")
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-
-	err := cmd.Wait()
-	t.Assert(err, IsNil)
+	// Should NOT create percona-agent user with grants on *.* and performance_schema.*.
+	got := s.GetGrants()
+	expect := []string{}
+	t.Check(got, DeepEquals, expect)
 }

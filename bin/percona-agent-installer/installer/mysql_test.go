@@ -81,6 +81,7 @@ func (s *MySQLTestSuite) TestParseMySQLDefaults(t *C) {
 	t.Assert(err, IsNil)
 	got := i.ParseMySQLDefaults(string(output))
 	expect := &mysql.DSN{
+		Hostname: "localhost",
 		Username: "root",
 	}
 	t.Check(got, DeepEquals, expect)

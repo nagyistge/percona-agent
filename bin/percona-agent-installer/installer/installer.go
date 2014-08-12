@@ -96,21 +96,24 @@ func (i *Installer) Run() (err error) {
 	/**
 	 * Create new service instances.
 	 */
+
+	// Server instance
 	si, err := i.InstallerCreateServerInstance()
 	if err != nil {
 		return err
 	}
 
-	// MySQL instance is extra component,
-	// so if error happens, and flag -ignore-failures is set to true
-	// then installation can be continued without this additional component
-	mi, err := i.InstallerCreateMySQLInstance()
-	if err != nil {
-		if i.flags.Bool["ignore-failures"] {
-			fmt.Printf("%s\n", err)
-			fmt.Printf("Skipping creation of MySQL instance because of previous errors\n")
-		} else {
-			return err
+	// MySQL instance
+	var mi *proto.MySQLInstance
+	if i.flags.Bool["mysql"] {
+		mi, err = i.InstallerCreateMySQLInstance()
+		if err != nil {
+			if i.flags.Bool["interactive"] {
+				return err
+			} else {
+				// Automated install, log the error and continue.
+				fmt.Printf("Failed to set up MySQL (ignoring because interactive=false): %s\n", err)
+			}
 		}
 	}
 
