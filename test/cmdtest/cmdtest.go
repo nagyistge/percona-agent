@@ -20,7 +20,7 @@ package cmdtest
 import (
 	"bytes"
 	"io"
-	"log"
+	//"log"
 	"os/exec"
 	"time"
 )
@@ -65,7 +65,7 @@ func (c *CmdTest) Run() <-chan string {
 				}
 				for i := range lines {
 					line := string(lines[i])
-					log.Printf("%#v", line)
+					//log.Printf("%#v", line)
 					output <- line
 				}
 			}
@@ -90,4 +90,18 @@ func (c *CmdTest) Write(data string) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func (c *CmdTest) Output() []string {
+	lines := []string{}
+OUTPUT_LINES:
+	for {
+		select {
+		case line := <-c.output:
+			lines = append(lines, line)
+		default:
+			break OUTPUT_LINES
+		}
+	}
+	return lines
 }
