@@ -20,20 +20,20 @@ This is percona-agent for [Percona Cloud Tools](https://cloud.percona.com).  It'
 Quick Install
 -------------
 
-1. [Get your api-key](https://cloud.percona.com/api-key)
+1. [Get your API key.](https://cloud.percona.com/api-key)
 2. Run in terminal:
-   `curl -s https://cloud.percona.com/get | sudo bash /dev/stdin -api-key your-api-key-here`
+   `curl -s https://cloud.percona.com/install | sudo bash /dev/stdin -api-key <API key>`
 
-More about *Quick Install* and other installation options can be found in our [Installation Guide](INSTALL.md)
+More about *Quick Install* and other installation options can be found in the [Installation Guide](INSTALL.md).
 
 Updating the Agent
 ------------------
 
 Just use the same command as for `Quick Install` when new version is available, so:
 
-1. [Get your api-key](https://cloud.percona.com/api-key)
+1. [Get your API key.](https://cloud.percona.com/api-key)
 2. Run in terminal:
-   `curl -s https://cloud.percona.com/get | sudo bash /dev/stdin -api-key your-api-key-here`
+   `curl -s https://cloud.percona.com/install | sudo bash /dev/stdin -api-key <API key>`
 
 System Requirements
 -------------------
