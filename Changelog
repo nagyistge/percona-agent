@@ -1,5 +1,12 @@
 percona-agent Changelog
 
+v1.0.6 released 2014-08-12
+
+  * PCT-595: Use recover for all goroutines to mitigate crashes
+  * PCT-722: percona-agent does not start after reboot (PCT-664)
+  * PCT-748: Agent panic in mysql.(*Connection).Set (PCT-703, PCT-700)
+  * New automated installer with MySQL auto-detection, self-update, and uninstall
+
 v1.0.5 released 2014-07-28
 
   * PCT-687: Query Analytics support for Performance Schema
