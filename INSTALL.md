@@ -16,14 +16,14 @@ Quick Install
 1. [Get your API key.](https://cloud.percona.com/api-key)
 2. As root, run in the terminal:
 
-`curl -s https://cloud.percona.com/get | /bin/sh /dev/stdin -api-key <API key>`
+`curl -s https://cloud.percona.com/install | bash /dev/stdin -api-key <API key>`
 
 By default a quick install:
 * Enables *Server Metrics Monitor*
 * Enables *MySQL Metrics Monitor* if MySQL is present
 * Enables *MySQL Query Analytics* if MySQL is present and running locally
 
-A quick install requires [MySQL Auto-detection](#user-content-mysql-auto-detection) to work properly, else it prompts you for input. You can disable prompts by specifying `-interactive=false` for an [Automated Install](#user-content-automated-install).
+A quick install requires [MySQL Auto-detection](#user-content-mysql-auto-detection) to work properly. If it fails (e.g. it can't connect to MySQL), only *Server Metrics Monitor* is enabled.
 
 Standard Install
 ----------------
@@ -37,7 +37,7 @@ By default, the installer is automatic and interactive: it tries to do everythin
 Automated Install
 -----------------
 
-To automate installation of *percona-agent* (e.g. for Chef, Puppet, etc.) add the `-interacive=false` flag to a [Standard Install](#user-content-standard-install) or [Quick Install](#user-content-quick-install) to prevent the installer from prompting.
+To automate installation of *percona-agent* (e.g. for Chef, Puppet, etc.) add the `-interacive=false` flag to a [Standard Install](#user-content-standard-install) to prevent the installer from prompting. A [Quick Install](#user-content-quick-install) can be used too because it sets `-interacive=false` by default.
 
 Automation relies on:
 * proper [MySQL Auto-detection](#user-content-mysql-auto-detection)
@@ -49,6 +49,8 @@ For example, without [MySQL Auto-detection](#user-content-mysql-auto-detection) 
 ```sh
 ./install -interactive=false -mysql-user=root -mysql-pass=secretpass -mysql-socket=/var/run/mysqld/mysqld.sock
 ```
+
+**Note**: An automated install must create the percona-agent MySQL user; you cannot specify an existing MySQL user. This ability will be added in a future version of the installer.
 
 MySQL Auto-detection
 --------------------
@@ -113,7 +115,7 @@ Updating the Agent
   1. [Get your api-key](https://cloud.percona.com/api-key)
   2. Run in terminal as root:
 
-`curl -s https://cloud.percona.com/get | /bin/sh /dev/stdin -api-key <API key>`
+`curl -s https://cloud.percona.com/get | bash /dev/stdin -api-key <API key>`
 
 ### With *Standard Install*
 
