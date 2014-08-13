@@ -113,8 +113,12 @@ func Ping(hostname, apiKey string) (int, error) {
 
 func URL(hostname string, paths ...string) string {
 	schema := "https://"
+	httpPrefix := "http://"
+	if strings.HasPrefix(hostname, httpPrefix) {
+		hostname = strings.TrimPrefix(hostname, httpPrefix)
+	}
 	if strings.HasPrefix(hostname, "localhost") || strings.HasPrefix(hostname, "127.0.0.1") {
-		schema = "http://"
+		schema = httpPrefix
 	}
 	slash := "/"
 	if len(paths) > 0 && paths[0][0] == 0x2F {

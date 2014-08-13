@@ -49,6 +49,12 @@ func (dsn DSN) DSN() (string, error) {
 		dsn.Password = ":" + dsn.Password
 	}
 
+	// Hostname always defaults to localhost.  If localhost means 127.0.0.1 or socket
+	// is handled next.
+	if dsn.Hostname == "" && dsn.Socket == "" {
+		dsn.Hostname = "localhost"
+	}
+
 	// http://dev.mysql.com/doc/refman/5.0/en/connecting.html#option_general_protocol:
 	// "connections on Unix to localhost are made using a Unix socket file by default"
 	if dsn.Hostname == "localhost" && (dsn.Protocol == "" || dsn.Protocol == "socket") {
@@ -110,10 +116,22 @@ func (dsn DSN) To() string {
 }
 
 func (dsn DSN) String() string {
-	dsn.Password = "..."
+	if dsn.Username == "" {
+		dsn.Username = "<anonymous-user>"
+	}
+	dsn.Password = "<password-hidden>"
 	dsnString, _ := dsn.DSN()
 	dsnString = strings.TrimSuffix(dsnString, allowOldPasswords)
 	dsnString = strings.TrimSuffix(dsnString, dsnSuffix)
+	return dsnString
+}
+
+func (dsn DSN) StringWithSuffixes() string {
+	if dsn.Username == "" {
+		dsn.Username = "<anonymous-user>"
+	}
+	dsn.Password = "<password-hidden>"
+	dsnString, _ := dsn.DSN()
 	return dsnString
 }
 

@@ -107,7 +107,7 @@ func (c *Connection) Connect(tries uint) error {
 		return nil
 	}
 
-	return errors.New(fmt.Sprintf("Failed to connect to MySQL after %d tries (%s)", tries, err))
+	return fmt.Errorf("Failed to connect to MySQL after %d tries (%s)", tries, err)
 }
 
 func (c *Connection) Close() {

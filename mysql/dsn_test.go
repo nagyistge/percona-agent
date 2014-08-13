@@ -43,7 +43,7 @@ func (s *DSNTestSuite) TestAllFields(t *C) {
 
 	// Stringify DSN removes password, e.g. makes it safe to print log, etc.
 	str = fmt.Sprintf("%s", dsn)
-	t.Check(str, Equals, "user:...@tcp(host.example.com:3306)")
+	t.Check(str, Equals, "user:<password-hidden>@tcp(host.example.com:3306)")
 }
 
 func (s *DSNTestSuite) TestOldPasswords(t *C) {
@@ -60,7 +60,7 @@ func (s *DSNTestSuite) TestOldPasswords(t *C) {
 
 	// Stringify DSN removes password, e.g. makes it safe to print log, etc.
 	str = fmt.Sprintf("%s", dsn)
-	t.Check(str, Equals, "user:...@tcp(host.example.com:3306)")
+	t.Check(str, Equals, "user:<password-hidden>@tcp(host.example.com:3306)")
 }
 
 func (s *DSNTestSuite) TestParseSocketFromNetstat(t *C) {

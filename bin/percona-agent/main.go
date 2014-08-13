@@ -57,6 +57,7 @@ var (
 
 func init() {
 	golog.SetFlags(golog.Ldate | golog.Ltime | golog.Lmicroseconds | golog.Lshortfile)
+	golog.SetOutput(os.Stdout)
 
 	flag.BoolVar(&flagPing, "ping", false, "Ping API")
 	flag.StringVar(&flagBasedir, "basedir", pct.DEFAULT_BASEDIR, "Agent basedir")

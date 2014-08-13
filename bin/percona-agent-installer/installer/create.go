@@ -15,7 +15,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package main
+package installer
 
 import (
 	"encoding/json"
@@ -36,7 +36,7 @@ func (i *Installer) createMySQLUser(dsn mysql.DSN) (mysql.DSN, error) {
 	userDSN := dsn
 	userDSN.Username = "percona-agent"
 	userDSN.Password = fmt.Sprintf("%p%d", &dsn, rand.Uint32())
-	userDSN.OldPasswords = i.flags["old-passwords"]
+	userDSN.OldPasswords = i.flags.Bool["old-passwords"]
 
 	dsnString, _ := dsn.DSN()
 	conn := mysql.NewConnection(dsnString)
@@ -47,12 +47,12 @@ func (i *Installer) createMySQLUser(dsn mysql.DSN) (mysql.DSN, error) {
 
 	grants := MakeGrant(dsn, userDSN.Username, userDSN.Password)
 	for _, grant := range grants {
-		if i.flags["debug"] {
+		if i.flags.Bool["debug"] {
 			log.Println(grant)
 		}
 		_, err := conn.DB().Exec(grant)
 		if err != nil {
-			return userDSN, err
+			return userDSN, fmt.Errorf("Error executing %s: %s", grant, err)
 		}
 	}
 
@@ -64,12 +64,12 @@ func (i *Installer) createMySQLUser(dsn mysql.DSN) (mysql.DSN, error) {
 		dsn2.Hostname = "127.0.0.1"
 		grants := MakeGrant(dsn2, userDSN.Username, userDSN.Password)
 		for _, grant := range grants {
-			if i.flags["debug"] {
+			if i.flags.Bool["debug"] {
 				log.Println(grant)
 			}
 			_, err := conn.DB().Exec(grant)
 			if err != nil {
-				return userDSN, err
+				return userDSN, fmt.Errorf("Error executing %s: %s", grant, err)
 			}
 		}
 	}
@@ -87,11 +87,11 @@ func (i *Installer) createServerInstance() (*proto.ServerInstance, error) {
 		return nil, err
 	}
 	url := pct.URL(i.agentConfig.ApiHostname, "instances", "server")
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Println(url)
 	}
 	resp, _, err := i.api.Post(i.agentConfig.ApiKey, url, data)
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Printf("resp=%#v\n", resp)
 		log.Printf("err=%s\n", err)
 	}
@@ -112,7 +112,7 @@ func (i *Installer) createServerInstance() (*proto.ServerInstance, error) {
 
 	// GET <api>/instances/server/id (URI)
 	code, data, err := i.api.Get(i.agentConfig.ApiKey, uri)
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Printf("code=%d\n", code)
 		log.Printf("err=%s\n", err)
 	}
@@ -123,7 +123,7 @@ func (i *Installer) createServerInstance() (*proto.ServerInstance, error) {
 		return nil, fmt.Errorf("Failed to get new server instance (status code %d)", code)
 	}
 	if err := json.Unmarshal(data, si); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Failed to parse server instance entity: %s", err)
 	}
 	return si, nil
 }
@@ -136,7 +136,7 @@ func (i *Installer) createMySQLInstance(dsn mysql.DSN) (*proto.MySQLInstance, er
 		DSN:      dsnString,
 	}
 	if err := instance.GetMySQLInfo(mi); err != nil {
-		if i.flags["debug"] {
+		if i.flags.Bool["debug"] {
 			log.Printf("err=%s\n", err)
 		}
 		return nil, err
@@ -148,24 +148,42 @@ func (i *Installer) createMySQLInstance(dsn mysql.DSN) (*proto.MySQLInstance, er
 		return nil, err
 	}
 	url := pct.URL(i.agentConfig.ApiHostname, "instances", "mysql")
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Println(url)
 	}
 	resp, _, err := i.api.Post(i.agentConfig.ApiKey, url, data)
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Printf("resp=%#v\n", resp)
 		log.Printf("err=%s\n", err)
 	}
 	if err != nil {
 		return nil, err
 	}
-	// Create new instance, if it already exist then just use it
-	// todo: better handling of duplicate instance
-	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusConflict {
+
+	// Create new instance, if it already exist then update it
+	if resp.StatusCode == http.StatusConflict {
+		// API returns URI of existing resource in Location header
+		uri := resp.Header.Get("Location")
+		if uri == "" {
+			return nil, fmt.Errorf("API did not return location of exisiting MySQL instance")
+		}
+
+		resp, _, err := i.api.Put(i.agentConfig.ApiKey, uri, data)
+		if i.flags.Bool["debug"] {
+			log.Printf("resp=%#v\n", resp)
+			log.Printf("err=%s\n", err)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("Failed to update MySQL instance (status code %d)", resp.StatusCode)
+		}
+	} else if resp.StatusCode != http.StatusCreated {
 		return nil, fmt.Errorf("Failed to create MySQL instance (status code %d)", resp.StatusCode)
 	}
 
-	// API returns URI of new resource in Location header
+	// API returns URI of new (or already existing one) resource in Location header
 	uri := resp.Header.Get("Location")
 	if uri == "" {
 		return nil, fmt.Errorf("API did not return location of new MySQL instance")
@@ -173,7 +191,7 @@ func (i *Installer) createMySQLInstance(dsn mysql.DSN) (*proto.MySQLInstance, er
 
 	// GET <api>/instances/mysql/id (URI)
 	code, data, err := i.api.Get(i.agentConfig.ApiKey, uri)
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Printf("code=%d\n", code)
 		log.Printf("err=%s\n", err)
 	}
@@ -184,7 +202,7 @@ func (i *Installer) createMySQLInstance(dsn mysql.DSN) (*proto.MySQLInstance, er
 		return nil, fmt.Errorf("Failed to get new MySQL instance (status code %d)", code)
 	}
 	if err := json.Unmarshal(data, mi); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Failed to parse MySQL instance entity: %s", err)
 	}
 	return mi, nil
 }
@@ -200,11 +218,11 @@ func (i *Installer) createAgent(configs []proto.AgentConfig) (*proto.Agent, erro
 		return nil, err
 	}
 	url := pct.URL(i.agentConfig.ApiHostname, "agents")
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Println(url)
 	}
 	resp, _, err := i.api.Post(i.agentConfig.ApiKey, url, data)
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Printf("resp=%#v\n", resp)
 		log.Printf("err=%s\n", err)
 	}
@@ -215,7 +233,11 @@ func (i *Installer) createAgent(configs []proto.AgentConfig) (*proto.Agent, erro
 	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusConflict {
 		// agent was created or already exist - either is ok, continue
 	} else if resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-Percona-Agents-Limit") != "" {
-		return nil, fmt.Errorf("Maximum number of %s agents exceeded. Remove unused agents or contact Percona to increase limit.", resp.Header.Get("X-Percona-Agents-Limit"))
+		return nil, fmt.Errorf(
+			"Maximum number of %s agents exceeded.\n"+
+				"Go to https://cloud.percona.com/agents and remove unused agents or contact Percona to increase limit.",
+			resp.Header.Get("X-Percona-Agents-Limit"),
+		)
 	} else {
 		return nil, fmt.Errorf("Failed to create agent instance (status code %d)", resp.StatusCode)
 	}
@@ -228,7 +250,7 @@ func (i *Installer) createAgent(configs []proto.AgentConfig) (*proto.Agent, erro
 
 	// GET <api>/agents/:uuid
 	code, data, err := i.api.Get(i.agentConfig.ApiKey, uri)
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Printf("code=%d\n", code)
 		log.Printf("err=%s\n", err)
 	}
@@ -239,7 +261,7 @@ func (i *Installer) createAgent(configs []proto.AgentConfig) (*proto.Agent, erro
 		return nil, fmt.Errorf("Failed to get new agent (status code %d)", code)
 	}
 	if err := json.Unmarshal(data, agent); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Failed to parse agent entity: %s", err)
 	}
 	return agent, nil
 }
@@ -248,7 +270,6 @@ func (i *Installer) updateAgent(uuid string) (*proto.Agent, error) {
 	agent := &proto.Agent{
 		Uuid:     uuid,
 		Hostname: i.hostname,
-		Alias:    i.hostname,
 		Version:  agent.VERSION,
 	}
 	data, err := json.Marshal(agent)
@@ -256,12 +277,12 @@ func (i *Installer) updateAgent(uuid string) (*proto.Agent, error) {
 		return nil, err
 	}
 	url := pct.URL(i.agentConfig.ApiHostname, "agents", uuid)
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Println(url)
 		log.Println(string(data))
 	}
 	resp, _, err := i.api.Put(i.agentConfig.ApiKey, url, data)
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Printf("resp=%#v\n", resp)
 		log.Printf("err=%s\n", err)
 	}
