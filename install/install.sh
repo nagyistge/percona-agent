@@ -75,7 +75,7 @@ install() {
     # ###########################################################################
 
     newVersion=$("$INSTALLER_DIR/bin/$BIN" -version | cut -f2 -d" ")
-    echo "Verion provided by installer: $newVersion"
+    echo "Version provided by installer: $newVersion"
     if [ -x "$BASEDIR/bin/$BIN" ]; then
         currentVersion=$("$BASEDIR/bin/$BIN" -version | cut -f2 -d" ")
         echo "Version currently installed: $currentVersion"
