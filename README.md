@@ -1,27 +1,39 @@
 percona/percona-agent
 =====================
 
+- [About](#user-content-about)
+- [Quick Install](#user-content-quick-install)
+- [Updating the Agent](#user-content-updating-the-agent)
+- [System Requirements](#user-content-system-requirements)
+  - [MySQL monitor](#user-content-mysql-monitor)
+  - [Server monitor](#user-content-server-monitor)
+  - [Query Analytics for Slow Log](#user-content-query-analytics-for-slow-log)
+  - [Query Analytics for Performance Schema](#user-content-query-analytics-for-performance-schema)
+- [Supported Platforms and Versions](#user-content-supported-platforms-and-versions)
+- [Help and Support](#user-content-help-and-support)
+
+About
+-----
+
 This is percona-agent for [Percona Cloud Tools](https://cloud.percona.com).  It's a real-time client-side agent written in [Go](http://golang.org/) which implements the various servcies provided by Percona Cloud Tools (PCT).  You need a PCT account to install and use the agent.  [Sign up for free](https://cloud.percona.com/signup)!
 
 Quick Install
 -------------
 
-percona-agent must be installed _and_ ran as root.
+1. [Get your api-key](https://cloud.percona.com/api-key)
+2. Run in terminal:
+   `curl -s https://cloud.percona.com/get | sudo bash /dev/stdin -api-key your-api-key-here`
 
-1. [Download the latest version of percona-agent](http://www.percona.com/downloads/percona-agent/LATEST/) to your server.
-1. Extract the tarball.
-1. Run the `install` script.
+More about *Quick Install* and other installation options can be found in our [Installation Guide](INSTALL.md)
 
 Updating the Agent
 ------------------
 
-Until we finsh implementing automatic self-update, updating the agent is a manual but quick and easy process.  As root:
+Just use the same command as for `Quick Install` when new version is available, so:
 
-1. [Download the latest version of percona-agent](http://www.percona.com/downloads/percona-agent/LATEST/) to your server and extract the tarball.
-3. Run `service percona-agent stop`.  Make sure `percona-agent` is no longer running and that `/usr/local/percona/percona-agent.pid` was removed.  (There's currently a bug that sometimes causes the PID file not to be removed.)
-4. Copy `bin/percona-agent` from the extracted tarball to `/usr/local/percona/percona-agent/bin`.
-5. Run `/usr/local/percona/percona-agent/bin/percona-agent -version` to verify the new version.
-6. Run `service percona-agent start`.
+1. [Get your api-key](https://cloud.percona.com/api-key)
+2. Run in terminal:
+   `curl -s https://cloud.percona.com/get | sudo bash /dev/stdin -api-key your-api-key-here`
 
 System Requirements
 -------------------
@@ -53,11 +65,6 @@ Supported Platforms and Versions
 * Any 32-bit (i386) or 64-bit (x86_64) Linux OS
 * MySQL 5.1 through 5.6, any distro
 * Amazon RDS (only MySQL monitor and Query Analytics for Performance Schema)
-
-Upgrading from pt-agent
------------------------
-
-If you're already using Percona Cloud Tools by running pt-agent, the percona-agent installer will automatically detect, upgrade, and remove `pt-agent`.  `percona-agent` does everything `pt-agent` does and a lot more.
 
 Help and Support
 ----------------

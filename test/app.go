@@ -160,7 +160,10 @@ func FileSize(fileName string) (int64, error) {
 }
 
 func Dump(v interface{}) {
-	bytes, _ := json.MarshalIndent(v, "", "  ")
+	bytes, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		fmt.Printf("Error dumping data struct: %s\n", err)
+	}
 	fmt.Println(string(bytes))
 }
 

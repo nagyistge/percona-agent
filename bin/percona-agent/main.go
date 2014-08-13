@@ -57,6 +57,7 @@ var (
 
 func init() {
 	golog.SetFlags(golog.Ldate | golog.Ltime | golog.Lmicroseconds | golog.Lshortfile)
+	golog.SetOutput(os.Stdout)
 
 	flag.BoolVar(&flagPing, "ping", false, "Ping API")
 	flag.StringVar(&flagBasedir, "basedir", pct.DEFAULT_BASEDIR, "Agent basedir")
@@ -333,13 +334,22 @@ func run() error {
 	)
 
 	/**
-	 * Run agent, wait for it to stop or signal.
+	 * Run agent, wait for it to stop, signal, or crash.
 	 */
 
+	var stopErr error
 	go func() {
+		defer func() {
+			if err := recover(); err != nil {
+				errMsg := fmt.Sprintf("Agent crashed: %s", err)
+				logger := pct.NewLogger(logChan, "agent")
+				logger.Error(errMsg)
+				stopChan <- fmt.Errorf("%s", errMsg)
+			}
+		}()
 		stopChan <- agent.Run()
 	}()
-	stopErr := <-stopChan // agent or signal
+	stopErr = <-stopChan // agent or signal
 	golog.Println("Agent stopped, shutting down...")
 	qanManager.Stop()           // see Signal handler ^
 	time.Sleep(2 * time.Second) // wait for final replies and log entries

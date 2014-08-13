@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/pct"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -243,6 +244,12 @@ func (c *WebsocketClient) send() {
 	c.logger.DebugOffline("send:call")
 	defer c.logger.DebugOffline("send:return")
 	defer c.sendSync.Done()
+	defer func() {
+		// todo: notify caller somehow so it can restart the ws client chans.
+		if err := recover(); err != nil {
+			log.Printf("ERROR: WebsocketClient.send crashed: %s\n", err)
+		}
+	}()
 
 	for {
 		// Wait to start (connect) or be told to stop.
@@ -288,6 +295,12 @@ func (c *WebsocketClient) recv() {
 	c.logger.DebugOffline("recv:call")
 	defer c.logger.DebugOffline("recv:return")
 	defer c.recvSync.Done()
+	defer func() {
+		// todo: notify caller somehow so it can restart the ws client chans.
+		if err := recover(); err != nil {
+			log.Printf("ERROR: WebsocketClient.recv crashed: %s\n", err)
+		}
+	}()
 
 	for {
 		// Wait to start (connect) or be told to stop.

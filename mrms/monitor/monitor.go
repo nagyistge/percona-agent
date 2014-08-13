@@ -139,6 +139,11 @@ func (m *Monitor) Check() {
 
 func (m *Monitor) run(interval time.Duration) {
 	m.logger.Debug("run:call")
+	defer func() {
+		if err := recover(); err != nil {
+			m.logger.Error("MySQL Restart Monitor Service (MRMS) crashsed: ", err)
+		}
+	}()
 	defer m.logger.Debug("run:return")
 
 	// After finishing signal manager that we are done

@@ -15,18 +15,22 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package main_test
+package installer_test
 
 import (
-	i "github.com/percona/percona-agent/bin/percona-agent-installer"
+	i "github.com/percona/percona-agent/bin/percona-agent-installer/installer"
 	"github.com/percona/percona-agent/mysql"
+	"github.com/percona/percona-agent/test"
 	. "gopkg.in/check.v1"
+	"io/ioutil"
 )
 
 type MySQLTestSuite struct {
 }
 
 var _ = Suite(&MySQLTestSuite{})
+
+var sample = test.RootDir + "/mysql/"
 
 // --------------------------------------------------------------------------
 
@@ -68,6 +72,17 @@ func (s *MySQLTestSuite) TestMakeGrant(t *C) {
 	expect = []string{
 		"GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'new-user'@'localhost' IDENTIFIED BY 'some pass'",
 		"GRANT UPDATE, DELETE, DROP ON performance_schema.* TO 'new-user'@'localhost' IDENTIFIED BY 'some pass'",
+	}
+	t.Check(got, DeepEquals, expect)
+}
+
+func (s *MySQLTestSuite) TestParseMySQLDefaults(t *C) {
+	output, err := ioutil.ReadFile(sample + "/defaults001")
+	t.Assert(err, IsNil)
+	got := i.ParseMySQLDefaults(string(output))
+	expect := &mysql.DSN{
+		Hostname: "localhost",
+		Username: "root",
 	}
 	t.Check(got, DeepEquals, expect)
 }

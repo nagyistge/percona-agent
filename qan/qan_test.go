@@ -1096,7 +1096,7 @@ GET_LOG:
 	for {
 		select {
 		case l := <-s.logChan:
-			if l.Level == 3 && strings.HasPrefix(l.Msg, "Lost interval 0 slow.log") {
+			if l.Level == 3 && strings.HasPrefix(l.Msg, "QAN worker for interval 0 slow.log") {
 				gotError = l
 				break GET_LOG
 			}

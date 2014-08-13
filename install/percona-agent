@@ -8,8 +8,8 @@
 #
 ### BEGIN INIT INFO
 # Provides:          percona-agent
-# Required-Start:    $local_fs $network                                                                   
-# Required-Stop:     $local_fs $network  
+# Required-Start:    $local_fs $network
+# Required-Stop:     $local_fs $network
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
 # Short-Description: Start and stop percona-agent
@@ -115,7 +115,7 @@ _seq() {
 
 getpid() {
    if [ -f $PIDFILE ]; then
-      if [ ! -f $PIDFILE ]; then
+      if [ ! -r $PIDFILE ]; then
          echo "Cannot read $PIDFILE." >&2
          exit 1
       fi
@@ -127,8 +127,6 @@ getpid() {
          rm -f $PIDFILE
          echo "Removed stale pid file: $PIDFILE"
       fi
-   elif [ "$(pidof $SERVICE 2>/dev/null)" ]; then
-      pid=`pidof $SERVICE`
    fi
 }
 
@@ -154,14 +152,23 @@ start() {
    # Run agent in background; it does not daemonize itself. 
    $CMD -basedir "$BASEDIR" -pidfile "$PIDFILE" >> "$LOGFILE" 2>&1 &
 
+   # as we are starting agent in background,
+   # so let's give an agent some time to start
+   echo "Waiting for $SERVICE to start..."
+   for x in $(_seq 5); do
+       getpid
+       if [ -n "$pid" ]; then
+           break
+       fi
+       sleep 1
+   done
+
    # Process is started in background so $? does not have its exit status.
    # Instead, check that it's running by trying to get its PID.
-   getpid
    if [ -z "$pid" ]; then
       echo "Fail.  Check $LOGFILE for details."
       exit 1
    else
-      echo $! > "$PIDFILE"
       echo "OK"
    fi
 }

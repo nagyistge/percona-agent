@@ -15,38 +15,40 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package main
+package term
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"strings"
 )
 
-type InvalidResponseError struct {
-	Response string
-}
-
-func (e InvalidResponseError) Error() string {
-	return e.Response
-}
+var (
+	ErrNonInteractiveMode = errors.New("Refusing to prompt user in non-interactive mode")
+)
 
 type Terminal struct {
 	stdin *bufio.Reader
-	flags Flags
+	interactive bool
+	debug bool
 }
 
-func NewTerminal(stdin io.Reader, flags Flags) *Terminal {
+func NewTerminal(stdin io.Reader, interactive, debug bool) *Terminal {
 	t := &Terminal{
 		stdin: bufio.NewReader(stdin),
-		flags: flags,
+		interactive: interactive,
+		debug: debug,
 	}
 	return t
 }
 
 func (t *Terminal) PromptString(question string, defaultAnswer string) (string, error) {
+	if !t.interactive {
+		return "", ErrNonInteractiveMode
+	}
 	if defaultAnswer != "" {
 		fmt.Printf("%s (%s): ", question, defaultAnswer)
 	} else {
@@ -56,20 +58,23 @@ func (t *Terminal) PromptString(question string, defaultAnswer string) (string, 
 	if err != nil {
 		return "", err
 	}
-	if t.flags["debug"] {
+	if t.debug {
 		log.Printf("raw answer='%s'\n", string(bytes))
 	}
 	answer := strings.TrimSpace(string(bytes))
 	if answer == "" {
 		answer = defaultAnswer
 	}
-	if t.flags["debug"] {
+	if t.debug {
 		log.Printf("final answer='%s'\n", answer)
 	}
 	return answer, nil
 }
 
 func (t *Terminal) PromptStringRequired(question string, defaultAnswer string) (string, error) {
+	if !t.interactive {
+		return "", ErrNonInteractiveMode
+	}
 	var answer string
 	var err error
 	for {
@@ -86,9 +91,12 @@ func (t *Terminal) PromptStringRequired(question string, defaultAnswer string) (
 }
 
 func (t *Terminal) PromptBool(question string, defaultAnswer string) (bool, error) {
+	if !t.interactive {
+		return false, ErrNonInteractiveMode
+	}
 	for {
 		answer, err := t.PromptString(question, defaultAnswer)
-		if t.flags["debug"] {
+		if t.debug {
 			log.Printf("again=%t\n", answer)
 			log.Printf("err=%s\n", err)
 		}

@@ -252,6 +252,9 @@ func (m *Manager) GetRestartChan() chan bool {
 // @goroutine[1]
 func (m *Manager) run(config Config) {
 	defer func() {
+		if err := recover(); err != nil {
+			m.logger.Error("QAN manager crashed: ", err)
+		}
 		if m.sync.IsGraceful() {
 			m.status.Update("qan-parser", "Stopped")
 		} else {
@@ -322,7 +325,7 @@ func (m *Manager) run(config Config) {
 					m.logger.Debug(fmt.Sprintf("run:interval:%d:done", interval.Number))
 					if err := recover(); err != nil {
 						// Worker caused panic.  Log it as error because this shouldn't happen.
-						m.logger.Error(fmt.Sprintf("Lost interval %s: %s", interval, err))
+						m.logger.Error(fmt.Sprintf("QAN worker for interval %s crashed: %s", interval, err))
 					}
 					m.workerDoneChan <- w
 				}()

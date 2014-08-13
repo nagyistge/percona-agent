@@ -35,7 +35,7 @@ import (
 // REV="$(git rev-parse HEAD)"
 // go build -ldflags "-X github.com/percona/percon-agent/agnet.REVISION $REV"
 var REVISION string = "0"
-var VERSION string = "1.0.5"
+var VERSION string = "1.0.6"
 
 const (
 	CMD_QUEUE_SIZE    = 10
@@ -248,6 +248,11 @@ func (agent *Agent) Run() error {
 
 // @goroutine[0]
 func (agent *Agent) connect() {
+	defer func() {
+		if err := recover(); err != nil {
+			agent.logger.Error("Agent websocket client crashed: ", err)
+		}
+	}()
 	agent.logger.Info("Connecting to API")
 	agent.client.Connect()
 }
@@ -336,6 +341,9 @@ func (agent *Agent) cmdHandler() {
 	cmdReply := make(chan *proto.Reply, 1)
 
 	defer func() {
+		if err := recover(); err != nil {
+			agent.logger.Error("Agent command handler crashed: ", err)
+		}
 		agent.status.Update("agent-cmd-handler", "Stopped")
 		agent.cmdHandlerSync.Done()
 	}()
@@ -364,6 +372,13 @@ func (agent *Agent) cmdHandler() {
 			// Handle the cmd in a separate goroutine so if it gets stuck it won't affect us.
 			go func() {
 				var reply *proto.Reply
+				defer func() {
+					if err := recover(); err != nil {
+						agent.logger.Error(fmt.Sprintf("Command %s crashed: %s", cmd, err))
+						reply = cmd.Reply(nil, fmt.Errorf("%s", err))
+					}
+					cmdReply <- reply
+				}()
 				if cmd.Service == "agent" {
 					reply = agent.Handle(cmd)
 				} else {
@@ -373,7 +388,6 @@ func (agent *Agent) cmdHandler() {
 						reply = cmd.Reply(nil, pct.UnknownServiceError{Service: cmd.Service})
 					}
 				}
-				cmdReply <- reply
 			}()
 
 			// Wait for the cmd to complete.
@@ -624,8 +638,12 @@ func (agent *Agent) handleUpdate(cmd *proto.Cmd) (interface{}, []error) {
 // Run:@goroutine[2]
 func (agent *Agent) statusHandler() {
 	replyChan := agent.client.SendChan()
-
-	defer agent.statusHandlerSync.Done()
+	defer func() {
+		if err := recover(); err != nil {
+			agent.logger.Error("Agent status handler crashed: ", err)
+		}
+		agent.statusHandlerSync.Done()
+	}()
 
 	// Status handler doesn't have its own status because that's circular,
 	// e.g. "How am I? I'm good!".

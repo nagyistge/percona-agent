@@ -15,7 +15,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package main
+package installer
 
 import (
 	"encoding/json"
@@ -36,7 +36,7 @@ import (
 func (i *Installer) getMmServerConfig(si *proto.ServerInstance) (*proto.AgentConfig, error) {
 	url := pct.URL(i.agentConfig.ApiHostname, "/configs/mm/default-server")
 	code, data, err := i.api.Get(i.agentConfig.ApiKey, url)
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Printf("code=%d\n", code)
 		log.Printf("err=%s\n", err)
 	}
@@ -72,7 +72,7 @@ func (i *Installer) getMmServerConfig(si *proto.ServerInstance) (*proto.AgentCon
 func (i *Installer) getMmMySQLConfig(mi *proto.MySQLInstance) (*proto.AgentConfig, error) {
 	url := pct.URL(i.agentConfig.ApiHostname, "/configs/mm/default-mysql")
 	code, data, err := i.api.Get(i.agentConfig.ApiKey, url)
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Printf("code=%d\n", code)
 		log.Printf("err=%s\n", err)
 	}
@@ -108,7 +108,7 @@ func (i *Installer) getMmMySQLConfig(mi *proto.MySQLInstance) (*proto.AgentConfi
 func (i *Installer) getSysconfigMySQLConfig(mi *proto.MySQLInstance) (*proto.AgentConfig, error) {
 	url := pct.URL(i.agentConfig.ApiHostname, "/configs/sysconfig/default-mysql")
 	code, data, err := i.api.Get(i.agentConfig.ApiKey, url)
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Printf("code=%d\n", code)
 		log.Printf("err=%s\n", err)
 	}
@@ -144,7 +144,7 @@ func (i *Installer) getSysconfigMySQLConfig(mi *proto.MySQLInstance) (*proto.Age
 func (i *Installer) getQanConfig(mi *proto.MySQLInstance) (*proto.AgentConfig, error) {
 	url := pct.URL(i.agentConfig.ApiHostname, "/configs/qan/default")
 	code, data, err := i.api.Get(i.agentConfig.ApiKey, url)
-	if i.flags["debug"] {
+	if i.flags.Bool["debug"] {
 		log.Printf("code=%d\n", code)
 		log.Printf("err=%s\n", err)
 	}

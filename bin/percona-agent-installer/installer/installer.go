@@ -15,13 +15,14 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package main
+package installer
 
 import (
 	"fmt"
 	_ "github.com/arnehormann/mysql"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/agent"
+	"github.com/percona/percona-agent/bin/percona-agent-installer/term"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"log"
@@ -32,103 +33,146 @@ import (
 	"time"
 )
 
-type Flags map[string]bool
-
 var portNumberRe = regexp.MustCompile(`\.\d+$`)
 
+type Flags struct {
+	Bool   map[string]bool
+	String map[string]string
+}
+
 type Installer struct {
-	term        *Terminal
+	term        *term.Terminal
 	basedir     string
 	api         pct.APIConnector
 	agentConfig *agent.Config
 	flags       Flags
 	// --
-	hostname string
+	hostname   string
+	defaultDSN mysql.DSN
 }
 
-func NewInstaller(term *Terminal, basedir string, api pct.APIConnector, agentConfig *agent.Config, flags Flags) *Installer {
+func NewInstaller(terminal *term.Terminal, basedir string, api pct.APIConnector, agentConfig *agent.Config, flags Flags) *Installer {
 	if agentConfig.ApiHostname == "" {
 		agentConfig.ApiHostname = agent.DEFAULT_API_HOSTNAME
 	}
 	hostname, _ := os.Hostname()
+	defaultDSN := mysql.DSN{
+		Username: flags.String["mysql-user"],
+		Password: flags.String["mysql-pass"],
+		Hostname: flags.String["mysql-host"],
+		Port:     flags.String["mysql-port"],
+		Socket:   flags.String["mysql-socket"],
+	}
 	installer := &Installer{
-		term:        term,
+		term:        terminal,
 		basedir:     basedir,
 		api:         api,
 		agentConfig: agentConfig,
 		flags:       flags,
 		// --
-		hostname: hostname,
+		hostname:   hostname,
+		defaultDSN: defaultDSN,
 	}
 	return installer
 }
 
-func (i *Installer) Run() error {
-
-	/**
-	 * Check for pt-agent, upgrade if found.
-	 */
-
-	var ptagentDSN *mysql.DSN
-	ptagentUpgrade := false
-	ptagentConf := "/root/.pt-agent.conf"
-	if pct.FileExists(ptagentConf) {
-		fmt.Println("Found pt-agent, upgrading and removing because it is no longer supported...")
-		ptagentUpgrade = true
-
-		// Stop pt-agent
-		if err := StopPTAgent(); err != nil {
-			fmt.Printf("Error stopping pt-agent: %s\n\n", err)
-			fmt.Println("WARNING: pt-agent must be stopped before installing percona-agent.  " +
-				"Please verify that pt-agent is not running and has been removed from cron.  " +
-				"Enter 'Y' to confirm and continue installing percona-agent.")
-			ok, err := i.term.PromptBool("pt-agent has stopped?", "N")
-			if err != nil {
-				return err
-			}
-			if !ok {
-				return fmt.Errorf("Failed to stop pt-agent")
-			}
-		}
-
-		// Get its settings (API key, UUID, etc.).
-		agent, dsn, err := GetPTAgentSettings(ptagentConf)
-		if err != nil {
-			return fmt.Errorf("Error upgrading pt-agent: %s", err)
-		}
-		if agent.ApiKey != "" {
-			i.agentConfig.ApiKey = agent.ApiKey
-		}
-		if agent.AgentUuid != "" {
-			i.agentConfig.AgentUuid = agent.AgentUuid
-			fmt.Printf("Upgrading pt-agent %s...\n", agent.AgentUuid)
-		}
-		ptagentDSN = dsn
-	}
-
+func (i *Installer) Run() (err error) {
 	/**
 	 * Get the API key.
 	 */
-
-	fmt.Printf("API host: %s\n", i.agentConfig.ApiHostname)
-
-	for i.agentConfig.ApiKey == "" {
-		apiKey, err := i.term.PromptString("API key", "")
-		if err != nil {
-			return err
-		}
-		if apiKey == "" {
-			fmt.Println("API key is required, please try again.")
-			continue
-		}
-		i.agentConfig.ApiKey = apiKey
-		break
+	err = i.InstallerGetApiKey()
+	if err != nil {
+		return err
 	}
 
 	/**
 	 * Verify the API key by pinging the API.
 	 */
+	err = i.VerifyApiKey()
+	if err != nil {
+		return err
+	}
 
+	/**
+	 * Create new service instances.
+	 */
+
+	// Server instance
+	si, err := i.InstallerCreateServerInstance()
+	if err != nil {
+		return err
+	}
+
+	// MySQL instance
+	var mi *proto.MySQLInstance
+	if i.flags.Bool["mysql"] {
+		mi, err = i.InstallerCreateMySQLInstance()
+		if err != nil {
+			if i.flags.Bool["interactive"] {
+				return err
+			} else {
+				// Automated install, log the error and continue.
+				fmt.Printf("Failed to set up MySQL (ignoring because interactive=false): %s\n", err)
+			}
+		}
+	}
+
+	if err = i.writeInstances(si, mi); err != nil {
+		return fmt.Errorf("Created agent but failed to write service instances: %s", err)
+	}
+
+	/**
+	 * Get default configs for all services.
+	 */
+	configs, err := i.InstallerGetDefaultConfigs(si, mi)
+	if err != nil {
+		return err
+	}
+
+	/**
+	 * Create agent with initial service configs.
+	 */
+	err = i.InstallerCreateAgentWithInitialServiceConfigs(configs)
+	if err != nil {
+		return err
+	}
+
+	return nil // success
+}
+
+func (i *Installer) InstallerGetApiKey() error {
+	fmt.Printf("API host: %s\n", i.agentConfig.ApiHostname)
+
+	if !i.flags.Bool["interactive"] && i.agentConfig.ApiKey == "" {
+		return fmt.Errorf(
+			"API key is required, please provide it with -api-key option.\n" +
+				"API Key is available at " + i.flags.String["app-host"] + "/api-key",
+		)
+	} else {
+		if i.agentConfig.ApiKey == "" {
+			fmt.Printf(
+				"No API Key Defined.\n" +
+					"Please Enter your API Key, it is available at https://cloud.percona.com/api-key\n",
+			)
+		}
+		for i.agentConfig.ApiKey == "" {
+			apiKey, err := i.term.PromptString("API key", "")
+			if err != nil {
+				return err
+			}
+			if apiKey == "" {
+				fmt.Println("API key is required, please try again.")
+				continue
+			}
+			i.agentConfig.ApiKey = apiKey
+			break
+		}
+	}
+
+	return nil
+}
+
+func (i *Installer) VerifyApiKey() error {
 VERIFY_API_KEY:
 	for {
 		startTime := time.Now()
@@ -143,7 +187,7 @@ VERIFY_API_KEY:
 				timeout = true
 			}
 		}
-		if i.flags["debug"] {
+		if i.flags.Bool["debug"] {
 			log.Printf("code=%d\n", code)
 			log.Printf("err=%s\n", err)
 		}
@@ -186,13 +230,11 @@ VERIFY_API_KEY:
 			continue VERIFY_API_KEY
 		}
 
-		fmt.Printf("API key %s is OK\n", i.agentConfig.ApiKey)
-
 		// https://jira.percona.com/browse/PCT-617
 		// Warn user if request took at least 5s
 		if elapsedTimeInSeconds >= 5 {
 			fmt.Printf(
-				"WARNING: Requset to API took %d seconds but it should have taken < 1 second."+
+				"WARNING: Request to API took %d seconds but it should have taken < 1 second."+
 					" There might be a connection problem, or resolving DNS is very slow."+
 					" Before continuing, please check the connection and DNS configuration"+
 					" as this could prevent percona-agent from installing or working properly."+
@@ -212,52 +254,49 @@ VERIFY_API_KEY:
 		break
 	}
 
-	var si *proto.ServerInstance
-	var mi *proto.MySQLInstance
+	return nil
+}
 
-	/**
-	 * Create new service instances.
-	 */
-
-	var err error
-
-	if i.flags["create-server-instance"] {
+func (i *Installer) InstallerCreateServerInstance() (si *proto.ServerInstance, err error) {
+	if i.flags.Bool["create-server-instance"] {
 		si, err = i.createServerInstance()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		fmt.Printf("Created server instance: hostname=%s id=%d\n", si.Hostname, si.Id)
 	} else {
 		fmt.Println("Not creating server instance (-create-server-instance=false)")
 	}
 
-	if i.flags["create-mysql-instance"] {
-		// Create MySQL user for agent, or using existing one, then verify MySQL connection.
-		agentDSN, err := i.doMySQL(ptagentDSN)
+	return si, nil
+}
+
+func (i *Installer) InstallerCreateMySQLInstance() (mi *proto.MySQLInstance, err error) {
+	if i.flags.Bool["create-mysql-instance"] {
+		// Get MySQL DSN for agent to use.
+		// It is new MySQL user created just for agent
+		// or user is asked for existing one.
+		// DSN is verified prior returning by connecting to MySQL.
+		agentDSN, err := i.getAgentDSN()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		// Create MySQL instance in API.
 		mi, err = i.createMySQLInstance(agentDSN)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		fmt.Printf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mi.DSN, mi.Hostname, si.Id)
+		fmt.Printf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mi.DSN, mi.Hostname, mi.Id)
 	} else {
 		fmt.Println("Not creating MySQL instance (-create-mysql-instance=false)")
 	}
 
-	if err := i.writeInstances(si, mi); err != nil {
-		return fmt.Errorf("Created agent but failed to write service instances: %s", err)
-	}
+	return mi, nil
+}
 
-	/**
-	 * Get default configs for all services.
-	 */
+func (i *Installer) InstallerGetDefaultConfigs(si *proto.ServerInstance, mi *proto.MySQLInstance) (configs []proto.AgentConfig, err error) {
 
-	configs := []proto.AgentConfig{}
-
-	if i.flags["start-services"] {
+	if i.flags.Bool["start-services"] {
 		// Server metrics monitor
 		config, err := i.getMmServerConfig(si)
 		if err != nil {
@@ -267,37 +306,39 @@ VERIFY_API_KEY:
 			configs = append(configs, *config)
 		}
 
-		if i.flags["start-mysql-services"] {
-			// MySQL metrics tracker
-			config, err = i.getMmMySQLConfig(mi)
-			if err != nil {
-				fmt.Println(err)
-				fmt.Println("WARNING: cannot start MySQL metrics monitor")
-			} else {
-				configs = append(configs, *config)
-			}
-
-			// MySQL config tracker
-			config, err = i.getSysconfigMySQLConfig(mi)
-			if err != nil {
-				fmt.Println(err)
-				fmt.Println("WARNING: cannot start MySQL configuration monitor")
-			} else {
-				configs = append(configs, *config)
-			}
-
-			// QAN
-			// MySQL is local if the server hostname == MySQL hostname without port number.
-			if i.hostname == portNumberRe.ReplaceAllLiteralString(mi.Hostname, "") {
-				if i.flags["debug"] {
-					log.Printf("MySQL is local")
-				}
-				config, err := i.getQanConfig(mi)
+		if i.flags.Bool["start-mysql-services"] {
+			if mi != nil {
+				// MySQL metrics tracker
+				config, err = i.getMmMySQLConfig(mi)
 				if err != nil {
 					fmt.Println(err)
-					fmt.Println("WARNING: cannot start Query Analytics")
+					fmt.Println("WARNING: cannot start MySQL metrics monitor")
 				} else {
 					configs = append(configs, *config)
+				}
+
+				// MySQL config tracker
+				config, err = i.getSysconfigMySQLConfig(mi)
+				if err != nil {
+					fmt.Println(err)
+					fmt.Println("WARNING: cannot start MySQL configuration monitor")
+				} else {
+					configs = append(configs, *config)
+				}
+
+				// QAN
+				// MySQL is local if the server hostname == MySQL hostname without port number.
+				if i.hostname == portNumberRe.ReplaceAllLiteralString(mi.Hostname, "") {
+					if i.flags.Bool["debug"] {
+						log.Printf("MySQL is local")
+					}
+					config, err := i.getQanConfig(mi)
+					if err != nil {
+						fmt.Println(err)
+						fmt.Println("WARNING: cannot start Query Analytics")
+					} else {
+						configs = append(configs, *config)
+					}
 				}
 			}
 		} else {
@@ -307,20 +348,11 @@ VERIFY_API_KEY:
 		fmt.Println("Not starting default services (-start-services=false)")
 	}
 
-	/**
-	 * Create agent with initial service configs.
-	 */
+	return configs, nil
+}
 
-	if ptagentUpgrade {
-		agent, err := i.updateAgent(i.agentConfig.AgentUuid)
-		if err != nil {
-			return err
-		}
-		fmt.Println("pt-agent upgraded to percona-agent")
-		if err := i.writeConfigs(agent, configs); err != nil {
-			return fmt.Errorf("Upgraded pt-agent but failed to write percona-agent configs: %s", err)
-		}
-	} else if i.flags["create-agent"] {
+func (i *Installer) InstallerCreateAgentWithInitialServiceConfigs(configs []proto.AgentConfig) (err error) {
+	if i.flags.Bool["create-agent"] {
 		agent, err := i.createAgent(configs)
 		if err != nil {
 			return err
@@ -334,14 +366,5 @@ VERIFY_API_KEY:
 		fmt.Println("Not creating agent (-create-agent=false)")
 	}
 
-	/**
-	 * Remove pt-agent if upgrading.
-	 */
-
-	if ptagentUpgrade {
-		RemovePTAgent(ptagentConf)
-		fmt.Println("pt-agent removed")
-	}
-
-	return nil // success
+	return nil
 }
