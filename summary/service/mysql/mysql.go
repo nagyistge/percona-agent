@@ -24,18 +24,16 @@ import (
 )
 
 const (
-	SERVICE_NAME = "system"
+	SERVICE_NAME = "mysql"
 )
 
 type MySQL struct {
 	logger *pct.Logger
-	bindir string
 }
 
-func NewMySQL(logger *pct.Logger, bindir string) *MySQL {
+func NewMySQL(logger *pct.Logger) *MySQL {
 	return &MySQL{
 		logger: logger,
-		bindir: bindir,
 	}
 }
 

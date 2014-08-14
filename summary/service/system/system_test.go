@@ -23,7 +23,6 @@ import (
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/summary/service/system"
-	"github.com/percona/percona-agent/test"
 	. "github.com/percona/percona-agent/test/checkers"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
@@ -47,7 +46,6 @@ type ManagerTestSuite struct {
 	tickChan      chan time.Time
 	readyChan     chan bool
 	configDir     string
-	binDir        string
 	tmpDir        string
 	dsn           string
 	rir           *instance.Repo
@@ -74,11 +72,6 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 		t.Fatal(err)
 	}
 	s.configDir = pct.Basedir.Dir("config")
-	s.binDir = pct.Basedir.Dir("bin")
-	err = os.Link(test.RootDir+"/../build/pt-summary", s.binDir+"/pt-summary")
-	t.Assert(err, IsNil)
-	err = os.Chmod(s.binDir+"/pt-summary", 0777)
-	t.Assert(err, IsNil)
 
 	// Real instance repo
 	s.rir = instance.NewRepo(pct.NewLogger(s.logChan, "im-test"), s.configDir, s.api)
@@ -120,7 +113,7 @@ func (s *ManagerTestSuite) TearDownSuite(t *C) {
 
 func (s *ManagerTestSuite) TestService(t *C) {
 	// Create service
-	service := system.NewSystem(s.logger, s.binDir)
+	service := system.NewSystem(s.logger)
 
 	cmd := &proto.Cmd{
 		Service: "Summary",

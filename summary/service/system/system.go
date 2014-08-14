@@ -29,13 +29,11 @@ const (
 
 type System struct {
 	logger *pct.Logger
-	bindir string
 }
 
-func NewSystem(logger *pct.Logger, bindir string) *System {
+func NewSystem(logger *pct.Logger) *System {
 	return &System{
 		logger: logger,
-		bindir: bindir,
 	}
 }
 
