@@ -47,7 +47,7 @@ func NewMySQL(logger *pct.Logger, ir *instance.Repo) *MySQL {
 /////////////////////////////////////////////////////////////////////////////
 
 func (m *MySQL) Handle(protoCmd *proto.Cmd) *proto.Reply {
-	// Get explain query
+	// Get service instance
 	serviceInstance, err := getServiceInstance(protoCmd)
 	if err != nil {
 		return protoCmd.Reply(nil, err)
@@ -59,31 +59,15 @@ func (m *MySQL) Handle(protoCmd *proto.Cmd) *proto.Reply {
 		return protoCmd.Reply(nil, err)
 	}
 
-	// @todo parsing DSN should be as a method on proto.MySQLInstance.DSN or at least it should be injected
 	// Parse DSN to get user, pass, host, port, socket as separate fields
+	// @todo parsing DSN should be as a method on proto.MySQLInstance.DSN or at least parser should be injected
 	dsn, err := NewDSN(mysqlIt.DSN)
 	if err != nil {
 		return protoCmd.Reply(nil, err)
 	}
 
 	// Create params for ptMySQLSummary
-	args := []string{}
-	if dsn.user != "" {
-		args = append(args, "--user", dsn.user)
-	}
-	if dsn.passwd != "" {
-		args = append(args, "--password", dsn.passwd)
-	}
-	if dsn.net == "unix" {
-		args = append(args, "--socket", dsn.addr)
-	} else {
-		if dsn.addr != "" {
-			args = append(args, "--host", dsn.addr)
-		}
-		if dsn.port != "" {
-			args = append(args, "--port", dsn.port)
-		}
-	}
+	args := createParamsForPtMySQLSummary(dsn)
 
 	// Run ptMySQLSummary with params
 	ptMySQLSummary := cmd.New("pt-mysql-summary", args...)
@@ -109,4 +93,25 @@ func getServiceInstance(protoCmd *proto.Cmd) (serviceInstance *proto.ServiceInst
 	}
 
 	return serviceInstance, nil
+}
+
+func createParamsForPtMySQLSummary(dsn *DSN) (args []string) {
+	if dsn.user != "" {
+		args = append(args, "--user", dsn.user)
+	}
+	if dsn.passwd != "" {
+		args = append(args, "--password", dsn.passwd)
+	}
+	if dsn.net == "unix" {
+		args = append(args, "--socket", dsn.addr)
+	} else {
+		if dsn.addr != "" {
+			args = append(args, "--host", dsn.addr)
+		}
+		if dsn.port != "" {
+			args = append(args, "--port", dsn.port)
+		}
+	}
+
+	return args
 }
