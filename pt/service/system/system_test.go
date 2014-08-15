@@ -20,7 +20,6 @@ package system_test
 import (
 	"encoding/json"
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/pt/service/system"
 	. "github.com/percona/percona-agent/test/checkers"
@@ -30,7 +29,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 // Hook up gocheck into the "go test" runner.
@@ -41,26 +39,15 @@ func Test(t *testing.T) { TestingT(t) }
 /////////////////////////////////////////////////////////////////////////////
 
 type ManagerTestSuite struct {
-	logChan       chan *proto.LogEntry
-	logger        *pct.Logger
-	tickChan      chan time.Time
-	readyChan     chan bool
-	configDir     string
-	tmpDir        string
-	dsn           string
-	rir           *instance.Repo
-	mysqlInstance proto.ServiceInstance
-	api           *mock.API
+	logChan chan *proto.LogEntry
+	logger  *pct.Logger
+	tmpDir  string
+	api     *mock.API
 }
 
 var _ = Suite(&ManagerTestSuite{})
 
 func (s *ManagerTestSuite) SetUpSuite(t *C) {
-	s.dsn = os.Getenv("PCT_TEST_MYSQL_DSN")
-	if s.dsn == "" {
-		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
-	}
-
 	s.logChan = make(chan *proto.LogEntry, 10)
 	s.logger = pct.NewLogger(s.logChan, system.SERVICE_NAME+"-manager-test")
 
@@ -71,17 +58,6 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	if err := pct.Basedir.Init(s.tmpDir); err != nil {
 		t.Fatal(err)
 	}
-	s.configDir = pct.Basedir.Dir("config")
-
-	// Real instance repo
-	s.rir = instance.NewRepo(pct.NewLogger(s.logChan, "im-test"), s.configDir, s.api)
-	data, err := json.Marshal(&proto.MySQLInstance{
-		Hostname: "db1",
-		DSN:      s.dsn,
-	})
-	t.Assert(err, IsNil)
-	s.rir.Add("mysql", 1, data, false)
-	s.mysqlInstance = proto.ServiceInstance{Service: "mysql", InstanceId: 1}
 
 	links := map[string]string{
 		"agent":     "http://localhost/agent",

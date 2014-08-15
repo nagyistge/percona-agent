@@ -355,6 +355,7 @@ func run() error {
 		"mrms":      mrmsManager,
 		"sysconfig": sysconfigManager,
 		"query":     queryManager,
+		"pt":        ptManager,
 	}
 
 	agent := agent.NewAgent(

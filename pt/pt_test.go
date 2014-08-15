@@ -46,12 +46,6 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.logger = pct.NewLogger(s.logChan, pt.SERVICE_NAME+"-manager-test")
 }
 
-func (s *ManagerTestSuite) SetUpTest(t *C) {
-}
-
-func (s *ManagerTestSuite) TearDownSuite(t *C) {
-}
-
 // --------------------------------------------------------------------------
 
 func (s *ManagerTestSuite) TestStartStopHandleManager(t *C) {
