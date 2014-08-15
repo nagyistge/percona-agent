@@ -29,9 +29,9 @@ const (
 )
 
 type Manager struct {
-	logger  *pct.Logger
-	service map[string]Service
+	logger *pct.Logger
 	// --
+	service    map[string]Service
 	running    bool
 	sync.Mutex // This manager is single threaded, this lock protects usage from multiple goroutines
 	// --
@@ -42,7 +42,8 @@ func NewManager(logger *pct.Logger) *Manager {
 	m := &Manager{
 		logger: logger,
 		// --
-		status: pct.NewStatus([]string{SERVICE_NAME}),
+		service: make(map[string]Service),
+		status:  pct.NewStatus([]string{SERVICE_NAME}),
 	}
 	return m
 }
@@ -75,7 +76,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	defer m.Unlock()
 
 	if !m.running {
-		return pct.ServiceIsNotRunningError{Service: SERVICE_NAME}
+		return cmd.Reply(nil, pct.ServiceIsNotRunningError{Service: SERVICE_NAME})
 	}
 
 	m.status.UpdateRe(SERVICE_NAME, "Handling", cmd)
@@ -102,7 +103,7 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 // Implementation
 /////////////////////////////////////////////////////////////////////////////
 
-func (m *Manager) RegisterService(serviceName string, service *Service) (err error) {
+func (m *Manager) RegisterService(serviceName string, service Service) (err error) {
 	m.Lock()
 	defer m.Unlock()
 

@@ -18,7 +18,10 @@
 package mysql
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/summary/cmd"
 )
@@ -29,11 +32,13 @@ const (
 
 type MySQL struct {
 	logger *pct.Logger
+	ir     *instance.Repo
 }
 
-func NewMySQL(logger *pct.Logger) *MySQL {
+func NewMySQL(logger *pct.Logger, ir *instance.Repo) *MySQL {
 	return &MySQL{
 		logger: logger,
+		ir:     ir,
 	}
 }
 
@@ -41,12 +46,67 @@ func NewMySQL(logger *pct.Logger) *MySQL {
 // Interface
 /////////////////////////////////////////////////////////////////////////////
 
-func (s *MySQL) Handle(protoCmd *proto.Cmd) *proto.Reply {
-	ptMySQLSummary := cmd.New("pt-mysql-summary")
+func (m *MySQL) Handle(protoCmd *proto.Cmd) *proto.Reply {
+	// Get explain query
+	serviceInstance, err := getServiceInstance(protoCmd)
+	if err != nil {
+		return protoCmd.Reply(nil, err)
+	}
+
+	// Load the MySQL instance info (DSN, name, etc.).
+	mysqlIt := &proto.MySQLInstance{}
+	if err = m.ir.Get(serviceInstance.Service, serviceInstance.InstanceId, mysqlIt); err != nil {
+		return protoCmd.Reply(nil, err)
+	}
+
+	// @todo parsing DSN should be as a method on proto.MySQLInstance.DSN or at least it should be injected
+	// Parse DSN to get user, pass, host, port, socket as separate fields
+	dsn, err := NewDSN(mysqlIt.DSN)
+	if err != nil {
+		return protoCmd.Reply(nil, err)
+	}
+
+	// Create params for ptMySQLSummary
+	args := []string{}
+	if dsn.user != "" {
+		args = append(args, "--user", dsn.user)
+	}
+	if dsn.passwd != "" {
+		args = append(args, "--password", dsn.passwd)
+	}
+	if dsn.net == "unix" {
+		args = append(args, "--socket", dsn.addr)
+	} else {
+		if dsn.addr != "" {
+			args = append(args, "--host", dsn.addr)
+		}
+		if dsn.port != "" {
+			args = append(args, "--port", dsn.port)
+		}
+	}
+
+	// Run ptMySQLSummary with params
+	ptMySQLSummary := cmd.New("pt-mysql-summary", args...)
 	output, err := ptMySQLSummary.Run()
 	if err != nil {
-		s.logger.Error("summary %s: %s", SERVICE_NAME, err)
+		m.logger.Error("summary %s: %s", SERVICE_NAME, err)
 	}
 
 	return protoCmd.Reply(output, err)
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Implementation
+/////////////////////////////////////////////////////////////////////////////
+
+func getServiceInstance(protoCmd *proto.Cmd) (serviceInstance *proto.ServiceInstance, err error) {
+	if protoCmd.Data == nil {
+		return nil, fmt.Errorf("%s.getMySQLInstance:cmd.Data is empty", SERVICE_NAME)
+	}
+
+	if err := json.Unmarshal(protoCmd.Data, &serviceInstance); err != nil {
+		return nil, fmt.Errorf("%s.getMySQLInstance:json.Unmarshal:%s", SERVICE_NAME, err)
+	}
+
+	return serviceInstance, nil
 }

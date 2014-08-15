@@ -148,6 +148,5 @@ func (s *ManagerTestSuite) TestService(t *C) {
 	}
 	for i := range headers {
 		t.Check(gotResult, MatchesMultiline, headers[i])
-
 	}
 }

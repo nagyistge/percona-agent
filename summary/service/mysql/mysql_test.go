@@ -113,11 +113,15 @@ func (s *ManagerTestSuite) TearDownSuite(t *C) {
 
 func (s *ManagerTestSuite) TestService(t *C) {
 	// Create service
-	service := mysql.NewMySQL(s.logger)
+	service := mysql.NewMySQL(s.logger, s.rir)
+
+	data, err := json.Marshal(&s.mysqlInstance)
+	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
 		Service: "Summary",
-		Cmd:     "system",
+		Cmd:     "mysql",
+		Data:    data,
 	}
 
 	gotReply := service.Handle(cmd)
@@ -125,7 +129,7 @@ func (s *ManagerTestSuite) TestService(t *C) {
 	t.Assert(gotReply.Error, Equals, "")
 
 	var gotResult string
-	err := json.Unmarshal(gotReply.Data, &gotResult)
+	err = json.Unmarshal(gotReply.Data, &gotResult)
 	t.Assert(err, IsNil)
 	headers := []string{
 		"# Percona Toolkit MySQL Summary Report #######################",
@@ -151,6 +155,5 @@ func (s *ManagerTestSuite) TestService(t *C) {
 	}
 	for i := range headers {
 		t.Check(gotResult, MatchesMultiline, headers[i])
-
 	}
 }
