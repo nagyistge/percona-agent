@@ -15,7 +15,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package summary
+package pt
 
 import (
 	"fmt"
@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	SERVICE_NAME = "summary"
+	SERVICE_NAME = "pt"
 )
 
 type Manager struct {

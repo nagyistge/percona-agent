@@ -15,38 +15,12 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package system
+package pt
 
 import (
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/percona-agent/pct"
-	"github.com/percona/percona-agent/summary/cmd"
 )
 
-const (
-	SERVICE_NAME = "system"
-)
-
-type System struct {
-	logger *pct.Logger
-}
-
-func NewSystem(logger *pct.Logger) *System {
-	return &System{
-		logger: logger,
-	}
-}
-
-/////////////////////////////////////////////////////////////////////////////
-// Interface
-/////////////////////////////////////////////////////////////////////////////
-
-func (s *System) Handle(protoCmd *proto.Cmd) *proto.Reply {
-	ptSummary := cmd.New("pt-summary")
-	output, err := ptSummary.Run()
-	if err != nil {
-		s.logger.Error("summary %s: %s", SERVICE_NAME, err)
-	}
-
-	return protoCmd.Reply(output, err)
+type Service interface {
+	Handle(cmd *proto.Cmd) (reply *proto.Reply)
 }

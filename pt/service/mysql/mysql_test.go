@@ -22,7 +22,7 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/pct"
-	"github.com/percona/percona-agent/summary/service/mysql"
+	"github.com/percona/percona-agent/pt/service/mysql"
 	. "github.com/percona/percona-agent/test/checkers"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"

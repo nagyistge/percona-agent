@@ -34,6 +34,9 @@ import (
 	mrmsMonitor "github.com/percona/percona-agent/mrms/monitor"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
+	"github.com/percona/percona-agent/pt"
+	mysqlSummaryService "github.com/percona/percona-agent/pt/service/mysql"
+	systemSummaryService "github.com/percona/percona-agent/pt/service/system"
 	"github.com/percona/percona-agent/qan"
 	"github.com/percona/percona-agent/query"
 	queryService "github.com/percona/percona-agent/query/service"
@@ -184,7 +187,7 @@ func run() error {
 	}
 
 	/**
-	 * Start MRMS (MySQL Restart Monitoring Service)
+	 * MRMS (MySQL Restart Monitoring Service)
 	 */
 
 	mysqlRestartMonitor := mrmsMonitor.NewMonitor(
@@ -256,7 +259,7 @@ func run() error {
 	 * Query service
 	 */
 	explainService := queryService.NewExplain(
-		pct.NewLogger(logChan, "query"),
+		pct.NewLogger(logChan, "query-explain"),
 		&mysql.RealConnectionFactory{},
 		itManager.Repo(),
 	)
@@ -284,6 +287,35 @@ func run() error {
 	)
 	if err := qanManager.Start(); err != nil {
 		return fmt.Errorf("Error starting qan manager: %s\n", err)
+	}
+
+	/**
+	 * PT
+	 */
+	ptManager := pt.NewManager(
+		pct.NewLogger(logChan, "pt"),
+	)
+
+	// pt-mysql-summary
+	ptMySQLSummaryService := mysqlSummaryService.NewMySQL(
+		pct.NewLogger(logChan, "pt-mysql-summary"),
+		itManager.Repo(),
+	)
+	if err := ptManager.RegisterService("MySQLSummary", ptMySQLSummaryService); err != nil {
+		return fmt.Errorf("Error registering pt mysql summary service: %s\n", err)
+	}
+
+	// pt-summary
+	ptSystemSummaryService := systemSummaryService.NewSystem(
+		pct.NewLogger(logChan, "pt-summary"),
+	)
+	if err := ptManager.RegisterService("SystemSummary", ptSystemSummaryService); err != nil {
+		return fmt.Errorf("Error registering pt system summary service: %s\n", err)
+	}
+
+	// Start pt manager
+	if err := ptManager.Start(); err != nil {
+		return fmt.Errorf("Error starting pt manager: %s\n", err)
 	}
 
 	/**
