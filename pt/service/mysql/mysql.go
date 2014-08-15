@@ -67,7 +67,7 @@ func (m *MySQL) Handle(protoCmd *proto.Cmd) *proto.Reply {
 	}
 
 	// Create params for ptMySQLSummary
-	args := createParamsForPtMySQLSummary(dsn)
+	args := CreateParamsForPtMySQLSummary(dsn)
 
 	// Run ptMySQLSummary with params
 	ptMySQLSummary := cmd.New("pt-mysql-summary", args...)
@@ -95,7 +95,7 @@ func getServiceInstance(protoCmd *proto.Cmd) (serviceInstance *proto.ServiceInst
 	return serviceInstance, nil
 }
 
-func createParamsForPtMySQLSummary(dsn *DSN) (args []string) {
+func CreateParamsForPtMySQLSummary(dsn *DSN) (args []string) {
 	if dsn.user != "" {
 		args = append(args, "--user", dsn.user)
 	}

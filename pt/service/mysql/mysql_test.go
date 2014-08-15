@@ -157,3 +157,91 @@ func (s *ManagerTestSuite) TestService(t *C) {
 		t.Check(gotResult, MatchesMultiline, headers[i])
 	}
 }
+
+func (s *ManagerTestSuite) TestParsingParamsWithSocket(t *C) {
+	dsn, err := mysql.NewDSN("pt-agent:PabloIsAwesome@unix(/var/lib/mysql/mysql.sock)/")
+	t.Assert(err, IsNil)
+	expectedArgs := []string{
+		"--user", "pt-agent",
+		"--password", "PabloIsAwesome",
+		"--socket", "/var/lib/mysql/mysql.sock",
+	}
+	gotArgs := mysql.CreateParamsForPtMySQLSummary(dsn)
+	t.Assert(gotArgs, DeepEquals, expectedArgs)
+}
+
+func (s *ManagerTestSuite) TestParsingParamsWithHostname(t *C) {
+	dsn, err := mysql.NewDSN("pt-agent:PabloIsAwesome@tcp(leonardo.is.awesome.too:7777)/")
+	t.Assert(err, IsNil)
+	expectedArgs := []string{
+		"--user", "pt-agent",
+		"--password", "PabloIsAwesome",
+		"--host", "leonardo.is.awesome.too",
+		"--port", "7777",
+	}
+	gotArgs := mysql.CreateParamsForPtMySQLSummary(dsn)
+	t.Assert(gotArgs, DeepEquals, expectedArgs)
+}
+
+func (s *ManagerTestSuite) TestParsingParamsWithHostnameAndPort(t *C) {
+	dsn, err := mysql.NewDSN("pt-agent:PabloIsAwesome@tcp(leonardo.is.awesome.too:7777)/")
+	t.Assert(err, IsNil)
+	expectedArgs := []string{
+		"--user", "pt-agent",
+		"--password", "PabloIsAwesome",
+		"--host", "leonardo.is.awesome.too",
+		"--port", "7777",
+	}
+	gotArgs := mysql.CreateParamsForPtMySQLSummary(dsn)
+	t.Assert(gotArgs, DeepEquals, expectedArgs)
+}
+
+func (s *ManagerTestSuite) TestParsingParamsWithoutPassword(t *C) {
+	var dsn *mysql.DSN
+	var err error
+	var gotArgs, expectedArgs []string
+
+	dsn, err = mysql.NewDSN("pt-agent@unix(/pablo/is/awesome)/")
+	t.Assert(err, IsNil)
+	expectedArgs = []string{
+		"--user", "pt-agent",
+		"--socket", "/pablo/is/awesome",
+	}
+	gotArgs = mysql.CreateParamsForPtMySQLSummary(dsn)
+	t.Assert(gotArgs, DeepEquals, expectedArgs)
+
+	dsn, err = mysql.NewDSN("pt-agent@tcp(leonardo.is.awesome.too:7777)/")
+	t.Assert(err, IsNil)
+	expectedArgs = []string{
+		"--user", "pt-agent",
+		"--host", "leonardo.is.awesome.too",
+		"--port", "7777",
+	}
+	gotArgs = mysql.CreateParamsForPtMySQLSummary(dsn)
+	t.Assert(gotArgs, DeepEquals, expectedArgs)
+}
+
+func (s *ManagerTestSuite) TestParsingParamsWithoutUser(t *C) {
+	var dsn *mysql.DSN
+	var err error
+	var gotArgs, expectedArgs []string
+
+	dsn, err = mysql.NewDSN(":LukaszIsUberAwesome@unix(/pablo/is/awesome)/")
+	t.Assert(err, IsNil)
+	expectedArgs = []string{
+		"--password", "LukaszIsUberAwesome",
+		"--socket", "/pablo/is/awesome",
+	}
+	gotArgs = mysql.CreateParamsForPtMySQLSummary(dsn)
+	t.Assert(gotArgs, DeepEquals, expectedArgs)
+
+	dsn, err = mysql.NewDSN(":LukaszIsUberAwesome@tcp(leonardo.is.awesome.too:7777)/")
+	t.Assert(err, IsNil)
+	expectedArgs = []string{
+		"--password", "LukaszIsUberAwesome",
+		"--host", "leonardo.is.awesome.too",
+		"--port", "7777",
+	}
+	gotArgs = mysql.CreateParamsForPtMySQLSummary(dsn)
+	t.Assert(gotArgs, DeepEquals, expectedArgs)
+}
