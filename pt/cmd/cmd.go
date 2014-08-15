@@ -18,13 +18,18 @@
 package cmd
 
 import (
-	"fmt"
+	"errors"
 	"os/exec"
 	"time"
 )
 
 var (
 	DefaultTimeout = 30 * time.Second
+)
+
+var (
+	ErrTimeout                 = errors.New("Timeout")
+	ErrKillProcessAfterTimeout = errors.New("Failed to kill process after timeout")
 )
 
 type Cmd struct {
@@ -55,20 +60,14 @@ func (c *Cmd) Run() (output string, err error) {
 			// we might end up with hundreds processes and goroutines hanging.
 			// Maybe in such critical cases (or after n-cases) we should shutdown whole module (e.g. qan/mm/summary)
 			// and notify us (developers), because this shouldn't happen in correct working program - but you never know
-			err = fmt.Errorf("Failed to kill process after timeout in runPtSummary")
-			return "", err
+			return "", ErrKillProcessAfterTimeout
 		}
-
-		err = fmt.Errorf("Timeout in runPtSummary")
-		return "", err
+		return "", ErrTimeout
 	case err = <-errChan:
 		return "", err
 	case output = <-outChan:
 		return output, nil
 	}
-
-	err = fmt.Errorf("Unhandled case in runPtSummary")
-	return "", err
 }
 
 func runCmd(cmd *exec.Cmd) (outChan chan string, errChan chan error) {
