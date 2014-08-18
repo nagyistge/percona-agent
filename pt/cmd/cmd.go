@@ -19,6 +19,7 @@ package cmd
 
 import (
 	"errors"
+	"os"
 	"os/exec"
 	"time"
 )
@@ -39,6 +40,11 @@ type Cmd struct {
 	arg     []string
 }
 
+type result struct {
+	output string
+	err    error
+}
+
 func New(name string, arg ...string) *Cmd {
 	return &Cmd{
 		name:    name,
@@ -49,7 +55,13 @@ func New(name string, arg ...string) *Cmd {
 
 func (c *Cmd) Run() (output string, err error) {
 	cmd := exec.Command(c.name, c.arg...)
-	outChan, errChan := runCmd(cmd)
+
+	// Workaround for "HOME: parameter not set"
+	if os.Getenv("HOME") == "" {
+		cmd.Env = append(os.Environ(), "HOME=/root")
+	}
+
+	resultChan := runCmd(cmd)
 	select {
 	case <-time.After(c.Timeout):
 		killErr := cmd.Process.Kill()
@@ -64,36 +76,25 @@ func (c *Cmd) Run() (output string, err error) {
 			return "", ErrKillProcessAfterTimeout
 		}
 		return "", ErrTimeout
-	case err = <-errChan:
-		execError, ok := err.(*exec.Error)
+	case result := <-resultChan:
+		execError, ok := result.err.(*exec.Error)
 		if ok && execError.Err == exec.ErrNotFound {
 			return "", ErrNotFound
 		}
-		return "", err
-	case output = <-outChan:
-		return output, nil
+		return result.output, result.err
 	}
 }
 
-func runCmd(cmd *exec.Cmd) (outChan chan string, errChan chan error) {
+func runCmd(cmd *exec.Cmd) (resultChan chan result) {
 	// Below channels has buffer
-	// because we might get data before we would be waiting on those channels
-	outChan = make(chan string, 1)
-	errChan = make(chan error, 1)
+	// because we might get data before we would be waiting on this channel
+	resultChan = make(chan result, 1)
 	go func() {
-		output, err := cmd.Output()
-		if err != nil {
-			select {
-			case errChan <- err:
-			default:
-			}
-			return
-		}
-
+		output, err := cmd.CombinedOutput()
 		select {
-		case outChan <- string(output):
+		case resultChan <- result{output: string(output), err: err}:
 		default:
 		}
 	}()
-	return outChan, errChan
+	return resultChan
 }
