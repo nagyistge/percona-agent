@@ -128,8 +128,8 @@ func (s *ManagerTestSuite) TestService(t *C) {
 	t.Assert(gotReply, NotNil)
 	t.Assert(gotReply.Error, Equals, "")
 
-	var gotResult string
-	err = json.Unmarshal(gotReply.Data, &gotResult)
+	ptCmdResult := &proto.PtCmdResult{}
+	err = json.Unmarshal(gotReply.Data, &ptCmdResult)
 	t.Assert(err, IsNil)
 	headers := []string{
 		"# Percona Toolkit MySQL Summary Report #######################",
@@ -137,7 +137,7 @@ func (s *ManagerTestSuite) TestService(t *C) {
 		"# MySQL Executable ###########################################",
 		"# Report On Port [0-9]+ ########################################",
 		"# Processlist ################################################",
-		"# Status Counters \\(Wait 10 Seconds\\) ##########################",
+		"# Status Counters \\(Wait " + mysql.PT_SLEEP_SECONDS + " Seconds\\) ##########################",
 		"# Table cache ################################################",
 		"# Key Percona Server features ################################",
 		"# Percona XtraDB Cluster #####################################",
@@ -154,7 +154,7 @@ func (s *ManagerTestSuite) TestService(t *C) {
 		"# The End ####################################################",
 	}
 	for i := range headers {
-		t.Check(gotResult, MatchesMultiline, headers[i])
+		t.Check(ptCmdResult.Raw, MatchesMultiline, headers[i])
 	}
 }
 
@@ -162,6 +162,7 @@ func (s *ManagerTestSuite) TestParsingParamsWithSocket(t *C) {
 	dsn, err := mysql.NewDSN("pt-agent:PabloIsAwesome@unix(/var/lib/mysql/mysql.sock)/")
 	t.Assert(err, IsNil)
 	expectedArgs := []string{
+		"--sleep", mysql.PT_SLEEP_SECONDS,
 		"--user", "pt-agent",
 		"--password", "PabloIsAwesome",
 		"--socket", "/var/lib/mysql/mysql.sock",
@@ -174,6 +175,7 @@ func (s *ManagerTestSuite) TestParsingParamsWithHostname(t *C) {
 	dsn, err := mysql.NewDSN("pt-agent:PabloIsAwesome@tcp(leonardo.is.awesome.too:7777)/")
 	t.Assert(err, IsNil)
 	expectedArgs := []string{
+		"--sleep", mysql.PT_SLEEP_SECONDS,
 		"--user", "pt-agent",
 		"--password", "PabloIsAwesome",
 		"--host", "leonardo.is.awesome.too",
@@ -187,6 +189,7 @@ func (s *ManagerTestSuite) TestParsingParamsWithHostnameAndPort(t *C) {
 	dsn, err := mysql.NewDSN("pt-agent:PabloIsAwesome@tcp(leonardo.is.awesome.too:7777)/")
 	t.Assert(err, IsNil)
 	expectedArgs := []string{
+		"--sleep", mysql.PT_SLEEP_SECONDS,
 		"--user", "pt-agent",
 		"--password", "PabloIsAwesome",
 		"--host", "leonardo.is.awesome.too",
@@ -204,6 +207,7 @@ func (s *ManagerTestSuite) TestParsingParamsWithoutPassword(t *C) {
 	dsn, err = mysql.NewDSN("pt-agent@unix(/pablo/is/awesome)/")
 	t.Assert(err, IsNil)
 	expectedArgs = []string{
+		"--sleep", mysql.PT_SLEEP_SECONDS,
 		"--user", "pt-agent",
 		"--socket", "/pablo/is/awesome",
 	}
@@ -213,6 +217,7 @@ func (s *ManagerTestSuite) TestParsingParamsWithoutPassword(t *C) {
 	dsn, err = mysql.NewDSN("pt-agent@tcp(leonardo.is.awesome.too:7777)/")
 	t.Assert(err, IsNil)
 	expectedArgs = []string{
+		"--sleep", mysql.PT_SLEEP_SECONDS,
 		"--user", "pt-agent",
 		"--host", "leonardo.is.awesome.too",
 		"--port", "7777",
@@ -229,6 +234,7 @@ func (s *ManagerTestSuite) TestParsingParamsWithoutUser(t *C) {
 	dsn, err = mysql.NewDSN(":LukaszIsUberAwesome@unix(/pablo/is/awesome)/")
 	t.Assert(err, IsNil)
 	expectedArgs = []string{
+		"--sleep", mysql.PT_SLEEP_SECONDS,
 		"--password", "LukaszIsUberAwesome",
 		"--socket", "/pablo/is/awesome",
 	}
@@ -238,6 +244,7 @@ func (s *ManagerTestSuite) TestParsingParamsWithoutUser(t *C) {
 	dsn, err = mysql.NewDSN(":LukaszIsUberAwesome@tcp(leonardo.is.awesome.too:7777)/")
 	t.Assert(err, IsNil)
 	expectedArgs = []string{
+		"--sleep", mysql.PT_SLEEP_SECONDS,
 		"--password", "LukaszIsUberAwesome",
 		"--host", "leonardo.is.awesome.too",
 		"--port", "7777",

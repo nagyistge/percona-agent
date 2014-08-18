@@ -77,7 +77,11 @@ func (m *MySQL) Handle(protoCmd *proto.Cmd) *proto.Reply {
 		m.logger.Error("pt-mysql-summary %s: %s", SERVICE_NAME, err)
 	}
 
-	return protoCmd.Reply(output, err)
+	result := &proto.PtCmdResult{
+		Raw: output,
+	}
+
+	return protoCmd.Reply(result, err)
 }
 
 /////////////////////////////////////////////////////////////////////////////

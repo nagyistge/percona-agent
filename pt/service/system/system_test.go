@@ -100,8 +100,8 @@ func (s *ManagerTestSuite) TestService(t *C) {
 	t.Assert(gotReply, NotNil)
 	t.Assert(gotReply.Error, Equals, "")
 
-	var gotResult string
-	err := json.Unmarshal(gotReply.Data, &gotResult)
+	ptCmdResult := &proto.PtCmdResult{}
+	err := json.Unmarshal(gotReply.Data, &ptCmdResult)
 	t.Assert(err, IsNil)
 	headers := []string{
 		"# Percona Toolkit System Summary Report #####################",
@@ -123,6 +123,6 @@ func (s *ManagerTestSuite) TestService(t *C) {
 		"# The End ###################################################",
 	}
 	for i := range headers {
-		t.Check(gotResult, MatchesMultiline, headers[i])
+		t.Check(ptCmdResult.Raw, MatchesMultiline, headers[i])
 	}
 }

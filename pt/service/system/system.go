@@ -52,5 +52,9 @@ func (s *System) Handle(protoCmd *proto.Cmd) *proto.Reply {
 		s.logger.Error("pt-summary %s: %s", SERVICE_NAME, err)
 	}
 
-	return protoCmd.Reply(output, err)
+	result := &proto.PtCmdResult{
+		Raw: output,
+	}
+
+	return protoCmd.Reply(result, err)
 }
