@@ -32,14 +32,16 @@ const (
 )
 
 type MySQL struct {
-	logger *pct.Logger
-	ir     *instance.Repo
+	CmdName string
+	logger  *pct.Logger
+	ir      *instance.Repo
 }
 
 func NewMySQL(logger *pct.Logger, ir *instance.Repo) *MySQL {
 	return &MySQL{
-		logger: logger,
-		ir:     ir,
+		CmdName: "pt-mysql-summary",
+		logger:  logger,
+		ir:      ir,
 	}
 }
 
@@ -71,10 +73,10 @@ func (m *MySQL) Handle(protoCmd *proto.Cmd) *proto.Reply {
 	args := CreateParamsForPtMySQLSummary(dsn)
 
 	// Run ptMySQLSummary with params
-	ptMySQLSummary := cmd.New("pt-mysql-summary", args...)
+	ptMySQLSummary := cmd.New(m.CmdName, args...)
 	output, err := ptMySQLSummary.Run()
 	if err != nil {
-		m.logger.Error("pt-mysql-summary %s: %s", SERVICE_NAME, err)
+		m.logger.Error("%s %s: %s", m.CmdName, SERVICE_NAME, err)
 	}
 
 	result := &proto.PtCmdResult{

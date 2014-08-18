@@ -158,6 +158,28 @@ func (s *ManagerTestSuite) TestService(t *C) {
 	}
 }
 
+func (s *ManagerTestSuite) TestExecutableNotFound(t *C) {
+	// Create service
+	service := mysql.NewMySQL(s.logger, s.rir)
+	// Fake executable name to trigger "unknown executable" error
+	service.CmdName = "unknown-executable"
+
+	data, err := json.Marshal(&s.mysqlInstance)
+	t.Assert(err, IsNil)
+
+	cmd := &proto.Cmd{
+		Service: "Summary",
+		Cmd:     "mysql",
+		Data:    data,
+	}
+
+	gotReply := service.Handle(cmd)
+	t.Assert(gotReply, NotNil)
+	// Error is like code error for web-app, it depends on this string
+	// changing this string means breaking contract between agent/api and web-app
+	t.Assert(gotReply.Error, Equals, "Executable file not found in $PATH")
+}
+
 func (s *ManagerTestSuite) TestParsingParamsWithSocket(t *C) {
 	dsn, err := mysql.NewDSN("pt-agent:PabloIsAwesome@unix(/var/lib/mysql/mysql.sock)/")
 	t.Assert(err, IsNil)

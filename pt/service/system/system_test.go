@@ -126,3 +126,21 @@ func (s *ManagerTestSuite) TestService(t *C) {
 		t.Check(ptCmdResult.Raw, MatchesMultiline, headers[i])
 	}
 }
+
+func (s *ManagerTestSuite) TestExecutableNotFound(t *C) {
+	// Create service
+	service := system.NewSystem(s.logger)
+	// Fake executable name to trigger "unknown executable" error
+	service.CmdName = "unknown-executable"
+
+	cmd := &proto.Cmd{
+		Service: "Summary",
+		Cmd:     "system",
+	}
+
+	gotReply := service.Handle(cmd)
+	t.Assert(gotReply, NotNil)
+	// Error is like code error for web-app, it depends on this string
+	// changing this string means breaking contract between agent/api and web-app
+	t.Assert(gotReply.Error, Equals, "Executable file not found in $PATH")
+}

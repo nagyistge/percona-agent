@@ -29,12 +29,14 @@ const (
 )
 
 type System struct {
-	logger *pct.Logger
+	CmdName string
+	logger  *pct.Logger
 }
 
 func NewSystem(logger *pct.Logger) *System {
 	return &System{
-		logger: logger,
+		CmdName: "pt-summary",
+		logger:  logger,
 	}
 }
 
@@ -46,10 +48,10 @@ func (s *System) Handle(protoCmd *proto.Cmd) *proto.Reply {
 	args := []string{
 		"--sleep", PT_SLEEP_SECONDS,
 	}
-	ptSummary := cmd.New("pt-summary", args...)
+	ptSummary := cmd.New(s.CmdName, args...)
 	output, err := ptSummary.Run()
 	if err != nil {
-		s.logger.Error("pt-summary %s: %s", SERVICE_NAME, err)
+		s.logger.Error("%s %s: %s", s.CmdName, SERVICE_NAME, err)
 	}
 
 	result := &proto.PtCmdResult{
