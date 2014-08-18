@@ -76,7 +76,7 @@ func (m *MySQL) Handle(protoCmd *proto.Cmd) *proto.Reply {
 	ptMySQLSummary := cmd.New(m.CmdName, args...)
 	output, err := ptMySQLSummary.Run()
 	if err != nil {
-		m.logger.Error("%s %s: %s", m.CmdName, SERVICE_NAME, err)
+		m.logger.Error(fmt.Sprintf("%s: %s", m.CmdName, err))
 	}
 
 	result := &proto.PtCmdResult{

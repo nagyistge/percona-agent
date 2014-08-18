@@ -38,16 +38,16 @@ func Test(t *testing.T) { TestingT(t) }
 // Manager test suite
 /////////////////////////////////////////////////////////////////////////////
 
-type ManagerTestSuite struct {
+type TestSuite struct {
 	logChan chan *proto.LogEntry
 	logger  *pct.Logger
 	tmpDir  string
 	api     *mock.API
 }
 
-var _ = Suite(&ManagerTestSuite{})
+var _ = Suite(&TestSuite{})
 
-func (s *ManagerTestSuite) SetUpSuite(t *C) {
+func (s *TestSuite) SetUpSuite(t *C) {
 	s.logChan = make(chan *proto.LogEntry, 10)
 	s.logger = pct.NewLogger(s.logChan, system.SERVICE_NAME+"-manager-test")
 
@@ -66,7 +66,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
 }
 
-func (s *ManagerTestSuite) SetUpTest(t *C) {
+func (s *TestSuite) SetUpTest(t *C) {
 	glob := filepath.Join(pct.Basedir.Dir("config"), "*")
 	files, err := filepath.Glob(glob)
 	if err != nil {
@@ -79,7 +79,7 @@ func (s *ManagerTestSuite) SetUpTest(t *C) {
 	}
 }
 
-func (s *ManagerTestSuite) TearDownSuite(t *C) {
+func (s *TestSuite) TearDownSuite(t *C) {
 	if err := os.RemoveAll(s.tmpDir); err != nil {
 		t.Error(err)
 	}
@@ -87,7 +87,7 @@ func (s *ManagerTestSuite) TearDownSuite(t *C) {
 
 // --------------------------------------------------------------------------
 
-func (s *ManagerTestSuite) TestService(t *C) {
+func (s *TestSuite) TestService(t *C) {
 	// Create service
 	service := system.NewSystem(s.logger)
 
@@ -127,7 +127,7 @@ func (s *ManagerTestSuite) TestService(t *C) {
 	}
 }
 
-func (s *ManagerTestSuite) TestExecutableNotFound(t *C) {
+func (s *TestSuite) TestExecutableNotFound(t *C) {
 	// Create service
 	service := system.NewSystem(s.logger)
 	// Fake executable name to trigger "unknown executable" error

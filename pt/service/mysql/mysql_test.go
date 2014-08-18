@@ -40,7 +40,7 @@ func Test(t *testing.T) { TestingT(t) }
 // Manager test suite
 /////////////////////////////////////////////////////////////////////////////
 
-type ManagerTestSuite struct {
+type TestSuite struct {
 	logChan       chan *proto.LogEntry
 	logger        *pct.Logger
 	tickChan      chan time.Time
@@ -53,9 +53,9 @@ type ManagerTestSuite struct {
 	api           *mock.API
 }
 
-var _ = Suite(&ManagerTestSuite{})
+var _ = Suite(&TestSuite{})
 
-func (s *ManagerTestSuite) SetUpSuite(t *C) {
+func (s *TestSuite) SetUpSuite(t *C) {
 	s.dsn = os.Getenv("PCT_TEST_MYSQL_DSN")
 	if s.dsn == "" {
 		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
@@ -90,7 +90,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
 }
 
-func (s *ManagerTestSuite) SetUpTest(t *C) {
+func (s *TestSuite) SetUpTest(t *C) {
 	glob := filepath.Join(pct.Basedir.Dir("config"), "*")
 	files, err := filepath.Glob(glob)
 	if err != nil {
@@ -103,7 +103,7 @@ func (s *ManagerTestSuite) SetUpTest(t *C) {
 	}
 }
 
-func (s *ManagerTestSuite) TearDownSuite(t *C) {
+func (s *TestSuite) TearDownSuite(t *C) {
 	if err := os.RemoveAll(s.tmpDir); err != nil {
 		t.Error(err)
 	}
@@ -111,7 +111,7 @@ func (s *ManagerTestSuite) TearDownSuite(t *C) {
 
 // --------------------------------------------------------------------------
 
-func (s *ManagerTestSuite) TestService(t *C) {
+func (s *TestSuite) TestService(t *C) {
 	// Create service
 	service := mysql.NewMySQL(s.logger, s.rir)
 
@@ -158,7 +158,7 @@ func (s *ManagerTestSuite) TestService(t *C) {
 	}
 }
 
-func (s *ManagerTestSuite) TestExecutableNotFound(t *C) {
+func (s *TestSuite) TestExecutableNotFound(t *C) {
 	// Create service
 	service := mysql.NewMySQL(s.logger, s.rir)
 	// Fake executable name to trigger "unknown executable" error
@@ -180,7 +180,7 @@ func (s *ManagerTestSuite) TestExecutableNotFound(t *C) {
 	t.Assert(gotReply.Error, Equals, "Executable file not found in $PATH")
 }
 
-func (s *ManagerTestSuite) TestParsingParamsWithSocket(t *C) {
+func (s *TestSuite) TestParsingParamsWithSocket(t *C) {
 	dsn, err := mysql.NewDSN("pt-agent:PabloIsAwesome@unix(/var/lib/mysql/mysql.sock)/")
 	t.Assert(err, IsNil)
 	expectedArgs := []string{
@@ -193,7 +193,7 @@ func (s *ManagerTestSuite) TestParsingParamsWithSocket(t *C) {
 	t.Assert(gotArgs, DeepEquals, expectedArgs)
 }
 
-func (s *ManagerTestSuite) TestParsingParamsWithHostname(t *C) {
+func (s *TestSuite) TestParsingParamsWithHostname(t *C) {
 	dsn, err := mysql.NewDSN("pt-agent:PabloIsAwesome@tcp(leonardo.is.awesome.too:7777)/")
 	t.Assert(err, IsNil)
 	expectedArgs := []string{
@@ -207,7 +207,7 @@ func (s *ManagerTestSuite) TestParsingParamsWithHostname(t *C) {
 	t.Assert(gotArgs, DeepEquals, expectedArgs)
 }
 
-func (s *ManagerTestSuite) TestParsingParamsWithHostnameAndPort(t *C) {
+func (s *TestSuite) TestParsingParamsWithHostnameAndPort(t *C) {
 	dsn, err := mysql.NewDSN("pt-agent:PabloIsAwesome@tcp(leonardo.is.awesome.too:7777)/")
 	t.Assert(err, IsNil)
 	expectedArgs := []string{
@@ -221,7 +221,7 @@ func (s *ManagerTestSuite) TestParsingParamsWithHostnameAndPort(t *C) {
 	t.Assert(gotArgs, DeepEquals, expectedArgs)
 }
 
-func (s *ManagerTestSuite) TestParsingParamsWithoutPassword(t *C) {
+func (s *TestSuite) TestParsingParamsWithoutPassword(t *C) {
 	var dsn *mysql.DSN
 	var err error
 	var gotArgs, expectedArgs []string
@@ -248,7 +248,7 @@ func (s *ManagerTestSuite) TestParsingParamsWithoutPassword(t *C) {
 	t.Assert(gotArgs, DeepEquals, expectedArgs)
 }
 
-func (s *ManagerTestSuite) TestParsingParamsWithoutUser(t *C) {
+func (s *TestSuite) TestParsingParamsWithoutUser(t *C) {
 	var dsn *mysql.DSN
 	var err error
 	var gotArgs, expectedArgs []string
