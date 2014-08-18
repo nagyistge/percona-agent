@@ -24,7 +24,8 @@ import (
 )
 
 const (
-	SERVICE_NAME = "system"
+	SERVICE_NAME     = "system"
+	PT_SLEEP_SECONDS = "4"
 )
 
 type System struct {
@@ -42,7 +43,10 @@ func NewSystem(logger *pct.Logger) *System {
 /////////////////////////////////////////////////////////////////////////////
 
 func (s *System) Handle(protoCmd *proto.Cmd) *proto.Reply {
-	ptSummary := cmd.New("pt-summary")
+	args := []string{
+		"--sleep", PT_SLEEP_SECONDS,
+	}
+	ptSummary := cmd.New("pt-summary", args...)
 	output, err := ptSummary.Run()
 	if err != nil {
 		s.logger.Error("pt-summary %s: %s", SERVICE_NAME, err)

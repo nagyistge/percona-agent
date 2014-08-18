@@ -27,7 +27,8 @@ import (
 )
 
 const (
-	SERVICE_NAME = "mysql"
+	SERVICE_NAME     = "mysql"
+	PT_SLEEP_SECONDS = "4"
 )
 
 type MySQL struct {
@@ -96,6 +97,7 @@ func getServiceInstance(protoCmd *proto.Cmd) (serviceInstance *proto.ServiceInst
 }
 
 func CreateParamsForPtMySQLSummary(dsn *DSN) (args []string) {
+	args = append(args, "--sleep", PT_SLEEP_SECONDS)
 	if dsn.user != "" {
 		args = append(args, "--user", dsn.user)
 	}
