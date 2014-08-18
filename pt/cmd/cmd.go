@@ -28,6 +28,7 @@ var (
 )
 
 var (
+	ErrNotFound                = errors.New("Executable file not found in $PATH")
 	ErrTimeout                 = errors.New("Timeout")
 	ErrKillProcessAfterTimeout = errors.New("Failed to kill process after timeout")
 )
@@ -64,6 +65,10 @@ func (c *Cmd) Run() (output string, err error) {
 		}
 		return "", ErrTimeout
 	case err = <-errChan:
+		execError, ok := err.(*exec.Error)
+		if ok && execError.Err == exec.ErrNotFound {
+			return "", ErrNotFound
+		}
 		return "", err
 	case output = <-outChan:
 		return output, nil
