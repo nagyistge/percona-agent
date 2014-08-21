@@ -20,14 +20,15 @@ package mysql
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
 	_ "github.com/arnehormann/mysql"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mm"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
-	"strconv"
-	"strings"
-	"time"
 )
 
 type Monitor struct {
@@ -201,6 +202,7 @@ func (m *Monitor) run() {
 		select {
 		case now := <-m.tickChan:
 			m.logger.Debug("run:collect:start")
+			start := time.Now().UnixNano()
 			if !m.connected {
 				m.logger.Debug("run:collect:disconnected")
 				lastError = "Not connected to MySQL"
@@ -247,6 +249,13 @@ func (m *Monitor) run() {
 				}
 			}
 
+			end := time.Now().UnixNano()
+			diff := (end - start) / 1e6 // Time in mililiseconds
+			// Time took > 10% of interval in milliseconds (0.10 * 1000 = 100)
+			if diff > int64(m.config.Collect*100) {
+				c.Metrics = []mm.Metric{}
+				m.logger.Debug(fmt.Sprintf("run:collect took more than 10% of interval window (%d milliseconds). Ignoring", diff))
+			}
 			// Send the metrics to an mm.Aggregator.
 			m.status.Update(m.name, "Sending metrics")
 			if len(c.Metrics) > 0 {
