@@ -212,6 +212,7 @@ func run() error {
 	dataManager := data.NewManager(
 		pct.NewLogger(logChan, "data"),
 		pct.Basedir.Dir("data"),
+		pct.Basedir.Dir("trash"),
 		hostname,
 		dataClient,
 	)

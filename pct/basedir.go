@@ -32,6 +32,7 @@ const (
 	CONFIG_DIR   = "config"
 	DATA_DIR     = "data"
 	BIN_DIR      = "bin"
+	TRASH_DIR    = "trash"
 	START_LOCK   = "start.lock"
 	START_SCRIPT = "start.sh"
 )
@@ -41,6 +42,7 @@ type basedir struct {
 	configDir string
 	dataDir   string
 	binDir    string
+	trashDir  string
 }
 
 var Basedir basedir
@@ -74,6 +76,11 @@ func (b *basedir) Init(path string) error {
 		return err
 	}
 
+	b.trashDir = filepath.Join(b.path, TRASH_DIR)
+	if err := MakeDir(b.trashDir); err != nil && !os.IsExist(err) {
+		return err
+	}
+
 	return nil
 }
 
@@ -89,6 +96,8 @@ func (b *basedir) Dir(service string) string {
 		return b.dataDir
 	case "bin":
 		return b.binDir
+	case "trash":
+		return b.trashDir
 	default:
 		log.Panic("Invalid service: " + service)
 	}
