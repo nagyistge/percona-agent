@@ -144,9 +144,13 @@ func (s *TestSuite) TestSend(t *C) {
 		"ws-link": URL,
 	})
 
-	// Disconnect should not return an error.
-	err = ws.Disconnect()
-	t.Assert(err, IsNil)
+	ws.Disconnect()
+
+	select {
+	case connected = <-ws.ConnectChan():
+	case <-time.After(1 * time.Second):
+		t.Error("No connected=false notify on Disconnect()")
+	}
 
 	// Status should report disconnected and still the proper link.
 	status = ws.Status()
@@ -198,8 +202,7 @@ func (s *TestSuite) TestChannels(t *C) {
 	t.Assert(m["Cmd"], Equals, "Status")
 	t.Assert(m["Error"], Equals, "")
 
-	err = ws.Disconnect()
-	t.Assert(err, IsNil)
+	ws.Disconnect()
 }
 
 func (s *TestSuite) TestApiDisconnect(t *C) {
@@ -313,8 +316,7 @@ func (s *TestSuite) TestErrorChan(t *C) {
 	t.Assert(len(got), Equals, 1)
 	t.Assert(got[0], NotNil)
 
-	err = ws.Disconnect()
-	t.Assert(err, IsNil)
+	ws.Disconnect()
 }
 
 func (s *TestSuite) TestConnectBackoff(t *C) {
@@ -468,4 +470,24 @@ func (s *TestSuite) TestWssConnection(t *C) {
 	t.Assert(len(got), Equals, 1)
 
 	ws.Conn().Close()
+}
+
+func (s *TestSuite) TestSendBytes(t *C) {
+	ws, err := client.NewWebsocketClient(s.logger, s.api, "agent")
+	t.Assert(err, IsNil)
+
+	ws.ConnectOnce(5)
+	c := <-mock.ClientConnectChan
+
+	data := []byte(`["Hello"]`)
+	err = ws.SendBytes(data)
+	t.Assert(err, IsNil)
+
+	// Recv what we just sent.
+	got := test.WaitData(c.RecvChan)
+	t.Assert(len(got), Equals, 1)
+	gotData := got[0].([]interface{})
+	t.Check(gotData[0].(string), Equals, "Hello")
+
+	ws.DisconnectOnce()
 }
