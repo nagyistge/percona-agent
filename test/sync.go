@@ -101,39 +101,22 @@ func WaitBytes(dataChan chan []byte) [][]byte {
 	return buf
 }
 
-func WaitLog(recvDataChan chan interface{}, n int) []proto.LogEntry {
-	var buf []proto.LogEntry
-	var cnt int = 0
-	timeout := time.After(300 * time.Millisecond)
-FIRST_LOOP:
-	for {
+func WaitLog(recvDataChan chan interface{}, want int) []proto.LogEntry {
+	got := 0
+	buf := []proto.LogEntry{}
+	timeout := time.After(1 * time.Second)
+	for got < want {
 		select {
 		case data := <-recvDataChan:
 			logEntry := *data.(*proto.LogEntry)
 			logEntry.Ts = Ts
 			buf = append(buf, logEntry)
-			cnt++
-			if n > 0 && cnt >= n {
-				break FIRST_LOOP
-			}
+			got++
 		case <-timeout:
-			break FIRST_LOOP
+			return buf
 		}
 	}
-	if n > 0 && cnt >= n {
-	SECOND_LOOP:
-		for {
-			select {
-			case data := <-recvDataChan:
-				logEntry := *data.(*proto.LogEntry)
-				logEntry.Ts = Ts
-				buf = append(buf, logEntry)
-				cnt++
-			case <-time.After(100 * time.Millisecond):
-				break SECOND_LOOP
-			}
-		}
-	}
+
 	return buf
 }
 

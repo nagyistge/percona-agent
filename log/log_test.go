@@ -31,6 +31,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Hook gocheck into the "go test" runner.
@@ -67,22 +68,30 @@ func (s *RelayTestSuite) SetUpSuite(t *C) {
 	go s.relay.Run() // calls client.Connect()
 }
 
-func (s *RelayTestSuite) TearDownSuite(t *C) {
-	os.Remove(s.logFile)
-}
-
 func (s *RelayTestSuite) SetUpTest(t *C) {
 	s.relay.LogLevelChan() <- proto.LOG_INFO
+	s.client.SetConnectChan(nil)
 
-	// Drain the log so one test doesn't affect another.
-	_ = test.WaitLog(s.recvChan, 0)
+	test.DrainLogChan(s.logChan)
+	test.DrainRecvData(s.recvChan)
+
+	if !test.WaitStatus(3, s.relay, "log-buf1", "0") {
+		status := s.relay.Status()
+		t.Log(status)
+		t.Fatal("First buffer full")
+	}
+
+	if !test.WaitStatus(3, s.relay, "log-buf2", "0") {
+		status := s.relay.Status()
+		t.Log(status)
+		t.Fatal("Second buffer has overflow")
+	}
+
+	test.DrainTraceChan(s.client.TraceChan)
 }
 
-func (s *RelayTestSuite) TearDownTest(t *C) {
-	// Drain the log so one test doesn't affect another.
-	_ = test.WaitLog(s.recvChan, 0)
-
-	s.client.SetConnectChan(nil)
+func (s *RelayTestSuite) TearDownSuite(t *C) {
+	os.Remove(s.logFile)
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -213,19 +222,23 @@ func (s *RelayTestSuite) TestLogFile(t *C) {
 func (s *RelayTestSuite) TestOfflineBuffering(t *C) {
 	l := s.logger
 
-	// We're going to cause the relay's client Recv() to get an error
+	// We're going to cause the relay's client Send() to get an error
 	// which will cause the relay to connect again.  We block this 2nd
-	// connect by blocking this chan.  End result: relay remains offline.
+	// connect by blocking the connectChan.  End result: relay is offline.
 	s.client.SetConnectChan(s.connectChan)
 	doneChan := make(chan bool, 1)
 	go func() {
-		s.client.RecvError <- io.EOF
+		s.client.SendError <- io.EOF
 		doneChan <- true
 	}()
-	// Wait for the relay to recv the recv error.
+
+	// Send a log entry so to cause the fake error ^
+	l.Info("I get the Send error")
+
+	// Wait for the relay to recv the error.
 	<-doneChan
 
-	// Wait for the relay to call client.Connect().
+	// Wait for the relay to disconnect then call client.Connect().
 	<-s.connectChan
 
 	// Double-check that relay is offline.
@@ -240,7 +253,7 @@ func (s *RelayTestSuite) TestOfflineBuffering(t *C) {
 	// (len(got)==0).  Either condition is correct for this test.
 	l.Error("err1")
 	l.Error("err2")
-	got := test.WaitLog(s.recvChan, 0)
+	got := test.WaitLog(s.recvChan, -1)
 	if len(got) > 0 && got[0].Service != "log" {
 		t.Errorf("Log entries are not sent while offline: %+v", got)
 	}
@@ -252,148 +265,196 @@ func (s *RelayTestSuite) TestOfflineBuffering(t *C) {
 	}
 
 	// Wait for the relay resend what it had ^ buffered.
-	got = test.WaitLog(s.recvChan, 3)
+	got = test.WaitLog(s.recvChan, 5)
 	expect := []proto.LogEntry{
-		{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: "connected: false"},
+		{Ts: test.Ts, Level: proto.LOG_INFO, Service: "test", Msg: "I get the Send error"},
+		{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: "Lost connection to API"},
 		{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: "err1"},
 		{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: "err2"},
-		{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: "connected: true"},
+		{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log", Msg: "Connected to API"},
 	}
 	if same, diff := test.IsDeeply(got, expect); !same {
+		test.Dump(got)
 		t.Error(diff)
 	}
 }
 
-func (s *RelayTestSuite) TestOfflineBufferOverflow(t *C) {
+func (s *RelayTestSuite) TestOffline1stBufferOverflow(t *C) {
 	// Same magic as in TestOfflineBuffering to force relay offline.
 	l := s.logger
 	s.client.SetConnectChan(s.connectChan)
 	doneChan := make(chan bool, 1)
 	go func() {
-		s.client.RecvError <- io.EOF
+		s.client.SendError <- io.EOF
 		doneChan <- true
 	}()
+	l.Info("I get the Send error")
 	<-doneChan
 	<-s.connectChan
 	// Relay is offline, trying to connect.
 
 	// Overflow the first buffer but not the second.  We should get all
-	// log entries back.
-	for i := 0; i < log.BUFFER_SIZE+1; i++ {
+	// log entries back.  We overflow it by 4 entries:
+	// +1			I get the Send error
+	// +2			Lost connection to API
+	// buf size		a:n (loop below)
+	// +3			a:n (loop below)
+	// +4			Connected to API
+	for i := 1; i <= log.BUFFER_SIZE+1; i++ {
 		l.Error(fmt.Sprintf("a:%d", i))
 	}
+
+	// Wait until the first buf is full.
 	if !test.WaitStatus(3, s.relay, "log-buf1", fmt.Sprintf("%d", log.BUFFER_SIZE)) {
+		status := s.relay.Status()
+		t.Log(status)
 		t.Error("First buffer full")
 	}
 
-	// Unblock the relay's connect attempt.
+	// Wait until the second buf has the overflow which is 3 not 4 here because
+	// "Connected to API" won't be logged until the next block...
+	if !test.WaitStatus(3, s.relay, "log-buf2", "3") {
+		status := s.relay.Status()
+		t.Log(status)
+		t.Error("Second buffer has overflow")
+	}
+
+	// Unblock the relay's connect attempt.  This causes "Connected to API" to
+	// be log (+4 overflow).
 	s.connectChan <- true
 	if !test.WaitStatus(1, s.relay, "ws", "Connected") {
 		t.Fatal("Relay connects")
 	}
 
 	// Wait for the relay resend what it had ^ buffered.
-	// +2 for "connected: false" and "connected: true".
-	got := test.WaitLog(s.recvChan, log.BUFFER_SIZE+1+2)
+	got := test.WaitLog(s.recvChan, log.BUFFER_SIZE+4)
 
-	expect := make([]proto.LogEntry, log.BUFFER_SIZE+1+2)
-	expect[0] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: "connected: false"}
-	for i, n := 0, 1; i < log.BUFFER_SIZE+1; i, n = i+1, n+1 {
+	// Check that we still get all log entries.
+	expect := make([]proto.LogEntry, log.BUFFER_SIZE+4)
+	// First two msgs (+1 and +2):
+	expect[0] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_INFO, Service: "test", Msg: "I get the Send error"}
+	expect[1] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: "Lost connection to API"}
+	// The overflow (buf size and +3):
+	for i, n := 1, 2; i <= log.BUFFER_SIZE+1; i, n = i+1, n+1 {
 		expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: fmt.Sprintf("a:%d", i)}
 	}
-	expect[log.BUFFER_SIZE+1+1] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: "connected: true"}
+	// Last msg (+4):
+	expect[len(expect)-1] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log", Msg: "Connected to API"}
 	if same, diff := test.IsDeeply(got, expect); !same {
 		t.Error(diff)
 	}
 
-	if !test.WaitStatus(3, s.relay, "log-buf2", "0") {
+	// Both bufs should be empty now.
+	if !test.WaitStatus(2, s.relay, "log-buf1", "0") {
 		status := s.relay.Status()
 		t.Log(status)
 		t.Fatal("1st buf empty")
 	}
-	expect = []proto.LogEntry{}
+	if !test.WaitStatus(2, s.relay, "log-buf2", "0") {
+		status := s.relay.Status()
+		t.Log(status)
+		t.Fatal("2nd buf empty")
+	}
+}
 
-	// Force the relay offline again, then overflow both buffers. We should get
-	// the first buffer, an entry about lost entries (from the second buffer),
-	// then the second buffer with the very latest.
+func (s *RelayTestSuite) TestOffline2ndBufferOverflow(t *C) {
+	// This test is like TestOffline1stBufferOverflow but now we'll overflow
+	// the 2nd buf too which causes us to lose some log entries and get a
+	// "Lost N log entries" warning.
+
+	// Same magic as in TestOfflineBuffering to force relay offline.
+	l := s.logger
+	s.client.SetConnectChan(s.connectChan)
+	doneChan := make(chan bool, 1)
 	go func() {
-		s.client.RecvError <- io.EOF
+		s.client.SendError <- io.EOF
 		doneChan <- true
 	}()
+	l.Info("I get the Send error")
 	<-doneChan
 	<-s.connectChan
 	// Relay is offline, trying to connect.
 
-	overflow := 3
-	for i := 0; i < (log.BUFFER_SIZE*2)+overflow; i++ {
+	// Overflow the 1st and 2nd buffs.  Note: there's already "I get the Send error" (+1)
+	// and "Lost connection to API" (+2) in the 1st buf.  The +1 here makes a +3 overflow.
+	for i := 1; i <= (log.BUFFER_SIZE*2)+1; i++ {
 		l.Error(fmt.Sprintf("b:%d", i))
 	}
-	if !test.WaitStatus(3, s.relay, "log-buf2", fmt.Sprintf("%d", overflow+1)) {
+
+	// Wait until the first buf is full.
+	if !test.WaitStatus(3, s.relay, "log-buf1", fmt.Sprintf("%d", log.BUFFER_SIZE)) {
+		status := s.relay.Status()
+		t.Log(status)
+		t.Error("First buffer full")
+	}
+
+	// For for the 2nd buf to be full.
+	if !test.WaitStatus(3, s.relay, "log-buf2", "3") {
 		status := s.relay.Status()
 		t.Log(status)
 		t.Fatal("2nd buf full")
 	}
 
-	// Unblock the relay's connect attempt.
+	// Unblock the relay's connect attempt.  This adds "Connected to API" (+4).
 	s.connectChan <- true
 	if !test.WaitStatus(1, s.relay, "ws", "Connected") {
 		t.Fatal("Relay connects")
 	}
 
-	// +3 for "connected: false", "Lost N entries", and "connected: true".
-	got = test.WaitLog(s.recvChan, log.BUFFER_SIZE+overflow+3)
+	nSum := log.BUFFER_SIZE + 5
+	got := test.WaitLog(s.recvChan, nSum)
+	if len(got) < nSum {
+		status := s.relay.Status()
+		t.Log(status)
+		t.Fatalf("Expected %d log entrires, got %d", nSum, len(got))
+	}
 
-	expect = make([]proto.LogEntry, log.BUFFER_SIZE+overflow+3)
-	expect[0] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: "connected: false"}
-	n := 1
-	// If buf size is 10, then we should "Lost connection", get 0-8, a "Lost 10" message for 9-18, then 19-22.
+	// When the 2nd buf overflows, it's reset and the overflow msg becomes buf2[0].
+	// After re-connecting, a "Lost N log entries" msg is sent (+5).  So if buf size
+	// is 10, then we should get:
 	/**
-	 *  /10, first buffer
-	 * 1		Lost connection
-	 * 2		entry 0
-	 * 3		entry 1
-	 * 4		entry 2
-	 * 5		entry 3
-	 * 6		entry 4
-	 * 7		entry 5
-	 * 8		entry 6
-	 * 9		entry 7
+	 * buf1:
+	 *  1		I get the Send error (+1)
+	 *  2		Lost connection to API (+2)
+	 *  3		entry 1
+	 *  4		entry 2
+	 *  5		entry 3
+	 *  6		entry 4
+	 *  7		entry 5
+	 *  8		entry 6
+	 *  9		entry 7
 	 * 10		entry 8
-	 * Entry 9-18 into second buffer, entry 19 causes the overflow and reset:
-	 *  /10, second buffer
-	 * 1		entry 19
-	 * 2		entry 20
-	 * 3		entry 21
-	 * 4		entry 22
+	 * ---		Lost 10 log entries (+5)
+	 * 9-10 and 11-18 go into buf2, 19 overlows and resets buf2:
+	 * buf2:
+	 *  1		entry 19
+	 *  2		entry 20
+	 *  3       entry 21 (+3)
+	 * ---		Connected to API (+4)
 	 */
-	for i := 0; i < log.BUFFER_SIZE-1; i++ {
+	expect := make([]proto.LogEntry, nSum)
+	expect[0] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_INFO, Service: "test", Msg: "I get the Send error"}
+	expect[1] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: "Lost connection to API"}
+	n := 2
+	// entries 1-8 (buf size 10 - 2 = 8)
+	for i := 1; i <= log.BUFFER_SIZE-2; i++ {
 		expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: fmt.Sprintf("b:%d", i)}
 		n++
 	}
+	// n=10 (buf2[0] if buf size = 10)
+	// This is logged after resending buf1 and before resending buf2:
 	expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: fmt.Sprintf("Lost %d log entries", log.BUFFER_SIZE)}
 	n++
-	for i, j := log.BUFFER_SIZE, log.BUFFER_SIZE*2-1; i < log.BUFFER_SIZE+overflow+1; i, j = i+1, j+1 {
-		expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: fmt.Sprintf("b:%d", j)}
+	// buf2:
+	for i := log.BUFFER_SIZE*2 - 1; n < len(expect)-1; i++ {
+		expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: fmt.Sprintf("b:%d", i)}
 		n++
 	}
-	expect[log.BUFFER_SIZE+overflow+2] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: "connected: true"}
+	// Last msg (+4):
+	expect[len(expect)-1] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log", Msg: "Connected to API"}
+
 	if same, diff := test.IsDeeply(got, expect); !same {
-		// @todo: this test may still be unstable
-		n := len(got)
-		if len(expect) > n {
-			n = len(expect)
-		}
-		for i := 0; i < n; i++ {
-			var gotL proto.LogEntry
-			var expectL proto.LogEntry
-			if i < len(got) {
-				gotL = got[i]
-			}
-			if i < len(expect) {
-				expectL = expect[i]
-			}
-			t.Logf("%+v %+v\n", gotL, expectL)
-		}
+		test.Dump(got)
 		t.Error(diff)
 	}
 }
@@ -423,8 +484,8 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 		t.Fatal(err)
 	}
 
-	s.sendChan = make(chan interface{}, 5)
-	s.recvChan = make(chan interface{}, 5)
+	s.sendChan = make(chan interface{}, log.BUFFER_SIZE*3)
+	s.recvChan = make(chan interface{}, log.BUFFER_SIZE*3)
 	s.connectChan = make(chan bool)
 	s.client = mock.NewWebsocketClient(nil, nil, s.sendChan, s.recvChan)
 	s.logChan = make(chan *proto.LogEntry, log.BUFFER_SIZE*3)
@@ -433,7 +494,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 
 func (s *ManagerTestSuite) TearDownSuite(t *C) {
 	if err := os.RemoveAll(s.tmpDir); err != nil {
-		fmt.Println(err)
+		t.Error(err)
 	}
 }
 
@@ -598,4 +659,70 @@ func (s *ManagerTestSuite) TestLogService(t *C) {
 	t.Check(status["ws"], Equals, "Connected")
 	t.Check(status["log-file"], Equals, newLogFile)
 	t.Check(status["log-level"], Equals, "warning")
+}
+
+func (s *ManagerTestSuite) TestReconnect(t *C) {
+	config := &log.Config{
+		File:  s.logFile,
+		Level: "info",
+	}
+	pct.Basedir.WriteConfig("log", config)
+
+	m := log.NewManager(s.client, s.logChan)
+	err := m.Start()
+	t.Assert(err, IsNil)
+
+	// Wait for relay to start and connect.
+	got := test.WaitLog(s.recvChan, 2)
+	expect := []proto.LogEntry{
+		{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log", Msg: "Started"},
+		{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log", Msg: "Connected to API"},
+	}
+	if same, diff := test.IsDeeply(got, expect); !same {
+		test.Dump(got)
+		t.Fatal(diff)
+	}
+
+	relay := m.Relay()
+	t.Assert(relay, NotNil)
+
+	logger := pct.NewLogger(relay.LogChan(), "log-svc-test")
+	logger.Info("before reconnect")
+
+	s.client.SetConnectChan(s.connectChan)
+
+	cmd := &proto.Cmd{
+		User:    "daniel",
+		Service: "log",
+		Cmd:     "Reconnect",
+	}
+	reply := m.Handle(cmd)
+	t.Check(reply.Error, Equals, "")
+
+	// Wait for relay to reconnect.
+	select {
+	case <-s.connectChan:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Relay did not reconnect")
+	}
+
+	// Let relay reconnect
+	s.connectChan <- true
+	if !test.WaitStatus(1, relay, "ws", "Connected") {
+		t.Fatal("Relay connects")
+	}
+
+	logger.Info("after reconnect")
+
+	got = test.WaitLog(s.recvChan, 4)
+	expect = []proto.LogEntry{
+		{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log-svc-test", Msg: "before reconnect"},
+		{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: "Lost connection to API"},
+		{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log", Msg: "Connected to API"},
+		{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log-svc-test", Msg: "after reconnect"},
+	}
+	if same, diff := test.IsDeeply(got, expect); !same {
+		test.Dump(got)
+		t.Error(diff)
+	}
 }

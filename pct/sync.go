@@ -21,7 +21,6 @@ import (
 	"fmt"
 	golog "log"
 	"os"
-	"path/filepath"
 	"time"
 )
 
@@ -93,16 +92,16 @@ func MakeStartLock() error {
 }
 
 func WaitStartLock() error {
-	startLock := filepath.Join(Basedir.Path(), "start.lock")
-	if startLockExists := FileExists(startLock); startLockExists {
+	startLockFile := Basedir.File("start-lock")
+	if startLockExists := FileExists(startLockFile); startLockExists {
 		golog.Printf("Start-lock file %s exists; agent starts when removed, else aborts in 1 minute...",
-			startLock)
+			startLockFile)
 		for i := 0; i < 60 && startLockExists; i++ {
 			time.Sleep(500 * time.Millisecond)
-			startLockExists = FileExists(startLock)
+			startLockExists = FileExists(startLockFile)
 		}
 		if startLockExists {
-			return fmt.Errorf("Start-lock file %s not removed after 1 minute", startLock)
+			return fmt.Errorf("Start-lock file %s not removed after 1 minute", startLockFile)
 		}
 	}
 	return nil

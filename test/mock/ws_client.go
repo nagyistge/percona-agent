@@ -32,6 +32,7 @@ type WebsocketClient struct {
 	testRecvDataChan chan interface{}
 	conn             *websocket.Conn
 	ErrChan          chan error
+	SendError        chan error
 	RecvError        chan error
 	connectChan      chan bool
 	testConnectChan  chan bool
@@ -52,6 +53,7 @@ func NewWebsocketClient(sendChan chan *proto.Cmd, recvChan chan *proto.Reply, se
 		testSendDataChan: sendDataChan,
 		testRecvDataChan: recvDataChan,
 		conn:             new(websocket.Conn),
+		SendError:        make(chan error),
 		RecvError:        make(chan error),
 		connectChan:      make(chan bool, 1),
 		RecvBytes:        make(chan []byte, 1),
@@ -70,10 +72,7 @@ func (c *WebsocketClient) Connect() {
 		c.mux2.Unlock()
 		unlocked = true
 		// Wait for test to let user/agent connect.
-		select {
-		case c.testConnectChan <- true:
-		default:
-		}
+		c.testConnectChan <- true
 		<-c.testConnectChan
 	}
 	if !unlocked {
@@ -95,6 +94,15 @@ func (c *WebsocketClient) ConnectOnce(timeout uint) error {
 
 func (c *WebsocketClient) Disconnect() error {
 	c.TraceChan <- "Disconnect"
+	c.connectChan <- false // to SUT
+	c.mux.Lock()
+	defer c.mux.Unlock()
+	c.connected = false
+	return nil
+}
+
+func (c *WebsocketClient) DisconnectOnce() error {
+	c.TraceChan <- "DisconnectOnce"
 	c.connectChan <- false
 	c.mux.Lock()
 	defer c.mux.Unlock()
@@ -135,6 +143,12 @@ func (c *WebsocketClient) RecvChan() chan *proto.Cmd {
 }
 
 func (c *WebsocketClient) Send(data interface{}, timeout uint) error {
+	c.TraceChan <- "Send"
+	select {
+	case err := <-c.SendError:
+		return err
+	default:
+	}
 	// Relay data from user to test.
 	c.testRecvDataChan <- data
 	return nil

@@ -25,6 +25,7 @@ import (
 	"github.com/percona/percona-agent/pct"
 	"github.com/peterbourgon/diskv"
 	"os"
+	"path"
 	"sync"
 	"time"
 )
@@ -32,6 +33,7 @@ import (
 const (
 	WRITE_BUFFER = 100
 	CACHE_SIZE   = 1024 * 1024 * 8 // 8M
+	BAD_DATA_DIR = "bad"           // in dataDir
 )
 
 var ErrSpoolTimeout = errors.New("Timeout spooling data")
@@ -42,28 +44,32 @@ type Spooler interface {
 	Status() map[string]string
 	Write(service string, data interface{}) error
 	Files() <-chan string
-	Read(key string) ([]byte, error)
-	Remove(key string) error
+	Read(file string) ([]byte, error)
+	Remove(file string) error
+	Reject(file string) error
 }
 
 // http://godoc.org/github.com/peterbourgon/diskv
 type DiskvSpooler struct {
 	logger   *pct.Logger
 	dataDir  string
+	trashDir string
 	hostname string
 	// --
-	sz       Serializer
-	dataChan chan *proto.Data
-	sync     *pct.SyncChan
-	cache    *diskv.Diskv
-	status   *pct.Status
-	mux      *sync.Mutex
+	sz           Serializer
+	dataChan     chan *proto.Data
+	sync         *pct.SyncChan
+	cache        *diskv.Diskv
+	status       *pct.Status
+	mux          *sync.Mutex
+	trashDataDir string
 }
 
-func NewDiskvSpooler(logger *pct.Logger, dataDir string, hostname string) *DiskvSpooler {
+func NewDiskvSpooler(logger *pct.Logger, dataDir, trashDir, hostname string) *DiskvSpooler {
 	s := &DiskvSpooler{
 		logger:   logger,
 		dataDir:  dataDir,
+		trashDir: trashDir,
 		hostname: hostname,
 		// --
 		dataChan: make(chan *proto.Data, WRITE_BUFFER),
@@ -79,11 +85,15 @@ func NewDiskvSpooler(logger *pct.Logger, dataDir string, hostname string) *Diskv
 /////////////////////////////////////////////////////////////////////////////
 
 func (s *DiskvSpooler) Start(sz Serializer) error {
-	// Create the data dir if necessary.
-	if err := os.Mkdir(s.dataDir, 0775); err != nil {
-		if !os.IsExist(err) {
-			return err
-		}
+	// Create the data dir if necessary.  Normally the manager does this,
+	// but it's necessary to create it here for testing.
+	if err := pct.MakeDir(s.dataDir); err != nil {
+		return err
+	}
+
+	s.trashDataDir = path.Join(s.trashDir, "data")
+	if err := pct.MakeDir(s.trashDataDir); err != nil {
+		return err
 	}
 
 	// T{} -> []byte
@@ -169,6 +179,20 @@ func (s *DiskvSpooler) Read(file string) ([]byte, error) {
 
 func (s *DiskvSpooler) Remove(file string) error {
 	return s.cache.Erase(file)
+}
+
+func (s *DiskvSpooler) Reject(file string) error {
+	if err := os.Rename(path.Join(s.dataDir, file), path.Join(s.trashDataDir, file)); err != nil {
+		return nil
+	}
+	// The removes the file from the cache, index, and disk, but we just
+	// moved the file so removing it from disk causes a "file not found"
+	// error which we can safely ignore.
+	err := s.Remove(file)
+	if !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 /////////////////////////////////////////////////////////////////////////////

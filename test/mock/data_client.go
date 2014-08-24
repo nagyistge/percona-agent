@@ -68,6 +68,10 @@ func (c *DataClient) Disconnect() error {
 	return nil
 }
 
+func (c *DataClient) DisconnectOnce() error {
+	return nil
+}
+
 func (c *DataClient) Start() {
 }
 
