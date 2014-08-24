@@ -33,7 +33,6 @@ import (
 const (
 	WRITE_BUFFER = 100
 	CACHE_SIZE   = 1024 * 1024 * 8 // 8M
-	BAD_DATA_DIR = "bad"           // in dataDir
 )
 
 var ErrSpoolTimeout = errors.New("Timeout spooling data")
@@ -91,6 +90,7 @@ func (s *DiskvSpooler) Start(sz Serializer) error {
 		return err
 	}
 
+	// Create basedir/trash/data/ for Reject().
 	s.trashDataDir = path.Join(s.trashDir, "data")
 	if err := pct.MakeDir(s.trashDataDir); err != nil {
 		return err
