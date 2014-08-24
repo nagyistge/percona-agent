@@ -34,6 +34,7 @@ import (
 	mrmsMonitor "github.com/percona/percona-agent/mrms/monitor"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
+	pctCmd "github.com/percona/percona-agent/pct/cmd"
 	"github.com/percona/percona-agent/qan"
 	"github.com/percona/percona-agent/query"
 	queryService "github.com/percona/percona-agent/query/service"
@@ -325,6 +326,9 @@ func run() error {
 		"sysconfig": sysconfigManager,
 		"query":     queryManager,
 	}
+
+	// Set the global pct/cmd.Factory, used for the Restart cmd.
+	pctCmd.Factory = &pctCmd.RealCmdFactory{}
 
 	agent := agent.NewAgent(
 		agentConfig,
