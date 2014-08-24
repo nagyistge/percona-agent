@@ -92,22 +92,19 @@ func (c *WebsocketClient) ConnectOnce(timeout uint) error {
 	return nil
 }
 
-func (c *WebsocketClient) Disconnect() error {
+func (c *WebsocketClient) Disconnect() {
 	c.TraceChan <- "Disconnect"
 	c.connectChan <- false // to SUT
 	c.mux.Lock()
 	defer c.mux.Unlock()
 	c.connected = false
-	return nil
 }
 
-func (c *WebsocketClient) DisconnectOnce() error {
+func (c *WebsocketClient) DisconnectOnce() {
 	c.TraceChan <- "DisconnectOnce"
-	c.connectChan <- false
 	c.mux.Lock()
 	defer c.mux.Unlock()
 	c.connected = false
-	return nil
 }
 
 func (c *WebsocketClient) Start() {
