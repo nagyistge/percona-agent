@@ -23,22 +23,27 @@ import (
 )
 
 type WebsocketClient interface {
-	Connect()
-	ConnectOnce(timeout uint) error
-	Disconnect() error
+	Conn() *websocket.Conn
 	Status() map[string]string
 
-	// Channel interface:
-	Start()
-	Stop()
-	SendChan() chan *proto.Reply
-	RecvChan() chan *proto.Cmd
-	ConnectChan() chan bool
-	ErrorChan() chan error
+	// Cmd/Reply chans:
+	Start()                      // start the send/recv chans
+	Stop()                       // stop the send/recv chans manually
+	RecvChan() chan *proto.Cmd   // get the (recv) cmdChan
+	SendChan() chan *proto.Reply // get the (send) replyChan
 
-	// Direct interface:
-	SendBytes(data []byte) error
-	Send(data interface{}, timeout uint) error
-	Recv(data interface{}, timeout uint) error
-	Conn() *websocket.Conn
+	// Async connect:
+	Connect()               // try forever to connect, notify via ConnectChan
+	Disconnect()            // disconnect manually, notify via ConnectChan
+	ConnectChan() chan bool // true on connect, false on disconnect
+	ErrorChan() chan error  // get err from send/recv chans
+
+	// Sync connect:
+	ConnectOnce(timeout uint) error
+	DisconnectOnce()
+
+	// Data transfer:
+	SendBytes(data []byte) error               // send data (data/sender)
+	Recv(data interface{}, timeout uint) error // recv proto.Response (data/sender)
+	Send(data interface{}, timeout uint) error // send proto.LogEntry (log/relay)
 }

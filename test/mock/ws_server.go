@@ -69,9 +69,10 @@ func (c *client) recv() {
 		var data interface{}
 		err := websocket.JSON.Receive(c.ws, &data)
 		if err != nil {
+			//log.Printf("ERROR: recv: %s\n", err)
 			break
 		}
-		// log.Printf("recv: %+v\n", data)
+		//log.Printf("recv: %+v\n", data)
 		c.RecvChan <- data
 	}
 }

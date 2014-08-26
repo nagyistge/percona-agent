@@ -138,8 +138,8 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		config, errs := m.GetConfig()
 		return cmd.Reply(config, errs...)
 	case "Reconnect":
-		err := m.client.Disconnect()
-		return cmd.Reply(nil, err)
+		m.client.Disconnect()
+		return cmd.Reply(nil)
 	default:
 		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}

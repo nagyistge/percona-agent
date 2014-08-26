@@ -22,16 +22,18 @@ import (
 )
 
 type Spooler struct {
-	FilesOut []string          // test provides
-	DataOut  map[string][]byte // test provides
-	DataIn   []interface{}
-	dataChan chan interface{}
+	FilesOut      []string          // test provides
+	DataOut       map[string][]byte // test provides
+	DataIn        []interface{}
+	dataChan      chan interface{}
+	RejectedFiles []string
 }
 
 func NewSpooler(dataChan chan interface{}) *Spooler {
 	s := &Spooler{
-		dataChan: dataChan,
-		DataIn:   []interface{}{},
+		dataChan:      dataChan,
+		DataIn:        []interface{}{},
+		RejectedFiles: []string{},
 	}
 	return s
 }
@@ -75,4 +77,9 @@ func (s *Spooler) Read(file string) ([]byte, error) {
 func (s *Spooler) Remove(file string) error {
 	delete(s.DataOut, file)
 	return nil
+}
+
+func (s *Spooler) Reject(file string) error {
+	s.RejectedFiles = append(s.RejectedFiles, file)
+	return s.Remove(file)
 }
