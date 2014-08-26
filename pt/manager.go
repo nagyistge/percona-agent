@@ -83,12 +83,13 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	defer m.status.Update(SERVICE_NAME, "Running")
 
 	serviceName := cmd.Cmd
-	if m.service[serviceName] == nil {
+	service, registered := m.service[serviceName]
+	if !registered {
 		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
 
 	m.status.UpdateRe(SERVICE_NAME, fmt.Sprintf("Running %s", serviceName), cmd)
-	return m.service[serviceName].Handle(cmd)
+	return service.Handle(cmd)
 }
 
 func (m *Manager) Status() map[string]string {
@@ -107,7 +108,8 @@ func (m *Manager) RegisterService(serviceName string, service Service) (err erro
 	m.Lock()
 	defer m.Unlock()
 
-	if m.service[serviceName] != nil {
+	_, registered := m.service[serviceName]
+	if registered {
 		return fmt.Errorf("%s already registered", serviceName)
 	}
 
