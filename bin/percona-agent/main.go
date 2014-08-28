@@ -40,6 +40,9 @@ import (
 	queryService "github.com/percona/percona-agent/query/service"
 	"github.com/percona/percona-agent/sysconfig"
 	sysconfigMonitor "github.com/percona/percona-agent/sysconfig/monitor"
+	"github.com/percona/percona-agent/sysinfo"
+	mysqlSysinfo "github.com/percona/percona-agent/sysinfo/service/mysql"
+	systemSysinfo "github.com/percona/percona-agent/sysinfo/service/system"
 	"github.com/percona/percona-agent/ticker"
 	golog "log"
 	"os"
@@ -185,7 +188,7 @@ func run() error {
 	}
 
 	/**
-	 * Start MRMS (MySQL Restart Monitoring Service)
+	 * MRMS (MySQL Restart Monitoring Service)
 	 */
 
 	mysqlRestartMonitor := mrmsMonitor.NewMonitor(
@@ -258,7 +261,7 @@ func run() error {
 	 * Query service
 	 */
 	explainService := queryService.NewExplain(
-		pct.NewLogger(logChan, "query"),
+		pct.NewLogger(logChan, "query-explain"),
 		&mysql.RealConnectionFactory{},
 		itManager.Repo(),
 	)
@@ -286,6 +289,35 @@ func run() error {
 	)
 	if err := qanManager.Start(); err != nil {
 		return fmt.Errorf("Error starting qan manager: %s\n", err)
+	}
+
+	/**
+	 * Sysinfo
+	 */
+	sysinfoManager := sysinfo.NewManager(
+		pct.NewLogger(logChan, "sysinfo"),
+	)
+
+	// MySQL Sysinfo
+	mysqlSysinfoService := mysqlSysinfo.NewMySQL(
+		pct.NewLogger(logChan, "sysinfo-mysql"),
+		itManager.Repo(),
+	)
+	if err := sysinfoManager.RegisterService("MySQLSummary", mysqlSysinfoService); err != nil {
+		return fmt.Errorf("Error registering Mysql Sysinfo service: %s\n", err)
+	}
+
+	// System Sysinfo
+	systemSysinfoService := systemSysinfo.NewSystem(
+		pct.NewLogger(logChan, "sysinfo-system"),
+	)
+	if err := sysinfoManager.RegisterService("SystemSummary", systemSysinfoService); err != nil {
+		return fmt.Errorf("Error registering System Sysinfo service: %s\n", err)
+	}
+
+	// Start Sysinfo manager
+	if err := sysinfoManager.Start(); err != nil {
+		return fmt.Errorf("Error starting Sysinfo manager: %s\n", err)
 	}
 
 	/**
@@ -325,6 +357,7 @@ func run() error {
 		"mrms":      mrmsManager,
 		"sysconfig": sysconfigManager,
 		"query":     queryManager,
+		"sysinfo":   sysinfoManager,
 	}
 
 	// Set the global pct/cmd.Factory, used for the Restart cmd.
