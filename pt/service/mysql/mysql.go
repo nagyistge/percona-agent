@@ -23,7 +23,7 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/pct"
-	"github.com/percona/percona-agent/pt/cmd"
+	"github.com/percona/percona-agent/pct/cmd"
 )
 
 const (
@@ -73,7 +73,7 @@ func (m *MySQL) Handle(protoCmd *proto.Cmd) *proto.Reply {
 	args := CreateParamsForPtMySQLSummary(dsn)
 
 	// Run ptMySQLSummary with params
-	ptMySQLSummary := cmd.New(m.CmdName, args...)
+	ptMySQLSummary := cmd.NewRealCmd(m.CmdName, args...)
 	output, err := ptMySQLSummary.Run()
 	if err != nil {
 		m.logger.Error(fmt.Sprintf("%s: %s", m.CmdName, err))

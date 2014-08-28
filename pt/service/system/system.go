@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/pct"
-	"github.com/percona/percona-agent/pt/cmd"
+	"github.com/percona/percona-agent/pct/cmd"
 )
 
 const (
@@ -49,7 +49,7 @@ func (s *System) Handle(protoCmd *proto.Cmd) *proto.Reply {
 	args := []string{
 		"--sleep", PT_SLEEP_SECONDS,
 	}
-	ptSummary := cmd.New(s.CmdName, args...)
+	ptSummary := cmd.NewRealCmd(s.CmdName, args...)
 	output, err := ptSummary.Run()
 	if err != nil {
 		s.logger.Error(fmt.Sprintf("%s: %s", s.CmdName, err))
