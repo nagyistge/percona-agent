@@ -21,14 +21,14 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 )
 
-type PTService struct {
+type SysinfoService struct {
 }
 
-func NewPTService() *PTService {
-	n := &PTService{}
+func NewSysinfoService() *SysinfoService {
+	n := &SysinfoService{}
 	return n
 }
 
-func (q *PTService) Handle(cmd *proto.Cmd) (reply *proto.Reply) {
+func (q *SysinfoService) Handle(cmd *proto.Cmd) (reply *proto.Reply) {
 	return cmd.Reply(nil)
 }

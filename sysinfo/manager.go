@@ -15,7 +15,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package pt
+package sysinfo
 
 import (
 	"fmt"
@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	SERVICE_NAME = "pt"
+	SERVICE_NAME = "sysinfo"
 )
 
 type Manager struct {

@@ -79,7 +79,7 @@ func (m *MySQL) Handle(protoCmd *proto.Cmd) *proto.Reply {
 		m.logger.Error(fmt.Sprintf("%s: %s", m.CmdName, err))
 	}
 
-	result := &proto.PtCmdResult{
+	result := &proto.SysinfoResult{
 		Raw: output,
 	}
 

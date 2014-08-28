@@ -15,13 +15,13 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package pt_test
+package sysinfo_test
 
 import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/pct"
-	"github.com/percona/percona-agent/pt"
+	"github.com/percona/percona-agent/sysinfo"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
 	"testing"
@@ -43,7 +43,7 @@ var _ = Suite(&ManagerTestSuite{})
 
 func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.logChan = make(chan *proto.LogEntry, 10)
-	s.logger = pct.NewLogger(s.logChan, pt.SERVICE_NAME+"-manager-test")
+	s.logger = pct.NewLogger(s.logChan, sysinfo.SERVICE_NAME+"-manager-test")
 }
 
 // --------------------------------------------------------------------------
@@ -52,14 +52,14 @@ func (s *ManagerTestSuite) TestStartStopHandleManager(t *C) {
 	var err error
 
 	// Create service
-	ptService := mock.NewPTService()
+	sysinfoService := mock.NewSysinfoService()
 
 	// Create manager
-	m := pt.NewManager(s.logger)
+	m := sysinfo.NewManager(s.logger)
 	t.Assert(m, Not(IsNil), Commentf("Make new Manager"))
 
 	cmdName := "Test"
-	m.RegisterService(cmdName, ptService)
+	m.RegisterService(cmdName, sysinfoService)
 
 	// The agent calls .Start().
 	err = m.Start()
@@ -67,7 +67,7 @@ func (s *ManagerTestSuite) TestStartStopHandleManager(t *C) {
 
 	// Its status should be "Running".
 	status := m.Status()
-	t.Check(status[pt.SERVICE_NAME], Equals, "Running")
+	t.Check(status[sysinfo.SERVICE_NAME], Equals, "Running")
 
 	// Can't start manager twice.
 	err = m.Start()
@@ -75,7 +75,7 @@ func (s *ManagerTestSuite) TestStartStopHandleManager(t *C) {
 
 	// Test known cmd
 	cmd := &proto.Cmd{
-		Service: pt.SERVICE_NAME,
+		Service: sysinfo.SERVICE_NAME,
 		Cmd:     cmdName,
 	}
 	gotReply := m.Handle(cmd)
@@ -84,7 +84,7 @@ func (s *ManagerTestSuite) TestStartStopHandleManager(t *C) {
 
 	// Test unknown cmd
 	cmd = &proto.Cmd{
-		Service: pt.SERVICE_NAME,
+		Service: sysinfo.SERVICE_NAME,
 		Cmd:     "Unknown",
 	}
 	gotReply = m.Handle(cmd)
@@ -95,5 +95,5 @@ func (s *ManagerTestSuite) TestStartStopHandleManager(t *C) {
 	err = m.Stop()
 	t.Check(err, IsNil)
 	status = m.Status()
-	t.Check(status[pt.SERVICE_NAME], Equals, "Running")
+	t.Check(status[sysinfo.SERVICE_NAME], Equals, "Running")
 }

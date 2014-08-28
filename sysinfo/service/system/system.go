@@ -55,7 +55,7 @@ func (s *System) Handle(protoCmd *proto.Cmd) *proto.Reply {
 		s.logger.Error(fmt.Sprintf("%s: %s", s.CmdName, err))
 	}
 
-	result := &proto.PtCmdResult{
+	result := &proto.SysinfoResult{
 		Raw: output,
 	}
 

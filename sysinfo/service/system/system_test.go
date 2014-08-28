@@ -21,7 +21,7 @@ import (
 	"encoding/json"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/pct"
-	"github.com/percona/percona-agent/pt/service/system"
+	"github.com/percona/percona-agent/sysinfo/service/system"
 	. "github.com/percona/percona-agent/test/checkers"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
@@ -100,8 +100,8 @@ func (s *TestSuite) TestService(t *C) {
 	t.Assert(gotReply, NotNil)
 	t.Assert(gotReply.Error, Equals, "")
 
-	ptCmdResult := &proto.PtCmdResult{}
-	err := json.Unmarshal(gotReply.Data, &ptCmdResult)
+	sysinfoResult := &proto.SysinfoResult{}
+	err := json.Unmarshal(gotReply.Data, &sysinfoResult)
 	t.Assert(err, IsNil)
 	headers := []string{
 		"# Percona Toolkit System Summary Report #####################",
@@ -123,7 +123,7 @@ func (s *TestSuite) TestService(t *C) {
 		"# The End ###################################################",
 	}
 	for i := range headers {
-		t.Check(ptCmdResult.Raw, MatchesMultiline, headers[i])
+		t.Check(sysinfoResult.Raw, MatchesMultiline, headers[i])
 	}
 }
 

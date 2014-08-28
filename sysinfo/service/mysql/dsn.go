@@ -14,6 +14,7 @@ var (
 	errInvalidDSNNoSlash   = errors.New("Invalid DSN: Missing the slash separating the database name")
 )
 
+// Source: https://github.com/go-sql-driver/mysql/blob/8636b6ca08049feebcab21e5dfed9a17f09e7d7c/utils.go#L74
 type DSN struct {
 	user              string
 	passwd            string

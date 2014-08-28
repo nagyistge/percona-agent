@@ -15,7 +15,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package pt
+package sysinfo
 
 import (
 	"github.com/percona/cloud-protocol/proto"
