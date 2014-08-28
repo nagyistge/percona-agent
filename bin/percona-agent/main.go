@@ -35,14 +35,14 @@ import (
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	pctCmd "github.com/percona/percona-agent/pct/cmd"
-	"github.com/percona/percona-agent/pt"
-	mysqlSummaryService "github.com/percona/percona-agent/pt/service/mysql"
-	systemSummaryService "github.com/percona/percona-agent/pt/service/system"
 	"github.com/percona/percona-agent/qan"
 	"github.com/percona/percona-agent/query"
 	queryService "github.com/percona/percona-agent/query/service"
 	"github.com/percona/percona-agent/sysconfig"
 	sysconfigMonitor "github.com/percona/percona-agent/sysconfig/monitor"
+	"github.com/percona/percona-agent/sysinfo"
+	mysqlSysinfo "github.com/percona/percona-agent/sysinfo/service/mysql"
+	systemSysinfo "github.com/percona/percona-agent/sysinfo/service/system"
 	"github.com/percona/percona-agent/ticker"
 	golog "log"
 	"os"
@@ -292,32 +292,32 @@ func run() error {
 	}
 
 	/**
-	 * PT
+	 * Sysinfo
 	 */
-	ptManager := pt.NewManager(
-		pct.NewLogger(logChan, "pt"),
+	sysinfoManager := sysinfo.NewManager(
+		pct.NewLogger(logChan, "sysinfo"),
 	)
 
-	// pt-mysql-summary
-	ptMySQLSummaryService := mysqlSummaryService.NewMySQL(
-		pct.NewLogger(logChan, "pt-mysql-summary"),
+	// MySQL Sysinfo
+	mysqlSysinfoService := mysqlSysinfo.NewMySQL(
+		pct.NewLogger(logChan, "sysinfo-mysql"),
 		itManager.Repo(),
 	)
-	if err := ptManager.RegisterService("MySQLSummary", ptMySQLSummaryService); err != nil {
-		return fmt.Errorf("Error registering pt mysql summary service: %s\n", err)
+	if err := sysinfoManager.RegisterService("MySQLSummary", mysqlSysinfoService); err != nil {
+		return fmt.Errorf("Error registering Mysql Sysinfo service: %s\n", err)
 	}
 
-	// pt-summary
-	ptSystemSummaryService := systemSummaryService.NewSystem(
-		pct.NewLogger(logChan, "pt-summary"),
+	// System Sysinfo
+	systemSysinfoService := systemSysinfo.NewSystem(
+		pct.NewLogger(logChan, "sysinfo-system"),
 	)
-	if err := ptManager.RegisterService("SystemSummary", ptSystemSummaryService); err != nil {
-		return fmt.Errorf("Error registering pt system summary service: %s\n", err)
+	if err := sysinfoManager.RegisterService("SystemSummary", systemSysinfoService); err != nil {
+		return fmt.Errorf("Error registering System Sysinfo service: %s\n", err)
 	}
 
-	// Start pt manager
-	if err := ptManager.Start(); err != nil {
-		return fmt.Errorf("Error starting pt manager: %s\n", err)
+	// Start Sysinfo manager
+	if err := sysinfoManager.Start(); err != nil {
+		return fmt.Errorf("Error starting Sysinfo manager: %s\n", err)
 	}
 
 	/**
@@ -357,7 +357,7 @@ func run() error {
 		"mrms":      mrmsManager,
 		"sysconfig": sysconfigManager,
 		"query":     queryManager,
-		"pt":        ptManager,
+		"sysinfo":   sysinfoManager,
 	}
 
 	// Set the global pct/cmd.Factory, used for the Restart cmd.
