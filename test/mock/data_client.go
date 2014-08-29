@@ -33,6 +33,8 @@ type DataClient struct {
 	conn            *websocket.Conn
 	connectChan     chan bool
 	testConnectChan chan bool
+	ConnectError    error
+	TraceChan       chan string
 }
 
 func NewDataClient(dataChan chan []byte, respChan chan interface{}) *DataClient {
@@ -42,16 +44,19 @@ func NewDataClient(dataChan chan []byte, respChan chan interface{}) *DataClient 
 		RecvError:   make(chan error),
 		conn:        new(websocket.Conn),
 		connectChan: make(chan bool, 1),
+		TraceChan:   make(chan string, 100),
 	}
 	return c
 }
 
 func (c *DataClient) Connect() {
+	c.TraceChan <- "Connect"
 	c.ConnectOnce(0)
 	return
 }
 
 func (c *DataClient) ConnectOnce(timeout uint) error {
+	c.TraceChan <- "ConnectOnce"
 	if c.testConnectChan != nil {
 		// Wait for test to let user/agent connect.
 		select {
@@ -60,14 +65,16 @@ func (c *DataClient) ConnectOnce(timeout uint) error {
 		}
 		<-c.testConnectChan
 	}
-	return nil
+	return c.ConnectError
 }
 
 func (c *DataClient) Disconnect() {
+	c.TraceChan <- "Disconnect"
 	c.connectChan <- true
 }
 
 func (c *DataClient) DisconnectOnce() {
+	c.TraceChan <- "DisconnectOnce"
 }
 
 func (c *DataClient) Start() {
@@ -85,17 +92,20 @@ func (c *DataClient) RecvChan() chan *proto.Cmd {
 }
 
 func (c *DataClient) Send(data interface{}, timeout uint) error {
+	c.TraceChan <- "Send"
 	return nil
 }
 
 // First, agent calls this to send encoded proto.Data to API.
 func (c *DataClient) SendBytes(data []byte) error {
+	c.TraceChan <- "SendBytes"
 	c.dataChan <- data
 	return nil
 }
 
 // Second, agent calls this to recv response from API to previous send.
 func (c *DataClient) Recv(resp interface{}, timeout uint) error {
+	c.TraceChan <- "Recv"
 	select {
 	case r := <-c.respChan:
 		respVal := reflect.ValueOf(resp).Elem()

@@ -1,5 +1,9 @@
 percona-agent Changelog
 
+v1.0.7
+
+  * Built with github.com/go-sql-driver/mysql 0b000424e5
+
 v1.0.6 released 2014-08-12
 
   * PCT-595: Use recover for all goroutines to mitigate crashes
