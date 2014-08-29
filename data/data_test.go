@@ -579,7 +579,6 @@ func (s *SenderTestSuite) TestConnectErrors(t *C) {
 
 func (s *SenderTestSuite) TestRecvErrors(t *C) {
 	spool := mock.NewSpooler(nil)
-
 	spool.FilesOut = []string{"slow001.json"}
 	spool.DataOut = map[string][]byte{"slow001.json": []byte("...")}
 
@@ -643,6 +642,108 @@ func (s *SenderTestSuite) TestRecvErrors(t *C) {
 		"DisconnectOnce",
 		"DisconnectOnce",
 	})
+}
+
+func (s *SenderTestSuite) Test500Error(t *C) {
+	spool := mock.NewSpooler(nil)
+	spool.FilesOut = []string{"file1", "file2", "file3"}
+	spool.DataOut = map[string][]byte{
+		"file1": []byte("file1"),
+		"file2": []byte("file2"),
+		"file3": []byte("file3"),
+	}
+
+	sender := data.NewSender(s.logger, s.client)
+	err := sender.Start(spool, s.tickerChan, false)
+	t.Assert(err, IsNil)
+
+	s.tickerChan <- time.Now()
+
+	got := test.WaitBytes(s.dataChan)
+	if same, diff := test.IsDeeply(got[0], []byte("file1")); !same {
+		t.Error(diff)
+	}
+
+	// 3 files before API error.
+	t.Check(len(spool.DataOut), Equals, 3)
+
+	// Simulate API error.
+	select {
+	case s.respChan <- &proto.Response{Code: 503}:
+	case <-time.After(500 * time.Millisecond):
+		t.Error("Sender receives prot.Response after sending data")
+	}
+
+	// Wait for it to finsih and return.
+	if !test.WaitStatusPrefix(data.MAX_SEND_ERRORS*data.CONNECT_ERROR_WAIT, sender, "data-sender", "Idle") {
+		t.Fatal("Timeout waiting for data-sender status=Idle")
+	}
+
+	// Still 3 files after API error.
+	t.Check(len(spool.DataOut), Equals, 3)
+	t.Check(len(spool.RejectedFiles), Equals, 0)
+
+	// There's only 1 call to SendBytes because after an API error
+	// the send stops immediately.
+	trace := test.DrainTraceChan(s.client.TraceChan)
+	t.Check(trace, DeepEquals, []string{
+		"ConnectOnce",
+		"SendBytes",
+		"Recv",
+		"DisconnectOnce",
+	})
+
+	err = sender.Stop()
+	t.Assert(err, IsNil)
+}
+
+func (s *SenderTestSuite) TestBadFiles(t *C) {
+	spool := mock.NewSpooler(nil)
+	spool.FilesOut = []string{"file1", "file2", "file3"}
+	spool.DataOut = map[string][]byte{
+		"file1": []byte("file1"),
+		"file2": []byte("file2"),
+		"file3": []byte("file3"),
+	}
+
+	sender := data.NewSender(s.logger, s.client)
+	err := sender.Start(spool, s.tickerChan, false)
+	t.Assert(err, IsNil)
+
+	doneChan := make(chan bool, 1)
+	go func() {
+		resp := []uint{400, 400, 200}
+		for i := 0; i < 3; i++ {
+			// Wait for sender to send data.
+			select {
+			case <-s.dataChan:
+			case <-doneChan:
+				return
+			}
+
+			// Simulate API returns 400.
+			select {
+			case s.respChan <- &proto.Response{Code: resp[i]}:
+			case <-doneChan:
+				return
+			}
+		}
+	}()
+
+	s.tickerChan <- time.Now()
+
+	// Wait for sender to finish.
+	if !test.WaitStatusPrefix(data.MAX_SEND_ERRORS*data.CONNECT_ERROR_WAIT, sender, "data-sender", "Idle") {
+		t.Fatal("Timeout waiting for data-sender status=Idle")
+	}
+
+	doneChan <- true
+	err = sender.Stop()
+	t.Assert(err, IsNil)
+
+	// Bad files are removed, so all files should have been sent.
+	t.Check(len(spool.DataOut), Equals, 0)
+	t.Check(len(spool.RejectedFiles), Equals, 0)
 }
 
 /////////////////////////////////////////////////////////////////////////////

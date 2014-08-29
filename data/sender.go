@@ -26,7 +26,6 @@ import (
 
 const (
 	MAX_SEND_ERRORS    = 3
-	MAX_BAD_FILES      = 3
 	CONNECT_ERROR_WAIT = 3
 )
 
@@ -40,10 +39,10 @@ type Sender struct {
 	sync       *pct.SyncChan
 	status     *pct.Status
 	// --
-	sent     uint
-	errs     uint
-	badFiles bool
-	apiErr   bool
+	sent   uint
+	errs   uint
+	bad    uint
+	apiErr bool
 }
 
 func NewSender(logger *pct.Logger, client pct.WebsocketClient) *Sender {
@@ -116,24 +115,26 @@ func (s *Sender) send() {
 
 	s.sent = 0
 	s.errs = 0
-	s.badFiles = false
+	s.bad = 0
 	s.apiErr = false
 	defer func() {
-		s.logger.Debug(fmt.Sprintf("sent:%d errs:%d badFiles:%t apiErr:%t", s.sent, s.errs, s.badFiles, s.apiErr))
+		s.logger.Debug(fmt.Sprintf("sent:%d bad:%d errs:%d apiErr:%t", s.sent, s.bad, s.errs, s.apiErr))
 
 		s.status.Update("data-sender", "Disconnecting")
 		s.client.DisconnectOnce()
 		if s.sent == 0 && !s.apiErr {
 			s.logger.Warn("No data sent")
 		}
-		if s.errs > 0 || s.apiErr {
-			s.status.Update("data-sender", fmt.Sprintf("Idle (last sent at %s: %d ok, %d error, API error %t)", time.Now(), s.sent, s.errs, s.apiErr))
+		if s.errs > 0 || s.bad > 0 || s.apiErr {
+			s.status.Update("data-sender", fmt.Sprintf("Idle (last sent at %s: %d ok, %d bad, %d error, API error %t)",
+				time.Now(), s.sent, s.bad, s.errs, s.apiErr))
 		} else {
 			s.status.Update("data-sender", fmt.Sprintf("Idle (last sent at %s: all %d files ok)", time.Now(), s.sent))
 		}
 	}()
 
-	for s.errs < MAX_SEND_ERRORS {
+	// Connect and send files until too many errors occur.
+	for !s.apiErr && s.errs < MAX_SEND_ERRORS {
 		s.status.Update("data-sender", "Connecting")
 		s.logger.Debug("send:connecting")
 		if s.errs > 0 {
@@ -146,22 +147,18 @@ func (s *Sender) send() {
 		}
 		s.logger.Debug("send:connected")
 
-		// Send files until successful or too many errors occur.
 		if err := s.sendAllFiles(); err != nil {
+			s.logger.Debug("sendAllFiles:err:", err)
 			s.errs++
 			s.logger.Warn(err)
-			if s.badFiles || s.apiErr {
-				return
-			}
 			s.client.DisconnectOnce()
-			continue
+			continue // error sending files, re-connect and try again
 		}
-		return // success: all files sent
+		return // success or API error, either way, stop sending
 	}
 }
 
 func (s *Sender) sendAllFiles() error {
-	bad := 0
 	s.status.Update("data-sender", "Running")
 	for file := range s.spool.Files() {
 		s.logger.Debug("send:" + file)
@@ -209,14 +206,7 @@ func (s *Sender) sendAllFiles() error {
 			s.spool.Remove(file)
 			s.logger.Warn(fmt.Sprintf("Removed %s because API returned %d", file, resp.Code))
 			s.sent++
-
-			// Bad file should be rare.  If we have a lot, then something
-			// more serious is broken and we should not spam the API.
-			bad++
-			if bad > MAX_BAD_FILES {
-				s.badFiles = true
-				return fmt.Errorf("Too many bad files")
-			}
+			s.bad++
 		case resp.Code >= 300:
 			// This shouldn't happen.
 			return fmt.Errorf("Recieved unhandled response code from API: %d", resp.Code)
