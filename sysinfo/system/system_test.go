@@ -21,7 +21,7 @@ import (
 	"encoding/json"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/pct"
-	"github.com/percona/percona-agent/sysinfo/service/system"
+	"github.com/percona/percona-agent/sysinfo/system"
 	. "github.com/percona/percona-agent/test/checkers"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
