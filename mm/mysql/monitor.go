@@ -250,10 +250,9 @@ func (m *Monitor) run() {
 			}
 
 			diff := time.Now().Sub(start).Seconds()
-			// Time took > 10% of interval in milliseconds (0.10 * 1000 = 100)
-			if diff > float64(m.config.Collect) {
+			if diff > float64(m.config.Collect)*0.1 {
 				c.Metrics = []mm.Metric{}
-				m.logger.Debug(fmt.Sprintf("run:collect took more than 10% of interval window (%d milliseconds). Ignoring", diff))
+				m.logger.Debug(fmt.Sprintf("took %f seconds to collect MySQL status. skipping", diff))
 			}
 			// Send the metrics to an mm.Aggregator.
 			m.status.Update(m.name, "Sending metrics")
