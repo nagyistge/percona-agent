@@ -34,6 +34,7 @@ type WebsocketClient struct {
 	ErrChan          chan error
 	SendError        chan error
 	RecvError        chan error
+	ConnectError     error
 	connectChan      chan bool
 	testConnectChan  chan bool
 	connected        bool
@@ -89,7 +90,7 @@ func (c *WebsocketClient) ConnectOnce(timeout uint) error {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 	c.connected = true
-	return nil
+	return c.ConnectError
 }
 
 func (c *WebsocketClient) Disconnect() {

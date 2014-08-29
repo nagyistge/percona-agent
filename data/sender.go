@@ -21,8 +21,13 @@ import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/pct"
-	//	"math/rand"
 	"time"
+)
+
+const (
+	MAX_SEND_ERRORS    = 3
+	MAX_BAD_FILES      = 3
+	CONNECT_ERROR_WAIT = 3
 )
 
 type Sender struct {
@@ -34,6 +39,11 @@ type Sender struct {
 	blackhole  bool
 	sync       *pct.SyncChan
 	status     *pct.Status
+	// --
+	sent     uint
+	errs     uint
+	badFiles bool
+	apiErr   bool
 }
 
 func NewSender(logger *pct.Logger, client pct.WebsocketClient) *Sender {
@@ -72,7 +82,6 @@ func (s *Sender) Status() map[string]string {
 // Implementation
 /////////////////////////////////////////////////////////////////////////////
 
-// @goroutine[1]
 func (s *Sender) run() {
 	defer func() {
 		if err := recover(); err != nil {
@@ -105,50 +114,62 @@ func (s *Sender) send() {
 	s.logger.Debug("send:call")
 	defer s.logger.Debug("send:return")
 
-	sentOK := 0
-	errCount := 0
+	s.sent = 0
+	s.errs = 0
+	s.badFiles = false
+	s.apiErr = false
 	defer func() {
-		if sentOK == 0 {
-			s.logger.Warn(fmt.Sprintf("No data sent"))
-		}
-		s.status.Update("data-sender", fmt.Sprintf("Idle (last sent %d files at %s, %d errors)", sentOK, time.Now(), errCount))
+		s.logger.Debug(fmt.Sprintf("sent:%d errs:%d badFiles:%t apiErr:%t", s.sent, s.errs, s.badFiles, s.apiErr))
+
 		s.status.Update("data-sender", "Disconnecting")
 		s.client.DisconnectOnce()
+		if s.sent == 0 && !s.apiErr {
+			s.logger.Warn("No data sent")
+		}
+		if s.errs > 0 || s.apiErr {
+			s.status.Update("data-sender", fmt.Sprintf("Idle (last sent at %s: %d ok, %d error, API error %t)", time.Now(), s.sent, s.errs, s.apiErr))
+		} else {
+			s.status.Update("data-sender", fmt.Sprintf("Idle (last sent at %s: all %d files ok)", time.Now(), s.sent))
+		}
 	}()
 
-	for errCount < 3 {
+	for s.errs < MAX_SEND_ERRORS {
 		s.status.Update("data-sender", "Connecting")
 		s.logger.Debug("send:connecting")
+		if s.errs > 0 {
+			time.Sleep(CONNECT_ERROR_WAIT * time.Second)
+		}
 		if err := s.client.ConnectOnce(10); err != nil {
 			s.logger.Warn("Cannot connect to API: ", err)
-			time.Sleep(3 * time.Second)
+			s.errs++
 			continue
 		}
 		s.logger.Debug("send:connected")
 
-		sent, err := s.sendAllFiles()
-		sentOK += sent
-		if err == nil {
-			return // success
+		// Send files until successful or too many errors occur.
+		if err := s.sendAllFiles(); err != nil {
+			s.errs++
+			s.logger.Warn(err)
+			if s.badFiles || s.apiErr {
+				return
+			}
+			s.client.DisconnectOnce()
+			continue
 		}
-
-		// Error, try again maybe.
-		errCount++
-		s.logger.Warn(err)
-		s.client.DisconnectOnce()
+		return // success: all files sent
 	}
 }
 
-func (s *Sender) sendAllFiles() (int, error) {
+func (s *Sender) sendAllFiles() error {
+	bad := 0
 	s.status.Update("data-sender", "Running")
-	sent := 0
 	for file := range s.spool.Files() {
 		s.logger.Debug("send:" + file)
 
 		s.status.Update("data-sender", "Reading "+file)
 		data, err := s.spool.Read(file)
 		if err != nil {
-			return sent, fmt.Errorf("spool.Read: %s", err)
+			return fmt.Errorf("spool.Read: %s", err)
 		}
 
 		if s.blackhole {
@@ -167,23 +188,46 @@ func (s *Sender) sendAllFiles() (int, error) {
 		// todo: number/time/rate limit so we dont DDoS API
 		s.status.Update("data-sender", "Sending "+file)
 		if err := s.client.SendBytes(data); err != nil {
-			return sent, fmt.Errorf("Sending %s: %s", file, err)
+			return fmt.Errorf("Sending %s: %s", file, err)
 		}
 
 		s.status.Update("data-sender", "Waiting for API to ack "+file)
 		resp := &proto.Response{}
 		if err := s.client.Recv(resp, 5); err != nil {
-			return sent, fmt.Errorf("Waiting for API to ack %s: %s", file, err)
+			return fmt.Errorf("Waiting for API to ack %s: %s", file, err)
 		}
 		s.logger.Debug(fmt.Sprintf("send:resp:%+v", resp.Code))
 
-		if resp.Code != 200 && resp.Code != 201 {
-			return sent, fmt.Errorf("Error sending %s: %s", file, resp)
-		}
+		switch {
+		case resp.Code >= 500:
+			// API had problem, try sending files again later.
+			s.apiErr = true
+			return nil // don't warn about API errors
+		case resp.Code >= 400:
+			// File is bad, remove it.
+			s.status.Update("data-sender", "Removing "+file)
+			s.spool.Remove(file)
+			s.logger.Warn(fmt.Sprintf("Removed %s because API returned %d", file, resp.Code))
+			s.sent++
 
-		s.status.Update("data-sender", "Removing "+file)
-		s.spool.Remove(file)
-		sent++
+			// Bad file should be rare.  If we have a lot, then something
+			// more serious is broken and we should not spam the API.
+			bad++
+			if bad > MAX_BAD_FILES {
+				s.badFiles = true
+				return fmt.Errorf("Too many bad files")
+			}
+		case resp.Code >= 300:
+			// This shouldn't happen.
+			return fmt.Errorf("Recieved unhandled response code from API: %d", resp.Code)
+		case resp.Code >= 200:
+			s.status.Update("data-sender", "Removing "+file)
+			s.spool.Remove(file)
+			s.sent++
+		default:
+			// This shouldn't happen.
+			return fmt.Errorf("Recieved unknown response code from API: %d", resp.Code)
+		}
 	}
-	return sent, nil
+	return nil // success
 }
