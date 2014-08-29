@@ -202,7 +202,7 @@ func (m *Monitor) run() {
 		select {
 		case now := <-m.tickChan:
 			m.logger.Debug("run:collect:start")
-			start := time.Now().UnixNano()
+			start := time.Now()
 			if !m.connected {
 				m.logger.Debug("run:collect:disconnected")
 				lastError = "Not connected to MySQL"
@@ -249,10 +249,9 @@ func (m *Monitor) run() {
 				}
 			}
 
-			end := time.Now().UnixNano()
-			diff := (end - start) / 1e6 // Time in mililiseconds
+			diff := time.Now().Sub(start).Seconds()
 			// Time took > 10% of interval in milliseconds (0.10 * 1000 = 100)
-			if diff > int64(m.config.Collect*100) {
+			if diff > float64(m.config.Collect) {
 				c.Metrics = []mm.Metric{}
 				m.logger.Debug(fmt.Sprintf("run:collect took more than 10% of interval window (%d milliseconds). Ignoring", diff))
 			}

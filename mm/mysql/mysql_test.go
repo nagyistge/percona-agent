@@ -19,6 +19,10 @@ package mysql_test
 
 import (
 	"database/sql"
+	"os"
+	"testing"
+	"time"
+
 	_ "github.com/arnehormann/mysql"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mm"
@@ -26,10 +30,8 @@ import (
 	mysqlConn "github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test"
+	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
-	"os"
-	"testing"
-	"time"
 )
 
 /**
@@ -205,6 +207,9 @@ func (s *TestSuite) TestCollectInnoDBStats(t *C) {
 
 	// Start a monitor with InnoDB metrics.
 	// See TestStartCollectStop() for description of these steps.
+	cc := mock.NewSlowMySQL(dsn)
+	cc.SetGlobalDelay(0 * time.Second)
+
 	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn))
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
@@ -353,5 +358,56 @@ func (s *TestSuite) TestCollectUserstats(t *C) {
 	}
 
 	// Stop montior, clean up.
+	m.Stop()
+}
+
+func (s *TestSuite) TestSlowResponse(t *C) {
+	/**
+	 * Disable and reset user stats.
+	 */
+	if _, err := s.db.Exec("set global userstat = off"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec("flush user_statistics"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec("flush index_statistics"); err != nil {
+		t.Fatal(err)
+	}
+
+	config := &mysql.Config{
+		Config: mm.Config{
+			ServiceInstance: proto.ServiceInstance{
+				Service:    "mysql",
+				InstanceId: 1,
+			},
+			Collect: 1,
+			Report:  60,
+		},
+		UserStats: true,
+	}
+
+	slowCon := mock.NewSlowMySQL(dsn)
+	slowCon.SetGlobalDelay(4 * time.Second)
+	m := mysql.NewMonitor(s.name, config, s.logger, slowCon)
+	if m == nil {
+		t.Fatal("Make new mysql.Monitor")
+	}
+
+	err := m.Start(s.tickChan, s.collectionChan)
+	if err != nil {
+		t.Fatalf("Start monitor without error, got %s", err)
+	}
+
+	if ok := test.WaitStatus(5, m, s.name+"-mysql", "Connected"); !ok {
+		t.Fatal("Monitor is ready")
+	}
+
+	s.tickChan <- time.Now()
+	got := test.WaitCollection(s.collectionChan, 1)
+	// If it took more than 10% of the tik interval, the monitor must
+	// discard those metrics -> len(got) == 0
+	t.Check(got, HasLen, 0)
+
 	m.Stop()
 }

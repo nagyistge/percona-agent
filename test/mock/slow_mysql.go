@@ -23,7 +23,6 @@ import (
 
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mysql"
-	//mysqlConn "github.com/percona/percona-agent/mysql"
 )
 
 type SlowMySQL struct {
@@ -40,9 +39,7 @@ func NewSlowMySQL(dsn string) *SlowMySQL {
 }
 
 func (s *SlowMySQL) DB() *sql.DB {
-	if s.globalDelay > time.Duration(0) {
-		time.Sleep(s.globalDelay)
-	}
+	time.Sleep(s.globalDelay)
 	return s.realConnection.DB()
 }
 
