@@ -6,6 +6,21 @@ About
 
 **System Info** provides nicely formatted information about *Server instance* and/or *MySQL instance*.
 
+Requirements
+************
+
+**System Info** requires:
+
+* `Percona Agent <https://github.com/percona/percona-agent>`_ in version 1.0.7 or greater
+
+  Installation and update instructions for *Percona Agent* can be found `here <https://github.com/percona/percona-agent/blob/release/INSTALL.md>`_
+* `Percona Toolkit <http://www.percona.com/software/percona-toolkit>`_ installed on the same server as *Percona Agent*
+
+  Installation instructions for *Percona Toolkit* can be found `here <http://www.percona.com/doc/percona-toolkit/2.2/installation.html>`_
+
+Usage
+*****
+
 To access this information click on **System Info** link for chosen instance in Metrics_ or Queries_ section of `cloud.percona.com`_.
 You can also access it from configuration section of `Server Instances`_ or `MySQL Instances`_ 
 
@@ -23,25 +38,13 @@ And this is how the example report looks like
 .. _Server Instances: https://cloud.percona.com/instances/server
 .. _MySQL Instances: https://cloud.percona.com/instances/mysql
 
-Requirements
-************
-
-**System Info** requires:
-
-* `Percona Agent <https://github.com/percona/percona-agent>`_ in version 1.0.7 or greater
-
-  Installation and update instructions for *Percona Agent* can be found `here <https://github.com/percona/percona-agent/blob/release/INSTALL.md>`_
-* `Percona Toolkit <http://www.percona.com/software/percona-toolkit>`_ installed on the same server as *Percona Agent*
-
-  Installation instructions for *Percona Toolkit* can be found `here <http://www.percona.com/doc/percona-toolkit/2.2/installation.html>`_
-
 Output
 ******
 
 **System Info** report can be generated for *Server instance* or *MySQL instance*.
 Each report has his own tab with a navigation bar on the left.
 Navigation bar allows to quickly jump to different sections of the report.
-Whole report and each section of it can be copied to clipboard (look for clipboard icon) and then pasted into emails without losing the formatting
+Whole report and each section of it can be copied to clipboard (look for clipboard icon) and then pasted into emails without losing the formatting.
 
 Server
 ======
