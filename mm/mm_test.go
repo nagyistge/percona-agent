@@ -20,6 +20,12 @@ package mm_test
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/instance"
@@ -30,11 +36,6 @@ import (
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
-	"io/ioutil"
-	"os"
-	"path/filepath"
-	"testing"
-	"time"
 )
 
 // Hook up gocheck into the "go test" runner.
@@ -240,6 +241,30 @@ func (s *AggregatorTestSuite) TestC003(t *C) {
 	t.Assert(got, NotNil)
 	t.Check(got.Ts, Equals, t1)
 	t.Check(uint64(got.Duration), Equals, uint64(interval))
+
+	// Get the collected stats
+	var stats *mm.Stats
+	for _, stats = range got.Stats[0].Stats {
+	}
+	// First time, stats.Cnt must be equal to the number of seconds in the interval
+	// minus 1 because the first value doesn't count
+	t.Check(int64(stats.Cnt), Equals, interval-1)
+
+	// Let's complete the second interval
+	for i := 6; i <= 11; i++ {
+		file := fmt.Sprintf("%s/c003-%d.json", sample, i)
+		if err := sendCollection(file, s.collectionChan); err != nil {
+			t.Fatal(file, err)
+		}
+	}
+	got = test.WaitMmReport(s.dataChan)
+	t.Assert(got, NotNil)
+	// Get the collected stats
+	for _, stats = range got.Stats[0].Stats {
+	}
+	// stats.Cnt must be equal to the number of seconds in the interval
+	t.Check(int64(stats.Cnt), Equals, interval)
+
 	expect := &mm.Report{}
 	if err := test.LoadMmReport(sample+"/c003r.json", expect); err != nil {
 		t.Fatal("c003r.json ", err)
@@ -247,6 +272,7 @@ func (s *AggregatorTestSuite) TestC003(t *C) {
 	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
 		t.Fatal(diff)
 	}
+
 }
 
 func (s *AggregatorTestSuite) TestC003Lost(t *C) {

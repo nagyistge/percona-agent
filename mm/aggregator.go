@@ -18,11 +18,12 @@
 package mm
 
 import (
+	"math"
+	"time"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/pct"
-	"math"
-	"time"
 )
 
 type Aggregator struct {
@@ -99,6 +100,11 @@ func (a *Aggregator) run() {
 					i := &InstanceStats{
 						ServiceInstance: cur[n].ServiceInstance,
 						Stats:           make(map[string]*Stats),
+					}
+					for key, stat := range cur[n].Stats {
+						// Make a copy of the values
+						i.Stats[key] = &*stat
+						i.Stats[key].Reset()
 					}
 					next[n] = i
 				}

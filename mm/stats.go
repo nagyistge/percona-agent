@@ -40,6 +40,14 @@ type Stats struct {
 	Max        float64
 }
 
+func (s *Stats) Reset() {
+	//lastVal := s.vals[len(s.vals)-1]
+	if s.metricType == "counter" {
+		s.sum = 0
+		s.vals = []float64{}
+	}
+}
+
 func NewStats(metricType string) (*Stats, error) {
 	if !MetricTypes[metricType] {
 		return nil, errors.New("Invalid metric type: " + metricType)
@@ -80,11 +88,6 @@ func (s *Stats) Add(m *Metric, ts int64) {
 				s.prevVal = m.Number
 			}
 		} else {
-			// This is the first value. There is nothing to subtract
-			inc := m.Number
-			dur := ts - s.prevTs
-			val := inc / float64(dur)
-			s.vals = append(s.vals, val)
 			s.prevTs = ts
 			s.prevVal = m.Number
 			s.firstVal = false
