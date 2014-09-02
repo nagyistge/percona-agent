@@ -41,7 +41,7 @@ By default, the installer is automatic and interactive: it tries to do everythin
 Automated Install
 *****************
 
-To automate installation of *percona-agent* (e.g. for Chef, Puppet, etc.) add the `-interacive=false` flag to a `Standard Install`_ to prevent the installer from prompting. A `Quick Install`_ can be used too because it sets `-interacive=false` by default.
+To automate installation of *percona-agent* (e.g. for Chef, Puppet, etc.) add the :sh:`-interacive=false` flag to a `Standard Install`_ to prevent the installer from prompting. A `Quick Install`_ can be used too because it sets :sh:`-interacive=false` by default.
 
 Automation relies on:
 
@@ -51,9 +51,9 @@ Automation relies on:
 
 If the installer fails to setup MySQL it will continue and enable only *Server Metrics Monitor*.
 
-For example, without `MySQL Auto-detection`_ you can specify the necesssary `MySQL Options`_ instead:
-:sh:`./install -interactive=false -mysql-user=root -mysql-pass=secretpass -mysql-socket=/var/run/mysqld/mysqld.sock`
+For example, without `MySQL Auto-detection`_ you can specify the necessary `MySQL Options`_ instead:
 
+:sh:`./install -interactive=false -mysql-user=root -mysql-pass=secret -mysql-socket=/var/run/mysqld/mysqld.sock`
 
 **Note**: An automated install must create the percona-agent MySQL user; you cannot specify an existing MySQL user. This ability will be added in a future version of the installer.
 
@@ -75,7 +75,7 @@ MySQL super user credentials are used to create a MySQL user for the agent with 
 * :sql:`SUPER, PROCESS, USAGE, SELECT ON *.* TO 'percona-agent'@HOST`
 * :sql:`UPDATE, DELETE, DROP ON performance_schema.* TO 'percona-agent'@HOST`
 
-`HOST` is `localhost` if a socket or `localhost` is used, else `127.0.0.1` if that IP is used, else `%`.  Sometimes the privileges are granted to `localhost` and `127.0.0.1`.
+:code:`HOST` is :code:`localhost` if a socket or :code:`localhost` is used, else :code:`127.0.0.1` if that IP is used, else :code:`\%`. Sometimes the privileges are granted to :code:`localhost` and :code:`127.0.0.1`.
 
 The percona-agent MySQL user password is randomly generated and can be viewed later through the web app.
 
