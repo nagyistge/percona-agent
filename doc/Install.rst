@@ -62,7 +62,7 @@ For example, without `MySQL Auto-detection`_ you can specify the necessary `MySQ
 MySQL Auto-detection
 ********************
 
-The installer uses `mysql --print-defaults` to auto-detect the local MySQL instance and MySQL super user credentials. To ensure proper auto-detection, make sure `~/.my.cnf` (for root) has the necessary MySQL options to connect to MySQL as super user, e.g.:
+The installer uses :sh:`mysql --print-defaults` to auto-detect the local MySQL instance and MySQL super user credentials. To ensure proper auto-detection, make sure :sh:`~/.my.cnf` (for root) has the necessary MySQL options to connect to MySQL as super user, e.g.:
 
 .. code:: sh
 
@@ -75,7 +75,7 @@ MySQL super user credentials are used to create a MySQL user for the agent with 
 * :sql:`SUPER, PROCESS, USAGE, SELECT ON *.* TO 'percona-agent'@HOST`
 * :sql:`UPDATE, DELETE, DROP ON performance_schema.* TO 'percona-agent'@HOST`
 
-:code:`HOST` is :code:`localhost` if a socket or :code:`localhost` is used, else :code:`127.0.0.1` if that IP is used, else :code:`\%`. Sometimes the privileges are granted to :code:`localhost` and :code:`127.0.0.1`.
+:code:`HOST` is :code:`localhost` if a socket or :code:`localhost` is used, else :code:`127.0.0.1` if that IP is used, else :code:`%`. Sometimes the privileges are granted to :code:`localhost` and :code:`127.0.0.1`.
 
 The percona-agent MySQL user password is randomly generated and can be viewed later through the web app.
 
@@ -133,16 +133,14 @@ When new version is available
 1. `Get your api-key <https://cloud.percona.com/api-key>`_
 2. Run in terminal as root:
 
-.. code:: sh
-
-   curl -s https://cloud.percona.com/get | bash /dev/stdin -api-key <API key>
+:sh:`curl -s https://cloud.percona.com/get | bash /dev/stdin -api-key <API key>`
 
 With *Standard Install*
 =======================
 
 1. `Download the latest percona-agent <http://www.percona.com/downloads/percona-agent/LATEST/>`_ to your server.
 2. Extract the tarball.
-3. Run the `install` script.
+3. Run the :sh:`install` script.
 
 Uninstalling the Agent
 **********************
