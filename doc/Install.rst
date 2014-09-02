@@ -1,3 +1,9 @@
+.. role:: sh(code)
+   :language: bash
+
+.. role:: sql(code)
+   :language: sql
+
 Installation Guide
 ##################
 
@@ -9,9 +15,7 @@ Quick Install
 1. `Get your API key. <https://cloud.percona.com/api-key>`_
 2. As root, run in the terminal:
 
-.. code:: sh
-
-   curl -s https://cloud.percona.com/install | bash /dev/stdin -api-key <API key>
+:sh:`curl -s https://cloud.percona.com/install | bash /dev/stdin -api-key <API key>`
 
 By default a quick install:
 
@@ -28,7 +32,7 @@ Standard Install
 
 1. `Download the latest percona-agent. <http://www.percona.com/downloads/percona-agent/LATEST/>`_
 2. Extract the tarball and change to the directory it creates.
-3. Run the `install` script.
+3. Run the :sh:`install` script.
 
 By default, the installer is automatic and interactive: it tries to do everything automatically as in a *Quick Install*, but if it has problems it prompts you for input. You can disable prompts by specifying `-interactive=false` for an `Automated Install`_.
 
@@ -48,9 +52,7 @@ Automation relies on:
 If the installer fails to setup MySQL it will continue and enable only *Server Metrics Monitor*.
 
 For example, without `MySQL Auto-detection`_ you can specify the necesssary `MySQL Options`_ instead:
-.. code:: sh
-
-   ./install -interactive=false -mysql-user=root -mysql-pass=secretpass -mysql-socket=/var/run/mysqld/mysqld.sock
+:sh:`./install -interactive=false -mysql-user=root -mysql-pass=secretpass -mysql-socket=/var/run/mysqld/mysqld.sock`
 
 
 **Note**: An automated install must create the percona-agent MySQL user; you cannot specify an existing MySQL user. This ability will be added in a future version of the installer.
@@ -70,10 +72,10 @@ The installer uses `mysql --print-defaults` to auto-detect the local MySQL insta
 
 MySQL super user credentials are used to create a MySQL user for the agent with these privileges:
 
-* `SUPER, PROCESS, USAGE, SELECT ON *.* TO 'percona-agent'@HOST`
-* `UPDATE, DELETE, DROP ON performance_schema.* TO 'percona-agent'@HOST`
+* :sql:`SUPER, PROCESS, USAGE, SELECT ON *.* TO 'percona-agent'@HOST`
+* :sql:`UPDATE, DELETE, DROP ON performance_schema.* TO 'percona-agent'@HOST`
 
-`HOST` is `localhost` if a socket or `localhost` is used, else ``127.0.0.1` if that IP is used, else `%`.  Sometimes the privileges are granted to `localhost` and `127.0.0.1`.
+`HOST` is `localhost` if a socket or `localhost` is used, else `127.0.0.1` if that IP is used, else `%`.  Sometimes the privileges are granted to `localhost` and `127.0.0.1`.
 
 The percona-agent MySQL user password is randomly generated and can be viewed later through the web app.
 
@@ -100,21 +102,21 @@ MySQL Options
 |-mysql-socket      |         | MySQL socket file           |
 +-------------------+---------+-----------------------------+
 
-To get list of all flags run `./install -help`
+To get list of all flags run :sh:`./install -help`
 
 MySQL options specified on the command line override (take precedence over) MySQL options discovered by `MySQL Auto-detection`_.
 
 Slave Install
 *************
 
-To install *percon-agent* on a slave, first install it on the master, then on the slave run the `install` script with `-create-mysql-user=false` and it will prompt you for the existing percona-agent MySQL user credentials.
+To install *percon-agent* on a slave, first install it on the master, then on the slave run the :sh:`install` script with :sh:`-create-mysql-user=false` and it will prompt you for the existing percona-agent MySQL user credentials.
 
 Since this requires a prompt, a slave install does not currently work for an `Automated Install`_.
 
 Non-MySQL Install
 *****************
 
-To install *percona-agent* on a server without MySQL (e.g. to monitor only server metrics), use `-mysql=false`:
+To install *percona-agent* on a server without MySQL (e.g. to monitor only server metrics), use :sh:`-mysql=false`:
 
 .. code:: sh
 
@@ -126,32 +128,32 @@ Updating the Agent
 With *Quick Install*
 ====================
 
-  When new version is available
+When new version is available
   
-  1. `Get your api-key <https://cloud.percona.com/api-key>`_
-  2. Run in terminal as root:
+1. `Get your api-key <https://cloud.percona.com/api-key>`_
+2. Run in terminal as root:
 
 .. code:: sh
 
    curl -s https://cloud.percona.com/get | bash /dev/stdin -api-key <API key>
 
-With *Standard Install
-======================
+With *Standard Install*
+=======================
 
-  1. `Download the latest percona-agent <http://www.percona.com/downloads/percona-agent/LATEST/>`_ to your server.
-  2. Extract the tarball.
-  3. Run the `install` script.
+1. `Download the latest percona-agent <http://www.percona.com/downloads/percona-agent/LATEST/>`_ to your server.
+2. Extract the tarball.
+3. Run the `install` script.
 
 Uninstalling the Agent
 **********************
 
 First, to stop and remove *percona-agent* from a server, as root run either:
 
-* `curl -s https://cloud.percona.com/get | /bin/sh /dev/stdin -uninstall` (if you did a `Quick Install`_)
+* :sh:`curl -s https://cloud.percona.com/get | /bin/sh /dev/stdin -uninstall` (if you did a `Quick Install`_)
 
 or,
 
-* `./install -uninstall` (if you did a  `Standard Install`_)
+* :sh:`./install -uninstall` (if you did a  `Standard Install`_)
 
 Then `delete the agent <https://cloud.percona.com/agents>`_ in the web app.  This removes its configuration and Query Analytics data from Percona Cloud Tools.
 
