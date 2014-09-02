@@ -19,7 +19,7 @@ package mysql_test
 
 import (
 	"database/sql"
-	_ "github.com/arnehormann/mysql"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mm"
 	"github.com/percona/percona-agent/mm/mysql"
