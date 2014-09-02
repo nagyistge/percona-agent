@@ -34,7 +34,7 @@ Standard Install
 2. Extract the tarball and change to the directory it creates.
 3. Run the :sh:`install` script.
 
-By default, the installer is automatic and interactive: it tries to do everything automatically as in a *Quick Install*, but if it has problems it prompts you for input. You can disable prompts by specifying `-interactive=false` for an `Automated Install`_.
+By default, the installer is automatic and interactive: it tries to do everything automatically as in a *Quick Install*, but if it has problems it prompts you for input. You can disable prompts by specifying :sh:`-interactive=false` for an `Automated Install`_.
 
 .. _Automated Install:
 
