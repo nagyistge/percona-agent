@@ -53,7 +53,9 @@ If the installer fails to setup MySQL it will continue and enable only *Server M
 
 For example, without `MySQL Auto-detection`_ you can specify the necessary `MySQL Options`_ instead:
 
-:sh:`./install -interactive=false -mysql-user=root -mysql-pass=secret -mysql-socket=/var/run/mysqld/mysqld.sock`
+.. code:: sh
+
+   `./install -interactive=false -mysql-user=root -mysql-pass=secret -mysql-socket=/var/run/mysqld/mysqld.sock`
 
 **Note**: An automated install must create the percona-agent MySQL user; you cannot specify an existing MySQL user. This ability will be added in a future version of the installer.
 
@@ -133,7 +135,7 @@ When new version is available
 1. `Get your api-key <https://cloud.percona.com/api-key>`_
 2. Run in terminal as root:
 
-:sh:`curl -s https://cloud.percona.com/get | bash /dev/stdin -api-key <API key>`
+:sh:`curl -s https://cloud.percona.com/install | bash /dev/stdin -api-key <API key>`
 
 With *Standard Install*
 =======================
@@ -147,7 +149,7 @@ Uninstalling the Agent
 
 First, to stop and remove *percona-agent* from a server, as root run either:
 
-* :sh:`curl -s https://cloud.percona.com/get | /bin/sh /dev/stdin -uninstall` (if you did a `Quick Install`_)
+* :sh:`curl -s https://cloud.percona.com/install | /bin/sh /dev/stdin -uninstall` (if you did a `Quick Install`_)
 
 or,
 
