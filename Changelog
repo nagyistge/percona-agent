@@ -2,6 +2,8 @@ percona-agent Changelog
 
 v1.0.7
 
+  * PCT-764: Bad data file causes agent to stop sending but keep spooling data
+  * Added X-Percona-Agent-Version header
   * Built with github.com/go-sql-driver/mysql 0b000424e5
 
 v1.0.6 released 2014-08-12
