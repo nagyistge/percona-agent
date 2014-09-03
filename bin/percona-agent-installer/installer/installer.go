@@ -177,7 +177,10 @@ VERIFY_API_KEY:
 	for {
 		startTime := time.Now()
 		fmt.Printf("Verifying API key %s...\n", i.agentConfig.ApiKey)
-		code, err := pct.Ping(i.agentConfig.ApiHostname, i.agentConfig.ApiKey)
+		headers := map[string]string{
+			"X-Percona-Agent-Version": agent.VERSION,
+		}
+		code, err := pct.Ping(i.agentConfig.ApiHostname, i.agentConfig.ApiKey, headers)
 		elapsedTime := time.Since(startTime)
 		elapsedTimeInSeconds := elapsedTime / time.Second
 
