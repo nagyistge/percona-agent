@@ -241,8 +241,17 @@ func (s *AggregatorTestSuite) TestC003(t *C) {
 	t.Assert(got, NotNil)
 	t.Check(got.Ts, Equals, t1)
 	t.Check(uint64(got.Duration), Equals, uint64(interval))
+	expect := &mm.Report{}
+	if err := test.LoadMmReport(sample+"/c003r.json", expect); err != nil {
+		t.Fatal("c003r.json ", err)
+	}
+	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
+		t.Fatal(diff)
+	}
 
 	// Get the collected stats
+	// As got.Stats[0].Stats is a map, we run this empty 'for' loop just to get
+	// the stats for the first key in the map, into the stats variable.
 	var stats *mm.Stats
 	for _, stats = range got.Stats[0].Stats {
 	}
@@ -264,14 +273,6 @@ func (s *AggregatorTestSuite) TestC003(t *C) {
 	}
 	// stats.Cnt must be equal to the number of seconds in the interval
 	t.Check(int64(stats.Cnt), Equals, interval)
-
-	expect := &mm.Report{}
-	if err := test.LoadMmReport(sample+"/c003r.json", expect); err != nil {
-		t.Fatal("c003r.json ", err)
-	}
-	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
-		t.Fatal(diff)
-	}
 
 }
 

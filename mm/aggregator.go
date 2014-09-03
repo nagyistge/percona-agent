@@ -95,20 +95,11 @@ func (a *Aggregator) run() {
 
 				// Init next stats based on current ones to avoid re-creating them.
 				// todo: what if metrics from an instance aren't collected?
-				next := make([]*InstanceStats, len(cur))
 				for n := range cur {
-					i := &InstanceStats{
-						ServiceInstance: cur[n].ServiceInstance,
-						Stats:           make(map[string]*Stats),
+					for key, _ := range cur[n].Stats {
+						cur[n].Stats[key].Reset()
 					}
-					for key, stat := range cur[n].Stats {
-						// Make a copy of the values
-						i.Stats[key] = &*stat
-						i.Stats[key].Reset()
-					}
-					next[n] = i
 				}
-				cur = next
 				curInterval = interval
 				startTs = GoTime(a.interval, interval)
 				a.logger.Debug("Start interval", startTs)

@@ -41,7 +41,6 @@ type Stats struct {
 }
 
 func (s *Stats) Reset() {
-	//lastVal := s.vals[len(s.vals)-1]
 	if s.metricType == "counter" {
 		s.sum = 0
 		s.vals = []float64{}
