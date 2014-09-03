@@ -362,18 +362,6 @@ func (s *TestSuite) TestCollectUserstats(t *C) {
 }
 
 func (s *TestSuite) TestSlowResponse(t *C) {
-	/**
-	 * Disable and reset user stats.
-	 */
-	if _, err := s.db.Exec("set global userstat = off"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.db.Exec("flush user_statistics"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.db.Exec("flush index_statistics"); err != nil {
-		t.Fatal(err)
-	}
 
 	config := &mysql.Config{
 		Config: mm.Config{
@@ -388,7 +376,7 @@ func (s *TestSuite) TestSlowResponse(t *C) {
 	}
 
 	slowCon := mock.NewSlowMySQL(dsn)
-	slowCon.SetGlobalDelay(4 * time.Second)
+	slowCon.SetGlobalDelay((config.Collect + 1) * time.Second)
 	m := mysql.NewMonitor(s.name, config, s.logger, slowCon)
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
