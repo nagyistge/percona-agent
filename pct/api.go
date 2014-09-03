@@ -86,13 +86,18 @@ func NewAPI() *API {
 	return a
 }
 
-func Ping(hostname, apiKey string) (int, error) {
+func Ping(hostname, apiKey string, headers map[string]string) (int, error) {
 	url := URL(hostname, "ping")
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return 0, fmt.Errorf("Ping %s error: http.NewRequest: %s", url, err)
 	}
 	req.Header.Add("X-Percona-API-Key", apiKey)
+	if headers != nil {
+		for k, v := range headers {
+			req.Header.Add(k, v)
+		}
+	}
 
 	client := &http.Client{
 		Transport: &http.Transport{

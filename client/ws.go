@@ -35,9 +35,10 @@ const (
 )
 
 type WebsocketClient struct {
-	logger *pct.Logger
-	api    pct.APIConnector
-	link   string
+	logger  *pct.Logger
+	api     pct.APIConnector
+	link    string
+	headers map[string]string
 	// --
 	conn      *websocket.Conn
 	connected bool
@@ -55,12 +56,13 @@ type WebsocketClient struct {
 	name        string
 }
 
-func NewWebsocketClient(logger *pct.Logger, api pct.APIConnector, link string) (*WebsocketClient, error) {
+func NewWebsocketClient(logger *pct.Logger, api pct.APIConnector, link string, headers map[string]string) (*WebsocketClient, error) {
 	name := logger.Service()
 	c := &WebsocketClient{
-		logger: logger,
-		api:    api,
-		link:   link,
+		logger:  logger,
+		api:     api,
+		link:    link,
+		headers: headers,
 		// --
 		mux:  new(sync.Mutex),
 		conn: nil,
@@ -141,6 +143,11 @@ func (c *WebsocketClient) ConnectOnce(timeout uint) error {
 		return err
 	}
 	config.Header.Add("X-Percona-API-Key", c.api.ApiKey())
+	if c.headers != nil {
+		for k, v := range c.headers {
+			config.Header.Add(k, v)
+		}
+	}
 
 	c.status.Update(c.name, "Connecting "+link)
 	conn, err := c.dialTimeout(config, timeout)

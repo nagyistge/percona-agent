@@ -204,19 +204,19 @@ func (s *Sender) sendAllFiles() error {
 			// File is bad, remove it.
 			s.status.Update("data-sender", "Removing "+file)
 			s.spool.Remove(file)
-			s.logger.Warn(fmt.Sprintf("Removed %s because API returned %d", file, resp.Code))
+			s.logger.Warn(fmt.Sprintf("Removed %s because API returned %d: %s", file, resp.Code, resp.Error))
 			s.sent++
 			s.bad++
 		case resp.Code >= 300:
 			// This shouldn't happen.
-			return fmt.Errorf("Recieved unhandled response code from API: %d", resp.Code)
+			return fmt.Errorf("Recieved unhandled response code from API: %d: %s", resp.Code, resp.Error)
 		case resp.Code >= 200:
 			s.status.Update("data-sender", "Removing "+file)
 			s.spool.Remove(file)
 			s.sent++
 		default:
 			// This shouldn't happen.
-			return fmt.Errorf("Recieved unknown response code from API: %d", resp.Code)
+			return fmt.Errorf("Recieved unknown response code from API: %d: %s", resp.Code, resp.Error)
 		}
 	}
 	return nil // success
