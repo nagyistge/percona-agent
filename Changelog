@@ -3,6 +3,8 @@ percona-agent Changelog
 v1.0.7
 
   * PCT-764: Bad data file causes agent to stop sending but keep spooling data
+  * PCT-808: System info (PCT-809, PCT-810)
+  * PCT-863: Explain fails on multipart key_len
   * Added X-Percona-Agent-Version header
   * Built with github.com/go-sql-driver/mysql 0b000424e5
 
