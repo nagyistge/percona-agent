@@ -376,7 +376,7 @@ func (s *TestSuite) TestSlowResponse(t *C) {
 	}
 
 	slowCon := mock.NewSlowMySQL(dsn)
-	slowCon.SetGlobalDelay((config.Collect + 1) * time.Second)
+	slowCon.SetGlobalDelay(time.Duration(config.Collect+1) * time.Second)
 	m := mysql.NewMonitor(s.name, config, s.logger, slowCon)
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
