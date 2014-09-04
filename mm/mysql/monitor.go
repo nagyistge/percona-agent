@@ -21,13 +21,14 @@ import (
 	"database/sql"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mm"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
-	"strconv"
-	"strings"
-	"time"
 )
 
 type Monitor struct {
@@ -226,6 +227,7 @@ func (m *Monitor) run() {
 			}
 
 			// SHOW GLOBAL STATUS
+			start := time.Now()
 			conn := m.conn.DB()
 			if err := m.GetShowStatusMetrics(conn, c); err != nil {
 				m.collectError(err)
@@ -255,6 +257,18 @@ func (m *Monitor) run() {
 				}
 			}
 
+			// It is possible what when capture metrics, it will stall for many
+			// seconds for some reason so, even though we issued captures 1 sec in
+			// between, we actually got 5 seconds between results and as such we
+			// might be showing huge spike.
+			// To avoid that, if the time took to collect the metrics is > 10% of
+			// the capture interval, those metrics are discarded.
+			diff := time.Now().Sub(start).Seconds()
+			if diff > float64(m.config.Collect)*0.1 {
+				lastError = fmt.Sprintf("Skipping interval because it took too long to collect: %.1fs >= %ds", diff, m.config.Collect)
+				m.logger.Warn(lastError)
+				continue
+			}
 			// Send the metrics to an mm.Aggregator.
 			m.status.Update(m.name, "Sending metrics")
 			if len(c.Metrics) > 0 {
