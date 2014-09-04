@@ -52,6 +52,11 @@ func NewStats(metricType string) (*Stats, error) {
 	return s, nil
 }
 
+func (s *Stats) Reset() {
+	s.sum = 0
+	s.vals = []float64{}
+}
+
 func (s *Stats) Add(m *Metric, ts int64) {
 	switch s.metricType {
 	case "gauge":
@@ -96,7 +101,6 @@ func (s *Stats) Summarize() {
 		s.Cnt = len(s.vals)
 		if s.Cnt > 1 {
 			sort.Float64s(s.vals)
-
 			s.Min = s.vals[0]
 			s.Pct5 = s.vals[(5*s.Cnt)/100]
 			s.Avg = s.sum / float64(s.Cnt)

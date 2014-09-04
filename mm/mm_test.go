@@ -20,6 +20,12 @@ package mm_test
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/instance"
@@ -30,11 +36,6 @@ import (
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
-	"io/ioutil"
-	"os"
-	"path/filepath"
-	"testing"
-	"time"
 )
 
 // Hook up gocheck into the "go test" runner.
@@ -243,6 +244,43 @@ func (s *AggregatorTestSuite) TestC003(t *C) {
 	expect := &mm.Report{}
 	if err := test.LoadMmReport(sample+"/c003r.json", expect); err != nil {
 		t.Fatal("c003r.json ", err)
+	}
+	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
+		t.Fatal(diff)
+	}
+
+	// Get the collected stats
+	// As got.Stats[0].Stats is a map, we run this empty 'for' loop just to get
+	// the stats for the first key in the map, into the stats variable.
+	var stats *mm.Stats
+	for _, stats = range got.Stats[0].Stats {
+	}
+	// First time, stats.Cnt must be equal to the number of seconds in the interval
+	// minus 1 because the first value is used to bootstrap the aggregator
+	t.Check(int64(stats.Cnt), Equals, interval-1)
+
+	// Let's complete the second interval
+	for i := 6; i <= 9; i++ {
+		file := fmt.Sprintf("%s/c003-%d.json", sample, i)
+		if err := sendCollection(file, s.collectionChan); err != nil {
+			t.Fatal(file, err)
+		}
+	}
+	// Sample #10 will be in the 3rd interval, so the 2nd will be reported
+	file = fmt.Sprintf("%s/c003-%d.json", sample, 10)
+	if err := sendCollection(file, s.collectionChan); err != nil {
+		t.Fatal(file, err)
+	}
+
+	got = test.WaitMmReport(s.dataChan)
+	t.Assert(got, NotNil)
+	// Get the collected stats
+	for _, stats = range got.Stats[0].Stats {
+	}
+	// stats.Cnt must be equal to the number of seconds in the interval
+	t.Check(int64(stats.Cnt), Equals, interval)
+	if err := test.LoadMmReport(sample+"/c003r2.json", expect); err != nil {
+		t.Fatal("c003r2.json ", err)
 	}
 	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
 		t.Fatal(diff)
