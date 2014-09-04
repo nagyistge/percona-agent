@@ -40,13 +40,6 @@ type Stats struct {
 	Max        float64
 }
 
-func (s *Stats) Reset() {
-	if s.metricType == "counter" {
-		s.sum = 0
-		s.vals = []float64{}
-	}
-}
-
 func NewStats(metricType string) (*Stats, error) {
 	if !MetricTypes[metricType] {
 		return nil, errors.New("Invalid metric type: " + metricType)
@@ -57,6 +50,11 @@ func NewStats(metricType string) (*Stats, error) {
 		firstVal:   true,
 	}
 	return s, nil
+}
+
+func (s *Stats) Reset() {
+	s.sum = 0
+	s.vals = []float64{}
 }
 
 func (s *Stats) Add(m *Metric, ts int64) {
@@ -103,7 +101,6 @@ func (s *Stats) Summarize() {
 		s.Cnt = len(s.vals)
 		if s.Cnt > 1 {
 			sort.Float64s(s.vals)
-
 			s.Min = s.vals[0]
 			s.Pct5 = s.vals[(5*s.Cnt)/100]
 			s.Avg = s.sum / float64(s.Cnt)

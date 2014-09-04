@@ -256,16 +256,22 @@ func (s *AggregatorTestSuite) TestC003(t *C) {
 	for _, stats = range got.Stats[0].Stats {
 	}
 	// First time, stats.Cnt must be equal to the number of seconds in the interval
-	// minus 1 because the first value doesn't count
+	// minus 1 because the first value is used to bootstrap the aggregator
 	t.Check(int64(stats.Cnt), Equals, interval-1)
 
 	// Let's complete the second interval
-	for i := 6; i <= 11; i++ {
+	for i := 6; i <= 9; i++ {
 		file := fmt.Sprintf("%s/c003-%d.json", sample, i)
 		if err := sendCollection(file, s.collectionChan); err != nil {
 			t.Fatal(file, err)
 		}
 	}
+	// Sample #10 will be in the 3rd interval, so the 2nd will be reported
+	file = fmt.Sprintf("%s/c003-%d.json", sample, 10)
+	if err := sendCollection(file, s.collectionChan); err != nil {
+		t.Fatal(file, err)
+	}
+
 	got = test.WaitMmReport(s.dataChan)
 	t.Assert(got, NotNil)
 	// Get the collected stats
@@ -273,7 +279,12 @@ func (s *AggregatorTestSuite) TestC003(t *C) {
 	}
 	// stats.Cnt must be equal to the number of seconds in the interval
 	t.Check(int64(stats.Cnt), Equals, interval)
-
+	if err := test.LoadMmReport(sample+"/c003r2.json", expect); err != nil {
+		t.Fatal("c003r2.json ", err)
+	}
+	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
+		t.Fatal(diff)
+	}
 }
 
 func (s *AggregatorTestSuite) TestC003Lost(t *C) {
