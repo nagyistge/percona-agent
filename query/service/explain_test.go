@@ -164,10 +164,10 @@ func (s *ManagerTestSuite) TestExplainWithoutDb(t *C) {
 						Valid:  false,
 					},
 				},
-				KeyLen: proto.NullInt64{
-					NullInt64: sql.NullInt64{
-						Int64: 0,
-						Valid: false,
+				KeyLen: proto.NullString{
+					NullString: sql.NullString{
+						String: "",
+						Valid:  false,
 					},
 				},
 				Ref: proto.NullString{
@@ -269,10 +269,10 @@ func (s *ManagerTestSuite) TestExplainWithDb(t *C) {
 						Valid:  true,
 					},
 				},
-				KeyLen: proto.NullInt64{
-					NullInt64: sql.NullInt64{
-						Int64: 0,
-						Valid: false,
+				KeyLen: proto.NullString{
+					NullString: sql.NullString{
+						String: "",
+						Valid:  false,
 					},
 				},
 				Ref: proto.NullString{

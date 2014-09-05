@@ -57,7 +57,7 @@ func (c *CmdTest) Run() <-chan string {
 			if n > 0 {
 				lines := bytes.SplitAfter(b[:n], []byte("\n"))
 				// Example: Split(a\nb\n\c\n) => ["a\n", "b\n", "c\n", ""]
-				// We are getting empty element because data for split was ending with delimeter (\n)
+				// We are getting empty element because data for split was ending with delimiter (\n)
 				// We don't want it, so we remove it
 				lastPos := len(lines) - 1
 				if len(lines[lastPos]) == 0 {

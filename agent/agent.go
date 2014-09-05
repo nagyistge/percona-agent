@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/pct"
+	pctCmd "github.com/percona/percona-agent/pct/cmd"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -35,7 +36,7 @@ import (
 // REV="$(git rev-parse HEAD)"
 // go build -ldflags "-X github.com/percona/percon-agent/agnet.REVISION $REV"
 var REVISION string = "0"
-var VERSION string = "1.0.6"
+var VERSION string = "1.0.7"
 
 const (
 	CMD_QUEUE_SIZE    = 10
@@ -164,14 +165,14 @@ func (agent *Agent) Run() error {
 					strings.Join(os.Args[1:len(os.Args)], " "),
 					pct.Basedir.Path(),
 				)
-				startScript := filepath.Join(pct.Basedir.Path(), "start")
+				startScript := pct.Basedir.File("start-script")
 				if err := ioutil.WriteFile(startScript, []byte(sh), os.FileMode(0754)); err != nil {
 					agent.reply(cmd.Reply(nil, err))
 				}
 				logger.Debug("Restart:sh")
-				self := exec.Command(startScript)
-				err = self.Start()
-				agent.reply(cmd.Reply(nil, err))
+				self := pctCmd.Factory.Make(startScript)
+				output, err := self.Run()
+				agent.reply(cmd.Reply(output, err))
 				logger.Debug("Restart:done")
 				return nil
 			case "Stop":

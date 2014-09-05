@@ -34,11 +34,15 @@ import (
 	mrmsMonitor "github.com/percona/percona-agent/mrms/monitor"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
+	pctCmd "github.com/percona/percona-agent/pct/cmd"
 	"github.com/percona/percona-agent/qan"
 	"github.com/percona/percona-agent/query"
 	queryService "github.com/percona/percona-agent/query/service"
 	"github.com/percona/percona-agent/sysconfig"
 	sysconfigMonitor "github.com/percona/percona-agent/sysconfig/monitor"
+	"github.com/percona/percona-agent/sysinfo"
+	mysqlSysinfo "github.com/percona/percona-agent/sysinfo/mysql"
+	systemSysinfo "github.com/percona/percona-agent/sysinfo/system"
 	"github.com/percona/percona-agent/ticker"
 	golog "log"
 	"os"
@@ -113,9 +117,15 @@ func run() error {
 	 * Ping and exit, maybe.
 	 */
 
+	// Set for all connections to API.  X-Percona-API-Key is set automatically
+	// using the pct.APIConnector.
+	headers := map[string]string{
+		"X-Percona-Agent-Version": agent.VERSION,
+	}
+
 	if flagPing {
 		t0 := time.Now()
-		code, err := pct.Ping(agentConfig.ApiHostname, agentConfig.ApiKey)
+		code, err := pct.Ping(agentConfig.ApiHostname, agentConfig.ApiKey, headers)
 		d := time.Now().Sub(t0)
 		if err != nil || code != 200 {
 			return fmt.Errorf("Ping FAIL (%d %d %s)", d, code, err)
@@ -158,7 +168,7 @@ func run() error {
 	logChan := make(chan *proto.LogEntry, log.BUFFER_SIZE*3)
 
 	// Log websocket client, possibly disabled later.
-	logClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "log-ws"), api, "log")
+	logClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "log-ws"), api, "log", headers)
 	if err != nil {
 		golog.Fatalln(err)
 	}
@@ -184,7 +194,7 @@ func run() error {
 	}
 
 	/**
-	 * Start MRMS (MySQL Restart Monitoring Service)
+	 * MRMS (MySQL Restart Monitoring Service)
 	 */
 
 	mysqlRestartMonitor := mrmsMonitor.NewMonitor(
@@ -205,13 +215,14 @@ func run() error {
 
 	hostname, _ := os.Hostname()
 
-	dataClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "data-ws"), api, "data")
+	dataClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "data-ws"), api, "data", headers)
 	if err != nil {
 		golog.Fatalln(err)
 	}
 	dataManager := data.NewManager(
 		pct.NewLogger(logChan, "data"),
 		pct.Basedir.Dir("data"),
+		pct.Basedir.Dir("trash"),
 		hostname,
 		dataClient,
 	)
@@ -256,7 +267,7 @@ func run() error {
 	 * Query service
 	 */
 	explainService := queryService.NewExplain(
-		pct.NewLogger(logChan, "query"),
+		pct.NewLogger(logChan, "query-explain"),
 		&mysql.RealConnectionFactory{},
 		itManager.Repo(),
 	)
@@ -287,6 +298,35 @@ func run() error {
 	}
 
 	/**
+	 * Sysinfo
+	 */
+	sysinfoManager := sysinfo.NewManager(
+		pct.NewLogger(logChan, "sysinfo"),
+	)
+
+	// MySQL Sysinfo
+	mysqlSysinfoService := mysqlSysinfo.NewMySQL(
+		pct.NewLogger(logChan, "sysinfo-mysql"),
+		itManager.Repo(),
+	)
+	if err := sysinfoManager.RegisterService("MySQLSummary", mysqlSysinfoService); err != nil {
+		return fmt.Errorf("Error registering Mysql Sysinfo service: %s\n", err)
+	}
+
+	// System Sysinfo
+	systemSysinfoService := systemSysinfo.NewSystem(
+		pct.NewLogger(logChan, "sysinfo-system"),
+	)
+	if err := sysinfoManager.RegisterService("SystemSummary", systemSysinfoService); err != nil {
+		return fmt.Errorf("Error registering System Sysinfo service: %s\n", err)
+	}
+
+	// Start Sysinfo manager
+	if err := sysinfoManager.Start(); err != nil {
+		return fmt.Errorf("Error starting Sysinfo manager: %s\n", err)
+	}
+
+	/**
 	 * Signal handler
 	 */
 
@@ -306,7 +346,7 @@ func run() error {
 	 * Agent
 	 */
 
-	cmdClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "agent-ws"), api, "cmd")
+	cmdClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "agent-ws"), api, "cmd", headers)
 	if err != nil {
 		golog.Fatal(err)
 	}
@@ -323,7 +363,11 @@ func run() error {
 		"mrms":      mrmsManager,
 		"sysconfig": sysconfigManager,
 		"query":     queryManager,
+		"sysinfo":   sysinfoManager,
 	}
+
+	// Set the global pct/cmd.Factory, used for the Restart cmd.
+	pctCmd.Factory = &pctCmd.RealCmdFactory{}
 
 	agent := agent.NewAgent(
 		agentConfig,

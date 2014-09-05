@@ -29,10 +29,12 @@ const (
 	DEFAULT_BASEDIR    = "/usr/local/percona/percona-agent"
 	CONFIG_FILE_SUFFIX = ".conf"
 	// Relative to Basedir.path:
-	CONFIG_DIR      = "config"
-	DATA_DIR        = "data"
-	BIN_DIR         = "bin"
-	START_LOCK_FILE = "start.lock"
+	CONFIG_DIR   = "config"
+	DATA_DIR     = "data"
+	BIN_DIR      = "bin"
+	TRASH_DIR    = "trash"
+	START_LOCK   = "start.lock"
+	START_SCRIPT = "start.sh"
 )
 
 type basedir struct {
@@ -40,6 +42,7 @@ type basedir struct {
 	configDir string
 	dataDir   string
 	binDir    string
+	trashDir  string
 }
 
 var Basedir basedir
@@ -73,6 +76,11 @@ func (b *basedir) Init(path string) error {
 		return err
 	}
 
+	b.trashDir = filepath.Join(b.path, TRASH_DIR)
+	if err := MakeDir(b.trashDir); err != nil && !os.IsExist(err) {
+		return err
+	}
+
 	return nil
 }
 
@@ -88,6 +96,8 @@ func (b *basedir) Dir(service string) string {
 		return b.dataDir
 	case "bin":
 		return b.binDir
+	case "trash":
+		return b.trashDir
 	default:
 		log.Panic("Invalid service: " + service)
 	}
@@ -133,7 +143,9 @@ func (b *basedir) RemoveConfig(service string) error {
 func (b *basedir) File(file string) string {
 	switch file {
 	case "start-lock":
-		file = START_LOCK_FILE
+		file = START_LOCK
+	case "start-script":
+		file = START_SCRIPT
 	default:
 		log.Panicf("Unknown basedir file: %s", file)
 	}

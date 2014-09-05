@@ -115,7 +115,7 @@ Updating the Agent
   1. [Get your api-key](https://cloud.percona.com/api-key)
   2. Run in terminal as root:
 
-`curl -s https://cloud.percona.com/get | bash /dev/stdin -api-key <API key>`
+`curl -s https://cloud.percona.com/install | bash /dev/stdin -api-key <API key>`
 
 ### With *Standard Install*
 
@@ -128,7 +128,7 @@ Uninstalling the Agent
 
 First, to stop and remove *percona-agent* from a server, as root run either:
 
-* `curl -s https://cloud.percona.com/get | /bin/sh /dev/stdin -uninstall` (if you did a [Quick Install](#user-content-quick-install))
+* `curl -s https://cloud.percona.com/install | /bin/sh /dev/stdin -uninstall` (if you did a [Quick Install](#user-content-quick-install))
 
 or,
 

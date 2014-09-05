@@ -1,5 +1,15 @@
 percona-agent Changelog
 
+v1.0.7 released 2014-09-05
+
+  * PCT-506: Losing sample every minute
+  * PCT-565: Skip MySQL metrics that take too long to collect
+  * PCT-764: Bad data file causes agent to stop sending but keep spooling data
+  * PCT-808: System info (PCT-809, PCT-810)
+  * PCT-863: Explain fails on multipart key_len
+  * Added X-Percona-Agent-Version header
+  * Built with github.com/go-sql-driver/mysql 0b000424e5
+
 v1.0.6 released 2014-08-12
 
   * PCT-595: Use recover for all goroutines to mitigate crashes

@@ -129,7 +129,21 @@ DRAIN:
 	}
 }
 
-func DrainTraceChan(c chan string) {
+func DrainTraceChan(c chan string) []string {
+	trace := []string{}
+DRAIN:
+	for {
+		select {
+		case funcCalled := <-c:
+			trace = append(trace, funcCalled)
+		default:
+			break DRAIN
+		}
+	}
+	return trace
+}
+
+func DrainBoolChan(c chan bool) {
 DRAIN:
 	for {
 		select {
@@ -140,7 +154,18 @@ DRAIN:
 	}
 }
 
-func DrainBoolChan(c chan bool) {
+func DrainRecvData(c chan interface{}) {
+DRAIN:
+	for {
+		select {
+		case _ = <-c:
+		default:
+			break DRAIN
+		}
+	}
+}
+
+func DrainDataChan(c chan []byte) {
 DRAIN:
 	for {
 		select {

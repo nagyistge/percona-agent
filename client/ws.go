@@ -35,33 +35,38 @@ const (
 )
 
 type WebsocketClient struct {
-	logger *pct.Logger
-	api    pct.APIConnector
-	link   string
+	logger  *pct.Logger
+	api     pct.APIConnector
+	link    string
+	headers map[string]string
 	// --
-	conn        *websocket.Conn
+	conn      *websocket.Conn
+	connected bool
+	mux       *sync.Mutex // guard conn and connected
+	// --
+	started     bool
 	recvChan    chan *proto.Cmd
 	sendChan    chan *proto.Reply
 	connectChan chan bool
 	errChan     chan error
 	backoff     *pct.Backoff
-	started     bool
 	sendSync    *pct.SyncChan
 	recvSync    *pct.SyncChan
-	mux         *sync.Mutex
-	name        string
 	status      *pct.Status
-	connected   bool
+	name        string
 }
 
-func NewWebsocketClient(logger *pct.Logger, api pct.APIConnector, link string) (*WebsocketClient, error) {
+func NewWebsocketClient(logger *pct.Logger, api pct.APIConnector, link string, headers map[string]string) (*WebsocketClient, error) {
 	name := logger.Service()
 	c := &WebsocketClient{
-		logger: logger,
-		api:    api,
-		link:   link,
+		logger:  logger,
+		api:     api,
+		link:    link,
+		headers: headers,
 		// --
-		conn:        nil,
+		mux:  new(sync.Mutex),
+		conn: nil,
+		// --
 		recvChan:    make(chan *proto.Cmd, RECV_BUFFER_SIZE),
 		sendChan:    make(chan *proto.Reply, SEND_BUFFER_SIZE),
 		connectChan: make(chan bool, 1),
@@ -69,9 +74,8 @@ func NewWebsocketClient(logger *pct.Logger, api pct.APIConnector, link string) (
 		backoff:     pct.NewBackoff(5 * time.Minute),
 		sendSync:    pct.NewSyncChan(),
 		recvSync:    pct.NewSyncChan(),
-		mux:         new(sync.Mutex),
-		name:        name,
 		status:      pct.NewStatus([]string{name, name + "-link"}),
+		name:        name,
 	}
 	return c, nil
 }
@@ -79,9 +83,9 @@ func NewWebsocketClient(logger *pct.Logger, api pct.APIConnector, link string) (
 func (c *WebsocketClient) Start() {
 	// Start send() and recv() goroutines, but they wait for successful Connect().
 	if !c.started {
+		c.started = true
 		go c.send()
 		go c.recv()
-		c.started = true
 	}
 }
 
@@ -110,6 +114,7 @@ func (c *WebsocketClient) Connect() {
 			c.logger.Warn(err)
 			continue
 		}
+		c.backoff.Success()
 
 		// Start/resume send() and recv() goroutines if Start() was called.
 		if c.started {
@@ -117,7 +122,6 @@ func (c *WebsocketClient) Connect() {
 			c.sendSync.Start()
 		}
 
-		c.backoff.Success()
 		c.notifyConnect(true)
 		return // success
 	}
@@ -126,6 +130,9 @@ func (c *WebsocketClient) Connect() {
 func (c *WebsocketClient) ConnectOnce(timeout uint) error {
 	c.logger.Debug("ConnectOnce:call")
 	defer c.logger.Debug("ConnectOnce:return")
+
+	c.mux.Lock()
+	defer c.mux.Unlock()
 
 	// Make websocket connection.  If this fails, either API is down or the ws
 	// address is wrong.
@@ -136,6 +143,11 @@ func (c *WebsocketClient) ConnectOnce(timeout uint) error {
 		return err
 	}
 	config.Header.Add("X-Percona-API-Key", c.api.ApiKey())
+	if c.headers != nil {
+		for k, v := range c.headers {
+			config.Header.Add(k, v)
+		}
+	}
 
 	c.status.Update(c.name, "Connecting "+link)
 	conn, err := c.dialTimeout(config, timeout)
@@ -143,10 +155,8 @@ func (c *WebsocketClient) ConnectOnce(timeout uint) error {
 		return err
 	}
 
-	c.mux.Lock()
-	defer c.mux.Unlock()
-	c.connected = true
 	c.conn = conn
+	c.connected = true
 	c.status.Update(c.name, "Connected "+link)
 
 	return nil
@@ -198,9 +208,23 @@ func (c *WebsocketClient) dialTimeout(config *websocket.Config, timeout uint) (w
 	return ws, nil
 }
 
-func (c *WebsocketClient) Disconnect() error {
+func (c *WebsocketClient) Disconnect() {
 	c.logger.DebugOffline("Disconnect:call")
 	defer c.logger.DebugOffline("Disconnect:return")
+
+	c.mux.Lock()
+	defer c.mux.Unlock()
+	if !c.connected {
+		return
+	}
+
+	c.disconnect()
+	c.notifyConnect(false)
+}
+
+func (c *WebsocketClient) DisconnectOnce() {
+	c.logger.DebugOffline("DisconnectOnce:call")
+	defer c.logger.DebugOffline("DisconnectOnce:return")
 
 	/**
 	 * Must guard c.conn here to prevent duplicate notifyConnect() because Close()
@@ -211,29 +235,32 @@ func (c *WebsocketClient) Disconnect() error {
 	 */
 	c.mux.Lock()
 	defer c.mux.Unlock()
-
-	if c.connected {
-		c.logger.DebugOffline("Disconnect:websocket.Conn.Close")
-		if err := c.conn.Close(); err != nil {
-			// Example: write tcp 127.0.0.1:8000: i/o timeout
-			// That ^ can happen if remote end hangs up, then we call Close().
-			// Since there's nothing we can do about errors here, we ignore them.
-			c.logger.DebugOffline("Disconnect:websocket.Conn.Close:err:" + err.Error())
-		}
-		/**
-		 * Do not set c.conn = nil to indicate that connection is closed because
-		 * unless we also guard c.conn in Send() and Recv() c.conn.Set*Deadline()
-		 * will panic.  If the underlying websocket.Conn is closed, then
-		 * Set*Deadline() will do nothing and websocket.JSON.Send/Receive() will
-		 * just return an error, which is a lot better than a panic.
-		 */
-		c.connected = false
-		c.logger.DebugOffline("Disconnect:disconnected")
-		c.status.Update(c.name, "Disconnected")
-		c.notifyConnect(false)
+	if !c.connected {
+		return
 	}
 
-	return nil
+	c.disconnect()
+}
+
+func (c *WebsocketClient) disconnect() {
+	if err := c.conn.Close(); err != nil {
+		// Example: write tcp 127.0.0.1:8000: i/o timeout
+		// That ^ can happen if remote end hangs up, then we call Close().
+		// Since there's nothing we can do about errors here, we ignore them.
+		c.logger.DebugOffline("disconnect:websocket.Conn.Close:err:" + err.Error())
+	}
+
+	/**
+	 * Do not set c.conn = nil to indicate that connection is closed because
+	 * unless we also guard c.conn in Send() and Recv() c.conn.Set*Deadline()
+	 * will panic.  If the underlying websocket.Conn is closed, then
+	 * Set*Deadline() will do nothing and websocket.JSON.Send/Receive() will
+	 * just return an error, which is a lot better than a panic.
+	 */
+	c.connected = false
+
+	c.logger.DebugOffline("disconnected")
+	c.status.Update(c.name, "Disconnected")
 }
 
 func (c *WebsocketClient) send() {

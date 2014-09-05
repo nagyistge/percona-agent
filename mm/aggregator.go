@@ -18,11 +18,12 @@
 package mm
 
 import (
+	"math"
+	"time"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/pct"
-	"math"
-	"time"
 )
 
 type Aggregator struct {
@@ -97,15 +98,11 @@ func (a *Aggregator) run() {
 
 				// Init next stats based on current ones to avoid re-creating them.
 				// todo: what if metrics from an instance aren't collected?
-				next := make([]*InstanceStats, len(cur))
 				for n := range cur {
-					i := &InstanceStats{
-						ServiceInstance: cur[n].ServiceInstance,
-						Stats:           make(map[string]*Stats),
+					for key, _ := range cur[n].Stats {
+						cur[n].Stats[key].Reset()
 					}
-					next[n] = i
 				}
-				cur = next
 				curInterval = interval
 				startTs = GoTime(a.interval, interval)
 				a.logger.Debug("Start interval", startTs)

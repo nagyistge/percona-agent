@@ -21,7 +21,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	_ "github.com/arnehormann/mysql"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test"

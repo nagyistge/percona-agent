@@ -31,6 +31,7 @@ type MockServiceManager struct {
 	StopErr      error
 	IsRunningVal bool
 	status       *pct.Status
+	Cmds         []*proto.Cmd
 }
 
 func NewMockServiceManager(name string, readyChan chan bool, traceChan chan string) *MockServiceManager {
@@ -39,6 +40,7 @@ func NewMockServiceManager(name string, readyChan chan bool, traceChan chan stri
 		readyChan: readyChan,
 		traceChan: traceChan,
 		status:    pct.NewStatus([]string{name}),
+		Cmds:      []*proto.Cmd{},
 	}
 	return m
 }
@@ -69,7 +71,14 @@ func (m *MockServiceManager) Status() map[string]string {
 }
 
 func (m *MockServiceManager) GetConfig() ([]proto.AgentConfig, []error) {
-	return nil, nil
+	configs := []proto.AgentConfig{
+		{
+			InternalService: m.name,
+			Config:          `{"Foo":"bar"}`,
+			Running:         m.IsRunningVal,
+		},
+	}
+	return configs, nil
 }
 
 func (m *MockServiceManager) IsRunning() bool {
@@ -78,7 +87,8 @@ func (m *MockServiceManager) IsRunning() bool {
 }
 
 func (m *MockServiceManager) Handle(cmd *proto.Cmd) *proto.Reply {
-	return nil
+	m.Cmds = append(m.Cmds, cmd)
+	return cmd.Reply(nil)
 }
 
 func (m *MockServiceManager) Reset() {

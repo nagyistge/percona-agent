@@ -19,7 +19,7 @@ package installer
 
 import (
 	"fmt"
-	_ "github.com/arnehormann/mysql"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/term"
@@ -177,7 +177,10 @@ VERIFY_API_KEY:
 	for {
 		startTime := time.Now()
 		fmt.Printf("Verifying API key %s...\n", i.agentConfig.ApiKey)
-		code, err := pct.Ping(i.agentConfig.ApiHostname, i.agentConfig.ApiKey)
+		headers := map[string]string{
+			"X-Percona-Agent-Version": agent.VERSION,
+		}
+		code, err := pct.Ping(i.agentConfig.ApiHostname, i.agentConfig.ApiKey, headers)
 		elapsedTime := time.Since(startTime)
 		elapsedTimeInSeconds := elapsedTime / time.Second
 

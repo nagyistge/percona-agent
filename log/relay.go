@@ -103,8 +103,6 @@ func (r *Relay) Run() {
 	r.setLogLevel(r.logLevel)
 	r.setLogFile(r.logFile)
 
-	// Connect if we were created with a client.  If this is slow, log entries
-	// will be buffered and sent later.
 	go r.connect()
 
 	for {
@@ -129,16 +127,15 @@ func (r *Relay) Run() {
 			r.status.Update("log-chan", fmt.Sprintf("%d", len(r.logChan)))
 		case connected := <-r.client.ConnectChan():
 			r.connected = connected
-			r.internal(fmt.Sprintf("connected: %t", connected))
 			if connected {
+				r.internal("Connected to API", proto.LOG_INFO)
 				if len(r.firstBuf) > 0 {
 					// Send log entries we saved while offline.
 					r.resend()
 				}
 			} else {
-				// waitErr() returned, so we got an error on websocket recv,
-				// probably due to lost connection to API.  Keep trying to
-				// reconnect in background, buffering log entries while offline.
+				// Error on Send(), reconnect to API.
+				r.internal("Lost connection to API", proto.LOG_WARNING)
 				go r.connect()
 			}
 		case file := <-r.logFileChan:
@@ -150,45 +147,23 @@ func (r *Relay) Run() {
 }
 
 // Even the relayer needs to log stuff.
-func (r *Relay) internal(msg string) {
+func (r *Relay) internal(msg string, level byte) {
 	logEntry := &proto.LogEntry{
 		Ts:      time.Now().UTC(),
 		Service: "log",
-		Level:   proto.LOG_WARNING,
+		Level:   level,
 		Msg:     msg,
 	}
 	r.logChan <- logEntry
 }
 
-// @goroutine[1]
+// Connect in background, buffering log entries while offline.
 func (r *Relay) connect() {
-	defer func() {
-		if err := recover(); err != nil {
-			golog.Printf("Log relay websocket client crashed: %s\n", err)
-		}
-	}()
 	if r.client == nil || r.offline {
-		// log file only
-		return
+		return // log file only
 	}
+	// ConnectChan() will recv true in main loop when this succeeds.
 	r.client.Connect()
-	go r.waitErr()
-}
-
-// @goroutine[1]
-func (r *Relay) waitErr() {
-	defer func() {
-		if err := recover(); err != nil {
-			golog.Printf("Log relay receiver crashed: %s\n", err)
-		}
-	}()
-	// When a websocket closes, the err is returned on recv,
-	// so we block on recv, not expecting any data, just
-	// waiting for error/disconenct.
-	var data interface{}
-	if err := r.client.Recv(data, 0); err != nil {
-		r.client.Disconnect()
-	}
 }
 
 func (r *Relay) buffer(e *proto.LogEntry) {
@@ -236,6 +211,7 @@ func (r *Relay) send(entry *proto.LogEntry, bufferOnErr bool) error {
 				// todo: if error is just timeout, when will this be resent?
 				r.buffer(entry)
 			}
+			r.client.Disconnect() // causes ConnectChan() to recv false in main loop
 		}
 	} else {
 		r.buffer(entry)
@@ -290,7 +266,7 @@ func (r *Relay) setLogLevel(level byte) {
 	r.status.Update("log-relay", fmt.Sprintf("Setting log level: %d", level))
 
 	if level < proto.LOG_EMERGENCY || level > proto.LOG_DEBUG {
-		r.internal(fmt.Sprintf("Invalid log level: %d\n", level))
+		r.internal(fmt.Sprintf("Invalid log level: %d\n", level), proto.LOG_WARNING)
 		return
 	}
 
@@ -320,7 +296,7 @@ func (r *Relay) setLogFile(logFile string) {
 		var err error
 		file, err = os.OpenFile(logFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 		if err != nil {
-			r.internal(err.Error())
+			r.internal(err.Error(), proto.LOG_WARNING)
 			return
 		}
 	}

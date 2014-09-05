@@ -30,6 +30,7 @@ import (
 type Manager struct {
 	logger   *pct.Logger
 	dataDir  string
+	trashDir string
 	hostname string
 	client   pct.WebsocketClient
 	// --
@@ -42,10 +43,11 @@ type Manager struct {
 	status  *pct.Status
 }
 
-func NewManager(logger *pct.Logger, dataDir string, hostname string, client pct.WebsocketClient) *Manager {
+func NewManager(logger *pct.Logger, dataDir, trashDir, hostname string, client pct.WebsocketClient) *Manager {
 	m := &Manager{
 		logger:   logger,
 		dataDir:  dataDir,
+		trashDir: trashDir,
 		hostname: hostname,
 		client:   client,
 		// --
@@ -81,8 +83,11 @@ func (m *Manager) Start() error {
 		return err
 	}
 
-	// Make data dir used/shared by all services (mm, qan, etc.).
+	// Make data and trash dirs used/shared by all services (mm, qan, etc.).
 	if err := pct.MakeDir(m.dataDir); err != nil {
+		return err
+	}
+	if err := pct.MakeDir(m.trashDir); err != nil {
 		return err
 	}
 
@@ -97,6 +102,7 @@ func (m *Manager) Start() error {
 	spooler := NewDiskvSpooler(
 		pct.NewLogger(m.logger.LogChan(), "data-spooler"),
 		m.dataDir,
+		m.trashDir,
 		m.hostname,
 	)
 	if err := spooler.Start(sz); err != nil {

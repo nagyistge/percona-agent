@@ -21,8 +21,12 @@ import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/pct"
-	"math/rand"
 	"time"
+)
+
+const (
+	MAX_SEND_ERRORS    = 3
+	CONNECT_ERROR_WAIT = 3
 )
 
 type Sender struct {
@@ -34,6 +38,11 @@ type Sender struct {
 	blackhole  bool
 	sync       *pct.SyncChan
 	status     *pct.Status
+	// --
+	sent   uint
+	errs   uint
+	bad    uint
+	apiErr bool
 }
 
 func NewSender(logger *pct.Logger, client pct.WebsocketClient) *Sender {
@@ -72,7 +81,6 @@ func (s *Sender) Status() map[string]string {
 // Implementation
 /////////////////////////////////////////////////////////////////////////////
 
-// @goroutine[1]
 func (s *Sender) run() {
 	defer func() {
 		if err := recover(); err != nil {
@@ -105,106 +113,111 @@ func (s *Sender) send() {
 	s.logger.Debug("send:call")
 	defer s.logger.Debug("send:return")
 
-	// Try a few times to connect to the API.
-	s.status.Update("data-sender", "Connecting")
-	sentOK := 0
+	s.sent = 0
+	s.errs = 0
+	s.bad = 0
+	s.apiErr = false
 	defer func() {
-		s.status.Update("data-sender", fmt.Sprintf("Idle (last sent %d files at %s)", sentOK, time.Now()))
-	}()
-	connected := false
-	var apiErr error
-	for i := 1; i <= 3; i++ {
-		if apiErr = s.client.ConnectOnce(10); apiErr != nil {
-			s.logger.Warn("Connect API failed:", apiErr)
-			t := int(5*rand.Float64() + 1) // [1, 5] seconds
-			time.Sleep(time.Duration(t) * time.Second)
-		} else {
-			connected = true
-			// client.WebsocketClient expects caller to recv on ConenctChan(),
-			// even though in this case we're not using the async channels.
-			// todo: fix this poor design assumption/coupling in ws/client.go
-			defer func() {
-				s.status.Update("data-sender", "Disconnecting")
-				s.client.Disconnect()
-				<-s.client.ConnectChan()
-			}()
-			break
+		s.logger.Debug(fmt.Sprintf("sent:%d bad:%d errs:%d apiErr:%t", s.sent, s.bad, s.errs, s.apiErr))
+
+		s.status.Update("data-sender", "Disconnecting")
+		s.client.DisconnectOnce()
+		if s.sent == 0 && !s.apiErr {
+			s.logger.Warn("No data sent")
 		}
-	}
-	if !connected {
-		return
-	}
-	s.logger.Debug("send:connected")
+		if s.errs > 0 || s.bad > 0 || s.apiErr {
+			s.status.Update("data-sender", fmt.Sprintf("Idle (last sent at %s: %d ok, %d bad, %d error, API error %t)",
+				time.Now(), s.sent, s.bad, s.errs, s.apiErr))
+		} else {
+			s.status.Update("data-sender", fmt.Sprintf("Idle (last sent at %s: all %d files ok)", time.Now(), s.sent))
+		}
+	}()
 
-	maxWarnErr := 3
-	n400Err := 0
-	n500Err := 0
+	// Connect and send files until too many errors occur.
+	for !s.apiErr && s.errs < MAX_SEND_ERRORS {
+		s.status.Update("data-sender", "Connecting")
+		s.logger.Debug("send:connecting")
+		if s.errs > 0 {
+			time.Sleep(CONNECT_ERROR_WAIT * time.Second)
+		}
+		if err := s.client.ConnectOnce(10); err != nil {
+			s.logger.Warn("Cannot connect to API: ", err)
+			s.errs++
+			continue
+		}
+		s.logger.Debug("send:connected")
 
-	// Send all files.
+		if err := s.sendAllFiles(); err != nil {
+			s.logger.Debug("sendAllFiles:err:", err)
+			s.errs++
+			s.logger.Warn(err)
+			s.client.DisconnectOnce()
+			continue // error sending files, re-connect and try again
+		}
+		return // success or API error, either way, stop sending
+	}
+}
+
+func (s *Sender) sendAllFiles() error {
 	s.status.Update("data-sender", "Running")
-	filesChan := s.spool.Files()
-	for file := range filesChan {
+	for file := range s.spool.Files() {
 		s.logger.Debug("send:" + file)
 
 		s.status.Update("data-sender", "Reading "+file)
 		data, err := s.spool.Read(file)
 		if err != nil {
-			s.logger.Error(err)
-			continue
+			return fmt.Errorf("spool.Read: %s", err)
 		}
 
 		if s.blackhole {
 			s.status.Update("data-sender", "Removing "+file+" (blackhole)")
 			s.spool.Remove(file)
 			s.logger.Info("Removed " + file + " (blackhole)")
-			continue
+			continue // next file
+		}
+
+		if len(data) == 0 {
+			s.spool.Remove(file)
+			s.logger.Warn("Removed " + file + " because it's empty")
+			continue // next file
 		}
 
 		// todo: number/time/rate limit so we dont DDoS API
 		s.status.Update("data-sender", "Sending "+file)
 		if err := s.client.SendBytes(data); err != nil {
-			s.logger.Warn(fmt.Sprintf("Sending %s: %s", file, err))
-			continue
+			return fmt.Errorf("Sending %s: %s", file, err)
 		}
 
 		s.status.Update("data-sender", "Waiting for API to ack "+file)
 		resp := &proto.Response{}
 		if err := s.client.Recv(resp, 5); err != nil {
-			s.logger.Warn(fmt.Sprintf("Waiting for API to ack %s: %s", file, err))
-			continue
+			return fmt.Errorf("Waiting for API to ack %s: %s", file, err)
 		}
 		s.logger.Debug(fmt.Sprintf("send:resp:%+v", resp.Code))
-		if resp.Code != 200 && resp.Code != 201 {
-			if resp.Code >= 400 && resp.Code < 500 {
-				// Something on our side is broken.
-				if n400Err < maxWarnErr {
-					s.logger.Error(resp)
-				}
-				n400Err++
-			} else if resp.Code >= 500 {
-				// Something on API side is broken.
-				if n500Err < maxWarnErr {
-					s.logger.Warn(resp)
-				}
-				n500Err++
-			} else {
-				s.logger.Warn(fmt.Sprintf("Unknown response from API: %s", resp))
-			}
-			continue
+
+		switch {
+		case resp.Code >= 500:
+			// API had problem, try sending files again later.
+			s.apiErr = true
+			return nil // don't warn about API errors
+		case resp.Code >= 400:
+			// File is bad, remove it.
+			s.status.Update("data-sender", "Removing "+file)
+			s.spool.Remove(file)
+			s.logger.Warn(fmt.Sprintf("Removed %s because API returned %d: %s", file, resp.Code, resp.Error))
+			s.sent++
+			s.bad++
+		case resp.Code >= 300:
+			// This shouldn't happen.
+			return fmt.Errorf("Recieved unhandled response code from API: %d: %s", resp.Code, resp.Error)
+		case resp.Code >= 200:
+			s.status.Update("data-sender", "Removing "+file)
+			s.spool.Remove(file)
+			s.sent++
+		default:
+			// This shouldn't happen.
+			return fmt.Errorf("Recieved unknown response code from API: %d: %s", resp.Code, resp.Error)
 		}
-
-		s.status.Update("data-sender", "Removing "+file)
-		s.spool.Remove(file)
-		sentOK++
 	}
-
-	if sentOK == 0 {
-		s.logger.Warn(fmt.Sprintf("No data sent"))
-	}
-	if n400Err > maxWarnErr {
-		s.logger.Warn(fmt.Sprintf("%d more 4xx errors", n400Err-maxWarnErr))
-	}
-	if n500Err > maxWarnErr {
-		s.logger.Warn(fmt.Sprintf("%d more 5xx errors", n500Err-maxWarnErr))
-	}
+	return nil // success
 }

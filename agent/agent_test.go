@@ -22,14 +22,15 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/pct"
+	pctCmd "github.com/percona/percona-agent/pct/cmd"
 	"github.com/percona/percona-agent/qan"
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
 	"io/ioutil"
-	golog "log"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 	"time"
 )
@@ -48,27 +49,28 @@ type AgentTestSuite struct {
 	// Agent
 	agent        *agent.Agent
 	config       *agent.Config
-	services     map[string]pct.ServiceManager
+	services     map[string]*mock.MockServiceManager
+	servicesMap  map[string]pct.ServiceManager
 	client       *mock.WebsocketClient
 	sendDataChan chan interface{}
 	recvDataChan chan interface{}
 	sendChan     chan *proto.Cmd
 	recvChan     chan *proto.Reply
 	api          *mock.API
+	agentRunning bool
 	// --
-	readyChan      chan bool
-	traceChan      chan string
-	doneChan       chan bool
-	stopReason     string
-	upgrade        bool
-	alreadyStopped bool
+	readyChan  chan bool
+	traceChan  chan string
+	doneChan   chan bool
+	stopReason string
+	upgrade    bool
 }
 
 var _ = Suite(&AgentTestSuite{})
 
 func (s *AgentTestSuite) SetUpSuite(t *C) {
 	var err error
-	s.tmpDir, err = ioutil.TempDir("/tmp", "agent-test")
+	s.tmpDir, err = ioutil.TempDir("/tmp", "percona-agent-test")
 	t.Assert(err, IsNil)
 
 	if err := pct.Basedir.Init(s.tmpDir); err != nil {
@@ -104,7 +106,7 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 func (s *AgentTestSuite) SetUpTest(t *C) {
 	// Before each test, create an agent.  Tests make change the agent,
 	// so this ensures each test starts with an agent with known values.
-	s.services = make(map[string]pct.ServiceManager)
+	s.services = make(map[string]*mock.MockServiceManager)
 	s.services["qan"] = mock.NewMockServiceManager("qan", s.readyChan, s.traceChan)
 	s.services["mm"] = mock.NewMockServiceManager("mm", s.readyChan, s.traceChan)
 
@@ -114,9 +116,14 @@ func (s *AgentTestSuite) SetUpTest(t *C) {
 	}
 	s.api = mock.NewAPI("http://localhost", s.config.ApiHostname, s.config.ApiKey, s.config.AgentUuid, links)
 
-	s.agent = agent.NewAgent(s.config, s.logger, s.api, s.client, s.services)
+	s.servicesMap = map[string]pct.ServiceManager{
+		"mm":  s.services["mm"],
+		"qan": s.services["qan"],
+	}
+	s.agent = agent.NewAgent(s.config, s.logger, s.api, s.client, s.servicesMap)
 
 	// Run the agent.
+	s.agentRunning = true
 	go func() {
 		s.agent.Run()
 		s.doneChan <- true
@@ -124,16 +131,25 @@ func (s *AgentTestSuite) SetUpTest(t *C) {
 }
 
 func (s *AgentTestSuite) TearDownTest(t *C) {
-	s.readyChan <- true // qan.Stop() immediately
-	s.readyChan <- true // mm.Stop immediately
 
-	if !s.alreadyStopped {
+	if s.agentRunning {
+		select {
+		case s.readyChan <- true: // qan.Stop() immediately
+		default:
+			t.Fatal("mock service 1 Stop not ready")
+		}
+		select {
+		case s.readyChan <- true: // mm.Stop immediately
+		default:
+			t.Fatal("mock service 1 Stop not ready")
+		}
 		s.sendChan <- &proto.Cmd{Cmd: "Stop"} // tell agent to stop itself
 		select {
 		case <-s.doneChan: // wait for goroutine agent.Run() in test
 		case <-time.After(5 * time.Second):
-			golog.Panic("Agent didn't respond to Stop cmd")
+			t.Fatal("Agent didn't respond to Stop cmd")
 		}
+		s.agentRunning = false
 	}
 
 	test.DrainLogChan(s.logChan)
@@ -148,6 +164,14 @@ func (s *AgentTestSuite) TearDownSuite(t *C) {
 	if err := os.RemoveAll(s.tmpDir); err != nil {
 		t.Error(err)
 	}
+}
+
+type ByInternalService []proto.AgentConfig
+
+func (a ByInternalService) Len() int      { return len(a) }
+func (a ByInternalService) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a ByInternalService) Less(i, j int) bool {
+	return a[i].InternalService < a[j].InternalService
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -307,10 +331,11 @@ func (s *AgentTestSuite) TestStartStopService(t *C) {
 	// execution trace, i.e. what calls the agent made based on all
 	// the previous ^.
 	got := test.WaitTrace(s.traceChan)
+	sort.Strings(got)
 	expect := []string{
 		`Start qan`,
-		`Status qan`,
 		`Status mm`,
+		`Status qan`,
 	}
 	t.Check(got, DeepEquals, expect)
 
@@ -518,6 +543,51 @@ func (s *AgentTestSuite) TestGetConfig(t *C) {
 
 	if ok, diff := test.IsDeeply(gotConfig, expect); !ok {
 		t.Logf("%+v", gotConfig)
+		t.Error(diff)
+	}
+}
+
+func (s *AgentTestSuite) TestGetAllConfigs(t *C) {
+	cmd := &proto.Cmd{
+		Ts:      time.Now(),
+		User:    "daniel",
+		Cmd:     "GetAllConfigs",
+		Service: "agent",
+	}
+	s.sendChan <- cmd
+
+	got := test.WaitReply(s.recvChan)
+	t.Assert(len(got), Equals, 1)
+	reply := got[0]
+	t.Check(reply.Error, Equals, "")
+	t.Assert(reply.Data, Not(HasLen), 0)
+
+	gotConfigs := []proto.AgentConfig{}
+	err := json.Unmarshal(reply.Data, &gotConfigs)
+	t.Assert(err, IsNil)
+
+	bytes, _ := json.Marshal(s.config)
+
+	sort.Sort(ByInternalService(gotConfigs))
+	expectConfigs := []proto.AgentConfig{
+		{
+			InternalService: "agent",
+			Config:          string(bytes),
+			Running:         true,
+		},
+		{
+			InternalService: "mm",
+			Config:          `{"Foo":"bar"}`,
+			Running:         false,
+		},
+		{
+			InternalService: "qan",
+			Config:          `{"Foo":"bar"}`,
+			Running:         false,
+		},
+	}
+	if ok, diff := test.IsDeeply(gotConfigs, expectConfigs); !ok {
+		test.Dump(gotConfigs)
 		t.Error(diff)
 	}
 }
@@ -734,4 +804,68 @@ func (s *AgentTestSuite) TestKeepalive(t *C) {
 	t.Assert(reply, HasLen, 1)
 	t.Assert(reply[0].Error, Equals, "")
 	t.Assert(reply[0].Cmd, Equals, "SetConfig")
+}
+
+func (s *AgentTestSuite) TestRestart(t *C) {
+	// Stop the default agnet.  We need our own to check its return value.
+	s.TearDownTest(t)
+
+	cmdFactory := &mock.CmdFactory{}
+	pctCmd.Factory = cmdFactory
+
+	defer func() {
+		os.Remove(pct.Basedir.File("start-lock"))
+		os.Remove(pct.Basedir.File("start-script"))
+	}()
+
+	newAgent := agent.NewAgent(s.config, s.logger, s.api, s.client, s.servicesMap)
+	doneChan := make(chan error, 1)
+	go func() {
+		doneChan <- newAgent.Run()
+	}()
+
+	cmd := &proto.Cmd{
+		Service: "agent",
+		Cmd:     "Restart",
+	}
+	s.sendChan <- cmd
+
+	replies := test.WaitReply(s.recvChan)
+	t.Assert(replies, HasLen, 1)
+	t.Check(replies[0].Error, Equals, "")
+
+	var err error
+	select {
+	case err = <-doneChan:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Agent did not restart")
+	}
+
+	// Agent should return without an error.
+	t.Check(err, IsNil)
+
+	// Agent should create the start-lock file and start-script.
+	t.Check(pct.FileExists(pct.Basedir.File("start-lock")), Equals, true)
+	t.Check(pct.FileExists(pct.Basedir.File("start-script")), Equals, true)
+
+	// Agent should make a command to run the start-script.
+	t.Assert(cmdFactory.Cmds, HasLen, 1)
+	t.Check(cmdFactory.Cmds[0].Name, Equals, pct.Basedir.File("start-script"))
+	t.Check(cmdFactory.Cmds[0].Args, IsNil)
+}
+
+func (s *AgentTestSuite) TestCmdToService(t *C) {
+	cmd := &proto.Cmd{
+		Service: "mm",
+		Cmd:     "Hello",
+	}
+	s.sendChan <- cmd
+
+	reply := test.WaitReply(s.recvChan)
+	t.Assert(reply, HasLen, 1)
+	t.Check(reply[0].Error, Equals, "")
+	t.Check(reply[0].Cmd, Equals, "Hello")
+
+	t.Assert(s.services["mm"].Cmds, HasLen, 1)
+	t.Check(s.services["mm"].Cmds[0].Cmd, Equals, "Hello")
 }
