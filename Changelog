@@ -1,6 +1,6 @@
 percona-agent Changelog
 
-v1.0.7
+v1.0.7 released 2014-09-05
 
   * PCT-506: Losing sample every minute
   * PCT-565: Skip MySQL metrics that take too long to collect
