@@ -25,7 +25,7 @@ Quick Install
 
 `curl -s https://cloud.percona.com/install | bash /dev/stdin -api-key <API key>`
 
-More about *Quick Install* and other installation options can be found in the [Installation Guide](doc/Install.rst).
+More about *Quick Install* and other installation options can be found in the [Installation Guide](https://github.com/percona/cloud-tools/blob/master/doc/Install.rst#installation-guide).
 
 Updating the Agent
 ------------------
