@@ -16,7 +16,7 @@ Quick Install
 1. [Get your API key.](https://cloud.percona.com/api-key)
 2. As root, run in the terminal:
 
-`curl -s https://cloud.percona.com/install | bash /dev/stdin -api-key <API key>`
+`curl -s https://cloud.percona.com/install | bash /dev/stdin -api-key="<API key>"`
 
 By default a quick install:
 * Enables *Server Metrics Monitor*
@@ -115,7 +115,7 @@ Updating the Agent
   1. [Get your api-key](https://cloud.percona.com/api-key)
   2. Run in terminal as root:
 
-`curl -s https://cloud.percona.com/install | bash /dev/stdin -api-key <API key>`
+`curl -s https://cloud.percona.com/install | bash /dev/stdin -api-key="<API key>"`
 
 ### With *Standard Install*
 
