@@ -1,4 +1,4 @@
-percona/percona-agent
+percona/percona-agent [![Documentation Status](https://readthedocs.org/projects/pct/badge/?version=latest)](http://cloud-docs.percona.com/)
 =====================
 
 - [About](#user-content-about)
