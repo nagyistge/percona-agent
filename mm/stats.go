@@ -95,6 +95,22 @@ func (s *Stats) Add(m *Metric, ts int64) {
 	}
 }
 
+func (s *Stats) Finalize() *Stats {
+	if len(s.vals) == 0 {
+		return nil
+	}
+	s.Summarize()
+	return &Stats{
+		Cnt:   s.Cnt,
+		Min:   s.Min,
+		Pct5:  s.Pct5,
+		Avg:   s.Avg,
+		Med:   s.Med,
+		Pct95: s.Pct95,
+		Max:   s.Max,
+	}
+}
+
 func (s *Stats) Summarize() {
 	switch s.metricType {
 	case "gauge", "counter":

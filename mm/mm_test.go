@@ -354,12 +354,13 @@ func (s *AggregatorTestSuite) TestBadMetric(t *C) {
 	}
 
 	got := test.WaitMmReport(s.dataChan)
-	t.Check(len(got.Stats), Equals, 1)          // instance
-	t.Check(len(got.Stats[0].Stats), Equals, 0) // ^ its metrics
+	if got != nil {
+		test.Dump(got)
+		t.Error("Got a bad metric")
+	}
 }
 
 func (s *AggregatorTestSuite) TestMissingMetric(t *C) {
-	go test.Debug(s.logChan)
 	// First we do same as TestC001 which has 3 metrics:
 	// host1/a, host1/b, host1/c.  Then we collect only 1
 	// new metrics: host1/foo.  Metrics a-c shouldn't be
