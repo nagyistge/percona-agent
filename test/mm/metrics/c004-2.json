@@ -3,6 +3,8 @@
   "InstanceId":1,
   "Ts":1257894901,
   "Metrics":[
+    {"Name":"host1/a","Type":"gauge","Number":4.2},
+    {"Name":"host1/b","Type":"gauge","Number":4.2},
     {"Name":"host1/foo","Type":"gauge","Number":4.2}
   ]
 }

@@ -74,7 +74,7 @@ func (s *Stats) Add(m *Metric, ts int64) {
 				s.vals = append(s.vals, val)
 
 				// Keep running total to calc Avg.
-				s.sum += inc
+				s.sum += val
 
 				// Current values become previous values.
 				s.prevTs = ts
