@@ -23,6 +23,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 	"time"
 
@@ -132,7 +133,6 @@ func (s *AggregatorTestSuite) TestC001(t *C) {
 		test.Dump(expect.Stats)
 		t.Fatal(diff)
 	}
-
 }
 
 func (s *AggregatorTestSuite) TestC002(t *C) {
@@ -356,6 +356,67 @@ func (s *AggregatorTestSuite) TestBadMetric(t *C) {
 	got := test.WaitMmReport(s.dataChan)
 	t.Check(len(got.Stats), Equals, 1)          // instance
 	t.Check(len(got.Stats[0].Stats), Equals, 0) // ^ its metrics
+}
+
+func (s *AggregatorTestSuite) TestMissingMetric(t *C) {
+	go test.Debug(s.logChan)
+	// First we do same as TestC001 which has 3 metrics:
+	// host1/a, host1/b, host1/c.  Then we collect only 1
+	// new metrics: host1/foo.  Metrics a-c shouldn't be
+	// reported.
+
+	interval := int64(300)
+	a := mm.NewAggregator(s.logger, interval, s.collectionChan, s.spool)
+	go a.Start()
+	defer a.Stop()
+
+	/*
+		c001-1.json:  "Ts":1257894000,	2009-11-10 23:00:00	report 1
+		c001-2.json:  "Ts":1257894301,	2009-11-10 23:05:01	report 2
+		c004-1.json:  "Ts":1257894601,	2009-11-10 23:10:01	report 3
+		c004-2.json:  "Ts":1257894901,  2009-11-10 23:15:01
+	*/
+
+	// Send c001-1 and -2.  -2 ts is >5m after -1 so it causes data
+	// from -1 to be sent as 1st report.
+	err := sendCollection(sample+"/c001-1.json", s.collectionChan)
+	t.Assert(err, IsNil)
+	err = sendCollection(sample+"/c001-2.json", s.collectionChan)
+	t.Assert(err, IsNil)
+	report1 := test.WaitMmReport(s.dataChan)
+	t.Assert(report1, NotNil)
+	stats := []string{}
+	for stat, _ := range report1.Stats[0].Stats {
+		stats = append(stats, stat)
+	}
+	sort.Strings(stats)
+	t.Check(stats, DeepEquals, []string{"host1/a", "host1/b", "host1/c"})
+
+	// The c004-1 ts is >5m after c001-2 so it causes data from c001-2
+	// to be sent as 2nd report.
+	err = sendCollection(sample+"/c004-1.json", s.collectionChan)
+	t.Assert(err, IsNil)
+	report2 := test.WaitMmReport(s.dataChan)
+	t.Assert(report2, NotNil)
+	stats = []string{}
+	for stat, _ := range report2.Stats[0].Stats {
+		stats = append(stats, stat)
+	}
+	sort.Strings(stats)
+	t.Check(stats, DeepEquals, []string{"host1/a", "host1/b", "host1/c"})
+
+	// The c004-2 ts is >5m after c004-1 so it causes data from c004-1
+	// to be sent as 3rd report.
+	err = sendCollection(sample+"/c004-2.json", s.collectionChan)
+	t.Assert(err, IsNil)
+	report3 := test.WaitMmReport(s.dataChan)
+	t.Assert(report3, NotNil)
+	stats = []string{}
+	for stat, _ := range report3.Stats[0].Stats {
+		stats = append(stats, stat)
+	}
+	sort.Strings(stats)
+	t.Check(stats, DeepEquals, []string{"host1/foo"})
 }
 
 /////////////////////////////////////////////////////////////////////////////
