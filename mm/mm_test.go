@@ -23,6 +23,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 	"time"
 
@@ -132,7 +133,6 @@ func (s *AggregatorTestSuite) TestC001(t *C) {
 		test.Dump(expect.Stats)
 		t.Fatal(diff)
 	}
-
 }
 
 func (s *AggregatorTestSuite) TestC002(t *C) {
@@ -354,8 +354,144 @@ func (s *AggregatorTestSuite) TestBadMetric(t *C) {
 	}
 
 	got := test.WaitMmReport(s.dataChan)
-	t.Check(len(got.Stats), Equals, 1)          // instance
-	t.Check(len(got.Stats[0].Stats), Equals, 0) // ^ its metrics
+	if got != nil {
+		test.Dump(got)
+		t.Error("Got a bad metric")
+	}
+}
+
+func (s *AggregatorTestSuite) TestMissingSomeMetrics(t *C) {
+	/*
+		This test verifies that missing metrics are not reported.  E.g. the
+		sample data has collections with metrics a, b, c, foo, and various
+		combinations of these.  A metric is reported only if it has values
+		(i.e. a value was collected and sent to the aggregator).
+
+		NOTE: This test is more strict than our actual assumption that
+		      collections are all-or-nothing and therefore cannot be partial
+			  like this.  In other words, either the collection for SHOW STATUS
+			  has all metrics or it has no metrics; we assume that it cannot
+			  have, for example, only 100 of the usual 500 (or however many).
+			  See TestMissingAllMetrics for a more realistic example.
+	*/
+
+	// First we do same as TestC001 which has 3 metrics:
+	// host1/a, host1/b, host1/c.  Then we collect only 1
+	// new metrics: host1/foo.  Metrics a-c shouldn't be
+	// reported.
+
+	interval := int64(300)
+	a := mm.NewAggregator(s.logger, interval, s.collectionChan, s.spool)
+	go a.Start()
+	defer a.Stop()
+
+	/*
+		c001-1.json:  "Ts":1257894000,	2009-11-10 23:00:00	report 1
+		c001-2.json:  "Ts":1257894301,	2009-11-10 23:05:01	report 2
+		c004-1.json:  "Ts":1257894601,	2009-11-10 23:10:01	report 3
+		c004-2.json:  "Ts":1257894901,  2009-11-10 23:15:01 report 4
+		c004-3.json:  "Ts":1257895201,  2009-11-10 23:20:01
+	*/
+
+	// Send c001-1 and -2.  -2 ts is >5m after -1 so it causes data
+	// from -1 to be sent as 1st report.
+	err := sendCollection(sample+"/c001-1.json", s.collectionChan)
+	t.Assert(err, IsNil)
+	err = sendCollection(sample+"/c001-2.json", s.collectionChan)
+	t.Assert(err, IsNil)
+	report1 := test.WaitMmReport(s.dataChan)
+	t.Assert(report1, NotNil)
+	stats := []string{}
+	for stat, _ := range report1.Stats[0].Stats {
+		stats = append(stats, stat)
+	}
+	sort.Strings(stats)
+	t.Check(stats, DeepEquals, []string{"host1/a", "host1/b", "host1/c"})
+
+	// The c004-1 ts is >5m after c001-2 so it causes data from c001-2
+	// to be sent as 2nd report.
+	err = sendCollection(sample+"/c004-1.json", s.collectionChan)
+	t.Assert(err, IsNil)
+	report2 := test.WaitMmReport(s.dataChan)
+	t.Assert(report2, NotNil)
+	stats = []string{}
+	for stat, _ := range report2.Stats[0].Stats {
+		stats = append(stats, stat)
+	}
+	sort.Strings(stats)
+	t.Check(stats, DeepEquals, []string{"host1/a", "host1/b", "host1/c"})
+
+	// The c004-2 ts is >5m after c004-1 so it causes data from c004-1
+	// to be sent as 3rd report.
+	err = sendCollection(sample+"/c004-2.json", s.collectionChan)
+	t.Assert(err, IsNil)
+	report3 := test.WaitMmReport(s.dataChan)
+	t.Assert(report3, NotNil)
+	stats = []string{}
+	for stat, _ := range report3.Stats[0].Stats {
+		stats = append(stats, stat)
+	}
+	sort.Strings(stats)
+	t.Check(stats, DeepEquals, []string{"host1/foo"})
+
+	err = sendCollection(sample+"/c004-3.json", s.collectionChan)
+	t.Assert(err, IsNil)
+	report4 := test.WaitMmReport(s.dataChan)
+	t.Assert(report4, NotNil)
+	stats = []string{}
+	for stat, _ := range report4.Stats[0].Stats {
+		stats = append(stats, stat)
+	}
+	sort.Strings(stats)
+	t.Check(stats, DeepEquals, []string{"host1/a", "host1/b", "host1/foo"})
+}
+
+func (s *AggregatorTestSuite) TestMissingAllMetrics(t *C) {
+	/*
+		This test verifies that missing metrics are not reported as their
+		previous values: https://jira.percona.com/browse/PCT-911
+		See also TestMissingSomeMetrics.
+
+		The first interval starts at 2009-11-10 23:00:00 and we get collections
+		for seconds 00 and 01, but then we fake that 02 and 03 are missed,
+		and the next collection is 04.  The duration for 04 should be 3s (4-1).
+		c005-n is the next interval which causes the report for the 1st interval
+		and its 3 collections.
+	*/
+
+	// First we do same as TestC001 which has 3 metrics:
+	// host1/a, host1/b, host1/c.  Then we collect only 1
+	// new metrics: host1/foo.  Metrics a-c shouldn't be
+	// reported.
+
+	interval := int64(300)
+	a := mm.NewAggregator(s.logger, interval, s.collectionChan, s.spool)
+	go a.Start()
+	defer a.Stop()
+
+	for _, n := range []string{"0", "1", "4", "n"} {
+		err := sendCollection(sample+"/c005-"+n+".json", s.collectionChan)
+		t.Assert(err, IsNil)
+	}
+	got := test.WaitMmReport(s.dataChan)
+	t.Assert(got, NotNil)
+
+	/*
+		Values are:
+			@	Val	Inc	Dur	Rate/s
+			00	10
+			01	100	90	1	90
+			04	400	300	3	100
+		So rate min=90, max=100, avg=95  for COUNTER (bar)
+		    val min=10, max=400, avg=170 for GAUGE (foo)
+	*/
+	t.Check(got.Stats[0].Stats["bar"].Min, Equals, float64(90))
+	t.Check(got.Stats[0].Stats["bar"].Max, Equals, float64(100))
+	t.Check(got.Stats[0].Stats["bar"].Avg, Equals, float64(95))
+
+	t.Check(got.Stats[0].Stats["foo"].Min, Equals, float64(10))
+	t.Check(got.Stats[0].Stats["foo"].Max, Equals, float64(400))
+	t.Check(got.Stats[0].Stats["foo"].Avg, Equals, float64(170))
 }
 
 /////////////////////////////////////////////////////////////////////////////
