@@ -205,11 +205,6 @@ func (s *TestSuite) TestCollectInnoDBStats(t *C) {
 		InnoDB: []string{"dml_%"}, // same as above ^
 	}
 
-	// Start a monitor with InnoDB metrics.
-	// See TestStartCollectStop() for description of these steps.
-	cc := mock.NewSlowMySQL(dsn)
-	cc.SetGlobalDelay(0 * time.Second)
-
 	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn))
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
@@ -362,7 +357,7 @@ func (s *TestSuite) TestCollectUserstats(t *C) {
 }
 
 func (s *TestSuite) TestSlowResponse(t *C) {
-
+	// https://jira.percona.com/browse/PCT-565
 	config := &mysql.Config{
 		Config: mm.Config{
 			ServiceInstance: proto.ServiceInstance{
@@ -386,6 +381,7 @@ func (s *TestSuite) TestSlowResponse(t *C) {
 	if err != nil {
 		t.Fatalf("Start monitor without error, got %s", err)
 	}
+	defer m.Stop()
 
 	if ok := test.WaitStatus(5, m, s.name+"-mysql", "Connected"); !ok {
 		t.Fatal("Monitor is ready")
@@ -393,9 +389,7 @@ func (s *TestSuite) TestSlowResponse(t *C) {
 
 	s.tickChan <- time.Now()
 	got := test.WaitCollection(s.collectionChan, 1)
-	// If it took more than 10% of the tik interval, the monitor must
+	// If it took more than 10% of config.Collect, the monitor must
 	// discard those metrics -> len(got) == 0
 	t.Check(got, HasLen, 0)
-
-	m.Stop()
 }
