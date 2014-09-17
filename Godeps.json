@@ -19,8 +19,8 @@
 			"Rev": "10f769d7bd5616db6cb2294c1725c866476d9e4c"
 		},
 		{
-			"Pkg": "github.com/percona/mysql-log-parser",
-			"Rev": "e3097bb632c59b8202d5236089a50b93301e0e02"
+			"Pkg": "github.com/percona/go-mysql",
+			"Rev": "768b93f33c41e396c546734f8209749c96332de6"
 		},
 		{
 			"Pkg": "github.com/petar/GoLLRB",
@@ -33,6 +33,10 @@
 		{
 			"Pkg": "gopkg.in/check.v1",
 			"Rev": "5b76b26efe7f426789852e983fbde4de62c42282"
+		},
+		{
+			"Pkg": "github.com/go-test/test",
+			"Rev": "de87dfd31e4bb0d35cbcd142349d32528bd7b26f"
 		}
 	]
 }

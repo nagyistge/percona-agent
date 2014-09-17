@@ -51,7 +51,7 @@
    }
   }
  },
- "Classes": [
+ "Class": [
   {
    "Id": "7F7D57ACDD8A346E",
    "Fingerprint": "select sleep(?) from n",

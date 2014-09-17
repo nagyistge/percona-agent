@@ -47,7 +47,7 @@
    }
   }
  },
- "Classes": [
+ "Class": [
   {
    "Id": "3A99CC42AEDCCFCD",
    "Fingerprint": "select sleep(?) from test.n",

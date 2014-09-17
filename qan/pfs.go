@@ -20,7 +20,7 @@ package qan
 import (
 	"database/sql"
 	"fmt"
-	"github.com/percona/mysql-log-parser/log"
+	"github.com/percona/go-mysql/event"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"math"
@@ -129,18 +129,18 @@ func (w *PfsWorker) TruncateTable() error {
 func (w *PfsWorker) PrepareResult(rows []*PfsRow) (*Result, error) {
 	w.status.Update(w.name, "Preparing result")
 
-	global := log.NewGlobalClass()
-	classes := []*log.QueryClass{}
+	global := event.NewGlobalClass()
+	classes := []*event.QueryClass{}
 	for _, row := range rows {
 		// Each row is a pre-aggregated query class, so all we have to do is save
 		// the stats for the available metrics.  Unlike events from a slow log,
 		// these values do not need to be aggregated or finalized because they
 		// already are.
-		stats := log.NewEventStats()
+		stats := event.NewMetrics()
 		cnt := row.CountStar
 
 		// Time metircs, in picoseconds (x10^-12 to convert to seconds)
-		stats.TimeMetrics["Query_time"] = &log.TimeStats{
+		stats.TimeMetrics["Query_time"] = &event.TimeStats{
 			Cnt: cnt,
 			Sum: float64(row.SumTimerWait) * math.Pow10(-12),
 			Min: float64(row.MinTimerWait) * math.Pow10(-12),
@@ -148,49 +148,49 @@ func (w *PfsWorker) PrepareResult(rows []*PfsRow) (*Result, error) {
 			Avg: float64(row.AvgTimerWait) * math.Pow10(-12),
 		}
 
-		stats.TimeMetrics["Lock_time"] = &log.TimeStats{
+		stats.TimeMetrics["Lock_time"] = &event.TimeStats{
 			Cnt: cnt,
 			Sum: float64(row.SumLockTime) * math.Pow10(-12),
 		}
 
 		// Number metrics
-		stats.NumberMetrics["Rows_affected"] = &log.NumberStats{
+		stats.NumberMetrics["Rows_affected"] = &event.NumberStats{
 			Cnt: cnt,
 			Sum: row.SumRowsAffected,
 		}
 
-		stats.NumberMetrics["Rows_sent"] = &log.NumberStats{
+		stats.NumberMetrics["Rows_sent"] = &event.NumberStats{
 			Cnt: cnt,
 			Sum: row.SumRowsSent,
 		}
 
-		stats.NumberMetrics["Rows_examined"] = &log.NumberStats{
+		stats.NumberMetrics["Rows_examined"] = &event.NumberStats{
 			Cnt: cnt,
 			Sum: row.SumRowsExamined,
 		}
 
-		stats.NumberMetrics["Merge_passes"] = &log.NumberStats{
+		stats.NumberMetrics["Merge_passes"] = &event.NumberStats{
 			Cnt: cnt,
 			Sum: uint64(row.SumSortMergePasses),
 		}
 
 		// Bool metrics
-		stats.BoolMetrics["Tmp_table_on_disk"] = &log.BoolStats{
+		stats.BoolMetrics["Tmp_table_on_disk"] = &event.BoolStats{
 			Cnt:  cnt,
 			True: row.SumCreatedTmpDiskTables,
 		}
 
-		stats.BoolMetrics["Tmp_table"] = &log.BoolStats{
+		stats.BoolMetrics["Tmp_table"] = &event.BoolStats{
 			Cnt:  cnt,
 			True: row.SumCreatedTmpTables,
 		}
 
-		stats.BoolMetrics["Full_join"] = &log.BoolStats{
+		stats.BoolMetrics["Full_join"] = &event.BoolStats{
 			Cnt:  cnt,
 			True: row.SumSelectFullJoin,
 		}
 
-		stats.BoolMetrics["Full_scan"] = &log.BoolStats{
+		stats.BoolMetrics["Full_scan"] = &event.BoolStats{
 			Cnt:  cnt,
 			True: row.SumSelectScan,
 		}
@@ -199,7 +199,7 @@ func (w *PfsWorker) PrepareResult(rows []*PfsRow) (*Result, error) {
 		// of checksum is historical: pt-query-digest does the same:
 		// my $checksum = uc substr(md5_hex($val), -16);
 		classId := strings.ToUpper(row.Digest[16:32])
-		class := log.NewQueryClass(classId, row.DigestText, false)
+		class := event.NewQueryClass(classId, row.DigestText, false)
 		class.TotalQueries = uint64(row.CountStar)
 		class.Metrics = stats
 		classes = append(classes, class)
@@ -214,8 +214,8 @@ func (w *PfsWorker) PrepareResult(rows []*PfsRow) (*Result, error) {
 	global.UniqueQueries = nClasses
 
 	result := &Result{
-		Global:  global,
-		Classes: classes,
+		Global: global,
+		Class:  classes,
 	}
 
 	return result, nil

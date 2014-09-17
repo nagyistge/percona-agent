@@ -20,8 +20,10 @@ package qan_test
 import (
 	"encoding/json"
 	"fmt"
+	. "github.com/go-test/test"
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/mysql-log-parser/test"
+	"github.com/percona/go-mysql/event"
+	gomysql "github.com/percona/go-mysql/test"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
@@ -33,6 +35,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -41,7 +44,16 @@ import (
 // Hook up gocheck into the "go test" runner.
 func Test(t *testing.T) { TestingT(t) }
 
-var sample = test.RootDir + "/qan/"
+var inputDir = gomysql.RootDir + "/test/slow-logs/"
+var outputDir = RootDir() + "/test/qan/"
+
+type ByQueryId []*event.QueryClass
+
+func (a ByQueryId) Len() int      { return len(a) }
+func (a ByQueryId) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a ByQueryId) Less(i, j int) bool {
+	return a[i].Id > a[j].Id
+}
 
 /////////////////////////////////////////////////////////////////////////////
 // SlowLogWorker test suite
@@ -66,7 +78,7 @@ func (s *SlowLogWorkerTestSuite) RunSlowLogWorker(job *qan.Job) (*qan.Result, er
 
 func (s *SlowLogWorkerTestSuite) TestWorkerSlow001(t *C) {
 	job := &qan.Job{
-		SlowLogFile:    testlog.Sample + "slow001.log",
+		SlowLogFile:    inputDir + "slow001.log",
 		StartOffset:    0,
 		EndOffset:      524,
 		RunTime:        time.Duration(3 * time.Second),
@@ -76,9 +88,11 @@ func (s *SlowLogWorkerTestSuite) TestWorkerSlow001(t *C) {
 	got, err := s.RunSlowLogWorker(job)
 	t.Check(err, IsNil)
 	expect := &qan.Result{}
-	test.LoadMmReport(sample+"slow001.json", expect)
-	if ok, diff := test.IsDeeply(got, expect); !ok {
-		test.Dump(got)
+	test.LoadMmReport(outputDir+"slow001.json", expect)
+	sort.Sort(ByQueryId(got.Class))
+	sort.Sort(ByQueryId(expect.Class))
+	if ok, diff := IsDeeply(got, expect); !ok {
+		Dump(got)
 		t.Error(diff)
 	}
 }
@@ -86,7 +100,7 @@ func (s *SlowLogWorkerTestSuite) TestWorkerSlow001(t *C) {
 func (s *SlowLogWorkerTestSuite) TestWorkerSlow001NoExamples(t *C) {
 	job := &qan.Job{
 		Id:             "99",
-		SlowLogFile:    testlog.Sample + "slow001.log",
+		SlowLogFile:    inputDir + "slow001.log",
 		StartOffset:    0,
 		EndOffset:      524,
 		RunTime:        time.Duration(3 * time.Second),
@@ -96,12 +110,13 @@ func (s *SlowLogWorkerTestSuite) TestWorkerSlow001NoExamples(t *C) {
 	w := qan.NewSlowLogWorker(s.logger, "qan-worker-1")
 	got, _ := w.Run(job)
 	expect := &qan.Result{}
-	if err := test.LoadMmReport(sample+"slow001-no-examples.json", expect); err != nil {
+	if err := test.LoadMmReport(outputDir+"slow001-no-examples.json", expect); err != nil {
 		t.Fatal(err)
 	}
-
-	if same, diff := test.IsDeeply(got, expect); !same {
-		test.Dump(got)
+	sort.Sort(ByQueryId(got.Class))
+	sort.Sort(ByQueryId(expect.Class))
+	if same, diff := IsDeeply(got, expect); !same {
+		Dump(got)
 		t.Error(diff)
 	}
 
@@ -115,7 +130,7 @@ func (s *SlowLogWorkerTestSuite) TestWorkerSlow001Half(t *C) {
 	// the end of the slow log file.  358 is the last byte of the first
 	// (of 2) events.
 	job := &qan.Job{
-		SlowLogFile:    testlog.Sample + "slow001.log",
+		SlowLogFile:    inputDir + "slow001.log",
 		StartOffset:    0,
 		EndOffset:      358,
 		RunTime:        time.Duration(3 * time.Second),
@@ -125,11 +140,13 @@ func (s *SlowLogWorkerTestSuite) TestWorkerSlow001Half(t *C) {
 	got, err := s.RunSlowLogWorker(job)
 	t.Check(err, IsNil)
 	expect := &qan.Result{}
-	if err := test.LoadMmReport(sample+"slow001-half.json", expect); err != nil {
+	if err := test.LoadMmReport(outputDir+"slow001-half.json", expect); err != nil {
 		t.Fatal(err)
 	}
-	if ok, diff := test.IsDeeply(got, expect); !ok {
-		test.Dump(got)
+	sort.Sort(ByQueryId(got.Class))
+	sort.Sort(ByQueryId(expect.Class))
+	if ok, diff := IsDeeply(got, expect); !ok {
+		Dump(got)
 		t.Error(diff)
 	}
 }
@@ -139,7 +156,7 @@ func (s *SlowLogWorkerTestSuite) TestSlowLogWorkerSlow001Resume(t *C) {
 	// somewhere in the slow log file.  359 is the first byte of the
 	// second (of 2) events.
 	job := &qan.Job{
-		SlowLogFile:    testlog.Sample + "slow001.log",
+		SlowLogFile:    inputDir + "slow001.log",
 		StartOffset:    359,
 		EndOffset:      524,
 		RunTime:        time.Duration(3 * time.Second),
@@ -149,9 +166,11 @@ func (s *SlowLogWorkerTestSuite) TestSlowLogWorkerSlow001Resume(t *C) {
 	got, err := s.RunSlowLogWorker(job)
 	t.Check(err, IsNil)
 	expect := &qan.Result{}
-	test.LoadMmReport(sample+"slow001-resume.json", expect)
-	if ok, diff := test.IsDeeply(got, expect); !ok {
-		test.Dump(got)
+	test.LoadMmReport(outputDir+"slow001-resume.json", expect)
+	sort.Sort(ByQueryId(got.Class))
+	sort.Sort(ByQueryId(expect.Class))
+	if ok, diff := IsDeeply(got, expect); !ok {
+		Dump(got)
 		t.Error(diff)
 	}
 }
@@ -159,7 +178,7 @@ func (s *SlowLogWorkerTestSuite) TestSlowLogWorkerSlow001Resume(t *C) {
 func (s *SlowLogWorkerTestSuite) TestWorkerSlow011(t *C) {
 	// Percona Server rate limit
 	job := &qan.Job{
-		SlowLogFile:    testlog.Sample + "slow011.log",
+		SlowLogFile:    inputDir + "slow011.log",
 		StartOffset:    0,
 		EndOffset:      3000,
 		RunTime:        time.Duration(3 * time.Second),
@@ -170,12 +189,13 @@ func (s *SlowLogWorkerTestSuite) TestWorkerSlow011(t *C) {
 	got, _ := w.Run(job)
 
 	expect := &qan.Result{}
-	if err := test.LoadMmReport(sample+"slow011.json", expect); err != nil {
+	if err := test.LoadMmReport(outputDir+"slow011.json", expect); err != nil {
 		t.Fatal(err)
 	}
-
-	if same, diff := test.IsDeeply(got, expect); !same {
-		test.Dump(got)
+	sort.Sort(ByQueryId(got.Class))
+	sort.Sort(ByQueryId(expect.Class))
+	if same, diff := IsDeeply(got, expect); !same {
+		Dump(got)
 		t.Error(diff)
 	}
 }
@@ -348,8 +368,8 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	gotConfig := &qan.Config{}
 	err = json.Unmarshal(data, gotConfig)
 	t.Check(err, IsNil)
-	if same, diff := test.IsDeeply(gotConfig, config); !same {
-		test.Dump(gotConfig)
+	if same, diff := IsDeeply(gotConfig, config); !same {
+		Dump(gotConfig)
 		t.Error(diff)
 	}
 
@@ -379,7 +399,7 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	 */
 
 	interv := &qan.Interval{
-		Filename:    testlog.Sample + "slow001.log",
+		Filename:    inputDir + "slow001.log",
 		StartOffset: 0,
 		EndOffset:   524,
 		StartTime:   now,
@@ -394,14 +414,14 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	got := &qan.Result{
 		StopOffset: report.StopOffset,
 		Global:     report.Global,
-		Classes:    report.Class,
+		Class:      report.Class,
 	}
 	expect := &qan.Result{}
-	if err := test.LoadMmReport(sample+"slow001.json", expect); err != nil {
+	if err := test.LoadMmReport(outputDir+"slow001.json", expect); err != nil {
 		t.Fatal(err)
 	}
-	if ok, diff := test.IsDeeply(got, expect); !ok {
-		test.Dump(got)
+	if ok, diff := IsDeeply(got, expect); !ok {
+		Dump(got)
 		t.Error(diff)
 	}
 
@@ -691,7 +711,7 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(t *C) {
 	test.WaitStatusPrefix(1, m, "qan-parser", "Idle")
 
 	// Make copy of slow log because test will mv/rename it.
-	cp := exec.Command("cp", testlog.Sample+slowlog, "/tmp/"+slowlog)
+	cp := exec.Command("cp", inputDir+slowlog, "/tmp/"+slowlog)
 	cp.Run()
 
 	// First interval: 0 - 736
@@ -813,7 +833,7 @@ func (s *ManagerTestSuite) TestRotateSlowLog(t *C) {
 
 	test.WaitStatusPrefix(1, m, "qan-parser", "Idle")
 	s.nullmysql.Reset()
-	cp := exec.Command("cp", testlog.Sample+slowlog, "/tmp/"+slowlog)
+	cp := exec.Command("cp", inputDir+slowlog, "/tmp/"+slowlog)
 	cp.Run()
 
 	// First interval: 0 - 736
@@ -879,7 +899,7 @@ func (s *ManagerTestSuite) TestRotateSlowLog(t *C) {
 	for _, q := range config.Start {
 		expect = append(expect, q)
 	}
-	if same, diff := test.IsDeeply(s.nullmysql.GetSet(), expect); !same {
+	if same, diff := IsDeeply(s.nullmysql.GetSet(), expect); !same {
 		t.Logf("%+v", s.nullmysql.GetSet())
 		t.Logf("%+v", expect)
 		t.Error(diff)
@@ -912,7 +932,7 @@ func (s *ManagerTestSuite) TestWaitRemoveSlowLog(t *C) {
 	for _, file := range files {
 		os.Remove(file)
 	}
-	cp := exec.Command("cp", testlog.Sample+slowlog, "/tmp/"+slowlog)
+	cp := exec.Command("cp", inputDir+slowlog, "/tmp/"+slowlog)
 	cp.Run()
 
 	// Create and start manager with mock workers.
@@ -1163,8 +1183,8 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 			Running:         true,
 		},
 	}
-	if same, diff := test.IsDeeply(gotConfig, expectConfig); !same {
-		test.Dump(gotConfig)
+	if same, diff := IsDeeply(gotConfig, expectConfig); !same {
+		Dump(gotConfig)
 		t.Error(diff)
 	}
 
@@ -1439,7 +1459,7 @@ type ReportTestSuite struct{}
 var _ = Suite(&ReportTestSuite{})
 
 func (s *ReportTestSuite) TestResult001(t *C) {
-	data, err := ioutil.ReadFile(sample + "/result001.json")
+	data, err := ioutil.ReadFile(outputDir + "/result001.json")
 	t.Assert(err, IsNil)
 
 	result := &qan.Result{}
@@ -1494,7 +1514,7 @@ func (s *ReportTestSuite) TestResult001(t *C) {
 
 func (s *SlowLogWorkerTestSuite) TestResult014(t *C) {
 	job := &qan.Job{
-		SlowLogFile:    testlog.Sample + "slow014.log",
+		SlowLogFile:    inputDir + "slow014.log",
 		StartOffset:    0,
 		EndOffset:      127118681,
 		RunTime:        time.Duration(3 * time.Second),
@@ -1585,7 +1605,7 @@ func (s *PfsWorkerTestSuite) TestCollectData(t *C) {
 	for i := range gotPfsData {
 		if !expectedResult[gotPfsData[i].DigestText] {
 			t.Errorf("Missing %s", gotPfsData[i].DigestText)
-			test.Dump(gotPfsData)
+			Dump(gotPfsData)
 		}
 	}
 }
@@ -1700,10 +1720,10 @@ func (s *PfsWorkerTestSuite) TestPrepareResult001(t *C) {
 	t.Assert(err, IsNil)
 	t.Assert(got, NotNil)
 	expect := &qan.Result{}
-	err = test.LoadMmReport(sample+"pfs001.json", expect)
+	err = test.LoadMmReport(outputDir+"pfs001.json", expect)
 	t.Assert(err, IsNil)
-	if ok, diff := test.IsDeeply(got, expect); !ok {
-		test.Dump(got)
+	if ok, diff := IsDeeply(got, expect); !ok {
+		Dump(got)
 		t.Error(diff)
 	}
 }

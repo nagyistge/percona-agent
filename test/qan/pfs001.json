@@ -1,5 +1,5 @@
 {
-    "Classes": [
+    "Class": [
         {
             "Id": "2CD1148310124D77",
             "Fingerprint": "TRUNCATE `events_statements_summary_by_digest` ",
