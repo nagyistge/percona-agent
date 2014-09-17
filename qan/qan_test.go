@@ -420,6 +420,8 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	if err := test.LoadMmReport(outputDir+"slow001.json", expect); err != nil {
 		t.Fatal(err)
 	}
+	sort.Sort(ByQueryId(got.Class))
+	sort.Sort(ByQueryId(expect.Class))
 	if ok, diff := IsDeeply(got, expect); !ok {
 		Dump(got)
 		t.Error(diff)

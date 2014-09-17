@@ -145,10 +145,12 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 
 	// Misc runtime meta data.
 	jobSize := job.EndOffset - job.StartOffset
-	var runtime time.Duration
-	var progress string
-	t0 := time.Now()
+	runtime := time.Duration(0)
+	progress := "Not started"
+	rateType := ""
+	rateLimit := uint(0)
 
+	t0 := time.Now()
 EVENT_LOOP:
 	for event := range p.EventChan() {
 		runtime = time.Now().Sub(t0)
@@ -167,6 +169,21 @@ EVENT_LOOP:
 		if int64(event.Offset) >= job.EndOffset {
 			result.StopOffset = int64(event.Offset)
 			break EVENT_LOOP
+		}
+
+		if event.RateType != "" {
+			if rateType != "" {
+				if rateType != event.RateType || rateLimit != event.RateLimit {
+					errMsg := fmt.Sprintf("Slow log has mixed rate limits: %s/%d and %s/%d",
+						rateType, rateLimit, event.RateType, event.RateLimit)
+					w.logger.Warn(errMsg)
+					result.Error = errMsg
+					break EVENT_LOOP
+				}
+			} else {
+				rateType = event.RateType
+				rateLimit = event.RateLimit
+			}
 		}
 
 		a.AddEvent(event)
