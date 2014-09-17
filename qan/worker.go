@@ -187,13 +187,6 @@ EVENT_LOOP:
 		}
 
 		a.AddEvent(event)
-		/*
-			switch err.(type) {
-			case mysqlLog.MixedRateLimitsError:
-				result.Error = err.Error()
-				break EVENT_LOOP
-			}
-		*/
 	}
 
 	if result.StopOffset == 0 {
