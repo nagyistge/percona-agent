@@ -1,6 +1,6 @@
 percona-agent Changelog
 
-v1.0.8
+v1.0.8 released 2014-09-18
 
   * PCT-911: Agent starts reporting same values for metrics
   * PCT-913: Counter averages are wrong
