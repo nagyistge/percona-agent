@@ -23,7 +23,7 @@ Quick Install
 1. [Get your API key.](https://cloud.percona.com/api-key)
 2. Run in terminal as root:
 
-`curl -s https://cloud.percona.com/install | bash /dev/stdin -api-key <API key>`
+`curl -s https://cloud.percona.com/install | bash /dev/stdin -api-key="<API key>"`
 
 More about *Quick Install* and other installation options can be found in the [Installation Guide](INSTALL.md).
 
@@ -35,7 +35,7 @@ Just use the same command as for `Quick Install` when new version is available, 
 1. [Get your API key.](https://cloud.percona.com/api-key)
 2. Run in terminal as root:
 
-`curl -s https://cloud.percona.com/install | bash /dev/stdin -api-key <API key>`
+`curl -s https://cloud.percona.com/install | bash /dev/stdin -api-key="<API key>"`
 
 System Requirements
 -------------------
@@ -59,7 +59,7 @@ System Requirements
 
 ### Query Analytics for Performance Schema
 * MySQL 5.6 or newer, any distro, including Amazon RDS
-* MySQL user account with `SELECT`, `UPDATE`, `DELLTE` and `DROP` privileges on `performance_schema`
+* MySQL user account with `SELECT`, `UPDATE`, `DELETE` and `DROP` privileges on `performance_schema`
 
 Supported Platforms and Versions
 --------------------------------

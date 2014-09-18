@@ -74,7 +74,7 @@ func (s *Stats) Add(m *Metric, ts int64) {
 				s.vals = append(s.vals, val)
 
 				// Keep running total to calc Avg.
-				s.sum += inc
+				s.sum += val
 
 				// Current values become previous values.
 				s.prevTs = ts
@@ -92,6 +92,22 @@ func (s *Stats) Add(m *Metric, ts int64) {
 	default:
 		// This should not happen because type is checked in NewStats().
 		log.Panic("mm:Aggregator:Add: Invalid metric type: " + s.metricType)
+	}
+}
+
+func (s *Stats) Finalize() *Stats {
+	if len(s.vals) == 0 {
+		return nil
+	}
+	s.Summarize()
+	return &Stats{
+		Cnt:   s.Cnt,
+		Min:   s.Min,
+		Pct5:  s.Pct5,
+		Avg:   s.Avg,
+		Med:   s.Med,
+		Pct95: s.Pct95,
+		Max:   s.Max,
 	}
 }
 

@@ -44,6 +44,7 @@ type Monitor struct {
 	status         *pct.Status
 	sync           *pct.SyncChan
 	running        bool
+	collectLimit   float64
 }
 
 func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Connector) *Monitor {
@@ -56,6 +57,7 @@ func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Conn
 		connectedChan: make(chan bool, 1),
 		status:        pct.NewStatus([]string{name, name + "-mysql"}),
 		sync:          pct.NewSyncChan(),
+		collectLimit:  float64(config.Collect) * 0.1, // 10% of Collect time
 	}
 	return m
 }
@@ -97,8 +99,6 @@ func (m *Monitor) Stop() error {
 	m.sync.Stop()
 	m.sync.Wait()
 
-	// XXX todo: this line will panic if connect() is running
-	m.config = nil // no config if not running
 	m.running = false
 	m.logger.Info("Stopped")
 
@@ -226,9 +226,12 @@ func (m *Monitor) run() {
 				Metrics: []mm.Metric{},
 			}
 
-			// SHOW GLOBAL STATUS
+			// Start timing the collection.  If must take < collectLimit else
+			// it's discarded.
 			start := time.Now()
 			conn := m.conn.DB()
+
+			// SHOW GLOBAL STATUS
 			if err := m.GetShowStatusMetrics(conn, c); err != nil {
 				m.collectError(err)
 			}
@@ -257,18 +260,19 @@ func (m *Monitor) run() {
 				}
 			}
 
-			// It is possible what when capture metrics, it will stall for many
-			// seconds for some reason so, even though we issued captures 1 sec in
+			// It is possible that collecting metrics will stall for many
+			// seconds for some reason so even though we issued captures 1 sec in
 			// between, we actually got 5 seconds between results and as such we
 			// might be showing huge spike.
-			// To avoid that, if the time took to collect the metrics is > 10% of
-			// the capture interval, those metrics are discarded.
+			// To avoid that, if the time to collect metrics is >= collectLimit
+			// then warn and discard the metrics.
 			diff := time.Now().Sub(start).Seconds()
-			if diff > float64(m.config.Collect)*0.1 {
-				lastError = fmt.Sprintf("Skipping interval because it took too long to collect: %.1fs >= %ds", diff, m.config.Collect)
+			if diff >= m.collectLimit {
+				lastError = fmt.Sprintf("Skipping interval because it took too long to collect: %.2fs >= %.2fs", diff, m.collectLimit)
 				m.logger.Warn(lastError)
 				continue
 			}
+
 			// Send the metrics to an mm.Aggregator.
 			m.status.Update(m.name, "Sending metrics")
 			if len(c.Metrics) > 0 {

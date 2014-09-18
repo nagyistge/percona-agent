@@ -1,5 +1,11 @@
 percona-agent Changelog
 
+v1.0.8 released 2014-09-18
+
+  * PCT-911: Agent starts reporting same values for metrics
+  * PCT-913: Counter averages are wrong
+  * PCT-914: Typo in mysql.Monitor warning about skipped interval
+
 v1.0.7 released 2014-09-05
 
   * PCT-506: Losing sample every minute
