@@ -128,7 +128,7 @@ Uninstalling the Agent
 
 First, to stop and remove *percona-agent* from a server, as root run either:
 
-* `curl -s https://cloud.percona.com/install | /bin/sh /dev/stdin -uninstall` (if you did a [Quick Install](#user-content-quick-install))
+* `curl -s https://cloud.percona.com/install | bash /dev/stdin -uninstall` (if you did a [Quick Install](#user-content-quick-install))
 
 or,
 
