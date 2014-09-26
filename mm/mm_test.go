@@ -906,3 +906,84 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 		t.Error(diff)
 	}
 }
+
+/////////////////////////////////////////////////////////////////////////////
+// Stats test suite
+/////////////////////////////////////////////////////////////////////////////
+
+type StatsTestSuite struct {
+}
+
+var _ = Suite(&StatsTestSuite{})
+
+func (s *StatsTestSuite) TestCounterBasic(t *C) {
+	stats, _ := mm.NewStats("counter")
+	stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 3}, 1)
+	stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 9}, 2)
+	stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 11}, 3)
+	got := stats.Finalize()
+	t.Check(got.Cnt, Equals, 2)
+	t.Check(got.Min, Equals, float64(2))
+	t.Check(got.Avg, Equals, float64(4))
+	t.Check(got.Max, Equals, float64(6))
+}
+
+func (s *StatsTestSuite) TestCounterReset(t *C) {
+	stats, _ := mm.NewStats("counter")
+	stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 3}, 1)
+	stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 9}, 2)  // +6
+	stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 11}, 3) // +2
+	stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 0}, 4)  // reset
+	stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 4}, 5)  // +4
+	stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 9}, 6)  // +5
+	got := stats.Finalize()
+	t.Check(got.Cnt, Equals, 4)
+	t.Check(got.Min, Equals, float64(2))
+	t.Check(got.Avg, Equals, float64(4.25))
+	t.Check(got.Max, Equals, float64(6))
+}
+
+func (s *StatsTestSuite) TestPCT939(t *C) {
+	// https://jira.percona.com/browse/PCT-939
+	/*
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:    2},  1)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:    3},  2)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:   11},  3)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:   20},  4)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:   22},  5)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:   30},  6)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:   35},  7)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:   35},  8)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:   37},  9)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:   45}, 10)
+
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:   50}, 11)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:   60}, 12)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:   70}, 13)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:   72}, 14)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:   74}, 15)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:   76}, 16)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:   78}, 17)
+		got := stats.Finalize()
+		test.Dump(got)
+		stats.Reset()
+		fmt.Println("------------------------")
+
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:    0}, 18)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:   90}, 19)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:  100}, 20)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:  110}, 21)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:  120}, 22)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:  130}, 23)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:  140}, 24)
+		//stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number:  300000}, 22)
+
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 100}, 13)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 110}, 14)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 120}, 15)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 120}, 16)
+
+		got = stats.Finalize()
+		test.Dump(got)
+	*/
+}
