@@ -18,7 +18,7 @@
 package mm
 
 import (
-	"errors"
+	"fmt"
 	"log"
 	"sort"
 )
@@ -28,7 +28,9 @@ type Stats struct {
 	str        string    `json:",omitempty"`
 	firstVal   bool      `json:"-"`
 	prevTs     int64     `json:"-"`
-	prevVal    float64   `json:"-"`
+	penuTs     int64     `json:"-"`
+	prevVal    float64   `json:"-"` // last value
+	penuVal    float64   `json:"-"` // 2nd to last (penultimate) value
 	vals       []float64 `json:"-"`
 	sum        float64   `json:"-"`
 	Cnt        int
@@ -42,7 +44,7 @@ type Stats struct {
 
 func NewStats(metricType string) (*Stats, error) {
 	if !MetricTypes[metricType] {
-		return nil, errors.New("Invalid metric type: " + metricType)
+		return nil, fmt.Errorf("Invalid metric type: %s", metricType)
 	}
 	s := &Stats{
 		metricType: metricType,
@@ -52,7 +54,13 @@ func NewStats(metricType string) (*Stats, error) {
 	return s, nil
 }
 
-func (s *Stats) Add(m *Metric, ts int64) {
+func (s *Stats) Reset() {
+	s.sum = 0
+	s.vals = []float64{}
+}
+
+func (s *Stats) Add(m *Metric, ts int64) error {
+	var err error
 	switch s.metricType {
 	case "gauge":
 		s.vals = append(s.vals, m.Number)
@@ -62,6 +70,21 @@ func (s *Stats) Add(m *Metric, ts int64) {
 			if m.Number >= s.prevVal {
 				// Metric value increased (or stayed same); this is what we expect.
 
+				// https://jira.percona.com/browse/PCT-939
+				if s.penuVal > 0 && s.prevVal == 0 && m.Number > s.penuVal {
+					// @1 x=100
+					// @2 x=0 (for whatever reason)
+					// @3 x > 100
+					// This means value reset then increased so quickly that it
+					// lapped the previous non-zero value, which shouldn't happen;
+					// or obvservation @2 was a blip and x should have been >100
+					// && < @3. However, if the values are very small, it could
+					// happen and could be legitimate, so for now we just return
+					// an error to warn the caller.
+					err = fmt.Errorf("Value lap: ts=%d val=%.6f, ts=%d val=%.6f, ts=%d val=%.6f",
+						s.penuTs, s.penuVal, s.prevTs, s.prevVal, ts, m.Number)
+				}
+
 				// Per-second rate of value = increase / duration
 				inc := m.Number - s.prevVal
 				dur := ts - s.prevTs
@@ -69,24 +92,47 @@ func (s *Stats) Add(m *Metric, ts int64) {
 				s.vals = append(s.vals, val)
 
 				// Keep running total to calc Avg.
-				s.sum += inc
+				s.sum += val
 
 				// Current values become previous values.
+				s.penuTs = s.prevTs
 				s.prevTs = ts
+				s.penuVal = s.prevVal
 				s.prevVal = m.Number
 			} else {
 				// Metric value reset, e.g. FLUSH GLOBAL STATUS.
+				s.penuTs = s.prevTs
 				s.prevTs = ts
+				s.penuVal = s.prevVal
 				s.prevVal = m.Number
 			}
 		} else {
+			s.penuTs = s.prevTs
 			s.prevTs = ts
+			s.penuVal = s.prevVal
 			s.prevVal = m.Number
 			s.firstVal = false
 		}
 	default:
 		// This should not happen because type is checked in NewStats().
 		log.Panic("mm:Aggregator:Add: Invalid metric type: " + s.metricType)
+	}
+	return err
+}
+
+func (s *Stats) Finalize() *Stats {
+	if len(s.vals) == 0 {
+		return nil
+	}
+	s.Summarize()
+	return &Stats{
+		Cnt:   s.Cnt,
+		Min:   s.Min,
+		Pct5:  s.Pct5,
+		Avg:   s.Avg,
+		Med:   s.Med,
+		Pct95: s.Pct95,
+		Max:   s.Max,
 	}
 }
 
@@ -96,7 +142,6 @@ func (s *Stats) Summarize() {
 		s.Cnt = len(s.vals)
 		if s.Cnt > 1 {
 			sort.Float64s(s.vals)
-
 			s.Min = s.vals[0]
 			s.Pct5 = s.vals[(5*s.Cnt)/100]
 			s.Avg = s.sum / float64(s.Cnt)

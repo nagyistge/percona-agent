@@ -21,13 +21,14 @@ import (
 	"database/sql"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mm"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
-	"strconv"
-	"strings"
-	"time"
 )
 
 type Monitor struct {
@@ -43,6 +44,7 @@ type Monitor struct {
 	status         *pct.Status
 	sync           *pct.SyncChan
 	running        bool
+	collectLimit   float64
 }
 
 func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Connector) *Monitor {
@@ -55,6 +57,7 @@ func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Conn
 		connectedChan: make(chan bool, 1),
 		status:        pct.NewStatus([]string{name, name + "-mysql"}),
 		sync:          pct.NewSyncChan(),
+		collectLimit:  float64(config.Collect) * 0.1, // 10% of Collect time
 	}
 	return m
 }
@@ -96,8 +99,6 @@ func (m *Monitor) Stop() error {
 	m.sync.Stop()
 	m.sync.Wait()
 
-	// XXX todo: this line will panic if connect() is running
-	m.config = nil // no config if not running
 	m.running = false
 	m.logger.Info("Stopped")
 
@@ -225,8 +226,12 @@ func (m *Monitor) run() {
 				Metrics: []mm.Metric{},
 			}
 
-			// SHOW GLOBAL STATUS
+			// Start timing the collection.  If must take < collectLimit else
+			// it's discarded.
+			start := time.Now()
 			conn := m.conn.DB()
+
+			// SHOW GLOBAL STATUS
 			if err := m.GetShowStatusMetrics(conn, c); err != nil {
 				m.collectError(err)
 			}
@@ -253,6 +258,19 @@ func (m *Monitor) run() {
 						m.config.UserStats = false
 					}
 				}
+			}
+
+			// It is possible that collecting metrics will stall for many
+			// seconds for some reason so even though we issued captures 1 sec in
+			// between, we actually got 5 seconds between results and as such we
+			// might be showing huge spike.
+			// To avoid that, if the time to collect metrics is >= collectLimit
+			// then warn and discard the metrics.
+			diff := time.Now().Sub(start).Seconds()
+			if diff >= m.collectLimit {
+				lastError = fmt.Sprintf("Skipping interval because it took too long to collect: %.2fs >= %.2fs", diff, m.collectLimit)
+				m.logger.Warn(lastError)
+				continue
 			}
 
 			// Send the metrics to an mm.Aggregator.
@@ -321,6 +339,7 @@ func (m *Monitor) GetShowStatusMetrics(conn *sql.DB, c *mm.Collection) error {
 		metricName := statName
 		metricValue, err := strconv.ParseFloat(statValue, 64)
 		if err != nil {
+			m.logger.Warn("strconv.ParseFloat('%s', 64): %s", statValue, err)
 			metricValue = 0.0
 		}
 
@@ -364,6 +383,7 @@ func (m *Monitor) GetInnoDBMetrics(conn *sql.DB, c *mm.Collection) error {
 		metricName := "mysql/innodb/" + strings.ToLower(statSubsystem) + "/" + strings.ToLower(statName)
 		metricValue, err := strconv.ParseFloat(statCount, 64)
 		if err != nil {
+			m.logger.Warn("strconv.ParseFloat('%s', 64): %s", statCount, err)
 			metricValue = 0.0
 		}
 		var metricType string

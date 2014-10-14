@@ -36,7 +36,7 @@ import (
 // REV="$(git rev-parse HEAD)"
 // go build -ldflags "-X github.com/percona/percon-agent/agnet.REVISION $REV"
 var REVISION string = "0"
-var VERSION string = "1.0.6"
+var VERSION string = "1.0.9"
 
 const (
 	CMD_QUEUE_SIZE    = 10

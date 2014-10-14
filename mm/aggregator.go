@@ -18,6 +18,7 @@
 package mm
 
 import (
+	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/pct"
@@ -97,15 +98,11 @@ func (a *Aggregator) run() {
 
 				// Init next stats based on current ones to avoid re-creating them.
 				// todo: what if metrics from an instance aren't collected?
-				next := make([]*InstanceStats, len(cur))
 				for n := range cur {
-					i := &InstanceStats{
-						ServiceInstance: cur[n].ServiceInstance,
-						Stats:           make(map[string]*Stats),
+					for key, _ := range cur[n].Stats {
+						cur[n].Stats[key].Reset()
 					}
-					next[n] = i
 				}
-				cur = next
 				curInterval = interval
 				startTs = GoTime(a.interval, interval)
 				a.logger.Debug("Start interval", startTs)
@@ -149,7 +146,10 @@ func (a *Aggregator) run() {
 					}
 					is.Stats[metric.Name] = stats
 				}
-				stats.Add(&metric, collection.Ts)
+				if err := stats.Add(&metric, collection.Ts); err != nil {
+					a.logger.Error(
+						fmt.Sprintf("stats.Add(%+v, %d): %s", metric, collection.Ts, err))
+				}
 			}
 		case <-a.sync.StopChan:
 			return
@@ -160,15 +160,57 @@ func (a *Aggregator) run() {
 // @goroutine[1]
 func (a *Aggregator) report(startTs time.Time, is []*InstanceStats) {
 	a.logger.Debug("Summarize metrics for", startTs)
+
+	// The instance stats given (is) are a persistent buffer, so we need
+	// to copy and filter the contents for the report, else the next interval
+	// could change something which will affect values already reported because
+	// we use pointers to all data structs.  Also, it's possible this
+	// interval does not have metrics reported in previosu intervals
+	// (i.e. no values, Cnt=0); see https://jira.percona.com/browse/PCT-911.
+	finalInstanceStats := []*InstanceStats{}
 	for _, i := range is {
-		for _, s := range i.Stats {
-			s.Summarize()
+
+		// Finalize the stats for every metric.  If the final stats are nil,
+		// then no values were reported (Cnt=0), so we ignore the metric.
+		finalMetrics := make(map[string]*Stats)
+		for metric, stats := range i.Stats {
+			finalStats := stats.Finalize()
+			if finalStats == nil {
+				// No values, so no stats; ignore the metric.
+				continue
+			}
+			finalMetrics[metric] = finalStats
 		}
+
+		// If the instance has no metrics with stats; ignore it.  This can
+		// happen if, for example, the MySQL metrics take too long to collect.
+		// This isn't reported here; the metrics monitor should report it
+		// because it knows that it collect any metrics.
+		if len(finalMetrics) == 0 {
+			continue
+		}
+
+		// Create a copy of this instance with the copy of its stats.
+		finalInstance := &InstanceStats{
+			ServiceInstance: proto.ServiceInstance{
+				Service:    i.Service,
+				InstanceId: i.InstanceId,
+			},
+			Stats: finalMetrics,
+		}
+		finalInstanceStats = append(finalInstanceStats, finalInstance)
 	}
+
+	if len(finalInstanceStats) == 0 {
+		// This shouldn't happen: no instances with valid metrics/stats.
+		a.logger.Warn("No metrics collected for", startTs)
+		return
+	}
+
 	report := &Report{
 		Ts:       startTs,
 		Duration: uint(a.interval),
-		Stats:    is,
+		Stats:    finalInstanceStats,
 	}
 	if err := a.spool.Write("mm", report); err != nil {
 		a.logger.Warn("Lost report:", err)

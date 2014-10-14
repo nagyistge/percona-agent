@@ -3,6 +3,6 @@
   "InstanceId":1,
   "Ts":1257894005,
   "Metrics":[
-    {"Name":"bytes_sent","Type":"counter","Number":1600}
+    {"Name":"bytes_sent","Type":"counter","Number":1610}
   ]
 }

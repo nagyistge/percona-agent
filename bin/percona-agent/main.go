@@ -117,9 +117,15 @@ func run() error {
 	 * Ping and exit, maybe.
 	 */
 
+	// Set for all connections to API.  X-Percona-API-Key is set automatically
+	// using the pct.APIConnector.
+	headers := map[string]string{
+		"X-Percona-Agent-Version": agent.VERSION,
+	}
+
 	if flagPing {
 		t0 := time.Now()
-		code, err := pct.Ping(agentConfig.ApiHostname, agentConfig.ApiKey)
+		code, err := pct.Ping(agentConfig.ApiHostname, agentConfig.ApiKey, headers)
 		d := time.Now().Sub(t0)
 		if err != nil || code != 200 {
 			return fmt.Errorf("Ping FAIL (%d %d %s)", d, code, err)
@@ -162,7 +168,7 @@ func run() error {
 	logChan := make(chan *proto.LogEntry, log.BUFFER_SIZE*3)
 
 	// Log websocket client, possibly disabled later.
-	logClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "log-ws"), api, "log")
+	logClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "log-ws"), api, "log", headers)
 	if err != nil {
 		golog.Fatalln(err)
 	}
@@ -209,7 +215,7 @@ func run() error {
 
 	hostname, _ := os.Hostname()
 
-	dataClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "data-ws"), api, "data")
+	dataClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "data-ws"), api, "data", headers)
 	if err != nil {
 		golog.Fatalln(err)
 	}
@@ -340,7 +346,7 @@ func run() error {
 	 * Agent
 	 */
 
-	cmdClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "agent-ws"), api, "cmd")
+	cmdClient, err := client.NewWebsocketClient(pct.NewLogger(logChan, "agent-ws"), api, "cmd", headers)
 	if err != nil {
 		golog.Fatal(err)
 	}

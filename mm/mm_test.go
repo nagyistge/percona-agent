@@ -20,6 +20,13 @@ package mm_test
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"sort"
+	"testing"
+	"time"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/instance"
@@ -30,11 +37,6 @@ import (
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
-	"io/ioutil"
-	"os"
-	"path/filepath"
-	"testing"
-	"time"
 )
 
 // Hook up gocheck into the "go test" runner.
@@ -131,7 +133,6 @@ func (s *AggregatorTestSuite) TestC001(t *C) {
 		test.Dump(expect.Stats)
 		t.Fatal(diff)
 	}
-
 }
 
 func (s *AggregatorTestSuite) TestC002(t *C) {
@@ -247,6 +248,43 @@ func (s *AggregatorTestSuite) TestC003(t *C) {
 	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
 		t.Fatal(diff)
 	}
+
+	// Get the collected stats
+	// As got.Stats[0].Stats is a map, we run this empty 'for' loop just to get
+	// the stats for the first key in the map, into the stats variable.
+	var stats *mm.Stats
+	for _, stats = range got.Stats[0].Stats {
+	}
+	// First time, stats.Cnt must be equal to the number of seconds in the interval
+	// minus 1 because the first value is used to bootstrap the aggregator
+	t.Check(int64(stats.Cnt), Equals, interval-1)
+
+	// Let's complete the second interval
+	for i := 6; i <= 9; i++ {
+		file := fmt.Sprintf("%s/c003-%d.json", sample, i)
+		if err := sendCollection(file, s.collectionChan); err != nil {
+			t.Fatal(file, err)
+		}
+	}
+	// Sample #10 will be in the 3rd interval, so the 2nd will be reported
+	file = fmt.Sprintf("%s/c003-%d.json", sample, 10)
+	if err := sendCollection(file, s.collectionChan); err != nil {
+		t.Fatal(file, err)
+	}
+
+	got = test.WaitMmReport(s.dataChan)
+	t.Assert(got, NotNil)
+	// Get the collected stats
+	for _, stats = range got.Stats[0].Stats {
+	}
+	// stats.Cnt must be equal to the number of seconds in the interval
+	t.Check(int64(stats.Cnt), Equals, interval)
+	if err := test.LoadMmReport(sample+"/c003r2.json", expect); err != nil {
+		t.Fatal("c003r2.json ", err)
+	}
+	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
+		t.Fatal(diff)
+	}
 }
 
 func (s *AggregatorTestSuite) TestC003Lost(t *C) {
@@ -316,8 +354,144 @@ func (s *AggregatorTestSuite) TestBadMetric(t *C) {
 	}
 
 	got := test.WaitMmReport(s.dataChan)
-	t.Check(len(got.Stats), Equals, 1)          // instance
-	t.Check(len(got.Stats[0].Stats), Equals, 0) // ^ its metrics
+	if got != nil {
+		test.Dump(got)
+		t.Error("Got a bad metric")
+	}
+}
+
+func (s *AggregatorTestSuite) TestMissingSomeMetrics(t *C) {
+	/*
+		This test verifies that missing metrics are not reported.  E.g. the
+		sample data has collections with metrics a, b, c, foo, and various
+		combinations of these.  A metric is reported only if it has values
+		(i.e. a value was collected and sent to the aggregator).
+
+		NOTE: This test is more strict than our actual assumption that
+		      collections are all-or-nothing and therefore cannot be partial
+			  like this.  In other words, either the collection for SHOW STATUS
+			  has all metrics or it has no metrics; we assume that it cannot
+			  have, for example, only 100 of the usual 500 (or however many).
+			  See TestMissingAllMetrics for a more realistic example.
+	*/
+
+	// First we do same as TestC001 which has 3 metrics:
+	// host1/a, host1/b, host1/c.  Then we collect only 1
+	// new metrics: host1/foo.  Metrics a-c shouldn't be
+	// reported.
+
+	interval := int64(300)
+	a := mm.NewAggregator(s.logger, interval, s.collectionChan, s.spool)
+	go a.Start()
+	defer a.Stop()
+
+	/*
+		c001-1.json:  "Ts":1257894000,	2009-11-10 23:00:00	report 1
+		c001-2.json:  "Ts":1257894301,	2009-11-10 23:05:01	report 2
+		c004-1.json:  "Ts":1257894601,	2009-11-10 23:10:01	report 3
+		c004-2.json:  "Ts":1257894901,  2009-11-10 23:15:01 report 4
+		c004-3.json:  "Ts":1257895201,  2009-11-10 23:20:01
+	*/
+
+	// Send c001-1 and -2.  -2 ts is >5m after -1 so it causes data
+	// from -1 to be sent as 1st report.
+	err := sendCollection(sample+"/c001-1.json", s.collectionChan)
+	t.Assert(err, IsNil)
+	err = sendCollection(sample+"/c001-2.json", s.collectionChan)
+	t.Assert(err, IsNil)
+	report1 := test.WaitMmReport(s.dataChan)
+	t.Assert(report1, NotNil)
+	stats := []string{}
+	for stat, _ := range report1.Stats[0].Stats {
+		stats = append(stats, stat)
+	}
+	sort.Strings(stats)
+	t.Check(stats, DeepEquals, []string{"host1/a", "host1/b", "host1/c"})
+
+	// The c004-1 ts is >5m after c001-2 so it causes data from c001-2
+	// to be sent as 2nd report.
+	err = sendCollection(sample+"/c004-1.json", s.collectionChan)
+	t.Assert(err, IsNil)
+	report2 := test.WaitMmReport(s.dataChan)
+	t.Assert(report2, NotNil)
+	stats = []string{}
+	for stat, _ := range report2.Stats[0].Stats {
+		stats = append(stats, stat)
+	}
+	sort.Strings(stats)
+	t.Check(stats, DeepEquals, []string{"host1/a", "host1/b", "host1/c"})
+
+	// The c004-2 ts is >5m after c004-1 so it causes data from c004-1
+	// to be sent as 3rd report.
+	err = sendCollection(sample+"/c004-2.json", s.collectionChan)
+	t.Assert(err, IsNil)
+	report3 := test.WaitMmReport(s.dataChan)
+	t.Assert(report3, NotNil)
+	stats = []string{}
+	for stat, _ := range report3.Stats[0].Stats {
+		stats = append(stats, stat)
+	}
+	sort.Strings(stats)
+	t.Check(stats, DeepEquals, []string{"host1/foo"})
+
+	err = sendCollection(sample+"/c004-3.json", s.collectionChan)
+	t.Assert(err, IsNil)
+	report4 := test.WaitMmReport(s.dataChan)
+	t.Assert(report4, NotNil)
+	stats = []string{}
+	for stat, _ := range report4.Stats[0].Stats {
+		stats = append(stats, stat)
+	}
+	sort.Strings(stats)
+	t.Check(stats, DeepEquals, []string{"host1/a", "host1/b", "host1/foo"})
+}
+
+func (s *AggregatorTestSuite) TestMissingAllMetrics(t *C) {
+	/*
+		This test verifies that missing metrics are not reported as their
+		previous values: https://jira.percona.com/browse/PCT-911
+		See also TestMissingSomeMetrics.
+
+		The first interval starts at 2009-11-10 23:00:00 and we get collections
+		for seconds 00 and 01, but then we fake that 02 and 03 are missed,
+		and the next collection is 04.  The duration for 04 should be 3s (4-1).
+		c005-n is the next interval which causes the report for the 1st interval
+		and its 3 collections.
+	*/
+
+	// First we do same as TestC001 which has 3 metrics:
+	// host1/a, host1/b, host1/c.  Then we collect only 1
+	// new metrics: host1/foo.  Metrics a-c shouldn't be
+	// reported.
+
+	interval := int64(300)
+	a := mm.NewAggregator(s.logger, interval, s.collectionChan, s.spool)
+	go a.Start()
+	defer a.Stop()
+
+	for _, n := range []string{"0", "1", "4", "n"} {
+		err := sendCollection(sample+"/c005-"+n+".json", s.collectionChan)
+		t.Assert(err, IsNil)
+	}
+	got := test.WaitMmReport(s.dataChan)
+	t.Assert(got, NotNil)
+
+	/*
+		Values are:
+			@	Val	Inc	Dur	Rate/s
+			00	10
+			01	100	90	1	90
+			04	400	300	3	100
+		So rate min=90, max=100, avg=95  for COUNTER (bar)
+		    val min=10, max=400, avg=170 for GAUGE (foo)
+	*/
+	t.Check(got.Stats[0].Stats["bar"].Min, Equals, float64(90))
+	t.Check(got.Stats[0].Stats["bar"].Max, Equals, float64(100))
+	t.Check(got.Stats[0].Stats["bar"].Avg, Equals, float64(95))
+
+	t.Check(got.Stats[0].Stats["foo"].Min, Equals, float64(10))
+	t.Check(got.Stats[0].Stats["foo"].Max, Equals, float64(400))
+	t.Check(got.Stats[0].Stats["foo"].Avg, Equals, float64(170))
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -731,4 +905,125 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 		test.Dump(gotConfig)
 		t.Error(diff)
 	}
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Stats test suite
+/////////////////////////////////////////////////////////////////////////////
+
+type StatsTestSuite struct {
+}
+
+var _ = Suite(&StatsTestSuite{})
+
+func (s *StatsTestSuite) TestCounterBasic(t *C) {
+	stats, _ := mm.NewStats("counter")
+	stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 3}, 1)
+	stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 9}, 2)
+	stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 11}, 3)
+	got := stats.Finalize()
+	t.Check(got.Cnt, Equals, 2)
+	t.Check(got.Min, Equals, float64(2))
+	t.Check(got.Avg, Equals, float64(4))
+	t.Check(got.Max, Equals, float64(6))
+}
+
+func (s *StatsTestSuite) TestCounterReset(t *C) {
+	stats, _ := mm.NewStats("counter")
+	stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 3}, 1)
+	stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 9}, 2)  // +6
+	stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 11}, 3) // +2
+	stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 0}, 4)  // reset
+	stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 4}, 5)  // +4
+	stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 9}, 6)  // +5
+	got := stats.Finalize()
+	t.Check(got.Cnt, Equals, 4)
+	t.Check(got.Min, Equals, float64(2))
+	t.Check(got.Avg, Equals, float64(4.25))
+	t.Check(got.Max, Equals, float64(6))
+}
+
+func (s *StatsTestSuite) TestValueLap(t *C) {
+	var err error
+	stats, _ := mm.NewStats("counter")
+	err = stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 100}, 1)
+	t.Check(err, IsNil)
+	err = stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 200}, 2) // +100
+	t.Check(err, IsNil)
+	err = stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 0}, 3) // reset
+	t.Check(err, IsNil)
+	err = stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 350}, 4) // +350
+	t.Check(err, NotNil)                                                      // lap detected
+	got := stats.Finalize()
+	t.Check(got.Cnt, Equals, 2)
+	t.Check(got.Min, Equals, float64(100))
+	t.Check(got.Avg, Equals, float64(225))
+	t.Check(got.Max, Equals, float64(350))
+}
+
+func (s *StatsTestSuite) TestPCT939(t *C) {
+	// https://jira.percona.com/browse/PCT-939
+	/*
+		stats, _ := mm.NewStats("counter")
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 0}, 1)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 98980}, 2)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 98990}, 3)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99000}, 4)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99010}, 5)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99020}, 6)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99050}, 7)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99055}, 8)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99060}, 9)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99065}, 10)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99070}, 11)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99075}, 12)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99080}, 13)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99090}, 14)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99100}, 15)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99110}, 16)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99120}, 17)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99130}, 18)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99140}, 19)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99150}, 20)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99160}, 21)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99170}, 22)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99175}, 23)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99185}, 24)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99195}, 25)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99195}, 26)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99200}, 27)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99220}, 28)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99230}, 29)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99240}, 30)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99250}, 31)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99260}, 32)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99270}, 33)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99290}, 34)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99300}, 35)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99310}, 36)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99320}, 37)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99330}, 38)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99340}, 39)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99350}, 40)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99360}, 41)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99370}, 42)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99380}, 43)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99390}, 44)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99400}, 45)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99420}, 46)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99440}, 47)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99450}, 48)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99460}, 49)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99480}, 50)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99490}, 51)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99500}, 52)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99510}, 53)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99520}, 54)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99530}, 55)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99540}, 56)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99590}, 57)
+		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99600}, 58)
+		got := stats.Finalize()
+		test.Dump(got)
+	*/
 }

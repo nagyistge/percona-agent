@@ -20,16 +20,18 @@ package mysql_test
 import (
 	"database/sql"
 	_ "github.com/go-sql-driver/mysql"
+	"os"
+	"testing"
+	"time"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mm"
 	"github.com/percona/percona-agent/mm/mysql"
 	mysqlConn "github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test"
+	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
-	"os"
-	"testing"
-	"time"
 )
 
 /**
@@ -203,8 +205,6 @@ func (s *TestSuite) TestCollectInnoDBStats(t *C) {
 		InnoDB: []string{"dml_%"}, // same as above ^
 	}
 
-	// Start a monitor with InnoDB metrics.
-	// See TestStartCollectStop() for description of these steps.
 	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn))
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
@@ -354,4 +354,42 @@ func (s *TestSuite) TestCollectUserstats(t *C) {
 
 	// Stop montior, clean up.
 	m.Stop()
+}
+
+func (s *TestSuite) TestSlowResponse(t *C) {
+	// https://jira.percona.com/browse/PCT-565
+	config := &mysql.Config{
+		Config: mm.Config{
+			ServiceInstance: proto.ServiceInstance{
+				Service:    "mysql",
+				InstanceId: 1,
+			},
+			Collect: 1,
+			Report:  60,
+		},
+		UserStats: true,
+	}
+
+	slowCon := mock.NewSlowMySQL(dsn)
+	slowCon.SetGlobalDelay(time.Duration(config.Collect+1) * time.Second)
+	m := mysql.NewMonitor(s.name, config, s.logger, slowCon)
+	if m == nil {
+		t.Fatal("Make new mysql.Monitor")
+	}
+
+	err := m.Start(s.tickChan, s.collectionChan)
+	if err != nil {
+		t.Fatalf("Start monitor without error, got %s", err)
+	}
+	defer m.Stop()
+
+	if ok := test.WaitStatus(5, m, s.name+"-mysql", "Connected"); !ok {
+		t.Fatal("Monitor is ready")
+	}
+
+	s.tickChan <- time.Now()
+	got := test.WaitCollection(s.collectionChan, 1)
+	// If it took more than 10% of config.Collect, the monitor must
+	// discard those metrics -> len(got) == 0
+	t.Check(got, HasLen, 0)
 }
