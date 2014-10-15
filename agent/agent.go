@@ -21,9 +21,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/percona-agent/pct"
-	pctCmd "github.com/percona/percona-agent/pct/cmd"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -31,6 +28,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/percona-agent/pct"
+	pctCmd "github.com/percona/percona-agent/pct/cmd"
 )
 
 // REV="$(git rev-parse HEAD)"

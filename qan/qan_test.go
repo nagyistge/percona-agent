@@ -20,6 +20,14 @@ package qan_test
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/mysql-log-parser/test"
 	"github.com/percona/percona-agent/instance"
@@ -29,13 +37,6 @@ import (
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
-	"io/ioutil"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
-	"testing"
-	"time"
 )
 
 // Hook up gocheck into the "go test" runner.
@@ -1197,6 +1198,7 @@ func (s *ManagerTestSuite) TestStart(t *C) {
 			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
 			mysql.Query{Set: "SET GLOBAL long_query_time=0.456"},
 			mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+			mysql.Query{Set: `SET GLOBAL time_zone="SYSTEM"`},
 		},
 		Stop: []mysql.Query{
 			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
@@ -1219,6 +1221,9 @@ func (s *ManagerTestSuite) TestStart(t *C) {
 	t.Check(status["qan-parser"], Equals, "Idle (0 of 1 running)")
 	t.Check(status["qan-last-interval"], Equals, "")
 	t.Check(status["qan-next-interval"], Not(Equals), "")
+
+	// Here we need to test GetGlobalDataFile
+	//mockConnFactory.Conn.
 
 	// Stopping qan.Stop() should leave config file on disk.
 	err = m.Stop()

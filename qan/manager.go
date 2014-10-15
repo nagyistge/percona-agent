@@ -21,6 +21,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"sync"
+	"time"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/instance"
@@ -28,9 +32,6 @@ import (
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/ticker"
-	"os"
-	"sync"
-	"time"
 )
 
 type Manager struct {
@@ -262,7 +263,6 @@ func (m *Manager) run(config Config) {
 		}
 		m.sync.Done()
 	}()
-
 	m.status.Update("qan-parser", "Starting")
 	intervalChan := m.iter.IntervalChan()
 	lastTs := time.Time{}
@@ -540,8 +540,8 @@ func (m *Manager) start(config *Config) error {
 				return "", err
 			}
 			defer m.mysqlConn.Close()
-			file := m.mysqlConn.GetGlobalVarString("slow_query_log_file")
-			return file, nil
+			filename := m.mysqlConn.GetGlobalDataFile("slow_query_log_file")
+			return filename, nil
 		}
 	}
 	m.iter = m.iterFactory.Make(config.CollectFrom, getSlowLogFunc, m.tickChan)
