@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"sync"
 	"time"
 
@@ -540,7 +541,7 @@ func (m *Manager) start(config *Config) error {
 				return "", err
 			}
 			defer m.mysqlConn.Close()
-			filename := m.mysqlConn.GetGlobalDataFile("slow_query_log_file")
+			filename := m.GetGlobalDataFile("slow_query_log_file")
 			return filename, nil
 		}
 	}
@@ -567,6 +568,18 @@ func (m *Manager) start(config *Config) error {
 	}
 
 	return nil // success
+}
+
+func (m *Manager) GetGlobalDataFile(varName string) string {
+	if m.mysqlConn == nil {
+		return "no connection"
+	}
+	fileName := m.mysqlConn.GetGlobalVarString(varName)
+	if !path.IsAbs(fileName) {
+		dataDir := m.mysqlConn.GetGlobalVarString("datadir")
+		fileName = path.Clean(fmt.Sprintf("%s/%s", dataDir, fileName))
+	}
+	return fileName
 }
 
 func (m *Manager) stop() error {

@@ -21,7 +21,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"path"
 	"sync"
 	"time"
 
@@ -45,7 +44,6 @@ type Connector interface {
 	Set([]Query) error
 	GetGlobalVarString(varName string) string
 	Uptime() (uptime int64)
-	GetGlobalDataFile(filename string) string
 }
 
 type Connection struct {
@@ -197,17 +195,6 @@ func (c *Connection) GetGlobalVarNumber(varName string) float64 {
 	var varValue float64
 	c.conn.QueryRow("SELECT @@GLOBAL." + varName).Scan(&varValue)
 	return varValue
-}
-
-func (c *Connection) GetGlobalDataFile(filename string) string {
-	if c.conn == nil {
-		return ""
-	}
-	if !path.IsAbs(filename) {
-		dataDir := c.GetGlobalVarString("datadir")
-		filename = path.Clean(fmt.Sprintf("%s/%s", dataDir, filename))
-	}
-	return filename
 }
 
 func (c *Connection) Uptime() (uptime int64) {

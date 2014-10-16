@@ -23,6 +23,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1198,7 +1199,6 @@ func (s *ManagerTestSuite) TestStart(t *C) {
 			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
 			mysql.Query{Set: "SET GLOBAL long_query_time=0.456"},
 			mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
-			mysql.Query{Set: `SET GLOBAL time_zone="SYSTEM"`},
 		},
 		Stop: []mysql.Query{
 			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
@@ -1222,8 +1222,11 @@ func (s *ManagerTestSuite) TestStart(t *C) {
 	t.Check(status["qan-last-interval"], Equals, "")
 	t.Check(status["qan-next-interval"], Not(Equals), "")
 
-	// Here we need to test GetGlobalDataFile
-	//mockConnFactory.Conn.
+	// Test GetGlobalDataFile. It must return an absolute path
+	filename := m.GetGlobalDataFile("slow_query_log_file")
+	if !path.IsAbs(filename) {
+		t.Fail()
+	}
 
 	// Stopping qan.Stop() should leave config file on disk.
 	err = m.Stop()
