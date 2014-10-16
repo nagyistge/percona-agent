@@ -1,5 +1,7 @@
 percona-agent Changelog
 
+  * PCT-787: percona-agent restart doesn't start agent if already stopped
+
 v1.0.8 released 2014-09-18
 
   * PCT-911: Agent starts reporting same values for metrics
