@@ -1,4 +1,4 @@
-percona/percona-agent
+percona/percona-agent [![Documentation Status](https://readthedocs.org/projects/pct/badge/?version=latest)](http://cloud-docs.percona.com/)
 =====================
 
 - [About](#user-content-about)
@@ -25,7 +25,7 @@ Quick Install
 
 `curl -s https://cloud.percona.com/install | bash /dev/stdin -api-key="<API key>"`
 
-More about *Quick Install* and other installation options can be found in the [Installation Guide](INSTALL.md).
+More about *Quick Install* and other installation options can be found in the [Installation Guide](http://cloud-docs.percona.com/Install.html).
 
 Updating the Agent
 ------------------
