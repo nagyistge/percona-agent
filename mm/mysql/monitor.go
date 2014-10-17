@@ -158,7 +158,10 @@ func (m *Monitor) connect(err error) {
 			for _, module := range m.config.InnoDB {
 				sql := "SET GLOBAL innodb_monitor_enable = '" + module + "'"
 				if _, err := m.conn.DB().Exec(sql); err != nil {
-					m.logger.Error(sql, err)
+					errMsg := fmt.Sprintf("Cannot collect InnoDB stats because '%s' failed: %s", sql, err)
+					m.logger.Error(errMsg)
+					m.config.InnoDB = []string{}
+					break
 				}
 			}
 		}
@@ -168,7 +171,9 @@ func (m *Monitor) connect(err error) {
 			// 5.5.10 <  v:           SET GLOBAL userstat=ON
 			sql := "SET GLOBAL userstat=ON"
 			if _, err := m.conn.DB().Exec(sql); err != nil {
-				m.logger.Error(sql, err)
+				errMsg := fmt.Sprintf("Cannot collect user stats because '%s' failed: %s", sql, err)
+				m.logger.Error(errMsg)
+				m.config.UserStats = false
 			}
 		}
 
