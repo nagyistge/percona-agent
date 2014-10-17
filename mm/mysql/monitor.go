@@ -337,7 +337,8 @@ func (m *Monitor) GetShowStatusMetrics(conn *sql.DB, c *mm.Collection) error {
 		}
 
 		if statValue == "" {
-			m.logger.Warn(fmt.Sprintf("%s is not set, skipping", statName))
+			// Some values aren't set when not applicable,
+			// e.g. slave_heartbeat_period on a master.
 			continue
 		}
 
