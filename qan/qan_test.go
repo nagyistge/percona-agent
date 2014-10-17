@@ -23,7 +23,6 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1222,12 +1221,6 @@ func (s *ManagerTestSuite) TestStart(t *C) {
 	t.Check(status["qan-last-interval"], Equals, "")
 	t.Check(status["qan-next-interval"], Not(Equals), "")
 
-	// Test GetGlobalDataFile. It must return an absolute path
-	filename := m.GetGlobalDataFile("slow_query_log_file")
-	if !path.IsAbs(filename) {
-		t.Fail()
-	}
-
 	// Stopping qan.Stop() should leave config file on disk.
 	err = m.Stop()
 	t.Assert(err, IsNil)
@@ -1265,6 +1258,12 @@ func (s *ManagerTestSuite) TestStartPfs(t *C) {
 	// Make a qan manager.
 	m := qan.NewManager(s.logger, &mysql.RealConnectionFactory{}, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im, s.mrmsMonitor)
 	t.Assert(m, NotNil)
+
+	// Test AbsDataFile. It is used to get an absolute path for a MySQL data file
+	// like slow_query_log_file
+	dataDir := "/home/somedir/"
+	testFileName := m.AbsDataFile(dataDir, "anotherdir")
+	t.Check(testFileName, Equals, "/home/somedir/anotherdir")
 
 	// Create the qan config for perf schema.
 	config := &qan.Config{

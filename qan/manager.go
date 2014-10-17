@@ -541,7 +541,8 @@ func (m *Manager) start(config *Config) error {
 				return "", err
 			}
 			defer m.mysqlConn.Close()
-			filename := m.GetGlobalDataFile("slow_query_log_file")
+			dataDir := m.mysqlConn.GetGlobalVarString("datadir")
+			filename := m.AbsDataFile(dataDir, m.mysqlConn.GetGlobalVarString("slow_query_log_file"))
 			return filename, nil
 		}
 	}
@@ -570,14 +571,9 @@ func (m *Manager) start(config *Config) error {
 	return nil // success
 }
 
-func (m *Manager) GetGlobalDataFile(varName string) string {
-	if m.mysqlConn == nil {
-		return "no connection"
-	}
-	fileName := m.mysqlConn.GetGlobalVarString(varName)
+func (m *Manager) AbsDataFile(dataDir, fileName string) string {
 	if !path.IsAbs(fileName) {
-		dataDir := m.mysqlConn.GetGlobalVarString("datadir")
-		fileName = path.Clean(fmt.Sprintf("%s/%s", dataDir, fileName))
+		fileName = path.Join(dataDir, fileName)
 	}
 	return fileName
 }
