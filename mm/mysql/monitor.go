@@ -336,14 +336,18 @@ func (m *Monitor) GetShowStatusMetrics(conn *sql.DB, c *mm.Collection) error {
 			continue // not collecting this stat
 		}
 
-		metricName := statName
-		metricValue, err := strconv.ParseFloat(statValue, 64)
-		if err != nil {
-			m.logger.Warn("strconv.ParseFloat('%s', 64): %s", statValue, err)
-			metricValue = 0.0
+		if statValue == "" {
+			m.logger.Warn(fmt.Sprintf("%s is not set, skipping", statName))
+			continue
 		}
 
-		c.Metrics = append(c.Metrics, mm.Metric{"mysql/" + metricName, metricType, metricValue, ""})
+		metricValue, err := strconv.ParseFloat(statValue, 64)
+		if err != nil {
+			m.logger.Warn(fmt.Sprintf("%s: strconv.ParseFloat('%s', 64): %s", statName, statValue, err))
+			continue
+		}
+
+		c.Metrics = append(c.Metrics, mm.Metric{"mysql/" + statName, metricType, metricValue, ""})
 	}
 	err = rows.Err()
 	if err != nil {
