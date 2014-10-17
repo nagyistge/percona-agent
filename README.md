@@ -1,4 +1,4 @@
-percona/percona-agent
+percona/percona-agent [![Documentation Status](https://readthedocs.org/projects/pct/badge/?version=latest)](http://cloud-docs.percona.com/)
 =====================
 
 - [About](#user-content-about)
@@ -15,7 +15,7 @@ percona/percona-agent
 About
 -----
 
-This is percona-agent for [Percona Cloud Tools](https://cloud.percona.com).  It's a real-time client-side agent written in [Go](http://golang.org/) which implements the various servcies provided by Percona Cloud Tools (PCT).  You need a PCT account to install and use the agent.  [Sign up for free](https://cloud.percona.com/signup)!
+This is percona-agent for [Percona Cloud Tools](https://cloud.percona.com).  It's a real-time client-side agent written in [Go](http://golang.org/) which implements the various services provided by Percona Cloud Tools (PCT).  You need a PCT account to install and use the agent.  [Sign up for free](https://cloud.percona.com/signup)!
 
 Quick Install
 -------------
@@ -25,7 +25,7 @@ Quick Install
 
 `curl -s https://cloud.percona.com/install | bash /dev/stdin -api-key="<API key>"`
 
-More about *Quick Install* and other installation options can be found in the [Installation Guide](INSTALL.md).
+More about *Quick Install* and other installation options can be found in the [Installation Guide](http://cloud-docs.percona.com/Install.html).
 
 Updating the Agent
 ------------------

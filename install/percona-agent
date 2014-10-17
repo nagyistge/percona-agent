@@ -179,7 +179,7 @@ stop() {
     if [ "X$pid" = "X" ]
     then
         echo "$SERVICE is not running."
-        exit 0
+        return 0
     else
          # Running so try to stop it.
         su --command="kill $pid" $USERNAME
@@ -187,7 +187,7 @@ stop() {
         then
             # An explanation for the failure should have been given
             echo "Unable to stop $SERVICE."
-            exit 1
+            return 1
         fi
  
         #  Loop until it does.
@@ -214,9 +214,10 @@ stop() {
         if [ "X$pid" != "X" ]
         then
             echo "Failed to stop $SERVICE."
-            exit 1
+            return 1
         else
             echo "Stopped $SERVICE."
+            return 0
         fi
     fi
 }
@@ -241,7 +242,9 @@ case "$1" in
         ;;
     'restart')
         stop
-        start
+        if [ $? -eq 0 ]; then
+            start
+        fi
         ;;
     'status')
         status
