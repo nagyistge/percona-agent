@@ -83,14 +83,24 @@ func (f *RealWorkerFactory) Make(collectFrom, name string, mysqlConn mysql.Conne
 type SlowLogWorker struct {
 	logger *pct.Logger
 	name   string
-	status *pct.Status
+	// --
+	status          *pct.Status
+	queryChan       chan string
+	fingerprintChan chan string
+	errChan         chan interface{}
+	doneChan        chan bool
 }
 
 func NewSlowLogWorker(logger *pct.Logger, name string) *SlowLogWorker {
 	w := &SlowLogWorker{
 		logger: logger,
 		name:   name,
-		status: pct.NewStatus([]string{name}),
+		// --
+		status:          pct.NewStatus([]string{name}),
+		queryChan:       make(chan string, 1),
+		fingerprintChan: make(chan string, 1),
+		errChan:         make(chan interface{}, 1),
+		doneChan:        make(chan bool, 1),
 	}
 	return w
 }
@@ -104,6 +114,9 @@ func (w *SlowLogWorker) Status() string {
 }
 
 func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
+	w.logger.Debug("Run:call")
+	defer w.logger.Debug("Run:return")
+
 	w.status.Update(w.name, "Starting job "+job.Id)
 	result := &Result{}
 
@@ -141,7 +154,7 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 
 	// Make an event aggregate to do all the heavy lifting: fingerprint
 	// queries, group, and aggregate.
-	a := event.NewEventAggregator(query.Fingerprint, query.Id, job.ExampleQueries)
+	a := event.NewEventAggregator(job.ExampleQueries)
 
 	// Misc runtime meta data.
 	jobSize := job.EndOffset - job.StartOffset
@@ -149,6 +162,9 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 	progress := "Not started"
 	rateType := ""
 	rateLimit := uint(0)
+
+	go w.fingerprinter()
+	defer func() { w.doneChan <- true }()
 
 	t0 := time.Now()
 EVENT_LOOP:
@@ -186,7 +202,16 @@ EVENT_LOOP:
 			}
 		}
 
-		a.AddEvent(event)
+		var fingerprint string
+		w.queryChan <- event.Query
+		select {
+		case fingerprint = <-w.fingerprintChan:
+			id := query.Id(fingerprint)
+			a.AddEvent(event, id, fingerprint)
+		case _ = <-w.errChan:
+			w.logger.Warn(fmt.Sprintf("Cannot fingerprint '%s'", event.Query))
+			go w.fingerprinter()
+		}
 	}
 
 	if result.StopOffset == 0 {
@@ -216,4 +241,23 @@ EVENT_LOOP:
 	w.status.Update(w.name, "Done job "+job.Id)
 	w.logger.Info(fmt.Sprintf("Parsed %s: %s", job, progress))
 	return result, nil
+}
+
+func (w *SlowLogWorker) fingerprinter() {
+	w.logger.Debug("fingerprinter:call")
+	defer w.logger.Debug("fingerprinter:return")
+	defer func() {
+		if err := recover(); err != nil {
+			w.errChan <- err
+		}
+	}()
+	for {
+		select {
+		case q := <-w.queryChan:
+			f := query.Fingerprint(q)
+			w.fingerprintChan <- f
+		case <-w.doneChan:
+			return
+		}
+	}
 }
