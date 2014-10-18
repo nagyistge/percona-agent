@@ -20,7 +20,7 @@
 		},
 		{
 			"Pkg": "github.com/percona/go-mysql",
-			"Rev": "600c3d091b5f8f2e02e39d6faf003df44fd5a9dd"
+			"Rev": "a1da3aa3e8020c3102d55688f7dacffa661cdb28"
 		},
 		{
 			"Pkg": "github.com/petar/GoLLRB",
