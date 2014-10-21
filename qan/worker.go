@@ -176,7 +176,7 @@ EVENT_LOOP:
 
 		// Check runtime, stop if exceeded.
 		if runtime >= job.RunTime {
-			errMsg := fmt.Sprintf("Timeout parsing %s: %s", progress)
+			errMsg := fmt.Sprintf("Timeout parsing %s: %s", job, progress)
 			w.logger.Warn(errMsg)
 			result.Error = errMsg
 			break EVENT_LOOP
