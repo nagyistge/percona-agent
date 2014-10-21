@@ -9,6 +9,9 @@ v1.0.9 released 2014-10-22
   * PCT-896: Query Analytics can produce very large data files
   * PCT-1021: SET statements in slow logs not parsed correctly
   * PCT-1022: Agent keeps logging warnings if InnoDB or user stats can't be collected
+  * Faster, better, crash-proof query fingerprints
+  * Use percona/go-mysql instead of percona/mysql-log-parser
+  * Change RateLimit from byte to uint
 
 v1.0.8 released 2014-09-18
 
