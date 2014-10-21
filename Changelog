@@ -1,6 +1,14 @@
 percona-agent Changelog
 
+v1.0.9 released 2014-10-22
+
+  * PCT-380: Numbers in table names are replaced with question marks
+  * PCT-638: QAN for slow log fails if slow_query_log_file is relative path
+  * PCT-659: One-line comments are not removed from fingerprints
   * PCT-787: percona-agent restart doesn't start agent if already stopped
+  * PCT-896: Query Analytics can produce very large data files
+  * PCT-1021: SET statements in slow logs not parsed correctly
+  * PCT-1022: Agent keeps logging warnings if InnoDB or user stats can't be collected
 
 v1.0.8 released 2014-09-18
 
