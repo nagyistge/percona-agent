@@ -158,7 +158,10 @@ func (m *Monitor) connect(err error) {
 			for _, module := range m.config.InnoDB {
 				sql := "SET GLOBAL innodb_monitor_enable = '" + module + "'"
 				if _, err := m.conn.DB().Exec(sql); err != nil {
-					m.logger.Error(sql, err)
+					errMsg := fmt.Sprintf("Cannot collect InnoDB stats because '%s' failed: %s", sql, err)
+					m.logger.Error(errMsg)
+					m.config.InnoDB = []string{}
+					break
 				}
 			}
 		}
@@ -168,7 +171,9 @@ func (m *Monitor) connect(err error) {
 			// 5.5.10 <  v:           SET GLOBAL userstat=ON
 			sql := "SET GLOBAL userstat=ON"
 			if _, err := m.conn.DB().Exec(sql); err != nil {
-				m.logger.Error(sql, err)
+				errMsg := fmt.Sprintf("Cannot collect user stats because '%s' failed: %s", sql, err)
+				m.logger.Error(errMsg)
+				m.config.UserStats = false
 			}
 		}
 
@@ -336,14 +341,19 @@ func (m *Monitor) GetShowStatusMetrics(conn *sql.DB, c *mm.Collection) error {
 			continue // not collecting this stat
 		}
 
-		metricName := statName
-		metricValue, err := strconv.ParseFloat(statValue, 64)
-		if err != nil {
-			m.logger.Warn("strconv.ParseFloat('%s', 64): %s", statValue, err)
-			metricValue = 0.0
+		if statValue == "" {
+			// Some values aren't set when not applicable,
+			// e.g. slave_heartbeat_period on a master.
+			continue
 		}
 
-		c.Metrics = append(c.Metrics, mm.Metric{"mysql/" + metricName, metricType, metricValue, ""})
+		metricValue, err := strconv.ParseFloat(statValue, 64)
+		if err != nil {
+			m.logger.Warn(fmt.Sprintf("%s: strconv.ParseFloat('%s', 64): %s", statName, statValue, err))
+			continue
+		}
+
+		c.Metrics = append(c.Metrics, mm.Metric{"mysql/" + statName, metricType, metricValue, ""})
 	}
 	err = rows.Err()
 	if err != nil {

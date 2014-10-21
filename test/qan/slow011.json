@@ -214,10 +214,10 @@
    }
   }
  },
- "Classes": [
+ "Class": [
   {
-   "Id": "05C865C4BA52256A",
-   "Fingerprint": "insert into foo values (?, ?)",
+   "Id": "D2BA209E593ABAA7",
+   "Fingerprint": "insert into foo values(?+)",
    "Metrics": {
     "TimeMetrics": {
      "InnoDB_IO_r_wait": {
