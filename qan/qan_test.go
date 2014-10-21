@@ -20,6 +20,15 @@ package qan_test
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"strings"
+	"testing"
+	"time"
+
 	. "github.com/go-test/test"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/go-mysql/event"
@@ -31,14 +40,6 @@ import (
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
-	"io/ioutil"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"sort"
-	"strings"
-	"testing"
-	"time"
 )
 
 // Hook up gocheck into the "go test" runner.
@@ -1339,6 +1340,15 @@ func (s *ManagerTestSuite) TestStartPfs(t *C) {
 	cmd.Cmd = "StopService"
 	reply = m.Handle(cmd)
 	t.Assert(reply.Error, Equals, "")
+}
+
+func (s *ManagerTestSuite) TestAbsDataFile(t *C) {
+	// Test AbsDataFile. It is used to get an absolute path for a MySQL data file
+	// like slow_query_log_file
+	m := qan.NewManager(s.logger, &mysql.RealConnectionFactory{}, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im, s.mrmsMonitor)
+	dataDir := "/home/somedir/"
+	testFileName := m.AbsDataFile(dataDir, "anotherdir")
+	t.Check(testFileName, Equals, "/home/somedir/anotherdir")
 }
 
 /////////////////////////////////////////////////////////////////////////////

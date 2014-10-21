@@ -21,11 +21,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync"
+	"time"
+
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/pct"
-	"sync"
-	"time"
 )
 
 type Query struct {
