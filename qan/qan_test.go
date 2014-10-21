@@ -1259,12 +1259,6 @@ func (s *ManagerTestSuite) TestStartPfs(t *C) {
 	m := qan.NewManager(s.logger, &mysql.RealConnectionFactory{}, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im, s.mrmsMonitor)
 	t.Assert(m, NotNil)
 
-	// Test AbsDataFile. It is used to get an absolute path for a MySQL data file
-	// like slow_query_log_file
-	dataDir := "/home/somedir/"
-	testFileName := m.AbsDataFile(dataDir, "anotherdir")
-	t.Check(testFileName, Equals, "/home/somedir/anotherdir")
-
 	// Create the qan config for perf schema.
 	config := &qan.Config{
 		CollectFrom:     "perfschema", // <-- the magic
@@ -1324,6 +1318,15 @@ func (s *ManagerTestSuite) TestStartPfs(t *C) {
 	cmd.Cmd = "StopService"
 	reply = m.Handle(cmd)
 	t.Assert(reply.Error, Equals, "")
+}
+
+func (s *ManagerTestSuite) TestAbsDataFile(t *C) {
+	// Test AbsDataFile. It is used to get an absolute path for a MySQL data file
+	// like slow_query_log_file
+	m := qan.NewManager(s.logger, &mysql.RealConnectionFactory{}, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im, s.mrmsMonitor)
+	dataDir := "/home/somedir/"
+	testFileName := m.AbsDataFile(dataDir, "anotherdir")
+	t.Check(testFileName, Equals, "/home/somedir/anotherdir")
 }
 
 /////////////////////////////////////////////////////////////////////////////
