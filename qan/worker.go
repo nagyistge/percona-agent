@@ -20,8 +20,10 @@ package qan
 import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
-	mysqlLog "github.com/percona/mysql-log-parser/log"
-	"github.com/percona/mysql-log-parser/log/parser"
+	"github.com/percona/go-mysql/event"
+	"github.com/percona/go-mysql/log"
+	parser "github.com/percona/go-mysql/log/slow"
+	"github.com/percona/go-mysql/query"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"os"
@@ -81,14 +83,24 @@ func (f *RealWorkerFactory) Make(collectFrom, name string, mysqlConn mysql.Conne
 type SlowLogWorker struct {
 	logger *pct.Logger
 	name   string
-	status *pct.Status
+	// --
+	status          *pct.Status
+	queryChan       chan string
+	fingerprintChan chan string
+	errChan         chan interface{}
+	doneChan        chan bool
 }
 
 func NewSlowLogWorker(logger *pct.Logger, name string) *SlowLogWorker {
 	w := &SlowLogWorker{
 		logger: logger,
 		name:   name,
-		status: pct.NewStatus([]string{name}),
+		// --
+		status:          pct.NewStatus([]string{name}),
+		queryChan:       make(chan string, 1),
+		fingerprintChan: make(chan string, 1),
+		errChan:         make(chan interface{}, 1),
+		doneChan:        make(chan bool, 1),
 	}
 	return w
 }
@@ -102,6 +114,9 @@ func (w *SlowLogWorker) Status() string {
 }
 
 func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
+	w.logger.Debug("Run:call")
+	defer w.logger.Debug("Run:return")
+
 	w.status.Update(w.name, "Starting job "+job.Id)
 	result := &Result{}
 
@@ -112,19 +127,17 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 	}
 	defer file.Close()
 
-	// Create a slow log parser and run it.  It sends events log events via its channel.
-	// Be sure to stop it when done, else we'll leak goroutines.  stopChan must be buffered
-	// so we don't block on send if parser crashes.
-	stopChan := make(chan bool, 1)
-	defer func() { stopChan <- true }()
-	opts := parser.Options{
+	// Create a slow log parser and run it.  It sends log.Event via its channel.
+	// Be sure to stop it when done, else we'll leak goroutines.
+	opts := log.Options{
 		StartOffset: uint64(job.StartOffset),
 		FilterAdminCommand: map[string]bool{
 			"Binlog Dump":      true,
 			"Binlog Dump GTID": true,
 		},
 	}
-	p := parser.NewSlowLogParser(file, stopChan, opts)
+	p := parser.NewSlowLogParser(file, opts)
+	defer p.Stop()
 	go func() {
 		defer func() {
 			if err := recover(); err != nil {
@@ -133,20 +146,29 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 				result.Error = errMsg
 			}
 		}()
-		p.Run()
+		if err := p.Start(); err != nil {
+			w.logger.Warn(err)
+			result.Error = err.Error()
+		}
 	}()
 
-	// The global class has info and stats for all events.
-	// Each query has its own class, defined by the checksum of its fingerprint.
-	global := mysqlLog.NewGlobalClass()
-	queries := make(map[string]*mysqlLog.QueryClass)
-	jobSize := job.EndOffset - job.StartOffset
-	var runtime time.Duration
-	var progress string
-	t0 := time.Now()
+	// Make an event aggregate to do all the heavy lifting: fingerprint
+	// queries, group, and aggregate.
+	a := event.NewEventAggregator(job.ExampleQueries)
 
+	// Misc runtime meta data.
+	jobSize := job.EndOffset - job.StartOffset
+	runtime := time.Duration(0)
+	progress := "Not started"
+	rateType := ""
+	rateLimit := uint(0)
+
+	go w.fingerprinter()
+	defer func() { w.doneChan <- true }()
+
+	t0 := time.Now()
 EVENT_LOOP:
-	for event := range p.EventChan {
+	for event := range p.EventChan() {
 		runtime = time.Now().Sub(t0)
 		progress = fmt.Sprintf("%.1f%% %d/%d %d %.1fs",
 			float64(event.Offset)/float64(job.EndOffset)*100, event.Offset, job.EndOffset, jobSize, runtime.Seconds())
@@ -154,7 +176,7 @@ EVENT_LOOP:
 
 		// Check runtime, stop if exceeded.
 		if runtime >= job.RunTime {
-			errMsg := fmt.Sprintf("Timeout parsing %s: %s", progress)
+			errMsg := fmt.Sprintf("Timeout parsing %s: %s", job, progress)
 			w.logger.Warn(errMsg)
 			result.Error = errMsg
 			break EVENT_LOOP
@@ -165,53 +187,53 @@ EVENT_LOOP:
 			break EVENT_LOOP
 		}
 
-		// Add the event to the global class.
-		err := global.AddEvent(event)
-		switch err.(type) {
-		case mysqlLog.MixedRateLimitsError:
-			result.Error = err.Error()
-			break EVENT_LOOP
+		if event.RateType != "" {
+			if rateType != "" {
+				if rateType != event.RateType || rateLimit != event.RateLimit {
+					errMsg := fmt.Sprintf("Slow log has mixed rate limits: %s/%d and %s/%d",
+						rateType, rateLimit, event.RateType, event.RateLimit)
+					w.logger.Warn(errMsg)
+					result.Error = errMsg
+					break EVENT_LOOP
+				}
+			} else {
+				rateType = event.RateType
+				rateLimit = event.RateLimit
+			}
 		}
 
-		// Get the query class to which the event belongs.
-		fingerprint := mysqlLog.Fingerprint(event.Query)
-		classId := mysqlLog.Checksum(fingerprint)
-		class, haveClass := queries[classId]
-		if !haveClass {
-			class = mysqlLog.NewQueryClass(classId, fingerprint, job.ExampleQueries)
-			queries[classId] = class
+		var fingerprint string
+		w.queryChan <- event.Query
+		select {
+		case fingerprint = <-w.fingerprintChan:
+			id := query.Id(fingerprint)
+			a.AddEvent(event, id, fingerprint)
+		case _ = <-w.errChan:
+			w.logger.Warn(fmt.Sprintf("Cannot fingerprint '%s'", event.Query))
+			go w.fingerprinter()
 		}
-
-		// Add the event to its query class.
-		class.AddEvent(event)
 	}
-
-	w.status.Update(w.name, "Finalizing job "+job.Id)
 
 	if result.StopOffset == 0 {
 		result.StopOffset, _ = file.Seek(0, os.SEEK_CUR)
 	}
 
-	// Done parsing the slow log.  Finalize the global and query classes (calculate
-	// averages, etc.).
-	for _, class := range queries {
-		class.Finalize()
+	// Finalize the global and class metrics, i.e. calculate metric stats.
+	w.status.Update(w.name, "Finalizing job "+job.Id)
+	r := a.Finalize()
+
+	// The aggregator result is a map, but we need an array of classes for
+	// the query report, so convert it.
+	n := len(r.Class)
+	classes := make([]*event.QueryClass, n)
+	for _, class := range r.Class {
+		n-- // can't classes[--n] in Go
+		classes[n] = class
 	}
-	global.Finalize(uint64(len(queries)))
+	result.Global = r.Global
+	result.Class = classes
 
-	// Sort the results, keep the top and combine the rest into a single class: Low-Ranking Queries (LRQ).
-	w.status.Update(w.name, "Combining LRQ job "+job.Id)
-	nQueries := len(queries)
-	classes := make([]*mysqlLog.QueryClass, nQueries)
-	for _, class := range queries {
-		// Decr before use; can't classes[--nQueries] in Go.
-		nQueries--
-		classes[nQueries] = class
-	}
-
-	result.Global = global
-	result.Classes = classes
-
+	// Zero the runtime for testing.
 	if !job.ZeroRunTime {
 		result.RunTime = time.Now().Sub(t0).Seconds()
 	}
@@ -219,4 +241,23 @@ EVENT_LOOP:
 	w.status.Update(w.name, "Done job "+job.Id)
 	w.logger.Info(fmt.Sprintf("Parsed %s: %s", job, progress))
 	return result, nil
+}
+
+func (w *SlowLogWorker) fingerprinter() {
+	w.logger.Debug("fingerprinter:call")
+	defer w.logger.Debug("fingerprinter:return")
+	defer func() {
+		if err := recover(); err != nil {
+			w.errChan <- err
+		}
+	}()
+	for {
+		select {
+		case q := <-w.queryChan:
+			f := query.Fingerprint(q)
+			w.fingerprintChan <- f
+		case <-w.doneChan:
+			return
+		}
+	}
 }

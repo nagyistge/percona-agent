@@ -21,9 +21,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/percona-agent/pct"
-	pctCmd "github.com/percona/percona-agent/pct/cmd"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -31,12 +28,16 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/percona-agent/pct"
+	pctCmd "github.com/percona/percona-agent/pct/cmd"
 )
 
 // REV="$(git rev-parse HEAD)"
 // go build -ldflags "-X github.com/percona/percon-agent/agnet.REVISION $REV"
 var REVISION string = "0"
-var VERSION string = "1.0.8"
+var VERSION string = "1.0.9"
 
 const (
 	CMD_QUEUE_SIZE    = 10

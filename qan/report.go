@@ -19,7 +19,7 @@ package qan
 
 import (
 	"github.com/percona/cloud-protocol/proto"
-	mysqlLog "github.com/percona/mysql-log-parser/log"
+	"github.com/percona/go-mysql/event"
 	"sort"
 	"time"
 )
@@ -29,23 +29,23 @@ import (
 // Data for an interval from slow log or performance schema (pfs) parser,
 // passed to MakeReport() which wraps it in a Report{} with metadata.
 type Result struct {
-	Global     *mysqlLog.GlobalClass  // metrics for all data
-	Classes    []*mysqlLog.QueryClass // per-class metrics
-	RunTime    float64                // seconds parsing data, hopefully < interval
-	StopOffset int64                  // slow log offset where parsing stopped, should be <= end offset
-	Error      string                 `json:",omitempty"`
+	Global     *event.GlobalClass  // metrics for all data
+	Class      []*event.QueryClass // per-class metrics
+	RunTime    float64             // seconds parsing data, hopefully < interval
+	StopOffset int64               // slow log offset where parsing stopped, should be <= end offset
+	Error      string              `json:",omitempty"`
 }
 
 // Final QAN data struct, composed of a Result{} and metatdata, sent to the
 // data.Spooler by the manager running the slow log or perfomance schema
 // (pfs) parser.
 type Report struct {
-	proto.ServiceInstance                        // MySQL instance
-	StartTs               time.Time              // of interval, UTC
-	EndTs                 time.Time              // of interval, UTC
-	RunTime               float64                // seconds parsing data
-	Global                *mysqlLog.GlobalClass  // metrics for all data
-	Class                 []*mysqlLog.QueryClass // per-class metrics
+	proto.ServiceInstance                     // MySQL instance
+	StartTs               time.Time           // of interval, UTC
+	EndTs                 time.Time           // of interval, UTC
+	RunTime               float64             // seconds parsing data
+	Global                *event.GlobalClass  // metrics for all data
+	Class                 []*event.QueryClass // per-class metrics
 	// slow log:
 	SlowLogFile string `json:",omitempty"` // not slow_query_log_file if rotated
 	StartOffset int64  `json:",omitempty"` // parsing starts
@@ -53,7 +53,7 @@ type Report struct {
 	StopOffset  int64  `json:",omitempty"` // ...parsing didn't complete if stop < end
 }
 
-type ByQueryTime []*mysqlLog.QueryClass
+type ByQueryTime []*event.QueryClass
 
 func (a ByQueryTime) Len() int      { return len(a) }
 func (a ByQueryTime) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
@@ -65,7 +65,7 @@ func (a ByQueryTime) Less(i, j int) bool {
 
 func MakeReport(config Config, interval *Interval, result *Result) *Report {
 	// Sort classes by Query_time_sum, descending.
-	sort.Sort(ByQueryTime(result.Classes))
+	sort.Sort(ByQueryTime(result.Class))
 
 	// Make Report from Result and other metadata (e.g. Interval).
 	report := &Report{
@@ -74,7 +74,7 @@ func MakeReport(config Config, interval *Interval, result *Result) *Report {
 		EndTs:           interval.StopTime,
 		RunTime:         result.RunTime,
 		Global:          result.Global,
-		Class:           result.Classes,
+		Class:           result.Class,
 	}
 	if interval != nil {
 		// slow log data
@@ -86,17 +86,17 @@ func MakeReport(config Config, interval *Interval, result *Result) *Report {
 
 	// Return all query classes if there's no limit or number of classes is
 	// less than the limit.
-	n := len(result.Classes)
+	n := len(result.Class)
 	if config.ReportLimit == 0 || n <= int(config.ReportLimit) {
 		return report // all classes, no LRQ
 	}
 
 	// Top queries
-	report.Class = result.Classes[0:config.ReportLimit]
+	report.Class = result.Class[0:config.ReportLimit]
 
 	// Low-ranking Queries
-	lrq := mysqlLog.NewQueryClass("0", "", false)
-	for _, query := range result.Classes[config.ReportLimit:n] {
+	lrq := event.NewQueryClass("0", "", false)
+	for _, query := range result.Class[config.ReportLimit:n] {
 		addQuery(lrq, query)
 	}
 	report.Class = append(report.Class, lrq)
@@ -104,7 +104,7 @@ func MakeReport(config Config, interval *Interval, result *Result) *Report {
 	return report // top classes, the rest as LRQ
 }
 
-func addQuery(dst, src *mysqlLog.QueryClass) {
+func addQuery(dst, src *event.QueryClass) {
 	dst.TotalQueries++
 	for srcMetric, srcStats := range src.Metrics.TimeMetrics {
 		dstStats, ok := dst.Metrics.TimeMetrics[srcMetric]

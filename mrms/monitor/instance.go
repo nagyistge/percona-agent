@@ -36,7 +36,7 @@ type MysqlInstance struct {
 
 func NewMysqlInstance(logger *pct.Logger, mysqlConn mysql.Connector, subscribers *Subscribers) (mi *MysqlInstance, err error) {
 	if err := mysqlConn.Connect(2); err != nil {
-		logger.Warn("Unable to connect to MySQL: %s", err)
+		logger.Warn("Unable to connect to MySQL:", err)
 		return nil, err
 	}
 	defer mysqlConn.Close()

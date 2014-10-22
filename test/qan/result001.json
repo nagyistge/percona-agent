@@ -16,7 +16,7 @@
       }
     }
   },
-  "Classes": [
+  "Class": [
     {
       "Id": "1000000000000001",
       "Fingerprint": "select c from t where id=1",

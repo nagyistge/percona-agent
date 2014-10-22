@@ -18,12 +18,12 @@
 package mm
 
 import (
-	"math"
-	"time"
-
+	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/pct"
+	"math"
+	"time"
 )
 
 type Aggregator struct {
@@ -146,7 +146,10 @@ func (a *Aggregator) run() {
 					}
 					is.Stats[metric.Name] = stats
 				}
-				stats.Add(&metric, collection.Ts)
+				if err := stats.Add(&metric, collection.Ts); err != nil {
+					a.logger.Error(
+						fmt.Sprintf("stats.Add(%+v, %d): %s", metric, collection.Ts, err))
+				}
 			}
 		case <-a.sync.StopChan:
 			return
