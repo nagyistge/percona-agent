@@ -152,7 +152,7 @@ func (c *WebsocketClient) Send(data interface{}, timeout uint) error {
 	return nil
 }
 
-func (c *WebsocketClient) SendBytes(data []byte) error {
+func (c *WebsocketClient) SendBytes(data []byte, timeout uint) error {
 	c.RecvBytes <- data
 	return nil
 }

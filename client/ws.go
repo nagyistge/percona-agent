@@ -390,10 +390,14 @@ func (c *WebsocketClient) Send(data interface{}, timeout uint) error {
 	return websocket.JSON.Send(c.conn, data)
 }
 
-func (c *WebsocketClient) SendBytes(data []byte) error {
+func (c *WebsocketClient) SendBytes(data []byte, timeout uint) error {
 	c.logger.DebugOffline("SendBytes:call")
 	defer c.logger.DebugOffline("SendBytes:return")
-	c.conn.SetWriteDeadline(time.Now().Add(20 * time.Second))
+	if timeout > 0 {
+		c.conn.SetWriteDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
+	} else {
+		c.conn.SetWriteDeadline(time.Time{})
+	}
 	return websocket.Message.Send(c.conn, data)
 }
 

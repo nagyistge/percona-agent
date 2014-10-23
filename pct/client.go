@@ -43,7 +43,7 @@ type WebsocketClient interface {
 	DisconnectOnce()
 
 	// Data transfer:
-	SendBytes(data []byte) error               // send data (data/sender)
+	SendBytes(data []byte, timeout uint) error // send data (data/sender)
 	Recv(data interface{}, timeout uint) error // recv proto.Response (data/sender)
 	Send(data interface{}, timeout uint) error // send proto.LogEntry (log/relay)
 }

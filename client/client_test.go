@@ -480,7 +480,7 @@ func (s *TestSuite) TestSendBytes(t *C) {
 	c := <-mock.ClientConnectChan
 
 	data := []byte(`["Hello"]`)
-	err = ws.SendBytes(data)
+	err = ws.SendBytes(data, 5)
 	t.Assert(err, IsNil)
 
 	// Recv what we just sent.

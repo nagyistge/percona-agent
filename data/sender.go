@@ -35,14 +35,16 @@ type Sender struct {
 	// --
 	spool      Spooler
 	tickerChan <-chan time.Time
+	timeout    uint
 	blackhole  bool
 	sync       *pct.SyncChan
 	status     *pct.Status
 	// --
-	sent   uint
-	errs   uint
-	bad    uint
-	apiErr bool
+	sent       uint
+	errs       uint
+	bad        uint
+	apiErr     bool
+	timeoutErr bool
 }
 
 func NewSender(logger *pct.Logger, client pct.WebsocketClient) *Sender {
@@ -55,9 +57,10 @@ func NewSender(logger *pct.Logger, client pct.WebsocketClient) *Sender {
 	return s
 }
 
-func (s *Sender) Start(spool Spooler, tickerChan <-chan time.Time, blackhole bool) error {
+func (s *Sender) Start(spool Spooler, tickerChan <-chan time.Time, timeout uint, blackhole bool) error {
 	s.spool = spool
 	s.tickerChan = tickerChan
+	s.timeout = timeout
 	s.blackhole = blackhole
 	go s.run()
 	s.logger.Info("Started")
@@ -117,38 +120,50 @@ func (s *Sender) send() {
 	s.errs = 0
 	s.bad = 0
 	s.apiErr = false
+	s.timeoutErr = false
 	defer func() {
-		s.logger.Debug(fmt.Sprintf("sent:%d bad:%d errs:%d apiErr:%t", s.sent, s.bad, s.errs, s.apiErr))
+		s.logger.Debug(fmt.Sprintf("sent:%d bad:%d errs:%d apiErr:%t timeout:%t", s.sent, s.bad, s.errs, s.apiErr, s.timeoutErr))
 
 		s.status.Update("data-sender", "Disconnecting")
 		s.client.DisconnectOnce()
 		if s.sent == 0 && !s.apiErr {
 			s.logger.Warn("No data sent")
 		}
-		if s.errs > 0 || s.bad > 0 || s.apiErr {
-			s.status.Update("data-sender", fmt.Sprintf("Idle (last sent at %s: %d ok, %d bad, %d error, API error %t)",
-				time.Now(), s.sent, s.bad, s.errs, s.apiErr))
+		if s.errs > 0 || s.bad > 0 || s.apiErr || s.timeoutErr {
+			s.status.Update("data-sender", fmt.Sprintf("Idle (last sent at %s: %d ok, %d bad, %d error, API error %t, timeout %t)",
+				time.Now(), s.sent, s.bad, s.errs, s.apiErr, s.timeoutErr))
 		} else {
 			s.status.Update("data-sender", fmt.Sprintf("Idle (last sent at %s: all %d files ok)", time.Now(), s.sent))
 		}
 	}()
 
 	// Connect and send files until too many errors occur.
-	for !s.apiErr && s.errs < MAX_SEND_ERRORS {
+	startTime := time.Now()
+	for !s.apiErr && s.errs < MAX_SEND_ERRORS && !s.timeoutErr {
+
+		// Check runtime, don't send forever.
+		runTime := time.Now().Sub(startTime).Seconds()
+		if uint(runTime) > s.timeout {
+			s.timeoutErr = true
+			s.logger.Warn(fmt.Sprintf("Timeout sending data: %.2fs > %ds", runTime, s.timeout))
+			return
+		}
+
+		// Connect to API, or retry.
 		s.status.Update("data-sender", "Connecting")
 		s.logger.Debug("send:connecting")
 		if s.errs > 0 {
 			time.Sleep(CONNECT_ERROR_WAIT * time.Second)
 		}
 		if err := s.client.ConnectOnce(10); err != nil {
-			s.logger.Warn("Cannot connect to API: ", err)
 			s.errs++
-			continue
+			s.logger.Warn("Cannot connect to API: ", err)
+			continue // retry
 		}
 		s.logger.Debug("send:connected")
 
-		if err := s.sendAllFiles(); err != nil {
-			s.logger.Debug("sendAllFiles:err:", err)
+		// Send all files, or stop on error or timeout.
+		if err := s.sendAllFiles(startTime); err != nil {
 			s.errs++
 			s.logger.Warn(err)
 			s.client.DisconnectOnce()
@@ -158,10 +173,18 @@ func (s *Sender) send() {
 	}
 }
 
-func (s *Sender) sendAllFiles() error {
+func (s *Sender) sendAllFiles(startTime time.Time) error {
 	s.status.Update("data-sender", "Running")
 	for file := range s.spool.Files() {
 		s.logger.Debug("send:" + file)
+
+		// Check runtime, don't send forever.
+		runTime := time.Now().Sub(startTime).Seconds()
+		if uint(runTime) > s.timeout {
+			s.timeoutErr = true
+			s.logger.Warn(fmt.Sprintf("Timeout sending data: %.2fs > %ds", runTime, s.timeout))
+			return nil // warn about timeout error here, not in caller
+		}
 
 		s.status.Update("data-sender", "Reading "+file)
 		data, err := s.spool.Read(file)
@@ -184,7 +207,7 @@ func (s *Sender) sendAllFiles() error {
 
 		// todo: number/time/rate limit so we dont DDoS API
 		s.status.Update("data-sender", "Sending "+file)
-		if err := s.client.SendBytes(data); err != nil {
+		if err := s.client.SendBytes(data, s.timeout); err != nil {
 			return fmt.Errorf("Sending %s: %s", file, err)
 		}
 

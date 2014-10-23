@@ -116,7 +116,7 @@ func (m *Manager) Start() error {
 		pct.NewLogger(m.logger.LogChan(), "data-sender"),
 		m.client,
 	)
-	if err := sender.Start(m.spooler, time.Tick(time.Duration(config.SendInterval)*time.Second), config.Blackhole); err != nil {
+	if err := sender.Start(m.spooler, time.Tick(time.Duration(config.SendInterval)*time.Second), config.SendInterval, config.Blackhole); err != nil {
 		return err
 	}
 	m.sender = sender
@@ -237,7 +237,7 @@ func (m *Manager) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 
 	if newConfig.SendInterval != finalConfig.SendInterval {
 		m.sender.Stop()
-		if err := m.sender.Start(m.spooler, time.Tick(time.Duration(newConfig.SendInterval)*time.Second), newConfig.Blackhole); err != nil {
+		if err := m.sender.Start(m.spooler, time.Tick(time.Duration(newConfig.SendInterval)*time.Second), newConfig.SendInterval, newConfig.Blackhole); err != nil {
 			errs = append(errs, err)
 		} else {
 			finalConfig.SendInterval = newConfig.SendInterval
