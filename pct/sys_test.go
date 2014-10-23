@@ -88,3 +88,17 @@ func (s *SysTestSuite) TestSameFile(t *C) {
 		t.Error(err)
 	}
 }
+
+func (s *SysTestSuite) TestMbps(t *C) {
+	t.Check(pct.Mbps(0, 1.0), Equals, "0.00")
+	t.Check(pct.Mbps(12749201, 0), Equals, "0.00")
+
+	// 1 Mbps = 1048576 bytes = 8 388 608 bits = 8.39 Mbps
+	t.Check(pct.Mbps(1048576, 1.0), Equals, "8.39")
+
+	// 222566303 bytes = 1 780 530 424 bits = 1780.53 Mbps
+	t.Check(pct.Mbps(222566303, 1.0), Equals, "1780.53")
+	t.Check(pct.Mbps(222566303, 2.0), Equals, "890.27")
+	t.Check(pct.Mbps(222566303, 300.0), Equals, "5.94")  // 5m
+	t.Check(pct.Mbps(222566303, 3600.0), Equals, "0.49") // 1h
+}

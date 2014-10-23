@@ -18,6 +18,7 @@
 package pct
 
 import (
+	"fmt"
 	"os"
 )
 
@@ -73,4 +74,12 @@ func FileExists(file string) bool {
 		return false
 	}
 	return true
+}
+
+func Mbps(bytes int, seconds float64) string {
+	if seconds == 0 {
+		return "0.00"
+	}
+	bits := bytes * 8
+	return fmt.Sprintf("%.2f", (float64(bits)/1000000)/seconds)
 }

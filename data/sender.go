@@ -41,6 +41,8 @@ type Sender struct {
 	status     *pct.Status
 	// --
 	sent       uint
+	sentBytes  int
+	sentTime   float64
 	errs       uint
 	bad        uint
 	apiErr     bool
@@ -117,23 +119,25 @@ func (s *Sender) send() {
 	defer s.logger.Debug("send:return")
 
 	s.sent = 0
+	s.sentBytes = 0
+	s.sentTime = 0.0
 	s.errs = 0
 	s.bad = 0
 	s.apiErr = false
 	s.timeoutErr = false
 	defer func() {
-		s.logger.Debug(fmt.Sprintf("sent:%d bad:%d errs:%d apiErr:%t timeout:%t", s.sent, s.bad, s.errs, s.apiErr, s.timeoutErr))
-
 		s.status.Update("data-sender", "Disconnecting")
 		s.client.DisconnectOnce()
+
+		sentInfo := fmt.Sprintf("last sent at %s: %d ok, %.2fs, %s Mbps", time.Now(), s.sent, s.sentTime, pct.Mbps(s.sentBytes, s.sentTime))
+		if s.errs > 0 || s.bad > 0 || s.apiErr || s.timeoutErr {
+			sentInfo += fmt.Sprintf(", %d bad, %d error, API error %t, timeout %t", s.bad, s.errs, s.apiErr, s.timeoutErr)
+		}
+		s.status.Update("data-sender", fmt.Sprintf("Idle (%s)", sentInfo))
+		s.logger.Info(sentInfo)
+
 		if s.sent == 0 && !s.apiErr {
 			s.logger.Warn("No data sent")
-		}
-		if s.errs > 0 || s.bad > 0 || s.apiErr || s.timeoutErr {
-			s.status.Update("data-sender", fmt.Sprintf("Idle (last sent at %s: %d ok, %d bad, %d error, API error %t, timeout %t)",
-				time.Now(), s.sent, s.bad, s.errs, s.apiErr, s.timeoutErr))
-		} else {
-			s.status.Update("data-sender", fmt.Sprintf("Idle (last sent at %s: all %d files ok)", time.Now(), s.sent))
 		}
 	}()
 
@@ -207,9 +211,12 @@ func (s *Sender) sendAllFiles(startTime time.Time) error {
 
 		// todo: number/time/rate limit so we dont DDoS API
 		s.status.Update("data-sender", "Sending "+file)
+		t0 := time.Now()
 		if err := s.client.SendBytes(data, s.timeout); err != nil {
 			return fmt.Errorf("Sending %s: %s", file, err)
 		}
+		s.sentTime += time.Now().Sub(t0).Seconds()
+		s.sentBytes += len(data)
 
 		s.status.Update("data-sender", "Waiting for API to ack "+file)
 		resp := &proto.Response{}
