@@ -54,7 +54,7 @@ type Agent struct {
 	api       pct.APIConnector
 	services  map[string]pct.ServiceManager
 	updater   *pct.Updater
-	keepalive *time.Timer
+	keepalive *time.Ticker
 	// --
 	cmdSync        *pct.SyncChan
 	cmdChan        chan *proto.Cmd
@@ -99,6 +99,7 @@ func (agent *Agent) Run() error {
 	client := agent.client
 	client.Start()
 	cmdChan := client.RecvChan()
+	connected := false
 	go agent.connect()
 
 	/*
@@ -124,7 +125,7 @@ func (agent *Agent) Run() error {
 
 	// Send Pong to API to keep cmd ws open or detect if API end is closed.
 	// https://jira.percona.com/browse/PCT-765
-	agent.keepalive = time.NewTimer(time.Duration(agent.config.Keepalive) * time.Second)
+	agent.keepalive = time.NewTicker(time.Duration(agent.config.Keepalive) * time.Second)
 
 	logger.Info("Started")
 
@@ -224,7 +225,7 @@ func (agent *Agent) Run() error {
 			}
 		case err := <-client.ErrorChan():
 			logger.Warn("ws error:", err)
-		case connected := <-client.ConnectChan():
+		case connected = <-client.ConnectChan():
 			if connected {
 				logger.Info("Connected to API")
 				cmdHandlerErrors = 0
@@ -237,13 +238,10 @@ func (agent *Agent) Run() error {
 		case <-agent.keepalive.C:
 			// Send keepalive (i.e. check if ws cmd chan is still open on API end).
 			logger.Debug("pong")
-			cmd := &proto.Cmd{Cmd: "Pong"}
-			agent.reply(cmd.Reply(nil, nil))
-
-			// Reset keepalive timer.
-			agent.configMux.RLock()
-			agent.keepalive.Reset(time.Duration(agent.config.Keepalive) * time.Second)
-			agent.configMux.RUnlock()
+			if connected {
+				cmd := &proto.Cmd{Cmd: "Pong"}
+				agent.reply(cmd.Reply(nil, nil))
+			}
 		}
 	}
 }
@@ -584,10 +582,10 @@ func (agent *Agent) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 		}
 	}
 
-	// Change keepalive if valid.
+	// Change keepalive if valid. It is not dynamic.
 	if newConfig.Keepalive > 0 {
-		agent.logger.Warn("Changing keepalive from", finalConfig.Keepalive, "to", newConfig.Keepalive)
-		agent.keepalive.Reset(time.Duration(newConfig.Keepalive) * time.Second)
+		agent.logger.Warn("Changing keepalive from", finalConfig.Keepalive, "to", newConfig.Keepalive,
+			"; restart agent to take effect")
 		finalConfig.Keepalive = newConfig.Keepalive
 	}
 
