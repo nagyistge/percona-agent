@@ -393,8 +393,22 @@ func run() error {
 		}()
 		stopChan <- agent.Run()
 	}()
-	stopErr = <-stopChan // agent or signal
-	golog.Println("Agent stopped, shutting down...")
+
+	// Wait for agent to stop or for status signal (SIGUSR1).
+	agentRunning := true
+	statusSigChan := make(chan os.Signal, 1)
+	signal.Notify(statusSigChan, syscall.SIGUSR1) // kill -USER1 PID
+	for agentRunning {
+		select {
+		case stopErr = <-stopChan: // agent or signal
+			golog.Println("Agent stopped, shutting down...")
+			agentRunning = false
+		case <-statusSigChan:
+			status := agent.AllStatus()
+			golog.Printf("Status: %+v\n", status)
+		}
+	}
+
 	qanManager.Stop()           // see Signal handler ^
 	time.Sleep(2 * time.Second) // wait for final replies and log entries
 	return stopErr
