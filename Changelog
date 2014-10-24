@@ -1,6 +1,16 @@
 percona-agent Changelog
 
+  * PCT-879: Agent sends keepalive when disconnected
+  * PCT-934: Agent 1.0.7 not sending data
+  * PCT-967: Agent becomes unresponsive
+  * PCT-970: Agent 1.0.8 running but web app says it's not connected
   * PCT-1045: Timeout closing websocket
+  * Add -status option to get agent status via API
+  * Add time and Mbps to data-sender status
+  * Add data-spooler-count, data-spooler-size, and data-spooler-oldest statuses
+  * Improve data sender timeout handling
+  * SIGUSR1 causes agent to dump status to stdout (percona-agent.log)
+  * SIGHUP causes agent to reconnect its command websocket
 
 v1.0.9 released 2014-10-22
 
