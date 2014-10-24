@@ -47,6 +47,7 @@ import (
 	golog "log"
 	"os"
 	"os/signal"
+	"os/user"
 	"runtime"
 	"syscall"
 	"time"
@@ -169,7 +170,7 @@ func run() error {
 			return err
 		}
 		if code == 404 {
-			return fmt.Error("Agent not found")
+			return fmt.Errorf("Agent not found")
 		}
 		status := make(map[string]string)
 		if err := json.Unmarshal(bytes, &status); err != nil {
@@ -417,10 +418,12 @@ func run() error {
 		stopChan <- agent.Run()
 	}()
 
-	// Wait for agent to stop or for status signal (SIGUSR1).
+	// Wait for agent to stop, or for signals.
 	agentRunning := true
 	statusSigChan := make(chan os.Signal, 1)
 	signal.Notify(statusSigChan, syscall.SIGUSR1) // kill -USER1 PID
+	reconnectSigChan := make(chan os.Signal, 1)
+	signal.Notify(reconnectSigChan, syscall.SIGHUP) // kill -HUP PID
 	for agentRunning {
 		select {
 		case stopErr = <-stopChan: // agent or signal
@@ -429,6 +432,16 @@ func run() error {
 		case <-statusSigChan:
 			status := agent.AllStatus()
 			golog.Printf("Status: %+v\n", status)
+		case <-reconnectSigChan:
+			u, _ := user.Current()
+			cmd := &proto.Cmd{
+				Ts:        time.Now().UTC(),
+				User:      u.Username + " (SIGHUP)",
+				AgentUuid: agentConfig.AgentUuid,
+				Service:   "agent",
+				Cmd:       "Reconnect",
+			}
+			agent.Handle(cmd)
 		}
 	}
 

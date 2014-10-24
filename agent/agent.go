@@ -355,20 +355,6 @@ func (agent *Agent) cmdHandler() {
 		case cmd := <-agent.cmdChan:
 			agent.status.UpdateRe("agent-cmd-handler", "Handling", cmd)
 
-			if cmd.Cmd == "Reconnect" && cmd.Service == "agent" {
-				/**
-				 * Reconnect is a special case: there's no reply because we can't
-				 * recv cmd on connection 1 and send reply on connection 2.  The
-				 * "reply" in a sense is making a successful connection again.
-				 * If that doesn't happen, then user/API knows reconnect failed.
-				 */
-
-				// Do NOT call connect() here because Disconnect() causes Run() to receive
-				// false on client.ConnectChan() which causes it to call connect().
-				agent.client.Disconnect()
-				continue
-			}
-
 			// Handle the cmd in a separate goroutine so if it gets stuck it won't affect us.
 			go func() {
 				var reply *proto.Reply
@@ -406,7 +392,11 @@ func (agent *Agent) cmdHandler() {
 			}
 
 			// Reply to cmd.
-			agent.reply(reply)
+			if reply != nil {
+				agent.reply(reply)
+			} else {
+				agent.logger.Info(cmd, "executed, no reply")
+			}
 		case <-agent.cmdHandlerSync.StopChan: // from stop()
 			agent.cmdHandlerSync.Graceful()
 			return
@@ -452,6 +442,18 @@ func (agent *Agent) Handle(cmd *proto.Cmd) *proto.Reply {
 		data, errs = agent.handleUpdate(cmd)
 	case "Version":
 		data, errs = agent.handleVersion(cmd)
+	case "Reconnect":
+		/*
+			Reconnect is a special case: there's no reply because we can't
+			recv cmd on connection 1 and send reply on connection 2.  The
+			"reply" in a sense is making a successful connection again.
+			If that doesn't happen, then user/API knows reconnect failed.
+
+			Do NOT call connect() here because Disconnect() causes Run() to receive
+			false on client.ConnectChan() which causes it to call connect().
+		*/
+		agent.client.Disconnect()
+		return nil // no reply
 	default:
 		errs = append(errs, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
