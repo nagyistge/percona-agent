@@ -491,3 +491,43 @@ func (s *TestSuite) TestSendBytes(t *C) {
 
 	ws.DisconnectOnce()
 }
+
+func (s *TestSuite) TestCloseTimeout(t *C) {
+	// https://jira.percona.com/browse/PCT-1045
+
+	ws, err := client.NewWebsocketClient(s.logger, s.api, "agent", nil)
+	t.Assert(err, IsNil)
+
+	connected := false
+	doneChan := make(chan bool)
+	go func() {
+		connected = <-ws.ConnectChan()
+		doneChan <- true
+	}()
+
+	// Wait for connection in mock ws server.
+	ws.Connect()
+	c := <-mock.ClientConnectChan
+
+	<-doneChan
+	t.Check(connected, Equals, true)
+
+	// Send a log entry.
+	logEntry := &proto.LogEntry{
+		Level:   2,
+		Service: "qan",
+		Msg:     "Hello",
+	}
+	err = ws.Send(logEntry, 1)
+	t.Assert(err, IsNil)
+
+	// Recv what we just sent.
+	got := test.WaitData(c.RecvChan)
+	t.Assert(len(got), Equals, 1)
+
+	// Wait 1s for that ^ 1s timeout to pass.
+	time.Sleep(1400 * time.Millisecond)
+
+	err = ws.Disconnect()
+	t.Check(err, IsNil)
+}

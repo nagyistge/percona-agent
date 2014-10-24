@@ -68,13 +68,15 @@ func (c *DataClient) ConnectOnce(timeout uint) error {
 	return c.ConnectError
 }
 
-func (c *DataClient) Disconnect() {
+func (c *DataClient) Disconnect() error {
 	c.TraceChan <- "Disconnect"
 	c.connectChan <- true
+	return nil
 }
 
-func (c *DataClient) DisconnectOnce() {
+func (c *DataClient) DisconnectOnce() error {
 	c.TraceChan <- "DisconnectOnce"
+	return nil
 }
 
 func (c *DataClient) Start() {
