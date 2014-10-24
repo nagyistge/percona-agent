@@ -88,7 +88,7 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 		AgentUuid:   "abc-123-def",
 		ApiKey:      "789",
 		ApiHostname: agent.DEFAULT_API_HOSTNAME,
-		Keepalive:   3600, // don't send while testing
+		Keepalive:   1, // don't send while testing
 	}
 
 	s.sendChan = make(chan *proto.Cmd, 5)
@@ -759,51 +759,34 @@ func (s *AgentTestSuite) TestSetConfigApiHostname(t *C) {
 }
 
 func (s *AgentTestSuite) TestKeepalive(t *C) {
-	newConfig := *s.config
-	newConfig.Keepalive = 1 // 1s
-	data, err := json.Marshal(newConfig)
-	t.Assert(err, IsNil)
-
-	cmd := &proto.Cmd{
-		Ts:      time.Now(),
-		User:    "daniel",
-		Cmd:     "SetConfig",
-		Service: "agent",
-		Data:    data,
-	}
-	s.sendChan <- cmd
-
-	reply := test.WaitReply(s.recvChan)
-	t.Assert(reply, HasLen, 1)
-	t.Assert(reply[0].Error, Equals, "")
-	t.Assert(reply[0].Cmd, Equals, "SetConfig") // is reply to SetConfig not a Pong...
-
 	// Agent should be sending a Pong every 1s now which is sent as a
 	// reply to no cmd (it's a platypus).
 	<-time.After(2 * time.Second)
-	reply = test.WaitReply(s.recvChan)
+	reply := test.WaitReply(s.recvChan)
 	if len(reply) < 1 {
 		t.Fatal("No Pong recieved")
 	}
 	t.Check(reply[0].Cmd, Equals, "Pong")
 
-	// Restore Keepalive to high value so DrainSendChan() in TearDownTest()
-	// doesn't keep receiving Pongs (on fast machine it should be able to drain
-	// chan between Pongs but on slow test machine maybe not).
-	data, err = json.Marshal(s.config)
-	t.Assert(err, IsNil)
-	cmd = &proto.Cmd{
-		Ts:      time.Now(),
-		User:    "daniel",
-		Cmd:     "SetConfig",
-		Service: "agent",
-		Data:    data,
-	}
-	s.sendChan <- cmd
+	// Disconnect and keepalives should stop.
+	connectChan := make(chan bool)
+	s.client.SetConnectChan(connectChan)
+	defer s.client.SetConnectChan(nil)
+	s.client.Disconnect()
+	<-connectChan
+
+	<-time.After(2 * time.Second)
 	reply = test.WaitReply(s.recvChan)
-	t.Assert(reply, HasLen, 1)
-	t.Assert(reply[0].Error, Equals, "")
-	t.Assert(reply[0].Cmd, Equals, "SetConfig")
+	t.Check(reply, HasLen, 0)
+
+	// Let agent reconnect and keepalives should resume.
+	connectChan <- true
+	<-time.After(2 * time.Second)
+	reply = test.WaitReply(s.recvChan)
+	if len(reply) < 1 {
+		t.Fatal("No Pong recieved after reconnect")
+	}
+	t.Check(reply[0].Cmd, Equals, "Pong")
 }
 
 func (s *AgentTestSuite) TestRestart(t *C) {

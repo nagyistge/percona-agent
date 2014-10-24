@@ -423,7 +423,7 @@ func (s *SenderTestSuite) TestSendData(t *C) {
 
 	sender := data.NewSender(s.logger, s.client)
 
-	err = sender.Start(spool, s.tickerChan, false)
+	err = sender.Start(spool, s.tickerChan, 5, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -473,7 +473,7 @@ func (s *SenderTestSuite) TestBlackhole(t *C) {
 
 	sender := data.NewSender(s.logger, s.client)
 
-	err = sender.Start(spool, s.tickerChan, true) // <- true = enable blackhole
+	err = sender.Start(spool, s.tickerChan, 5, true) // <- true = enable blackhole
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -505,7 +505,7 @@ func (s *SenderTestSuite) TestSendEmptyFile(t *C) {
 
 	// Start the sender.
 	sender := data.NewSender(s.logger, s.client)
-	err := sender.Start(spool, s.tickerChan, false)
+	err := sender.Start(spool, s.tickerChan, 5, false)
 	t.Assert(err, IsNil)
 
 	// Tick to make sender send.
@@ -530,7 +530,7 @@ func (s *SenderTestSuite) TestConnectErrors(t *C) {
 
 	sender := data.NewSender(s.logger, s.client)
 
-	err := sender.Start(spool, s.tickerChan, false)
+	err := sender.Start(spool, s.tickerChan, 60, false)
 	t.Assert(err, IsNil)
 
 	// Any connect error will do.
@@ -584,7 +584,7 @@ func (s *SenderTestSuite) TestRecvErrors(t *C) {
 
 	sender := data.NewSender(s.logger, s.client)
 
-	err := sender.Start(spool, s.tickerChan, false)
+	err := sender.Start(spool, s.tickerChan, 60, false)
 	t.Assert(err, IsNil)
 
 	// Any recv error will do.
@@ -654,7 +654,7 @@ func (s *SenderTestSuite) Test500Error(t *C) {
 	}
 
 	sender := data.NewSender(s.logger, s.client)
-	err := sender.Start(spool, s.tickerChan, false)
+	err := sender.Start(spool, s.tickerChan, 5, false)
 	t.Assert(err, IsNil)
 
 	s.tickerChan <- time.Now()
@@ -707,7 +707,7 @@ func (s *SenderTestSuite) TestBadFiles(t *C) {
 	}
 
 	sender := data.NewSender(s.logger, s.client)
-	err := sender.Start(spool, s.tickerChan, false)
+	err := sender.Start(spool, s.tickerChan, 5, false)
 	t.Assert(err, IsNil)
 
 	doneChan := make(chan bool, 1)

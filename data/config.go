@@ -24,6 +24,6 @@ const (
 
 type Config struct {
 	Encoding     string
-	SendInterval int
+	SendInterval uint
 	Blackhole    bool
 }

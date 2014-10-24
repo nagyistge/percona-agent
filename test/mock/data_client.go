@@ -99,7 +99,7 @@ func (c *DataClient) Send(data interface{}, timeout uint) error {
 }
 
 // First, agent calls this to send encoded proto.Data to API.
-func (c *DataClient) SendBytes(data []byte) error {
+func (c *DataClient) SendBytes(data []byte, timeout uint) error {
 	c.TraceChan <- "SendBytes"
 	c.dataChan <- data
 	return nil
