@@ -34,13 +34,13 @@ type WebsocketClient interface {
 
 	// Async connect:
 	Connect()               // try forever to connect, notify via ConnectChan
-	Disconnect()            // disconnect manually, notify via ConnectChan
+	Disconnect() error      // disconnect manually, notify via ConnectChan
 	ConnectChan() chan bool // true on connect, false on disconnect
 	ErrorChan() chan error  // get err from send/recv chans
 
 	// Sync connect:
 	ConnectOnce(timeout uint) error
-	DisconnectOnce()
+	DisconnectOnce() error
 
 	// Data transfer:
 	SendBytes(data []byte) error               // send data (data/sender)

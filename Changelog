@@ -1,5 +1,7 @@
 percona-agent Changelog
 
+  * PCT-1045: Timeout closing websocket
+
 v1.0.9 released 2014-10-22
 
   * PCT-380: Numbers in table names are replaced with question marks
