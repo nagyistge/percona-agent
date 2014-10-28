@@ -96,10 +96,9 @@ func (c *CmdTest) Output() []string {
 	lines := []string{}
 OUTPUT_LINES:
 	for {
-		select {
-		case line := <-c.output:
+		if line := c.ReadLine(); line != "" {
 			lines = append(lines, line)
-		default:
+		} else {
 			break OUTPUT_LINES
 		}
 	}
