@@ -109,7 +109,8 @@ func (s *TestSuite) TestStartCollectStop(t *C) {
 	// the service instance it's monitoring, and it creates a mysql.Connector
 	// for the DSN for that service (since it's a MySQL monitor in this case).
 	// It creates the monitor with these args:
-	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn))
+	rs := make(chan bool, 1)
+	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn),rs)
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
 	}
@@ -205,7 +206,8 @@ func (s *TestSuite) TestCollectInnoDBStats(t *C) {
 		InnoDB: []string{"dml_%"}, // same as above ^
 	}
 
-	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn))
+    rs := make(chan bool, 1)
+	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn),rs)
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
 	}
@@ -286,7 +288,8 @@ func (s *TestSuite) TestCollectUserstats(t *C) {
 		UserStats: true,
 	}
 
-	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn))
+    rs := make(chan bool, 1)
+	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn),rs )
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
 	}
@@ -370,9 +373,10 @@ func (s *TestSuite) TestSlowResponse(t *C) {
 		UserStats: true,
 	}
 
+    restartChan := make(chan bool, 1)
 	slowCon := mock.NewSlowMySQL(dsn)
 	slowCon.SetGlobalDelay(time.Duration(config.Collect+1) * time.Second)
-	m := mysql.NewMonitor(s.name, config, s.logger, slowCon)
+	m := mysql.NewMonitor(s.name, config, s.logger, slowCon, restartChan)
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
 	}

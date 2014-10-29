@@ -47,14 +47,15 @@ type Monitor struct {
 	collectLimit   float64
 }
 
-func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Connector) *Monitor {
+func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Connector,mc chan bool) *Monitor {
 	m := &Monitor{
 		name:   name,
 		config: config,
 		logger: logger,
 		conn:   conn,
 		// --
-		connectedChan: make(chan bool, 1),
+		//connectedChan: make(chan bool, 1),
+		connectedChan: mc,
 		status:        pct.NewStatus([]string{name, name + "-mysql"}),
 		sync:          pct.NewSyncChan(),
 		collectLimit:  float64(config.Collect) * 0.1, // 10% of Collect time
@@ -212,8 +213,10 @@ func (m *Monitor) run() {
 		} else {
 			m.status.Update(m.name, fmt.Sprintf("Idle (last collected at %s, error: %s)", t, lastError))
 		}
+
 		select {
 		case now := <-m.tickChan:
+			fmt.Printf("collecting for: %v\n", m.conn.DSN())
 			m.logger.Debug("run:collect:start")
 			if !m.connected {
 				m.logger.Debug("run:collect:disconnected")
@@ -298,11 +301,15 @@ func (m *Monitor) run() {
 			m.logger.Debug("run:collect:stop")
 		case connected := <-m.connectedChan:
 			m.connected = connected
+			fmt.Println("recibi en connectdChan")
 			if connected {
 				m.logger.Debug("run:connected:true")
 				m.status.Update(m.name, "Ready")
+				fmt.Println("pasando x aca")
+				go m.connect(nil)
 			} else {
 				m.logger.Debug("run:connected:false")
+				fmt.Println("pasando 2")
 				go m.connect(nil)
 			}
 		case <-m.sync.StopChan:

@@ -267,10 +267,11 @@ func run() error {
 
 	mmManager := mm.NewManager(
 		pct.NewLogger(logChan, "mm"),
-		mmMonitor.NewFactory(logChan, itManager.Repo()),
+		mmMonitor.NewFactory(logChan, itManager.Repo(), mysqlRestartMonitor),
 		clock,
 		dataManager.Spooler(),
 		itManager.Repo(),
+		mysqlRestartMonitor,
 	)
 	if err := mmManager.Start(); err != nil {
 		return fmt.Errorf("Error starting mm manager: %s\n", err)

@@ -25,19 +25,23 @@ import (
 	"github.com/percona/percona-agent/mm"
 	"github.com/percona/percona-agent/mm/mysql"
 	"github.com/percona/percona-agent/mm/system"
+	mrmsMonitor "github.com/percona/percona-agent/mrms"
 	mysqlConn "github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
+	"fmt"
 )
 
 type Factory struct {
 	logChan chan *proto.LogEntry
 	ir      *instance.Repo
+	mrmsMon mrmsMonitor.Monitor
 }
 
-func NewFactory(logChan chan *proto.LogEntry, ir *instance.Repo) *Factory {
+func NewFactory(logChan chan *proto.LogEntry, ir *instance.Repo, rm mrmsMonitor.Monitor) *Factory {
 	f := &Factory{
 		logChan: logChan,
 		ir:      ir,
+		mrmsMon: rm,
 	}
 	return f
 }
@@ -61,12 +65,19 @@ func (f *Factory) Make(service string, instanceId uint, data []byte) (mm.Monitor
 		// The user-friendly name of the service, e.g. sysconfig-mysql-db101:
 		alias := "mm-mysql-" + mysqlIt.Hostname
 
+        //rs := make(chan bool, 1)
+		fmt.Printf("agregando mrms a : %+v\n", mysqlIt.DSN)
+		rs, err := f.mrmsMon.Add(mysqlIt.DSN)
+        if err != nil {
+           return nil, err
+        }
 		// Make a MySQL metrics monitor.
 		monitor = mysql.NewMonitor(
 			alias,
 			config,
 			pct.NewLogger(f.logChan, alias),
 			mysqlConn.NewConnection(mysqlIt.DSN),
+			rs,
 		)
 	case "server":
 		// Parse the system mm config.
