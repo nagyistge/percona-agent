@@ -28,7 +28,6 @@ import (
 	mrmsMonitor "github.com/percona/percona-agent/mrms"
 	mysqlConn "github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
-	"fmt"
 )
 
 type Factory struct {
@@ -65,19 +64,19 @@ func (f *Factory) Make(service string, instanceId uint, data []byte) (mm.Monitor
 		// The user-friendly name of the service, e.g. sysconfig-mysql-db101:
 		alias := "mm-mysql-" + mysqlIt.Hostname
 
-        //rs := make(chan bool, 1)
-		fmt.Printf("agregando mrms a : %+v\n", mysqlIt.DSN)
-		rs, err := f.mrmsMon.Add(mysqlIt.DSN)
-        if err != nil {
-           return nil, err
-        }
+		// The monitor needs to be able to handle MySQL disconnections
+		restartMon, err := f.mrmsMon.Add(mysqlIt.DSN)
+		if err != nil {
+			return nil, err
+		}
+
 		// Make a MySQL metrics monitor.
 		monitor = mysql.NewMonitor(
 			alias,
 			config,
 			pct.NewLogger(f.logChan, alias),
 			mysqlConn.NewConnection(mysqlIt.DSN),
-			rs,
+			restartMon,
 		)
 	case "server":
 		// Parse the system mm config.

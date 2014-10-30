@@ -47,15 +47,14 @@ type Monitor struct {
 	collectLimit   float64
 }
 
-func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Connector,mc chan bool) *Monitor {
+func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Connector, connectChan chan bool) *Monitor {
 	m := &Monitor{
 		name:   name,
 		config: config,
 		logger: logger,
 		conn:   conn,
 		// --
-		//connectedChan: make(chan bool, 1),
-		connectedChan: mc,
+		connectedChan: connectChan,
 		status:        pct.NewStatus([]string{name, name + "-mysql"}),
 		sync:          pct.NewSyncChan(),
 		collectLimit:  float64(config.Collect) * 0.1, // 10% of Collect time
@@ -142,7 +141,6 @@ func (m *Monitor) connect(err error) {
 	// Try forever to connect to MySQL...
 	for {
 		m.logger.Debug("connect:try")
-
 		if err != nil {
 			m.status.Update(m.name+"-mysql", fmt.Sprintf("Connecting (%s)", err))
 		} else {
@@ -153,30 +151,7 @@ func (m *Monitor) connect(err error) {
 			continue
 		}
 
-		// Set global vars we need.  If these fail, that's ok: they won't work,
-		// but don't let that stop us from collecting other metrics.
-		if len(m.config.InnoDB) > 0 {
-			for _, module := range m.config.InnoDB {
-				sql := "SET GLOBAL innodb_monitor_enable = '" + module + "'"
-				if _, err := m.conn.DB().Exec(sql); err != nil {
-					errMsg := fmt.Sprintf("Cannot collect InnoDB stats because '%s' failed: %s", sql, err)
-					m.logger.Error(errMsg)
-					m.config.InnoDB = []string{}
-					break
-				}
-			}
-		}
-
-		if m.config.UserStats {
-			// 5.1.49 <= v <= 5.5.10: SET GLOBAL userstat_running=ON
-			// 5.5.10 <  v:           SET GLOBAL userstat=ON
-			sql := "SET GLOBAL userstat=ON"
-			if _, err := m.conn.DB().Exec(sql); err != nil {
-				errMsg := fmt.Sprintf("Cannot collect user stats because '%s' failed: %s", sql, err)
-				m.logger.Error(errMsg)
-				m.config.UserStats = false
-			}
-		}
+		m.setGlobalVars()
 
 		// Tell run() goroutine that it can try to collect metrics.
 		// If connection is lost, it will call us again.
@@ -184,6 +159,35 @@ func (m *Monitor) connect(err error) {
 		m.status.Update(m.name+"-mysql", "Connected")
 		m.connectedChan <- true
 		return
+	}
+}
+
+// We need to set these vars everytime we connect to the DB because as these
+// are session variables, they get lost on MySQL restarts
+func (m *Monitor) setGlobalVars() {
+	// Set global vars we need.  If these fail, that's ok: they won't work,
+	// but don't let that stop us from collecting other metrics.
+	if len(m.config.InnoDB) > 0 {
+		for _, module := range m.config.InnoDB {
+			sql := "SET GLOBAL innodb_monitor_enable = '" + module + "'"
+			if _, err := m.conn.DB().Exec(sql); err != nil {
+				errMsg := fmt.Sprintf("Cannot collect InnoDB stats because '%s' failed: %s", sql, err)
+				m.logger.Error(errMsg)
+				m.config.InnoDB = []string{}
+				break
+			}
+		}
+	}
+
+	if m.config.UserStats {
+		// 5.1.49 <= v <= 5.5.10: SET GLOBAL userstat_running=ON
+		// 5.5.10 <  v:           SET GLOBAL userstat=ON
+		sql := "SET GLOBAL userstat=ON"
+		if _, err := m.conn.DB().Exec(sql); err != nil {
+			errMsg := fmt.Sprintf("Cannot collect user stats because '%s' failed: %s", sql, err)
+			m.logger.Error(errMsg)
+			m.config.UserStats = false
+		}
 	}
 }
 
@@ -216,7 +220,6 @@ func (m *Monitor) run() {
 
 		select {
 		case now := <-m.tickChan:
-			fmt.Printf("collecting for: %v\n", m.conn.DSN())
 			m.logger.Debug("run:collect:start")
 			if !m.connected {
 				m.logger.Debug("run:collect:disconnected")
@@ -301,15 +304,15 @@ func (m *Monitor) run() {
 			m.logger.Debug("run:collect:stop")
 		case connected := <-m.connectedChan:
 			m.connected = connected
-			fmt.Println("recibi en connectdChan")
 			if connected {
 				m.logger.Debug("run:connected:true")
 				m.status.Update(m.name, "Ready")
-				fmt.Println("pasando x aca")
-				go m.connect(nil)
+				m.setGlobalVars()
 			} else {
+				// Currently mrms doesn't detect disconnections. It uses uptime
+				// to detect only restarts. I'm leaving this code here for future
+				// implementations of the MRMS but these lines are not being executed ever
 				m.logger.Debug("run:connected:false")
-				fmt.Println("pasando 2")
 				go m.connect(nil)
 			}
 		case <-m.sync.StopChan:
