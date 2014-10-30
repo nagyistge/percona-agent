@@ -102,6 +102,7 @@ func (c *Connection) Connect(tries uint) error {
 		}
 
 		// Connected
+		db.SetMaxIdleConns(10000)
 		c.conn = db
 		c.backoff.Success()
 		c.connectedAmount++
