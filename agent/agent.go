@@ -540,7 +540,7 @@ func (agent *Agent) handleGetAllConfigs(cmd *proto.Cmd) (interface{}, []error) {
 			errs = append(errs, err...)
 			continue
 		}
-		if config != nil {
+		if config != nil && len(config) > 0 {
 			// Not all services have a config.
 			configs = append(configs, config...)
 		}
