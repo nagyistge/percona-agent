@@ -27,6 +27,7 @@ import (
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -255,7 +256,11 @@ func (w *SlowLogWorker) fingerprinter() {
 		select {
 		case q := <-w.queryChan:
 			f := query.Fingerprint(q)
-			w.fingerprintChan <- f
+			if strings.Trim(f, " ") != "" {
+				w.fingerprintChan <- f
+			} else {
+				w.errChan <- fmt.Errorf("Empty fingerprint for query: %s", q)
+			}
 		case <-w.doneChan:
 			return
 		}
