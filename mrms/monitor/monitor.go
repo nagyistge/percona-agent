@@ -82,7 +82,7 @@ func (m *Monitor) Status() map[string]string {
 	return m.status.All()
 }
 
-func (m *Monitor) Add(dsn string) (c chan bool, err error) {
+func (m *Monitor) Add(dsn string) (c <-chan bool, err error) {
 	m.logger.Debug("Add:call")
 	defer m.logger.Debug("Add:return")
 
@@ -104,7 +104,7 @@ func (m *Monitor) Add(dsn string) (c chan bool, err error) {
 	return c, nil
 }
 
-func (m *Monitor) Remove(dsn string, c chan bool) {
+func (m *Monitor) Remove(dsn string, c <-chan bool) {
 	m.logger.Debug("Remove:call")
 	defer m.logger.Debug("Remove:return")
 

@@ -635,7 +635,7 @@ func (s *ManagerTestSuite) TestMySQLRestart(t *C) {
 	 */
 	gotQueries = nil
 	mockConn.Set(nil)
-	m.GetRestartChan() <- true // imitate mysql restart
+	s.mrmsMonitor.GetRestartChan() // imitate mysql restart
 	timeout := time.After(1 * time.Second)
 LOOP:
 	for {
