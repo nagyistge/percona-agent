@@ -27,6 +27,7 @@ import (
 
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mm"
+	"github.com/percona/percona-agent/mrms"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 )
@@ -45,19 +46,21 @@ type Monitor struct {
 	sync           *pct.SyncChan
 	running        bool
 	collectLimit   float64
+	mrmsMonitor    mrms.Monitor
 }
 
-func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Connector, connectChan chan bool) *Monitor {
+func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Connector, mrmsMon mrms.Monitor) *Monitor {
 	m := &Monitor{
 		name:   name,
 		config: config,
 		logger: logger,
 		conn:   conn,
 		// --
-		connectedChan: connectChan,
+		connectedChan: nil,
 		status:        pct.NewStatus([]string{name, name + "-mysql"}),
 		sync:          pct.NewSyncChan(),
 		collectLimit:  float64(config.Collect) * 0.1, // 10% of Collect time
+		mrmsMonitor:   mrmsMon,
 	}
 	return m
 }
@@ -68,6 +71,7 @@ func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Conn
 
 // @goroutine[0]
 func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collection) error {
+	var err error
 	m.logger.Debug("Start:call")
 	defer m.logger.Debug("Start:return")
 
@@ -81,7 +85,10 @@ func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collect
 	go m.run()
 	m.running = true
 	m.logger.Info("Started")
-
+	m.connectedChan, err = m.mrmsMonitor.Add(m.conn.DSN())
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

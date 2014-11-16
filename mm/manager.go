@@ -29,9 +29,9 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/instance"
+	"github.com/percona/percona-agent/mrms"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/ticker"
-	"github.com/percona/percona-agent/mrms"
 	"io/ioutil"
 	"path/filepath"
 	"sync"
@@ -63,7 +63,6 @@ type Manager struct {
 }
 
 func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager, spool data.Spooler, im *instance.Repo, restartMon mrms.Monitor) *Manager {
-//func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager, spool data.Spooler, im *instance.Repo) *Manager {
 	m := &Manager{
 		logger:  logger,
 		factory: factory,
@@ -75,7 +74,7 @@ func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager
 		status:      pct.NewStatus([]string{"mm"}),
 		aggregators: make(map[uint]*Binding),
 		mux:         &sync.RWMutex{},
-		restartMon: restartMon,
+		restartMon:  restartMon,
 	}
 	return m
 }
