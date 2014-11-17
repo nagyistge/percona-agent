@@ -82,13 +82,14 @@ func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collect
 	m.tickChan = tickChan
 	m.collectionChan = collectionChan
 
-	go m.run()
-	m.running = true
-	m.logger.Info("Started")
 	m.restartChan, err = m.mrmsMonitor.Add(m.conn.DSN())
 	if err != nil {
 		return err
 	}
+	go m.run()
+	m.running = true
+	m.logger.Info("Started")
+
 	return nil
 }
 
@@ -160,12 +161,12 @@ func (m *Monitor) connect(err error) {
 			continue
 		}
 
-		m.setGlobalVars()
-
 		// Tell run() goroutine that it can try to collect metrics.
 		// If connection is lost, it will call us again.
 		m.logger.Info("Connected")
 		m.status.Update(m.name+"-mysql", "Connected")
+		m.connected = true
+		m.setGlobalVars()
 		return
 	}
 }
