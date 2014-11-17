@@ -412,20 +412,17 @@ func (s *TestSuite) TestHandleMySQLRestarts(t *C) {
 	 * Simulate a MySQL disconnection by disabling InnoDB metrics and putting a
 	 * true into the restart channel. The monitor must enable them again
 	 */
-	/*
-		if _, err := s.db.Exec("set global innodb_monitor_disable = '%'"); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := s.db.Exec("set global innodb_monitor_reset_all = '%'"); err != nil {
-			t.Fatal(err)
-		}
-	*/
-	/*
-		restartChan <- true
-		if ok := test.WaitStatus(5, m, s.name+"-mysql", "Connected"); !ok {
-			t.Fatal("Monitor is ready")
-		}
-	*/
+	if _, err := s.db.Exec("set global innodb_monitor_disable = '%'"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec("set global innodb_monitor_reset_all = '%'"); err != nil {
+		t.Fatal(err)
+	}
+	s.mysqlRestartMonitor.SimulateMySQLRestart()
+
+	if ok := test.WaitStatus(5, m, s.name+"-mysql", "Connected"); !ok {
+		t.Fatal("Monitor is ready")
+	}
 
 	// Do INSERT to increment dml_inserts before monitor collects.  If it enabled
 	// the InnoDB metrics and collects them, we should get dml_inserts=1 this later..

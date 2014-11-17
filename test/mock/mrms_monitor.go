@@ -55,6 +55,6 @@ func (m *MrmsMonitor) Status() (status map[string]string) {
 	}
 }
 
-func (m *MrmsMonitor) GetRestartChan() chan bool {
-	return m.c
+func (m *MrmsMonitor) SimulateMySQLRestart() {
+	m.c <- true
 }

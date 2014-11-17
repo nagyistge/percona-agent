@@ -41,7 +41,7 @@ type Monitor struct {
 	tickChan       chan time.Time
 	collectionChan chan *mm.Collection
 	connected      bool
-	restartChan    chan bool
+	restartChan    <-chan bool
 	status         *pct.Status
 	sync           *pct.SyncChan
 	running        bool
