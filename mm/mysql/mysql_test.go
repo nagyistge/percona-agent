@@ -30,7 +30,7 @@ import (
 	mysqlConn "github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test"
-	"github.com/percona/percona-agent/test/mock"
+	mock "github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
 )
 
@@ -43,12 +43,13 @@ var dsn = os.Getenv("PCT_TEST_MYSQL_DSN")
 func Test(t *testing.T) { TestingT(t) }
 
 type TestSuite struct {
-	db             *sql.DB
-	logChan        chan *proto.LogEntry
-	logger         *pct.Logger
-	tickChan       chan time.Time
-	collectionChan chan *mm.Collection
-	name           string
+	db                  *sql.DB
+	logChan             chan *proto.LogEntry
+	logger              *pct.Logger
+	tickChan            chan time.Time
+	collectionChan      chan *mm.Collection
+	name                string
+	mysqlRestartMonitor *mock.MrmsMonitor
 }
 
 var _ = Suite(&TestSuite{})
@@ -70,6 +71,9 @@ func (s *TestSuite) SetUpSuite(t *C) {
 	s.tickChan = make(chan time.Time)
 	s.collectionChan = make(chan *mm.Collection, 1)
 	s.name = "mm-mysql-db1"
+
+	s.mysqlRestartMonitor = mock.NewMrmsMonitor()
+
 }
 
 func (s *TestSuite) TearDownSuite(t *C) {
@@ -105,15 +109,12 @@ func (s *TestSuite) TestStartCollectStop(t *C) {
 		},
 	}
 
-	// restartChan is a fake mrms monitor channel to detect MySQL disconnections
-	restartChan := make(chan bool, 1)
-
 	// From the config, the factory determine's the monitor's name based on
 	// the service instance it's monitoring, and it creates a mysql.Connector
 	// for the DSN for that service (since it's a MySQL monitor in this case).
 	// It creates the monitor with these args:
 
-	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn), restartChan)
+	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn), s.mysqlRestartMonitor)
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
 	}
@@ -209,8 +210,7 @@ func (s *TestSuite) TestCollectInnoDBStats(t *C) {
 		InnoDB: []string{"dml_%"}, // same as above ^
 	}
 
-	restartChan := make(chan bool, 1) // see TestStartCollectStop
-	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn), restartChan)
+	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn), s.mysqlRestartMonitor)
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
 	}
@@ -291,8 +291,7 @@ func (s *TestSuite) TestCollectUserstats(t *C) {
 		UserStats: true,
 	}
 
-	restartChan := make(chan bool, 1) // see TestStartCollectStop
-	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn), restartChan)
+	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn), s.mysqlRestartMonitor)
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
 	}
@@ -395,7 +394,7 @@ func (s *TestSuite) TestHandleMySQLRestarts(t *C) {
 	}
 
 	restartChan := make(chan bool, 1) // see TestStartCollectStop
-	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn), restartChan)
+	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn), s.mysqlRestartMonitor)
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
 	}
@@ -479,10 +478,9 @@ func (s *TestSuite) TestSlowResponse(t *C) {
 		UserStats: true,
 	}
 
-	restartChan := make(chan bool, 1)
 	slowCon := mock.NewSlowMySQL(dsn)
 	slowCon.SetGlobalDelay(time.Duration(config.Collect+1) * time.Second)
-	m := mysql.NewMonitor(s.name, config, s.logger, slowCon, restartChan)
+	m := mysql.NewMonitor(s.name, config, s.logger, slowCon, s.mysqlRestartMonitor)
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
 	}

@@ -41,7 +41,7 @@ type Monitor struct {
 	tickChan       chan time.Time
 	collectionChan chan *mm.Collection
 	connected      bool
-	connectedChan  chan bool
+	restartChan    chan bool
 	status         *pct.Status
 	sync           *pct.SyncChan
 	running        bool
@@ -56,11 +56,11 @@ func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Conn
 		logger: logger,
 		conn:   conn,
 		// --
-		connectedChan: nil,
-		status:        pct.NewStatus([]string{name, name + "-mysql"}),
-		sync:          pct.NewSyncChan(),
-		collectLimit:  float64(config.Collect) * 0.1, // 10% of Collect time
-		mrmsMonitor:   mrmsMon,
+		restartChan:  nil,
+		status:       pct.NewStatus([]string{name, name + "-mysql"}),
+		sync:         pct.NewSyncChan(),
+		collectLimit: float64(config.Collect) * 0.1, // 10% of Collect time
+		mrmsMonitor:  mrmsMon,
 	}
 	return m
 }
@@ -85,7 +85,7 @@ func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collect
 	go m.run()
 	m.running = true
 	m.logger.Info("Started")
-	m.connectedChan, err = m.mrmsMonitor.Add(m.conn.DSN())
+	m.restartChan, err = m.mrmsMonitor.Add(m.conn.DSN())
 	if err != nil {
 		return err
 	}
@@ -105,6 +105,8 @@ func (m *Monitor) Stop() error {
 	m.status.Update(m.name, "Stopping")
 	m.sync.Stop()
 	m.sync.Wait()
+
+	m.mrmsMonitor.Remove(m.conn.DSN(), m.restartChan)
 
 	m.running = false
 	m.logger.Info("Stopped")
@@ -164,7 +166,6 @@ func (m *Monitor) connect(err error) {
 		// If connection is lost, it will call us again.
 		m.logger.Info("Connected")
 		m.status.Update(m.name+"-mysql", "Connected")
-		m.connectedChan <- true
 		return
 	}
 }
@@ -309,7 +310,7 @@ func (m *Monitor) run() {
 			}
 
 			m.logger.Debug("run:collect:stop")
-		case connected := <-m.connectedChan:
+		case connected := <-m.restartChan:
 			m.connected = connected
 			if connected {
 				m.logger.Debug("run:connected:true")

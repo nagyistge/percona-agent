@@ -64,12 +64,6 @@ func (f *Factory) Make(service string, instanceId uint, data []byte) (mm.Monitor
 		// The user-friendly name of the service, e.g. sysconfig-mysql-db101:
 		alias := "mm-mysql-" + mysqlIt.Hostname
 
-		// The monitor needs to be able to handle MySQL disconnections
-		restartMon, err := f.mrmsMon.Add(mysqlIt.DSN)
-		if err != nil {
-			return nil, err
-		}
-
 		// Make a MySQL metrics monitor.
 		monitor = mysql.NewMonitor(
 			alias,
