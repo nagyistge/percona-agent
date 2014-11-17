@@ -634,8 +634,8 @@ func (s *ManagerTestSuite) TestMySQLRestart(t *C) {
 	 * if so then it should configure it again
 	 */
 	gotQueries = nil
-	mockConn.Set(nil)
-	s.mrmsMonitor.GetRestartChan() // imitate mysql restart
+	mockConn.Reset()
+	s.mrmsMonitor.GetRestartChan() <- true // imitate mysql restart
 	timeout := time.After(1 * time.Second)
 LOOP:
 	for {
