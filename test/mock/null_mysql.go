@@ -74,7 +74,7 @@ func (n *NullMySQL) GetSet() []mysql.Query {
 }
 
 func (n *NullMySQL) Reset() {
-	n.set = []mysql.Query{}
+	n.set = nil
 }
 
 func (n *NullMySQL) GetGlobalVarString(varName string) string {

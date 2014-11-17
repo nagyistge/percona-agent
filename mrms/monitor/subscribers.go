@@ -26,33 +26,34 @@ import (
 type Subscribers struct {
 	logger *pct.Logger
 	// --
-	subscribers map[chan bool]bool
+	subscribers map[<-chan bool]chan bool
 	sync.RWMutex
 }
 
 func NewSubscribers(logger *pct.Logger) *Subscribers {
 	return &Subscribers{
 		logger:      logger,
-		subscribers: make(map[chan bool]bool),
+		subscribers: make(map[<-chan bool]chan bool),
 	}
 }
 
-func (s *Subscribers) Add() (c chan bool) {
+func (s *Subscribers) Add() (rChan <-chan bool) {
 	s.Lock()
 	defer s.Unlock()
 
-	c = make(chan bool, 1)
-	s.subscribers[c] = true
+	rwChan := make(chan bool, 1)
+	rChan = rwChan
+	s.subscribers[rChan] = rwChan
 
-	return c
+	return rChan
 }
 
-func (s *Subscribers) Remove(c chan bool) {
+func (s *Subscribers) Remove(rChan <-chan bool) {
 	s.Lock()
 	defer s.Unlock()
 
-	if s.subscribers[c] {
-		delete(s.subscribers, c)
+	if _, ok := s.subscribers[rChan]; ok {
+		delete(s.subscribers, rChan)
 	}
 }
 
@@ -67,9 +68,9 @@ func (s *Subscribers) Notify() {
 	s.RLock()
 	defer s.RUnlock()
 
-	for c, _ := range s.subscribers {
+	for _, rwChan := range s.subscribers {
 		select {
-		case c <- true:
+		case rwChan <- true:
 		case <-time.After(1 * time.Second):
 			s.logger.Warn("Unable to notify subscriber")
 		}

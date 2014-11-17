@@ -49,7 +49,7 @@ type Manager struct {
 	running         bool
 	mux             *sync.RWMutex // guards config and running
 	tickChan        chan time.Time
-	restartChan     chan bool
+	restartChan     <-chan bool
 	mysqlConn       mysql.Connector
 	mysqlInstance   *proto.MySQLInstance // todo: shared but not guarded
 	lastUptime      int64
@@ -241,10 +241,6 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 		Running: m.running,
 	}
 	return []proto.AgentConfig{config}, nil
-}
-
-func (m *Manager) GetRestartChan() chan bool {
-	return m.restartChan
 }
 
 /////////////////////////////////////////////////////////////////////////////
