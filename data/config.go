@@ -18,7 +18,7 @@
 package data
 
 const (
-	DEFAULT_DATA_ENCODING      = ""
+	DEFAULT_DATA_ENCODING      = "gzip"
 	DEFAULT_DATA_SEND_INTERVAL = 63
 )
 
