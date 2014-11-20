@@ -29,6 +29,10 @@ import (
 	"github.com/percona/percona-agent/pct"
 )
 
+const (
+	MAX_OPEN_CONNECTIONS = 10
+)
+
 type Query struct {
 	Set    string // SET GLOBAL long_query_time=0
 	Verify string // SELECT @@long_query_time
@@ -102,7 +106,8 @@ func (c *Connection) Connect(tries uint) error {
 		}
 
 		// Connected
-		db.SetMaxIdleConns(10000)
+		db.SetMaxOpenConns(MAX_OPEN_CONNECTIONS)
+		db.SetMaxIdleConns(MAX_OPEN_CONNECTIONS)
 		c.conn = db
 		c.backoff.Success()
 		c.connectedAmount++
