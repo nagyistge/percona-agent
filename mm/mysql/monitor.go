@@ -41,12 +41,13 @@ type Monitor struct {
 	tickChan       chan time.Time
 	collectionChan chan *mm.Collection
 	connected      bool
+	connectedChan  chan bool
 	restartChan    <-chan bool
 	status         *pct.Status
 	sync           *pct.SyncChan
 	running        bool
 	collectLimit   float64
-	mrmsMonitor    mrms.Monitor
+	mrm            mrms.Monitor
 }
 
 func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Connector, mrmsMon mrms.Monitor) *Monitor {
@@ -56,11 +57,12 @@ func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Conn
 		logger: logger,
 		conn:   conn,
 		// --
-		restartChan:  nil,
-		status:       pct.NewStatus([]string{name, name + "-mysql"}),
-		sync:         pct.NewSyncChan(),
-		collectLimit: float64(config.Collect) * 0.1, // 10% of Collect time
-		mrmsMonitor:  mrmsMon,
+		connectedChan: make(chan bool, 1),
+		restartChan:   nil,
+		status:        pct.NewStatus([]string{name, name + "-mysql"}),
+		sync:          pct.NewSyncChan(),
+		collectLimit:  float64(config.Collect) * 0.1, // 10% of Collect time
+		mrm:           mrmsMon,
 	}
 	return m
 }
@@ -82,7 +84,7 @@ func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collect
 	m.tickChan = tickChan
 	m.collectionChan = collectionChan
 
-	m.restartChan, err = m.mrmsMonitor.Add(m.conn.DSN())
+	m.restartChan, err = m.mrm.Add(m.conn.DSN())
 	if err != nil {
 		return err
 	}
@@ -107,7 +109,7 @@ func (m *Monitor) Stop() error {
 	m.sync.Stop()
 	m.sync.Wait()
 
-	m.mrmsMonitor.Remove(m.conn.DSN(), m.restartChan)
+	m.mrm.Remove(m.conn.DSN(), m.restartChan)
 
 	m.running = false
 	m.logger.Info("Stopped")
@@ -165,7 +167,7 @@ func (m *Monitor) connect(err error) {
 		// If connection is lost, it will call us again.
 		m.logger.Info("Connected")
 		m.status.Update(m.name+"-mysql", "Connected")
-		m.connected = true
+		m.connectedChan <- true
 		m.setGlobalVars()
 		return
 	}
@@ -311,19 +313,12 @@ func (m *Monitor) run() {
 			}
 
 			m.logger.Debug("run:collect:stop")
-		case connected := <-m.restartChan:
+		case connected := <-m.connectedChan:
 			m.connected = connected
-			if connected {
-				m.logger.Debug("run:connected:true")
-				m.status.Update(m.name, "Ready")
-				m.setGlobalVars()
-			} else {
-				// Currently mrms doesn't detect disconnections. It uses uptime
-				// to detect only restarts. I'm leaving this code here for future
-				// implementations of the MRMS but these lines are not being executed ever
-				m.logger.Debug("run:connected:false")
-				go m.connect(nil)
-			}
+			m.logger.Debug("run:connected:true")
+			m.status.Update(m.name, "Ready")
+		case <-m.restartChan:
+			go m.connect(nil)
 		case <-m.sync.StopChan:
 			m.logger.Debug("run:stop")
 			return
