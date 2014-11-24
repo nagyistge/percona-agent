@@ -30,7 +30,7 @@ import (
 	mysqlConn "github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test"
-	mock "github.com/percona/percona-agent/test/mock"
+	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
 )
 
