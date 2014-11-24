@@ -33,28 +33,29 @@ const (
 )
 
 var (
-	flagApiHostname          string
-	flagApiKey               string
-	flagBasedir              string
-	flagDebug                bool
-	flagCreateMySQLInstance  bool
-	flagCreateServerInstance bool
-	flagStartServices        bool
-	flagCreateAgent          bool
-	flagStartMySQLServices   bool
-	flagMySQL                bool
-	flagOldPasswords         bool
-	flagPlainPasswords       bool
-	flagInteractive          bool
-	flagMySQLDefaultsFile    string
-	flagAutoDetectMySQL      bool
-	flagCreateMySQLUser      bool
-	flagMySQLUser            string
-	flagMySQLPass            string
-	flagMySQLHost            string
-	flagMySQLPort            string
-	flagMySQLSocket          string
-	flagIgnoreFailures       bool
+	flagApiHostname             string
+	flagApiKey                  string
+	flagBasedir                 string
+	flagDebug                   bool
+	flagCreateMySQLInstance     bool
+	flagCreateServerInstance    bool
+	flagStartServices           bool
+	flagCreateAgent             bool
+	flagStartMySQLServices      bool
+	flagMySQL                   bool
+	flagOldPasswords            bool
+	flagPlainPasswords          bool
+	flagInteractive             bool
+	flagMySQLDefaultsFile       string
+	flagAutoDetectMySQL         bool
+	flagCreateMySQLUser         bool
+	flagMySQLUser               string
+	flagMySQLPass               string
+	flagMySQLHost               string
+	flagMySQLPort               string
+	flagMySQLSocket             string
+	flagIgnoreFailures          bool
+	flagMySQLMaxUserConnections int64
 )
 
 func init() {
@@ -83,6 +84,7 @@ func init() {
 	flag.StringVar(&flagMySQLHost, "mysql-host", "", "MySQL host")
 	flag.StringVar(&flagMySQLPort, "mysql-port", "", "MySQL port")
 	flag.StringVar(&flagMySQLSocket, "mysql-socket", "", "MySQL socket file")
+	flag.Int64Var(&flagMySQLMaxUserConnections, "mysql-max-user-connections", 5, "Max number of MySQL connections")
 }
 
 func main() {
@@ -138,6 +140,9 @@ func main() {
 			"mysql-host":          flagMySQLHost,
 			"mysql-port":          flagMySQLPort,
 			"mysql-socket":        flagMySQLSocket,
+		},
+		Int64: map[string]int64{
+			"mysql-max-user-connections": flagMySQLMaxUserConnections,
 		},
 	}
 
