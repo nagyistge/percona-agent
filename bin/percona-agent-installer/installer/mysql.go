@@ -29,7 +29,7 @@ import (
 	"strings"
 )
 
-func MakeGrant(dsn mysql.DSN, user string, pass string) []string {
+func MakeGrant(dsn mysql.DSN, user string, pass string, mysqlMaxUserConns int64) []string {
 	host := "%"
 	if dsn.Socket != "" || dsn.Hostname == "localhost" {
 		host = "localhost"
@@ -37,8 +37,8 @@ func MakeGrant(dsn mysql.DSN, user string, pass string) []string {
 		host = "127.0.0.1"
 	}
 	grants := []string{
-		fmt.Sprintf("GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO '%s'@'%s' IDENTIFIED BY '%s'", user, host, pass),
-		fmt.Sprintf("GRANT UPDATE, DELETE, DROP ON performance_schema.* TO '%s'@'%s' IDENTIFIED BY '%s'", user, host, pass),
+		fmt.Sprintf("GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO '%s'@'%s' IDENTIFIED BY '%s' WITH MAX_USER_CONNECTIONS %d", user, host, pass, mysqlMaxUserConns),
+		fmt.Sprintf("GRANT UPDATE, DELETE, DROP ON performance_schema.* TO '%s'@'%s' IDENTIFIED BY '%s' WITH MAX_USER_CONNECTIONS %d", user, host, pass, mysqlMaxUserConns),
 	}
 	return grants
 }

@@ -44,8 +44,7 @@ func (i *Installer) createMySQLUser(dsn mysql.DSN) (mysql.DSN, error) {
 		return userDSN, err
 	}
 	defer conn.Close()
-
-	grants := MakeGrant(dsn, userDSN.Username, userDSN.Password)
+	grants := MakeGrant(dsn, userDSN.Username, userDSN.Password, i.flags.Int64["mysql-max-user-connections"])
 	for _, grant := range grants {
 		if i.flags.Bool["debug"] {
 			log.Println(grant)
@@ -62,7 +61,7 @@ func (i *Installer) createMySQLUser(dsn mysql.DSN) (mysql.DSN, error) {
 	if dsn.Hostname == "localhost" {
 		dsn2 := dsn
 		dsn2.Hostname = "127.0.0.1"
-		grants := MakeGrant(dsn2, userDSN.Username, userDSN.Password)
+		grants := MakeGrant(dsn2, userDSN.Username, userDSN.Password, i.flags.Int64["mysql-max-user-connections"])
 		for _, grant := range grants {
 			if i.flags.Bool["debug"] {
 				log.Println(grant)
