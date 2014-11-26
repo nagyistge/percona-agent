@@ -62,7 +62,7 @@ type Manager struct {
 	mrm         mrms.Monitor
 }
 
-func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager, spool data.Spooler, im *instance.Repo, restartMon mrms.Monitor) *Manager {
+func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager, spool data.Spooler, im *instance.Repo, mrm mrms.Monitor) *Manager {
 	m := &Manager{
 		logger:  logger,
 		factory: factory,
@@ -74,7 +74,7 @@ func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager
 		status:      pct.NewStatus([]string{"mm"}),
 		aggregators: make(map[uint]*Binding),
 		mux:         &sync.RWMutex{},
-		mrm:         restartMon,
+		mrm:         mrm,
 	}
 	return m
 }
