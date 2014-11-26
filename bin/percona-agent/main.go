@@ -221,13 +221,13 @@ func run() error {
 	 * MRMS (MySQL Restart Monitoring Service)
 	 */
 
-	mysqlRestartMonitor := mrmsMonitor.NewMonitor(
+	mrm := mrmsMonitor.NewMonitor(
 		pct.NewLogger(logChan, "mrms-monitor"),
 		connFactory,
 	)
 	mrmsManager := mrms.NewManager(
 		pct.NewLogger(logChan, "mrms-manager"),
-		mysqlRestartMonitor,
+		mrm,
 	)
 	if err := mrmsManager.Start(); err != nil {
 		return fmt.Errorf("Error starting mrms manager: %s\n", err)
@@ -267,11 +267,11 @@ func run() error {
 
 	mmManager := mm.NewManager(
 		pct.NewLogger(logChan, "mm"),
-		mmMonitor.NewFactory(logChan, itManager.Repo(), mysqlRestartMonitor),
+		mmMonitor.NewFactory(logChan, itManager.Repo(), mrm),
 		clock,
 		dataManager.Spooler(),
 		itManager.Repo(),
-		mysqlRestartMonitor,
+		mrm,
 	)
 	if err := mmManager.Start(); err != nil {
 		return fmt.Errorf("Error starting mm manager: %s\n", err)
@@ -316,7 +316,7 @@ func run() error {
 		qan.NewRealWorkerFactory(logChan),
 		dataManager.Spooler(),
 		itManager.Repo(),
-		mysqlRestartMonitor,
+		mrm,
 	)
 	if err := qanManager.Start(); err != nil {
 		return fmt.Errorf("Error starting qan manager: %s\n", err)

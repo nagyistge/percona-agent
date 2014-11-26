@@ -43,13 +43,13 @@ var dsn = os.Getenv("PCT_TEST_MYSQL_DSN")
 func Test(t *testing.T) { TestingT(t) }
 
 type TestSuite struct {
-	db                  *sql.DB
-	logChan             chan *proto.LogEntry
-	logger              *pct.Logger
-	tickChan            chan time.Time
-	collectionChan      chan *mm.Collection
-	name                string
-	mysqlRestartMonitor *mock.MrmsMonitor
+	db             *sql.DB
+	logChan        chan *proto.LogEntry
+	logger         *pct.Logger
+	tickChan       chan time.Time
+	collectionChan chan *mm.Collection
+	name           string
+	mrm            *mock.MrmsMonitor
 }
 
 var _ = Suite(&TestSuite{})
@@ -71,8 +71,7 @@ func (s *TestSuite) SetUpSuite(t *C) {
 	s.tickChan = make(chan time.Time)
 	s.collectionChan = make(chan *mm.Collection, 1)
 	s.name = "mm-mysql-db1"
-
-	s.mysqlRestartMonitor = mock.NewMrmsMonitor()
+	s.mrm = mock.NewMrmsMonitor()
 
 }
 
@@ -114,7 +113,7 @@ func (s *TestSuite) TestStartCollectStop(t *C) {
 	// for the DSN for that service (since it's a MySQL monitor in this case).
 	// It creates the monitor with these args:
 
-	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn), s.mysqlRestartMonitor)
+	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn), s.mrm)
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
 	}
@@ -210,7 +209,7 @@ func (s *TestSuite) TestCollectInnoDBStats(t *C) {
 		InnoDB: []string{"dml_%"}, // same as above ^
 	}
 
-	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn), s.mysqlRestartMonitor)
+	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn), s.mrm)
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
 	}
@@ -291,7 +290,7 @@ func (s *TestSuite) TestCollectUserstats(t *C) {
 		UserStats: true,
 	}
 
-	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn), s.mysqlRestartMonitor)
+	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn), s.mrm)
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
 	}
@@ -393,8 +392,7 @@ func (s *TestSuite) TestHandleMySQLRestarts(t *C) {
 		InnoDB: []string{"dml_%"}, // same as above ^
 	}
 
-	//restartChan := make(chan bool, 1) // see TestStartCollectStop
-	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn), s.mysqlRestartMonitor)
+	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn), s.mrm)
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
 	}
@@ -418,7 +416,7 @@ func (s *TestSuite) TestHandleMySQLRestarts(t *C) {
 	if _, err := s.db.Exec("set global innodb_monitor_reset_all = '%'"); err != nil {
 		t.Fatal(err)
 	}
-	s.mysqlRestartMonitor.SimulateMySQLRestart()
+	s.mrm.SimulateMySQLRestart()
 
 	if ok := test.WaitStatus(5, m, s.name+"-mysql", "Connected"); !ok {
 		t.Fatal("Monitor is ready")
@@ -481,7 +479,7 @@ func (s *TestSuite) TestSlowResponse(t *C) {
 
 	slowCon := mock.NewSlowMySQL(dsn)
 	slowCon.SetGlobalDelay(time.Duration(config.Collect+1) * time.Second)
-	m := mysql.NewMonitor(s.name, config, s.logger, slowCon, s.mysqlRestartMonitor)
+	m := mysql.NewMonitor(s.name, config, s.logger, slowCon, s.mrm)
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
 	}

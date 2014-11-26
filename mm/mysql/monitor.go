@@ -318,7 +318,7 @@ func (m *Monitor) run() {
 			m.logger.Debug("run:connected:true")
 			m.status.Update(m.name, "Ready")
 		case <-m.restartChan:
-			go m.connect(nil)
+			go m.connect(fmt.Errorf("Lost connection to MySQL, restarting"))
 		case <-m.sync.StopChan:
 			m.logger.Debug("run:stop")
 			return
