@@ -191,10 +191,10 @@ func (s *TestSuite) TestCollectInnoDBStats(t *C) {
 		t.Fatal(err)
 	}
 
-	s.db.Exec("drop database if exists test_pct")
-	s.db.Exec("create database test_pct")
-	s.db.Exec("create table test_pct.t (i int) engine=innodb")
-	defer s.db.Exec("drop database if exists test_pct")
+	s.db.Exec("drop database if exists percona_agent_test")
+	s.db.Exec("create database percona_agent_test")
+	s.db.Exec("create table percona_agent_test.t (i int) engine=innodb")
+	defer s.db.Exec("drop database if exists percona_agent_test")
 
 	config := &mysql.Config{
 		Config: mm.Config{
@@ -225,7 +225,7 @@ func (s *TestSuite) TestCollectInnoDBStats(t *C) {
 
 	// Do INSERT to increment dml_inserts before monitor collects.  If it enabled
 	// the InnoDB metrics and collects them, we should get dml_inserts=1 this later..
-	s.db.Exec("insert into test_pct.t (i) values (42)")
+	s.db.Exec("insert into percona_agent_test.t (i) values (42)")
 
 	s.tickChan <- time.Now()
 	got := test.WaitCollection(s.collectionChan, 1)
@@ -374,10 +374,10 @@ func (s *TestSuite) TestHandleMySQLRestarts(t *C) {
 		t.Fatal(err)
 	}
 
-	s.db.Exec("drop database if exists test_pct")
-	s.db.Exec("create database test_pct")
-	s.db.Exec("create table test_pct.t (i int) engine=innodb")
-	defer s.db.Exec("drop database if exists test_pct")
+	s.db.Exec("drop database if exists percona_agent_test")
+	s.db.Exec("create database percona_agent_test")
+	s.db.Exec("create table percona_agent_test.t (i int) engine=innodb")
+	defer s.db.Exec("drop database if exists percona_agent_test")
 
 	config := &mysql.Config{
 		Config: mm.Config{
@@ -424,7 +424,7 @@ func (s *TestSuite) TestHandleMySQLRestarts(t *C) {
 
 	// Do INSERT to increment dml_inserts before monitor collects.  If it enabled
 	// the InnoDB metrics and collects them, we should get dml_inserts=1 this later..
-	s.db.Exec("insert into test_pct.t (i) values (42)")
+	s.db.Exec("insert into percona_agent_test.t (i) values (42)")
 
 	s.tickChan <- time.Now()
 	got := test.WaitCollection(s.collectionChan, 1)
