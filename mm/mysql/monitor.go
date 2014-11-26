@@ -50,7 +50,7 @@ type Monitor struct {
 	mrm            mrms.Monitor
 }
 
-func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Connector, mrmsMon mrms.Monitor) *Monitor {
+func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Connector, mrm mrms.Monitor) *Monitor {
 	m := &Monitor{
 		name:   name,
 		config: config,
@@ -62,7 +62,7 @@ func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Conn
 		status:        pct.NewStatus([]string{name, name + "-mysql"}),
 		sync:          pct.NewSyncChan(),
 		collectLimit:  float64(config.Collect) * 0.1, // 10% of Collect time
-		mrm:           mrmsMon,
+		mrm:           mrm,
 	}
 	return m
 }

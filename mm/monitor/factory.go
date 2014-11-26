@@ -36,11 +36,11 @@ type Factory struct {
 	mrm     mrms.Monitor
 }
 
-func NewFactory(logChan chan *proto.LogEntry, ir *instance.Repo, rm mrms.Monitor) *Factory {
+func NewFactory(logChan chan *proto.LogEntry, ir *instance.Repo, mrm mrms.Monitor) *Factory {
 	f := &Factory{
 		logChan: logChan,
 		ir:      ir,
-		mrm:     rm,
+		mrm:     mrm,
 	}
 	return f
 }
