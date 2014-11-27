@@ -49,6 +49,7 @@ type TestSuite struct {
 	tickChan       chan time.Time
 	collectionChan chan *mm.Collection
 	name           string
+	mrm            *mock.MrmsMonitor
 }
 
 var _ = Suite(&TestSuite{})
@@ -70,6 +71,8 @@ func (s *TestSuite) SetUpSuite(t *C) {
 	s.tickChan = make(chan time.Time)
 	s.collectionChan = make(chan *mm.Collection, 1)
 	s.name = "mm-mysql-db1"
+	s.mrm = mock.NewMrmsMonitor()
+
 }
 
 func (s *TestSuite) TearDownSuite(t *C) {
@@ -109,7 +112,8 @@ func (s *TestSuite) TestStartCollectStop(t *C) {
 	// the service instance it's monitoring, and it creates a mysql.Connector
 	// for the DSN for that service (since it's a MySQL monitor in this case).
 	// It creates the monitor with these args:
-	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn))
+
+	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn), s.mrm)
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
 	}
@@ -187,10 +191,10 @@ func (s *TestSuite) TestCollectInnoDBStats(t *C) {
 		t.Fatal(err)
 	}
 
-	s.db.Exec("drop database if exists test_pct")
-	s.db.Exec("create database test_pct")
-	s.db.Exec("create table test_pct.t (i int) engine=innodb")
-	defer s.db.Exec("drop database if exists test_pct")
+	s.db.Exec("drop database if exists percona_agent_test")
+	s.db.Exec("create database percona_agent_test")
+	s.db.Exec("create table percona_agent_test.t (i int) engine=innodb")
+	defer s.db.Exec("drop database if exists percona_agent_test")
 
 	config := &mysql.Config{
 		Config: mm.Config{
@@ -205,7 +209,7 @@ func (s *TestSuite) TestCollectInnoDBStats(t *C) {
 		InnoDB: []string{"dml_%"}, // same as above ^
 	}
 
-	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn))
+	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn), s.mrm)
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
 	}
@@ -221,7 +225,7 @@ func (s *TestSuite) TestCollectInnoDBStats(t *C) {
 
 	// Do INSERT to increment dml_inserts before monitor collects.  If it enabled
 	// the InnoDB metrics and collects them, we should get dml_inserts=1 this later..
-	s.db.Exec("insert into test_pct.t (i) values (42)")
+	s.db.Exec("insert into percona_agent_test.t (i) values (42)")
 
 	s.tickChan <- time.Now()
 	got := test.WaitCollection(s.collectionChan, 1)
@@ -286,7 +290,7 @@ func (s *TestSuite) TestCollectUserstats(t *C) {
 		UserStats: true,
 	}
 
-	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn))
+	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn), s.mrm)
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
 	}
@@ -356,6 +360,109 @@ func (s *TestSuite) TestCollectUserstats(t *C) {
 	m.Stop()
 }
 
+// This test is the same as TestCollectInnoDBStats with the only difference that
+// now we are simulating a MySQL disconnection.
+// After a disconnection, we must still be able to collect InnoDB stats
+func (s *TestSuite) TestHandleMySQLRestarts(t *C) {
+	/**
+	 * Disable and reset InnoDB metrics so we can test that the monitor enables and sets them.
+	 */
+	if _, err := s.db.Exec("set global innodb_monitor_disable = '%'"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec("set global innodb_monitor_reset_all = '%'"); err != nil {
+		t.Fatal(err)
+	}
+
+	s.db.Exec("drop database if exists percona_agent_test")
+	s.db.Exec("create database percona_agent_test")
+	s.db.Exec("create table percona_agent_test.t (i int) engine=innodb")
+	defer s.db.Exec("drop database if exists percona_agent_test")
+
+	config := &mysql.Config{
+		Config: mm.Config{
+			ServiceInstance: proto.ServiceInstance{
+				Service:    "mysql",
+				InstanceId: 1,
+			},
+			Collect: 1,
+			Report:  60,
+		},
+		Status: map[string]string{},
+		InnoDB: []string{"dml_%"}, // same as above ^
+	}
+
+	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn), s.mrm)
+	if m == nil {
+		t.Fatal("Make new mysql.Monitor")
+	}
+
+	err := m.Start(s.tickChan, s.collectionChan)
+	if err != nil {
+		t.Fatalf("Start monitor without error, got %s", err)
+	}
+
+	if ok := test.WaitStatus(5, m, s.name+"-mysql", "Connected"); !ok {
+		t.Fatal("Monitor is ready")
+	}
+
+	/**
+	 * Simulate a MySQL disconnection by disabling InnoDB metrics and putting a
+	 * true into the restart channel. The monitor must enable them again
+	 */
+	if _, err := s.db.Exec("set global innodb_monitor_disable = '%'"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec("set global innodb_monitor_reset_all = '%'"); err != nil {
+		t.Fatal(err)
+	}
+	s.mrm.SimulateMySQLRestart()
+
+	if ok := test.WaitStatus(5, m, s.name+"-mysql", "Connected"); !ok {
+		t.Fatal("Monitor is ready")
+	}
+
+	// Do INSERT to increment dml_inserts before monitor collects.  If it enabled
+	// the InnoDB metrics and collects them, we should get dml_inserts=1 this later..
+	s.db.Exec("insert into percona_agent_test.t (i) values (42)")
+
+	s.tickChan <- time.Now()
+	got := test.WaitCollection(s.collectionChan, 1)
+	if len(got) == 0 {
+		t.Fatal("Got a collection after tick")
+	}
+	c := got[0]
+
+	/**
+	 * ...monitor should have collected the InnoDB metrics:
+	 *
+	 * mysql> SELECT NAME, SUBSYSTEM, COUNT, TYPE FROM INFORMATION_SCHEMA.INNODB_METRICS WHERE STATUS='enabled';
+	 * +-------------+-----------+-------+----------------+
+	 * | NAME        | SUBSYSTEM | COUNT | TYPE           |
+	 * +-------------+-----------+-------+----------------+
+	 * | dml_reads   | dml       |     0 | status_counter |
+	 * | dml_inserts | dml       |     1 | status_counter |
+	 * | dml_deletes | dml       |     0 | status_counter |
+	 * | dml_updates | dml       |     0 | status_counter |
+	 * +-------------+-----------+-------+----------------+
+	 */
+	if len(c.Metrics) != 4 {
+		t.Fatal("Collect 4 InnoDB metrics; got %+v", c.Metrics)
+	}
+	expect := []mm.Metric{
+		{Name: "mysql/innodb/dml/dml_reads", Type: "counter", Number: 0},
+		{Name: "mysql/innodb/dml/dml_inserts", Type: "counter", Number: 1}, // <-- our INSERT
+		{Name: "mysql/innodb/dml/dml_deletes", Type: "counter", Number: 0},
+		{Name: "mysql/innodb/dml/dml_updates", Type: "counter", Number: 0},
+	}
+	if ok, diff := test.IsDeeply(c.Metrics, expect); !ok {
+		t.Error(diff)
+	}
+
+	// Stop montior, clean up.
+	m.Stop()
+}
+
 func (s *TestSuite) TestSlowResponse(t *C) {
 	// https://jira.percona.com/browse/PCT-565
 	config := &mysql.Config{
@@ -372,7 +479,7 @@ func (s *TestSuite) TestSlowResponse(t *C) {
 
 	slowCon := mock.NewSlowMySQL(dsn)
 	slowCon.SetGlobalDelay(time.Duration(config.Collect+1) * time.Second)
-	m := mysql.NewMonitor(s.name, config, s.logger, slowCon)
+	m := mysql.NewMonitor(s.name, config, s.logger, slowCon, s.mrm)
 	if m == nil {
 		t.Fatal("Make new mysql.Monitor")
 	}

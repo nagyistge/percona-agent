@@ -25,6 +25,7 @@ import (
 	"github.com/percona/percona-agent/mm"
 	"github.com/percona/percona-agent/mm/mysql"
 	"github.com/percona/percona-agent/mm/system"
+	"github.com/percona/percona-agent/mrms"
 	mysqlConn "github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 )
@@ -32,12 +33,14 @@ import (
 type Factory struct {
 	logChan chan *proto.LogEntry
 	ir      *instance.Repo
+	mrm     mrms.Monitor
 }
 
-func NewFactory(logChan chan *proto.LogEntry, ir *instance.Repo) *Factory {
+func NewFactory(logChan chan *proto.LogEntry, ir *instance.Repo, mrm mrms.Monitor) *Factory {
 	f := &Factory{
 		logChan: logChan,
 		ir:      ir,
+		mrm:     mrm,
 	}
 	return f
 }
@@ -67,6 +70,7 @@ func (f *Factory) Make(service string, instanceId uint, data []byte) (mm.Monitor
 			config,
 			pct.NewLogger(f.logChan, alias),
 			mysqlConn.NewConnection(mysqlIt.DSN),
+			f.mrm,
 		)
 	case "server":
 		// Parse the system mm config.

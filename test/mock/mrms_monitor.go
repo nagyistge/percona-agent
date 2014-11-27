@@ -55,6 +55,9 @@ func (m *MrmsMonitor) Status() (status map[string]string) {
 	}
 }
 
-func (m *MrmsMonitor) GetRestartChan() chan bool {
-	return m.c
+// The restartChan in the real MrmsMonitor is read only.
+// To be consistent with that, instead of returning the channel just for
+// testing purposes, we have this method to simulate a MySQL restart
+func (m *MrmsMonitor) SimulateMySQLRestart() {
+	m.c <- true
 }
