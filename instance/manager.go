@@ -21,21 +21,27 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/percona-agent/mrms"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
-	"strings"
 )
+
+type empty struct{}
 
 type Manager struct {
 	logger    *pct.Logger
 	configDir string
 	// --
-	status *pct.Status
-	repo   *Repo
+	status   *pct.Status
+	repo     *Repo
+	stopChan chan empty
+	mrm      mrms.Monitor
 }
 
-func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector) *Manager {
+func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm mrms.Monitor) *Manager {
 	repo := NewRepo(pct.NewLogger(logger.LogChan(), "instance-repo"), configDir, api)
 	m := &Manager{
 		logger:    logger,
@@ -43,6 +49,7 @@ func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector) *Man
 		// --
 		status: pct.NewStatus([]string{"instance", "instance-repo"}),
 		repo:   repo,
+		mrm:    mrm,
 	}
 	return m
 }
@@ -57,6 +64,7 @@ func (m *Manager) Start() error {
 	if err := m.repo.Init(); err != nil {
 		return err
 	}
+	fmt.Printf("Repo: %+v\n", m.Repo().List())
 	m.logger.Info("Started")
 	m.status.Update("instance", "Running")
 	return nil

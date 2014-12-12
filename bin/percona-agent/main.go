@@ -205,19 +205,6 @@ func run() error {
 	}
 
 	/**
-	 * Instance manager
-	 */
-
-	itManager := instance.NewManager(
-		pct.NewLogger(logChan, "instance-manager"),
-		pct.Basedir.Dir("config"),
-		api,
-	)
-	if err := itManager.Start(); err != nil {
-		return fmt.Errorf("Error starting instance manager: %s\n", err)
-	}
-
-	/**
 	 * MRMS (MySQL Restart Monitoring Service)
 	 */
 
@@ -231,6 +218,20 @@ func run() error {
 	)
 	if err := mrmsManager.Start(); err != nil {
 		return fmt.Errorf("Error starting mrms manager: %s\n", err)
+	}
+
+	/**
+	 * Instance manager
+	 */
+
+	itManager := instance.NewManager(
+		pct.NewLogger(logChan, "instance-manager"),
+		pct.Basedir.Dir("config"),
+		api,
+		mrm,
+	)
+	if err := itManager.Start(); err != nil {
+		return fmt.Errorf("Error starting instance manager: %s\n", err)
 	}
 
 	/**
