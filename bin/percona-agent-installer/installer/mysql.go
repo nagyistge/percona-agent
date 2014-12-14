@@ -77,6 +77,7 @@ func (i *Installer) getAgentDSN() (dsn mysql.DSN, err error) {
 				if err := i.verifyMySQLConnection(dsn); err != nil {
 					return dsn, err
 				}
+				fmt.Println("Using the agent credentials from paramaeters")
 			} else {
 				// Non-MySQL install (e.g. only system metrics).
 				fmt.Println("Skip creating MySQL user (-create-mysql-user=false)")
