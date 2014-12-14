@@ -49,6 +49,8 @@ var (
 	flagMySQLDefaultsFile       string
 	flagAutoDetectMySQL         bool
 	flagCreateMySQLUser         bool
+	flagAgentMySQLUser          string
+	flagAgentMySQLPass          string
 	flagMySQLUser               string
 	flagMySQLPass               string
 	flagMySQLHost               string
@@ -137,13 +139,13 @@ func main() {
 		String: map[string]string{
 			"app-host":            DEFAULT_APP_HOSTNAME,
 			"mysql-defaults-file": flagMySQLDefaultsFile,
+			"agent-mysql-user":    flagAgentMySQLUser,
+			"agent-mysql-pass":    flagAgentMySQLPass,
 			"mysql-user":          flagMySQLUser,
 			"mysql-pass":          flagMySQLPass,
 			"mysql-host":          flagMySQLHost,
 			"mysql-port":          flagMySQLPort,
 			"mysql-socket":        flagMySQLSocket,
-			"agent-mysql-user":    flagAgentMySQLUser,
-			"agent-mysql-pass":    flagAgentMySQLPass,
 		},
 		Int64: map[string]int64{
 			"mysql-max-user-connections": flagMySQLMaxUserConnections,
