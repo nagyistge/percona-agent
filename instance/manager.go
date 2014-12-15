@@ -41,6 +41,9 @@ type Manager struct {
 	repo     *Repo
 	stopChan chan empty
 	mrm      mrms.Monitor
+	// Master chan that will receive signals from all other
+	// mrms chans
+	mrmsChan chan *proto.MySQLInstance
 }
 
 func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm mrms.Monitor) *Manager {
@@ -49,9 +52,10 @@ func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm 
 		logger:    logger,
 		configDir: configDir,
 		// --
-		status: pct.NewStatus([]string{"instance", "instance-repo"}),
-		repo:   repo,
-		mrm:    mrm,
+		status:   pct.NewStatus([]string{"instance", "instance-repo"}),
+		repo:     repo,
+		mrm:      mrm,
+		mrmsChan: make(chan *proto.MySQLInstance, 100), // monitor up to 100 instances
 	}
 	return m
 }
@@ -66,14 +70,20 @@ func (m *Manager) Start() error {
 	if err := m.repo.Init(); err != nil {
 		return err
 	}
-	fmt.Printf("Repo: %+v\n", m.Repo().List())
 	m.logger.Info("Started")
 	m.status.Update("instance", "Running")
+
 	instances, err := m.getMySQLInstances()
 	for _, instance := range instances {
 		fmt.Printf("Instances: %+v\n", *instance)
-		m.mrm.Add(instance.DSN)
+		ch, err := m.mrm.Add(instance.DSN)
+		if err != nil {
+			return err
+		}
+		m.fanIn(ch, m.mrmsChan, instance)
 	}
+	// Start our monitor. If an instance was restarted, call the API to update
+	go m.fanOut()
 	return err
 }
 
@@ -97,10 +107,26 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	case "Add":
 		err := m.repo.Add(it.Service, it.InstanceId, it.Instance, true) // true = write to disk
 		fmt.Printf("Add: %+v\n", it)
+
+		if it.Service == "mysql" {
+			iit := &proto.MySQLInstance{}
+			// Get the instance as type proto.MySQLInstance
+			err := m.repo.Get(it.Service, it.InstanceId, iit)
+			if err != nil {
+				return cmd.Reply(nil, err)
+			}
+			instanceMrmsChan, err := m.mrm.Add(iit.DSN)
+			if err != nil {
+				return cmd.Reply(nil, err)
+			}
+			m.fanIn(instanceMrmsChan, m.mrmsChan, iit)
+		}
 		return cmd.Reply(nil, err)
 	case "Remove":
 		err := m.repo.Remove(it.Service, it.InstanceId)
+		// TODO REMOVE FROM THE mrms
 		return cmd.Reply(nil, err)
+
 	case "GetInfo":
 		info, err := m.handleGetInfo(it.Service, it.Instance)
 		return cmd.Reply(info, err)
@@ -188,4 +214,22 @@ func (m *Manager) getMySQLInstances() ([]*proto.MySQLInstance, error) {
 		}
 	}
 	return instances, nil
+}
+
+func (m *Manager) fanIn(in <-chan bool, out chan *proto.MySQLInstance, ins *proto.MySQLInstance) {
+	go func(in <-chan bool, out chan *proto.MySQLInstance, ins *proto.MySQLInstance) {
+		for {
+			_ = <-in
+			out <- ins
+		}
+	}(in, out, ins)
+}
+
+func (m *Manager) fanOut() {
+	for {
+		it := <-m.mrmsChan
+		// Do something with it (CALL API and do a PUT to update)
+		fmt.Println(it)
+
+	}
 }
