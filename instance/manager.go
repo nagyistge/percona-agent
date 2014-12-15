@@ -23,6 +23,8 @@ import (
 	"fmt"
 	"strings"
 
+	"strconv"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mrms"
 	"github.com/percona/percona-agent/mysql"
@@ -67,7 +69,12 @@ func (m *Manager) Start() error {
 	fmt.Printf("Repo: %+v\n", m.Repo().List())
 	m.logger.Info("Started")
 	m.status.Update("instance", "Running")
-	return nil
+	instances, err := m.getMySQLInstances()
+	for _, instance := range instances {
+		fmt.Printf("Instances: %+v\n", *instance)
+		m.mrm.Add(instance.DSN)
+	}
+	return err
 }
 
 // @goroutine[0]
@@ -89,6 +96,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	switch cmd.Cmd {
 	case "Add":
 		err := m.repo.Add(it.Service, it.InstanceId, it.Instance, true) // true = write to disk
+		fmt.Printf("Add: %+v\n", it)
 		return cmd.Reply(nil, err)
 	case "Remove":
 		err := m.repo.Remove(it.Service, it.InstanceId)
@@ -156,4 +164,28 @@ func GetMySQLInfo(it *proto.MySQLInstance) error {
 	}
 	conn.Close()
 	return nil
+}
+
+func (m *Manager) getMySQLInstances() ([]*proto.MySQLInstance, error) {
+	var instances []*proto.MySQLInstance
+	for _, name := range m.Repo().List() {
+		parts := strings.Split(name, "-") // mysql-1 or server-12
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("Invalid instance name: %+v", name)
+		}
+		if parts[0] == "mysql" {
+			id, err := strconv.ParseInt(parts[1], 10, 64)
+			if err != nil {
+				return nil, err
+			}
+			it := &proto.MySQLInstance{}
+			err = m.Repo().Get(parts[0], uint(id), it)
+			if err != nil {
+				return nil, err
+			}
+			err = GetMySQLInfo(it)
+			instances = append(instances, it)
+		}
+	}
+	return instances, nil
 }
