@@ -23,10 +23,13 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/percona/percona-agent/agent"
+
 	"strconv"
 
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mrms"
+	"github.com/percona/percona-agent/mrms/monitor"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 )
@@ -36,26 +39,29 @@ type empty struct{}
 type Manager struct {
 	logger    *pct.Logger
 	configDir string
+	api       pct.APIConnector
 	// --
-	status   *pct.Status
-	repo     *Repo
-	stopChan chan empty
-	mrm      mrms.Monitor
-	// Master chan that will receive signals from all other
-	// mrms chans
-	mrmsChan chan *proto.MySQLInstance
+	status         *pct.Status
+	repo           *Repo
+	stopChan       chan empty
+	mrm            mrms.Monitor
+	mrmChans       []<-chan bool
+	mrmsGlobalChan chan string
+	agentConfig    *agent.Config
 }
 
-func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm mrms.Monitor) *Manager {
+func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm mrms.Monitor, conf *agent.Config) *Manager {
 	repo := NewRepo(pct.NewLogger(logger.LogChan(), "instance-repo"), configDir, api)
 	m := &Manager{
 		logger:    logger,
 		configDir: configDir,
+		api:       api,
 		// --
-		status:   pct.NewStatus([]string{"instance", "instance-repo"}),
-		repo:     repo,
-		mrm:      mrm,
-		mrmsChan: make(chan *proto.MySQLInstance, 100), // monitor up to 100 instances
+		status:         pct.NewStatus([]string{"instance", "instance-repo"}),
+		repo:           repo,
+		mrm:            mrm,
+		mrmsGlobalChan: make(chan string, 100), // monitor up to 100 instances
+		agentConfig:    conf,
 	}
 	return m
 }
@@ -73,15 +79,27 @@ func (m *Manager) Start() error {
 	m.logger.Info("Started")
 	m.status.Update("instance", "Running")
 
+	mrm := m.mrm.(*monitor.Monitor)
+	mrmsGlobalChan, err := mrm.GlobalSubscribe()
+	if err != nil {
+		return err
+	}
 	instances, err := m.getMySQLInstances()
+	if err != nil {
+		return err
+	}
 	for _, instance := range instances {
-		fmt.Printf("Instances: %+v\n", *instance)
-		if err != nil {
-			return err
+		ch, err := m.mrm.Add(instance.DSN)
+		if err == nil {
+			// The truth is we don't need to store restart chans because we don't
+			// make any use of them but if we discard the value, subscriber.Notify
+			// will block for a second as it won't be able to send data to a chan
+			m.mrmChans = append(m.mrmChans, ch)
 		}
 	}
-	// Start our monitor. If an instance was restarted, call the API to update
-	return err
+
+	go m.monitorInstancesRestart(mrmsGlobalChan)
+	return nil
 }
 
 // @goroutine[0]
@@ -104,8 +122,9 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	case "Add":
 		err := m.repo.Add(it.Service, it.InstanceId, it.Instance, true) // true = write to disk
 		if it.Service == "mysql" {
+			// Get the instance as type proto.MySQLInstance instead of proto.ServiceInstance
+			// because we need the dsn field
 			iit := &proto.MySQLInstance{}
-			// Get the instance as type proto.MySQLInstance
 			err := m.repo.Get(it.Service, it.InstanceId, iit)
 			if err != nil {
 				return cmd.Reply(nil, err)
@@ -113,11 +132,18 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 			if err != nil {
 				return cmd.Reply(nil, err)
 			}
+			ch, err := m.mrm.Add(iit.DSN)
+			if err != nil {
+				// See comment about mrmChans on Start method
+				m.mrmChans = append(m.mrmChans, ch)
+			}
+
 		}
 		return cmd.Reply(nil, err)
 	case "Remove":
 		err := m.repo.Remove(it.Service, it.InstanceId)
 		// TODO REMOVE FROM THE mrms
+
 		return cmd.Reply(nil, err)
 
 	case "GetInfo":
@@ -207,4 +233,38 @@ func (m *Manager) getMySQLInstances() ([]*proto.MySQLInstance, error) {
 		}
 	}
 	return instances, nil
+}
+
+func (m *Manager) monitorInstancesRestart(ch chan string) {
+	// Cast mrms monitor as its real type and not the interface
+	// because the interface doesn't implements GlobalSubscribe()
+	mm := m.mrm.(*monitor.Monitor)
+	ch, err := mm.GlobalSubscribe()
+	if err != nil {
+		m.status.Update("monitorInstancesRestart", fmt.Sprintf("Error %v", err))
+	}
+
+	for {
+		dsn := <-ch
+		// Get the updated instances list. It should be updated every time since
+		// the Add method can add new instances to the list
+		instances, err := m.getMySQLInstances()
+		if err != nil {
+			m.status.Update("instance manager", fmt.Sprintf("Error in Global Instance Monitor: %v", err.Error()))
+		}
+		for _, instance := range instances {
+			if instance.DSN == dsn {
+				GetMySQLInfo(instance)
+				uri := pct.URL(m.agentConfig.ApiHostname, "instances", "mysql", fmt.Sprintf("%d", instance.Id))
+				data, err := json.Marshal(instance)
+				if err != nil {
+					// TODO Log the error
+					continue
+				}
+				m.api.Put(m.api.ApiKey(), uri, data)
+				fmt.Println("Calling api", uri)
+			}
+		}
+		fmt.Println("loop")
+	}
 }

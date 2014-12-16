@@ -39,8 +39,9 @@ type Monitor struct {
 	globalMysqlInstances map[string]*MysqlInstance
 	sync.RWMutex
 	// --
-	status *pct.Status
-	sync   *pct.SyncChan
+	status     *pct.Status
+	sync       *pct.SyncChan
+	globalChan chan string
 }
 
 func NewMonitor(logger *pct.Logger, mysqlConnFactory mysql.ConnectionFactory) mrms.Monitor {
@@ -50,8 +51,9 @@ func NewMonitor(logger *pct.Logger, mysqlConnFactory mysql.ConnectionFactory) mr
 		// --
 		mysqlInstances: make(map[string]*MysqlInstance),
 		// --
-		status: pct.NewStatus([]string{MONITOR_NAME}),
-		sync:   pct.NewSyncChan(),
+		status:     pct.NewStatus([]string{MONITOR_NAME}),
+		sync:       pct.NewSyncChan(),
+		globalChan: make(chan string, 100),
 	}
 	return m
 }
@@ -102,22 +104,20 @@ func (m *Monitor) Add(dsn string) (c <-chan bool, err error) {
 	}
 
 	c = mysqlInstance.Subscribers.Add()
-
 	return c, nil
 }
 
-func (m *Monitor) GlobalSubscribe() (c <-chan bool, err error) {
+func (m *Monitor) GlobalSubscribe() (chan string, error) {
 	m.logger.Debug("GlobalSusbcribe:call")
 	defer m.logger.Debug("GlobalSubscribe:return")
 
 	m.Lock()
 	defer m.Unlock()
 
-	rwChan := make(chan string, 100)
 	for _, instance := range m.mysqlInstances {
-		instance.Subscribers.GlobalAdd(rwChan, instance.mysqlConn.DSN())
+		instance.Subscribers.GlobalAdd(m.globalChan, instance.mysqlConn.DSN())
 	}
-	return c, nil
+	return m.globalChan, nil
 }
 
 func (m *Monitor) Remove(dsn string, c <-chan bool) {
@@ -132,6 +132,7 @@ func (m *Monitor) Remove(dsn string, c <-chan bool) {
 		if mysqlInstance.Subscribers.Empty() {
 			delete(m.mysqlInstances, dsn)
 		}
+		mysqlInstance.Subscribers.GlobalRemove(dsn)
 	}
 }
 

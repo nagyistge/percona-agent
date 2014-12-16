@@ -18,6 +18,7 @@
 package monitor
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -56,6 +57,14 @@ func (s *Subscribers) GlobalAdd(rwChan chan string, dsn string) {
 	s.globalSubscribers[rwChan] = dsn
 }
 
+func (s *Subscribers) GlobalRemove(inDsn string) {
+	for ch, dsn := range s.globalSubscribers {
+		if dsn == inDsn {
+			delete(s.globalSubscribers, ch)
+		}
+	}
+}
+
 func (s *Subscribers) Remove(rChan <-chan bool) {
 	s.Lock()
 	defer s.Unlock()
@@ -90,6 +99,7 @@ func (s *Subscribers) notifyGlobalSubscribers() {
 	for globalChan, dsn := range s.globalSubscribers {
 		select {
 		case globalChan <- dsn:
+			fmt.Println(dsn)
 		case <-time.After(1 * time.Second):
 			s.logger.Warn("Unable to notify global subscriber")
 		}

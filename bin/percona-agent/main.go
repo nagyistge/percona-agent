@@ -22,6 +22,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	golog "log"
+	"os"
+	"os/signal"
+	"os/user"
+	"runtime"
+	"syscall"
+	"time"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/client"
@@ -44,13 +52,6 @@ import (
 	mysqlSysinfo "github.com/percona/percona-agent/sysinfo/mysql"
 	systemSysinfo "github.com/percona/percona-agent/sysinfo/system"
 	"github.com/percona/percona-agent/ticker"
-	golog "log"
-	"os"
-	"os/signal"
-	"os/user"
-	"runtime"
-	"syscall"
-	"time"
 )
 
 var (
@@ -229,6 +230,7 @@ func run() error {
 		pct.Basedir.Dir("config"),
 		api,
 		mrm,
+		agentConfig,
 	)
 	if err := itManager.Start(); err != nil {
 		return fmt.Errorf("Error starting instance manager: %s\n", err)
