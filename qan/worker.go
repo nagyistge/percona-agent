@@ -27,7 +27,6 @@ import (
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"os"
-	"strings"
 	"time"
 )
 
