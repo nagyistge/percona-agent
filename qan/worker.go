@@ -256,11 +256,7 @@ func (w *SlowLogWorker) fingerprinter() {
 		select {
 		case q := <-w.queryChan:
 			f := query.Fingerprint(q)
-			if strings.Trim(f, " ") != "" {
-				w.fingerprintChan <- f
-			} else {
-				w.errChan <- fmt.Errorf("Empty fingerprint for query: %s", q)
-			}
+			w.fingerprintChan <- f
 		case <-w.doneChan:
 			return
 		}
