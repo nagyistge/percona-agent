@@ -76,14 +76,11 @@ func (m *Manager) Start() error {
 	instances, err := m.getMySQLInstances()
 	for _, instance := range instances {
 		fmt.Printf("Instances: %+v\n", *instance)
-		ch, err := m.mrm.Add(instance.DSN)
 		if err != nil {
 			return err
 		}
-		m.fanIn(ch, m.mrmsChan, instance)
 	}
 	// Start our monitor. If an instance was restarted, call the API to update
-	go m.fanOut()
 	return err
 }
 
@@ -106,8 +103,6 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	switch cmd.Cmd {
 	case "Add":
 		err := m.repo.Add(it.Service, it.InstanceId, it.Instance, true) // true = write to disk
-		fmt.Printf("Add: %+v\n", it)
-
 		if it.Service == "mysql" {
 			iit := &proto.MySQLInstance{}
 			// Get the instance as type proto.MySQLInstance
@@ -115,11 +110,9 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 			if err != nil {
 				return cmd.Reply(nil, err)
 			}
-			instanceMrmsChan, err := m.mrm.Add(iit.DSN)
 			if err != nil {
 				return cmd.Reply(nil, err)
 			}
-			m.fanIn(instanceMrmsChan, m.mrmsChan, iit)
 		}
 		return cmd.Reply(nil, err)
 	case "Remove":
@@ -214,22 +207,4 @@ func (m *Manager) getMySQLInstances() ([]*proto.MySQLInstance, error) {
 		}
 	}
 	return instances, nil
-}
-
-func (m *Manager) fanIn(in <-chan bool, out chan *proto.MySQLInstance, ins *proto.MySQLInstance) {
-	go func(in <-chan bool, out chan *proto.MySQLInstance, ins *proto.MySQLInstance) {
-		for {
-			_ = <-in
-			out <- ins
-		}
-	}(in, out, ins)
-}
-
-func (m *Manager) fanOut() {
-	for {
-		it := <-m.mrmsChan
-		// Do something with it (CALL API and do a PUT to update)
-		fmt.Println(it)
-
-	}
 }

@@ -19,11 +19,12 @@ package monitor
 
 import (
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/percona/percona-agent/mrms"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
-	"sync"
-	"time"
 )
 
 const (
@@ -34,7 +35,8 @@ type Monitor struct {
 	logger           *pct.Logger
 	mysqlConnFactory mysql.ConnectionFactory
 	// --
-	mysqlInstances map[string]*MysqlInstance
+	mysqlInstances       map[string]*MysqlInstance
+	globalMysqlInstances map[string]*MysqlInstance
 	sync.RWMutex
 	// --
 	status *pct.Status
@@ -101,6 +103,20 @@ func (m *Monitor) Add(dsn string) (c <-chan bool, err error) {
 
 	c = mysqlInstance.Subscribers.Add()
 
+	return c, nil
+}
+
+func (m *Monitor) GlobalSubscribe() (c <-chan bool, err error) {
+	m.logger.Debug("GlobalSusbcribe:call")
+	defer m.logger.Debug("GlobalSubscribe:return")
+
+	m.Lock()
+	defer m.Unlock()
+
+	rwChan := make(chan string, 100)
+	for _, instance := range m.mysqlInstances {
+		instance.Subscribers.GlobalAdd(rwChan, instance.mysqlConn.DSN())
+	}
 	return c, nil
 }
 

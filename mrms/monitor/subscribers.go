@@ -18,22 +18,26 @@
 package monitor
 
 import (
-	"github.com/percona/percona-agent/pct"
 	"sync"
 	"time"
+
+	"github.com/percona/percona-agent/pct"
 )
 
 type Subscribers struct {
 	logger *pct.Logger
 	// --
-	subscribers map[<-chan bool]chan bool
+	subscribers       map[<-chan bool]chan bool
+	globalSubscribers map[chan string]string
+
 	sync.RWMutex
 }
 
 func NewSubscribers(logger *pct.Logger) *Subscribers {
 	return &Subscribers{
-		logger:      logger,
-		subscribers: make(map[<-chan bool]chan bool),
+		logger:            logger,
+		subscribers:       make(map[<-chan bool]chan bool),
+		globalSubscribers: make(map[chan string]string),
 	}
 }
 
@@ -46,6 +50,10 @@ func (s *Subscribers) Add() (rChan <-chan bool) {
 	s.subscribers[rChan] = rwChan
 
 	return rChan
+}
+
+func (s *Subscribers) GlobalAdd(rwChan chan string, dsn string) {
+	s.globalSubscribers[rwChan] = dsn
 }
 
 func (s *Subscribers) Remove(rChan <-chan bool) {
@@ -73,6 +81,17 @@ func (s *Subscribers) Notify() {
 		case rwChan <- true:
 		case <-time.After(1 * time.Second):
 			s.logger.Warn("Unable to notify subscriber")
+		}
+	}
+	s.notifyGlobalSubscribers()
+}
+
+func (s *Subscribers) notifyGlobalSubscribers() {
+	for globalChan, dsn := range s.globalSubscribers {
+		select {
+		case globalChan <- dsn:
+		case <-time.After(1 * time.Second):
+			s.logger.Warn("Unable to notify global subscriber")
 		}
 	}
 }
