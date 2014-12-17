@@ -74,6 +74,10 @@ install() {
     # Check if already installed and upgrade if needed
     # ###########################################################################
 
+    if [ "$#" -eq 1 ] && ( [ "$1" == "-h" ] || [ "$1" == "--help" ] ); then
+        "$INSTALLER_DIR/bin/$BIN-installer" -h
+        exit 0
+    fi
     newVersion=$("$INSTALLER_DIR/bin/$BIN" -version | cut -f2 -d" ")
     echo "Version provided by installer: $newVersion"
     if [ -x "$BASEDIR/bin/$BIN" ]; then
