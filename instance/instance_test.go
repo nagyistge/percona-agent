@@ -301,3 +301,41 @@ func (s *ManagerTestSuite) TestHandleGetInfoMySQL(t *C) {
 	t.Check(got.Distro, Equals, distro)     // new
 	t.Check(got.Version, Equals, version)   // new
 }
+
+func (s *ManagerTestSuite) TestHandleAdd(t *C) {
+	/*
+		if dsn == "" {
+			t.Fatal("PCT_TEST_MYSQL_DSN is not set")
+		}
+	*/
+	// Create an instance manager.
+	mrm := mock.NewMrmsMonitor()
+	agentConfig := &agent.Config{}
+
+	m := instance.NewManager(s.logger, s.configDir, s.api, mrm, agentConfig)
+	t.Assert(m, NotNil)
+
+	mysqlIt := &proto.MySQLInstance{
+		Id:  9,
+		DSN: dsn,
+	}
+	mysqlData, err := json.Marshal(mysqlIt)
+	t.Assert(err, IsNil)
+
+	serviceIt := &proto.ServiceInstance{
+		Service:    "mysql",
+		Instance:   mysqlData,
+		InstanceId: 2,
+	}
+	serviceData, err := json.Marshal(serviceIt)
+	t.Assert(err, IsNil)
+
+	cmd := &proto.Cmd{
+		Cmd:     "Add",
+		Service: "mysql",
+		Data:    serviceData,
+	}
+
+	reply := m.Handle(cmd)
+	t.Assert(reply.Error, Equals, "")
+}

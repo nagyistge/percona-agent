@@ -60,6 +60,7 @@ func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm 
 		status:         pct.NewStatus([]string{"instance", "instance-repo"}),
 		repo:           repo,
 		mrm:            mrm,
+		mrmChans:       make(map[string]<-chan bool),
 		mrmsGlobalChan: make(chan string, 100), // monitor up to 100 instances
 		agentConfig:    conf,
 	}
