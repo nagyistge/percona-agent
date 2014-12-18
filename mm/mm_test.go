@@ -589,7 +589,8 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 	 * but it doesn't actually start or stop.  Its main work is done
 	 * in Handle, starting and stopping monitors (tested later).
 	 */
-	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
+	mrm := mock.NewMrmsMonitor()
+	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool, s.im, mrm)
 	if m == nil {
 		t.Fatal("Make new mm.Manager")
 	}
@@ -649,7 +650,8 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
  */
 func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	// Create and start mm, no monitors yet.
-	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
+	mrm := mock.NewMrmsMonitor()
+	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool, s.im, mrm)
 	t.Assert(m, NotNil)
 	err := m.Start()
 	t.Assert(err, IsNil)
@@ -805,7 +807,8 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 }
 
 func (s *ManagerTestSuite) TestGetConfig(t *C) {
-	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
+	mrm := mock.NewMrmsMonitor()
+	m := mm.NewManager(s.logger, s.factory, s.clock, s.spool, s.im, mrm)
 	t.Assert(m, NotNil)
 	err := m.Start()
 	t.Assert(err, IsNil)

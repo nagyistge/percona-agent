@@ -18,13 +18,14 @@
 package monitor_test
 
 import (
+	"testing"
+	"time"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mrms/monitor"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
-	"testing"
-	"time"
 )
 
 func Test(t *testing.T) { TestingT(t) }
@@ -190,4 +191,20 @@ func (s *TestSuite) TestNotifications(t *C) {
 	default:
 	}
 	t.Assert(notified, Equals, false, Commentf("Subscriber was removed but MRMS still notified it about MySQL restart"))
+}
+
+func (s *TestSuite) TestSubscribers(t *C) {
+	subs := monitor.NewSubscribers(s.logger)
+	rwChan := make(chan string, 100)
+	dsn := "fake:dsn@tcp(127.0.0.1:3306)/?parseTime=true"
+	err := subs.GlobalAdd(rwChan, dsn)
+	t.Assert(err, Equals, nil)
+
+	err = subs.GlobalRemove(dsn)
+	t.Assert(err, Equals, nil)
+
+	// If we try to remove the same dsn twice, we will get an error
+	err = subs.GlobalRemove(dsn)
+	t.Assert(err, NotNil)
+
 }

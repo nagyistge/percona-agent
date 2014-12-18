@@ -45,7 +45,7 @@ type Manager struct {
 	repo           *Repo
 	stopChan       chan empty
 	mrm            mrms.Monitor
-	mrmChans       []<-chan bool
+	mrmChans       map[string]<-chan bool
 	mrmsGlobalChan chan string
 	agentConfig    *agent.Config
 }
@@ -91,10 +91,8 @@ func (m *Manager) Start() error {
 	for _, instance := range instances {
 		ch, err := m.mrm.Add(instance.DSN)
 		if err == nil {
-			// The truth is we don't need to store restart chans because we don't
-			// make any use of them but if we discard the value, subscriber.Notify
-			// will block for a second as it won't be able to send data to a chan
-			m.mrmChans = append(m.mrmChans, ch)
+			// Store the channel to be able to remove it from mrms
+			m.mrmChans[instance.DSN] = ch
 		}
 	}
 
@@ -134,18 +132,26 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 			}
 			ch, err := m.mrm.Add(iit.DSN)
 			if err != nil {
-				// See comment about mrmChans on Start method
-				m.mrmChans = append(m.mrmChans, ch)
+				m.mrmChans[iit.DSN] = ch
 			}
-
 		}
 		return cmd.Reply(nil, err)
 	case "Remove":
 		err := m.repo.Remove(it.Service, it.InstanceId)
-		// TODO REMOVE FROM THE mrms
-
+		if it.Service == "mysql" {
+			// Get the instance as type proto.MySQLInstance instead of proto.ServiceInstance
+			// because we need the dsn field
+			iit := &proto.MySQLInstance{}
+			err := m.repo.Get(it.Service, it.InstanceId, iit)
+			if err != nil {
+				return cmd.Reply(nil, err)
+			}
+			if err != nil {
+				return cmd.Reply(nil, err)
+			}
+			m.mrm.Remove(iit.DSN, m.mrmChans[iit.DSN])
+		}
 		return cmd.Reply(nil, err)
-
 	case "GetInfo":
 		info, err := m.handleGetInfo(it.Service, it.Instance)
 		return cmd.Reply(info, err)
@@ -258,13 +264,11 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 				uri := pct.URL(m.agentConfig.ApiHostname, "instances", "mysql", fmt.Sprintf("%d", instance.Id))
 				data, err := json.Marshal(instance)
 				if err != nil {
-					// TODO Log the error
+					m.status.Update("monitorInstancesRestart", err.Error())
 					continue
 				}
 				m.api.Put(m.api.ApiKey(), uri, data)
-				fmt.Println("Calling api", uri)
 			}
 		}
-		fmt.Println("loop")
 	}
 }

@@ -113,9 +113,16 @@ func (m *Monitor) GlobalSubscribe() (chan string, error) {
 
 	m.Lock()
 	defer m.Unlock()
+	var err error
 
 	for _, instance := range m.mysqlInstances {
-		instance.Subscribers.GlobalAdd(m.globalChan, instance.mysqlConn.DSN())
+		err = instance.Subscribers.GlobalAdd(m.globalChan, instance.mysqlConn.DSN())
+		if err != nil {
+			break
+		}
+	}
+	if err != nil {
+		return nil, err
 	}
 	return m.globalChan, nil
 }

@@ -53,16 +53,26 @@ func (s *Subscribers) Add() (rChan <-chan bool) {
 	return rChan
 }
 
-func (s *Subscribers) GlobalAdd(rwChan chan string, dsn string) {
+func (s *Subscribers) GlobalAdd(rwChan chan string, dsn string) error {
+	if rwChan == nil {
+		return fmt.Errorf("Invalid global channel")
+	}
+	if dsn == "" {
+		return fmt.Errorf("DSN cannot be blank")
+	}
 	s.globalSubscribers[rwChan] = dsn
+	return nil
 }
 
-func (s *Subscribers) GlobalRemove(inDsn string) {
+func (s *Subscribers) GlobalRemove(inDsn string) (err error) {
+	err = fmt.Errorf("Invalid DSN")
 	for ch, dsn := range s.globalSubscribers {
 		if dsn == inDsn {
 			delete(s.globalSubscribers, ch)
+			err = nil
 		}
 	}
+	return err
 }
 
 func (s *Subscribers) Remove(rChan <-chan bool) {
