@@ -35,8 +35,7 @@ type Monitor struct {
 	logger           *pct.Logger
 	mysqlConnFactory mysql.ConnectionFactory
 	// --
-	mysqlInstances       map[string]*MysqlInstance
-	globalMysqlInstances map[string]*MysqlInstance
+	mysqlInstances map[string]*MysqlInstance
 	sync.RWMutex
 	// --
 	status     *pct.Status

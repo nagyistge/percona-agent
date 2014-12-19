@@ -20,10 +20,11 @@ package mysql
 import (
 	"database/sql"
 	"fmt"
-	_ "github.com/go-sql-driver/mysql"
 	"strconv"
 	"strings"
 	"time"
+
+	_ "github.com/go-sql-driver/mysql"
 
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mm"
@@ -140,14 +141,16 @@ func (m *Monitor) Config() interface{} {
 // run:@goroutine[3]
 func (m *Monitor) connect(err error) {
 	m.logger.Debug("connect:call")
-	defer func() {
-		if err := recover(); err != nil {
-			m.logger.Error("MySQL connection crashed: ", err)
-		}
-		m.logger.Debug("connect:return")
-	}()
-
+	/*
+		defer func() {
+			if err := recover(); err != nil {
+				m.logger.Error("MySQL connection crashed: ", err)
+			}
+			m.logger.Debug("connect:return")
+		}()
+	*/
 	// Close/release previous connection, if any.
+	m.connected = false
 	m.conn.Close()
 
 	// Try forever to connect to MySQL...
@@ -160,6 +163,7 @@ func (m *Monitor) connect(err error) {
 		}
 		if err = m.conn.Connect(1); err != nil {
 			m.logger.Warn(err)
+			fmt.Printf("error conectando: %v\n", err)
 			continue
 		}
 
@@ -167,8 +171,8 @@ func (m *Monitor) connect(err error) {
 		// If connection is lost, it will call us again.
 		m.logger.Info("Connected")
 		m.status.Update(m.name+"-mysql", "Connected")
-		m.connectedChan <- true
 		m.setGlobalVars()
+		m.connectedChan <- true
 		return
 	}
 }
@@ -205,16 +209,17 @@ func (m *Monitor) setGlobalVars() {
 // @goroutine[2]
 func (m *Monitor) run() {
 	m.logger.Debug("run:call")
-	defer func() {
-		if err := recover(); err != nil {
-			m.logger.Error("MySQL monitor crashed: ", err)
-		}
-		m.conn.Close()
-		m.status.Update(m.name, "Stopped")
-		m.sync.Done()
-		m.logger.Debug("run:return")
-	}()
-
+	/*
+		defer func() {
+			if err := recover(); err != nil {
+				m.logger.Error("MySQL monitor crashed: ", err)
+			}
+			m.conn.Close()
+			m.status.Update(m.name, "Stopped")
+			m.sync.Done()
+			m.logger.Debug("run:return")
+		}()
+	*/
 	go m.connect(nil)
 
 	m.status.Update(m.name, "Ready")
@@ -237,8 +242,13 @@ func (m *Monitor) run() {
 				lastError = "Not connected to MySQL"
 				continue
 			}
-			m.status.Update(m.name, "Running")
 
+			m.status.Update(m.name, "Running")
+			if m.conn.DB() == nil {
+				fmt.Printf("Lost connection")
+				m.connected = false
+				go m.connect(fmt.Errorf("e1"))
+			}
 			c := &mm.Collection{
 				ServiceInstance: proto.ServiceInstance{
 					Service:    m.config.Service,
@@ -318,7 +328,8 @@ func (m *Monitor) run() {
 			m.logger.Debug("run:connected:true")
 			m.status.Update(m.name, "Ready")
 		case <-m.restartChan:
-			go m.connect(fmt.Errorf("Lost connection to MySQL, restarting"))
+			fmt.Println("restart chan")
+			//go m.connect(fmt.Errorf("Lost connection to MySQL, restarting"))
 		case <-m.sync.StopChan:
 			m.logger.Debug("run:stop")
 			return
@@ -335,6 +346,10 @@ func (m *Monitor) GetShowStatusMetrics(conn *sql.DB, c *mm.Collection) error {
 	m.logger.Debug("GetShowStatusMetrics:call")
 	defer m.logger.Debug("GetShowStatusMetrics:return")
 
+	if conn == nil {
+		fmt.Printf("conn es nil")
+		return fmt.Errorf("Es nil")
+	}
 	m.status.Update(m.name, "Getting global status metrics")
 
 	rows, err := conn.Query("SHOW /*!50002 GLOBAL */ STATUS")

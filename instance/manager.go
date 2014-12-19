@@ -59,7 +59,7 @@ func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm 
 		// --
 		status:         pct.NewStatus([]string{"instance", "instance-repo"}),
 		repo:           repo,
-		mrm:            mrm,
+		mrm:            nil,
 		mrmChans:       make(map[string]<-chan bool),
 		mrmsGlobalChan: make(chan string, 100), // monitor up to 100 instances
 		agentConfig:    conf,
@@ -80,24 +80,25 @@ func (m *Manager) Start() error {
 	m.logger.Info("Started")
 	m.status.Update("instance", "Running")
 
-	mrm := m.mrm.(*monitor.Monitor)
-	mrmsGlobalChan, err := mrm.GlobalSubscribe()
-	if err != nil {
-		return err
-	}
-	instances, err := m.getMySQLInstances()
-	if err != nil {
-		return err
-	}
-	for _, instance := range instances {
-		ch, err := m.mrm.Add(instance.DSN)
-		if err == nil {
-			// Store the channel to be able to remove it from mrms
-			m.mrmChans[instance.DSN] = ch
-		}
-	}
-
-	go m.monitorInstancesRestart(mrmsGlobalChan)
+	/*
+		mrm := m.mrm.(*monitor.Monitor)
+			mrmsGlobalChan, err := mrm.GlobalSubscribe()
+			if err != nil {
+				return err
+			}
+			instances, err := m.getMySQLInstances()
+			if err != nil {
+				return err
+			}
+			for _, instance := range instances {
+				ch, err := m.mrm.Add(instance.DSN)
+				if err == nil {
+					// Store the channel to be able to remove it from mrms
+					m.mrmChans[instance.DSN] = ch
+				}
+			}
+	*/
+	//go m.monitorInstancesRestart(mrmsGlobalChan)
 	return nil
 }
 
@@ -120,22 +121,24 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	switch cmd.Cmd {
 	case "Add":
 		err := m.repo.Add(it.Service, it.InstanceId, it.Instance, true) // true = write to disk
-		if it.Service == "mysql" {
-			// Get the instance as type proto.MySQLInstance instead of proto.ServiceInstance
-			// because we need the dsn field
-			iit := &proto.MySQLInstance{}
-			err := m.repo.Get(it.Service, it.InstanceId, iit)
-			if err != nil {
-				return cmd.Reply(nil, err)
+		/*
+			if it.Service == "mysql" {
+				// Get the instance as type proto.MySQLInstance instead of proto.ServiceInstance
+				// because we need the dsn field
+				iit := &proto.MySQLInstance{}
+				err := m.repo.Get(it.Service, it.InstanceId, iit)
+				if err != nil {
+					return cmd.Reply(nil, err)
+				}
+				if err != nil {
+					return cmd.Reply(nil, err)
+				}
+				ch, err := m.mrm.Add(iit.DSN)
+				if err != nil {
+					m.mrmChans[iit.DSN] = ch
+				}
 			}
-			if err != nil {
-				return cmd.Reply(nil, err)
-			}
-			ch, err := m.mrm.Add(iit.DSN)
-			if err != nil {
-				m.mrmChans[iit.DSN] = ch
-			}
-		}
+		*/
 		return cmd.Reply(nil, err)
 	case "Remove":
 		err := m.repo.Remove(it.Service, it.InstanceId)

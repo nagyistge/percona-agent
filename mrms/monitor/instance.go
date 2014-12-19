@@ -18,10 +18,12 @@
 package monitor
 
 import (
-	"github.com/percona/percona-agent/mysql"
-	"github.com/percona/percona-agent/pct"
+	"fmt"
 	"sync"
 	"time"
+
+	"github.com/percona/percona-agent/mysql"
+	"github.com/percona/percona-agent/pct"
 )
 
 type MysqlInstance struct {
@@ -85,6 +87,7 @@ func (m *MysqlInstance) CheckIfMysqlRestarted() bool {
 
 	// If current server uptime is lower than last registered uptime
 	// then we can assume that server was restarted
+	fmt.Printf("currentUptime: %+v, expected: %+v\n", currentUptime, expectedUptime)
 	if currentUptime < expectedUptime {
 		return true
 	}

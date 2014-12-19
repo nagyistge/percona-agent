@@ -60,6 +60,7 @@ func NewConnection(dsn string) *Connection {
 		backoff:       pct.NewBackoff(20 * time.Second),
 		connectionMux: new(sync.Mutex),
 	}
+	fmt.Printf("New conn dsn: %s\n", dsn)
 	return c
 }
 
@@ -199,6 +200,7 @@ func (c *Connection) GetGlobalVarNumber(varName string) float64 {
 
 func (c *Connection) Uptime() (uptime int64) {
 	if c.conn == nil {
+		fmt.Println("Conn is null in uptime")
 		return 0
 	}
 	// Result from SHOW STATUS includes two columns,

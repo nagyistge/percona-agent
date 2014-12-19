@@ -208,7 +208,6 @@ func run() error {
 	/**
 	 * MRMS (MySQL Restart Monitoring Service)
 	 */
-
 	mrm := mrmsMonitor.NewMonitor(
 		pct.NewLogger(logChan, "mrms-monitor"),
 		connFactory,
@@ -224,7 +223,6 @@ func run() error {
 	/**
 	 * Instance manager
 	 */
-
 	itManager := instance.NewManager(
 		pct.NewLogger(logChan, "instance-manager"),
 		pct.Basedir.Dir("config"),
