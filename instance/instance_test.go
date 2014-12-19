@@ -303,11 +303,6 @@ func (s *ManagerTestSuite) TestHandleGetInfoMySQL(t *C) {
 }
 
 func (s *ManagerTestSuite) TestHandleAdd(t *C) {
-	/*
-		if dsn == "" {
-			t.Fatal("PCT_TEST_MYSQL_DSN is not set")
-		}
-	*/
 	// Create an instance manager.
 	mrm := mock.NewMrmsMonitor()
 	agentConfig := &agent.Config{}
