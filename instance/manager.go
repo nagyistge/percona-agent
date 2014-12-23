@@ -59,7 +59,7 @@ func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm 
 		// --
 		status:         pct.NewStatus([]string{"instance", "instance-repo"}),
 		repo:           repo,
-		mrm:            nil,
+		mrm:            mrm,
 		mrmChans:       make(map[string]<-chan bool),
 		mrmsGlobalChan: make(chan string, 100), // monitor up to 100 instances
 		agentConfig:    conf,
@@ -80,25 +80,23 @@ func (m *Manager) Start() error {
 	m.logger.Info("Started")
 	m.status.Update("instance", "Running")
 
-	/*
-		mrm := m.mrm.(*monitor.Monitor)
-			mrmsGlobalChan, err := mrm.GlobalSubscribe()
-			if err != nil {
-				return err
-			}
-			instances, err := m.getMySQLInstances()
-			if err != nil {
-				return err
-			}
-			for _, instance := range instances {
-				ch, err := m.mrm.Add(instance.DSN)
-				if err == nil {
-					// Store the channel to be able to remove it from mrms
-					m.mrmChans[instance.DSN] = ch
-				}
-			}
-	*/
-	//go m.monitorInstancesRestart(mrmsGlobalChan)
+	mrm := m.mrm.(*monitor.Monitor)
+	mrmsGlobalChan, err := mrm.GlobalSubscribe()
+	if err != nil {
+		return err
+	}
+	instances, err := m.getMySQLInstances()
+	if err != nil {
+		return err
+	}
+	for _, instance := range instances {
+		ch, err := m.mrm.Add(instance.DSN)
+		if err == nil {
+			// Store the channel to be able to remove it from mrms
+			m.mrmChans[instance.DSN] = ch
+		}
+	}
+	go m.monitorInstancesRestart(mrmsGlobalChan)
 	return nil
 }
 
