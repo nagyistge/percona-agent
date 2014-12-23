@@ -43,7 +43,7 @@ type Connector interface {
 	Explain(q string, db string) (explain *proto.ExplainResult, err error)
 	Set([]Query) error
 	GetGlobalVarString(varName string) string
-	Uptime() (uptime int64)
+	Uptime() (uptime int64, err error)
 }
 
 type Connection struct {
@@ -60,7 +60,6 @@ func NewConnection(dsn string) *Connection {
 		backoff:       pct.NewBackoff(20 * time.Second),
 		connectionMux: new(sync.Mutex),
 	}
-	fmt.Printf("New conn dsn: %s\n", dsn)
 	return c
 }
 
@@ -198,16 +197,16 @@ func (c *Connection) GetGlobalVarNumber(varName string) float64 {
 	return varValue
 }
 
-func (c *Connection) Uptime() (uptime int64) {
+func (c *Connection) Uptime() (uptime int64, err error) {
 	if c.conn == nil {
 		fmt.Println("Conn is null in uptime")
-		return 0
+		return 0, fmt.Errorf("Not connected to the db: %s", c.DSN())
 	}
 	// Result from SHOW STATUS includes two columns,
 	// Variable_name and Value, we ignore the first one as we need only Value
 	var varName string
 	c.conn.QueryRow("SHOW STATUS LIKE 'Uptime'").Scan(&varName, &uptime)
-	return uptime
+	return uptime, nil
 }
 
 func (c *Connection) classicExplain(tx *sql.Tx, query string) (classicExplain []*proto.ExplainRow, err error) {

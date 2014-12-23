@@ -18,7 +18,6 @@
 package monitor
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
@@ -41,10 +40,14 @@ func NewMysqlInstance(logger *pct.Logger, mysqlConn mysql.Connector, subscribers
 		logger.Warn("Unable to connect to MySQL:", err)
 		return nil, err
 	}
-	defer mysqlConn.Close()
+	//defer mysqlConn.Close()
 
 	// Get current MySQL uptime - this is later used to detect if MySQL was restarted
-	lastUptime := mysqlConn.Uptime()
+	lastUptime, err := mysqlConn.Uptime()
+	if err != nil { // This shouldn't happen because we just opened the connection
+		logger.Warn("Unespected connections close: ", err)
+		return nil, err
+	}
 	lastUptimeCheck := time.Now()
 
 	mi = &MysqlInstance{
@@ -64,7 +67,13 @@ func (m *MysqlInstance) CheckIfMysqlRestarted() bool {
 
 	lastUptime := m.lastUptime
 	lastUptimeCheck := m.lastUptimeCheck
-	currentUptime := m.mysqlConn.Uptime()
+	currentUptime, err := m.mysqlConn.Uptime()
+	if err != nil { // Connection closed/lost
+		m.logger.Warn("Cannot check Uptime. Lost connection to %s: ", m.mysqlConn.DSN(), err)
+		// Return false because we don't know for sure if the connection has been
+		// closed or MySQL is really down and this method checks only restarts.
+		return false
+	}
 
 	// Calculate expected uptime
 	//   This protects against situation where after restarting MySQL
@@ -87,7 +96,6 @@ func (m *MysqlInstance) CheckIfMysqlRestarted() bool {
 
 	// If current server uptime is lower than last registered uptime
 	// then we can assume that server was restarted
-	fmt.Printf("currentUptime: %+v, expected: %+v\n", currentUptime, expectedUptime)
 	if currentUptime < expectedUptime {
 		return true
 	}

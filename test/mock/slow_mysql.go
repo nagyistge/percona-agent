@@ -71,7 +71,7 @@ func (s *SlowMySQL) GetGlobalVarNumber(varName string) float64 {
 	return s.realConnection.GetGlobalVarNumber(varName)
 }
 
-func (s *SlowMySQL) Uptime() int64 {
+func (s *SlowMySQL) Uptime() (int64, error) {
 	return s.realConnection.Uptime()
 }
 
