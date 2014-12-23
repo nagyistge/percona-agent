@@ -141,14 +141,12 @@ func (m *Monitor) Config() interface{} {
 // run:@goroutine[3]
 func (m *Monitor) connect(err error) {
 	m.logger.Debug("connect:call")
-	/*
-		defer func() {
-			if err := recover(); err != nil {
-				m.logger.Error("MySQL connection crashed: ", err)
-			}
-			m.logger.Debug("connect:return")
-		}()
-	*/
+	defer func() {
+		if err := recover(); err != nil {
+			m.logger.Error("MySQL connection crashed: ", err)
+		}
+		m.logger.Debug("connect:return")
+	}()
 	// Close/release previous connection, if any.
 	m.connected = false
 	m.conn.Close()
@@ -209,17 +207,15 @@ func (m *Monitor) setGlobalVars() {
 // @goroutine[2]
 func (m *Monitor) run() {
 	m.logger.Debug("run:call")
-	/*
-		defer func() {
-			if err := recover(); err != nil {
-				m.logger.Error("MySQL monitor crashed: ", err)
-			}
-			m.conn.Close()
-			m.status.Update(m.name, "Stopped")
-			m.sync.Done()
-			m.logger.Debug("run:return")
-		}()
-	*/
+	defer func() {
+		if err := recover(); err != nil {
+			m.logger.Error("MySQL monitor crashed: ", err)
+		}
+		m.conn.Close()
+		m.status.Update(m.name, "Stopped")
+		m.sync.Done()
+		m.logger.Debug("run:return")
+	}()
 	go m.connect(nil)
 
 	m.status.Update(m.name, "Ready")
@@ -328,8 +324,7 @@ func (m *Monitor) run() {
 			m.logger.Debug("run:connected:true")
 			m.status.Update(m.name, "Ready")
 		case <-m.restartChan:
-			fmt.Println("restart chan")
-			//go m.connect(fmt.Errorf("Lost connection to MySQL, restarting"))
+			go m.connect(fmt.Errorf("Lost connection to MySQL, restarting"))
 		case <-m.sync.StopChan:
 			m.logger.Debug("run:stop")
 			return
