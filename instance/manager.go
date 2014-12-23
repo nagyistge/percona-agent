@@ -119,24 +119,22 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	switch cmd.Cmd {
 	case "Add":
 		err := m.repo.Add(it.Service, it.InstanceId, it.Instance, true) // true = write to disk
-		/*
-			if it.Service == "mysql" {
-				// Get the instance as type proto.MySQLInstance instead of proto.ServiceInstance
-				// because we need the dsn field
-				iit := &proto.MySQLInstance{}
-				err := m.repo.Get(it.Service, it.InstanceId, iit)
-				if err != nil {
-					return cmd.Reply(nil, err)
-				}
-				if err != nil {
-					return cmd.Reply(nil, err)
-				}
-				ch, err := m.mrm.Add(iit.DSN)
-				if err != nil {
-					m.mrmChans[iit.DSN] = ch
-				}
+		if it.Service == "mysql" {
+			// Get the instance as type proto.MySQLInstance instead of proto.ServiceInstance
+			// because we need the dsn field
+			iit := &proto.MySQLInstance{}
+			err := m.repo.Get(it.Service, it.InstanceId, iit)
+			if err != nil {
+				return cmd.Reply(nil, err)
 			}
-		*/
+			if err != nil {
+				return cmd.Reply(nil, err)
+			}
+			ch, err := m.mrm.Add(iit.DSN)
+			if err != nil {
+				m.mrmChans[iit.DSN] = ch
+			}
+		}
 		return cmd.Reply(nil, err)
 	case "Remove":
 		err := m.repo.Remove(it.Service, it.InstanceId)
