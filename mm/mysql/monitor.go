@@ -162,13 +162,14 @@ func (m *Monitor) connect(err error) {
 			m.logger.Warn(err)
 			continue
 		}
+		m.logger.Info("Connected")
+		m.status.Update(m.name+"-mysql", "Connected")
+
+		m.setGlobalVars()
 
 		// Tell run() goroutine that it can try to collect metrics.
 		// If connection is lost, it will call us again.
-		m.logger.Info("Connected")
-		m.status.Update(m.name+"-mysql", "Connected")
 		m.connectedChan <- true
-		m.setGlobalVars()
 		return
 	}
 }
