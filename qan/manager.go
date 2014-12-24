@@ -391,6 +391,9 @@ func (m *Manager) run(config Config) {
 }
 
 func (m *Manager) makeMySQLConn(service string, instanceId uint) error {
+	m.logger.Debug("makeMySQLConn:call")
+	defer m.logger.Debug("makeMySQLConn:return")
+
 	// Get MySQL instance info from service instance database (SID).
 	mysqlIt := &proto.MySQLInstance{}
 	if err := m.im.Get(service, instanceId, mysqlIt); err != nil {
@@ -406,6 +409,9 @@ func (m *Manager) makeMySQLConn(service string, instanceId uint) error {
 }
 
 func (m *Manager) configureMySQL(config Config) error {
+	m.logger.Debug("configureMySQL:call")
+	defer m.logger.Debug("configureMySQL:return")
+
 	if err := m.mysqlConn.Connect(2); err != nil {
 		return err
 	}
