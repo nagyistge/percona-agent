@@ -39,6 +39,7 @@ type DSN struct {
 const (
 	dsnSuffix         = "/?parseTime=true"
 	allowOldPasswords = "&allowOldPasswords=true"
+	HiddenPassword    = "<password-hidden>"
 )
 
 var ErrNoSocket error = errors.New("Cannot find MySQL socket (localhost implies socket).  Specify socket or use 127.0.0.1 instead of localhost.")
@@ -119,7 +120,7 @@ func (dsn DSN) String() string {
 	if dsn.Username == "" {
 		dsn.Username = "<anonymous-user>"
 	}
-	dsn.Password = "<password-hidden>"
+	dsn.Password = HiddenPassword
 	dsnString, _ := dsn.DSN()
 	dsnString = strings.TrimSuffix(dsnString, allowOldPasswords)
 	dsnString = strings.TrimSuffix(dsnString, dsnSuffix)
@@ -130,7 +131,7 @@ func (dsn DSN) StringWithSuffixes() string {
 	if dsn.Username == "" {
 		dsn.Username = "<anonymous-user>"
 	}
-	dsn.Password = "<password-hidden>"
+	dsn.Password = HiddenPassword
 	dsnString, _ := dsn.DSN()
 	return dsnString
 }
@@ -147,4 +148,10 @@ func ParseSocketFromNetstat(out string) string {
 		}
 	}
 	return ""
+}
+
+func HideDSNPassword(dsn string) string {
+	dsnParts := strings.Split(dsn, "@")
+	userPasswordParts := strings.Split(dsnParts[0], ":")
+	return userPasswordParts[0] + ":" + HiddenPassword + "@" + dsnParts[1]
 }

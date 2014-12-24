@@ -108,7 +108,7 @@ func (c *Connection) Connect(tries uint) error {
 		return nil
 	}
 
-	return fmt.Errorf("Failed to connect to MySQL host %s: (%s)", c.dsn, err)
+	return fmt.Errorf("Failed to connect to MySQL %s: %s", HideDSNPassword(c.dsn), FormatError(err))
 }
 
 func (c *Connection) Close() {
