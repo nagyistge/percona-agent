@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"github.com/percona/percona-agent/mysql"
 	. "gopkg.in/check.v1"
+	"net"
 	"os"
 	"strings"
 	"testing"
@@ -75,4 +76,37 @@ func (s *MysqlTestSuite) TestDSNString(t *C) {
 	got := fmt.Sprintf("%s", dsn)
 	t.Log(got) // only printed if teset fails:
 	t.Check(strings.HasPrefix(got, "root:<password-hidden>@unix"), Equals, true)
+}
+
+func (s *MysqlTestSuite) TestMissingSocketError(t *C) {
+	// https://jira.percona.com/browse/PCT-791
+	conn := mysql.NewConnection("percona:percona@unix(/foo/bar/my.sock)/")
+	err := conn.Connect(1)
+	t.Assert(
+		fmt.Sprintf("%s", err),
+		Equals,
+		"Failed to connect to MySQL percona:<password-hidden>@unix(/foo/bar/my.sock)/: no such file or directory: /foo/bar/my.sock",
+	)
+}
+
+func (s *MysqlTestSuite) TestErrorFormatting(t *C) {
+	// https://jira.percona.com/browse/PCT-791
+	e1 := &net.OpError{
+		Op:  "dial",
+		Net: "unix",
+		Addr: &net.UnixAddr{
+			Net:  "unix",
+			Name: "/var/lib/mysql.sock",
+		},
+		Err: fmt.Errorf("no such file or directory"),
+	}
+	t.Check(mysql.FormatError(e1), Equals, "no such file or directory: /var/lib/mysql.sock")
+
+	e1 = &net.OpError{
+		Op:   "dial",
+		Net:  "tcp",
+		Addr: &net.TCPAddr{IP: net.IP{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0xff, 0xff, 0x7f, 0x0, 0x0, 0x1}, Port: 3306, Zone: ""},
+		Err:  fmt.Errorf("connection refused"),
+	}
+	t.Check(mysql.FormatError(e1), Equals, "connection refused: 127.0.0.1:3306")
 }
