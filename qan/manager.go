@@ -377,6 +377,7 @@ func (m *Manager) run(config Config) {
 				}
 			}
 		case <-m.restartChan:
+			m.logger.Debug("run:mysql:restart")
 			if err := m.configureMySQL(config); err != nil {
 				m.logger.Warn("Failed to configure MySQL after restart: ", err)
 				continue
