@@ -14,6 +14,7 @@ v1.0.10
   * PCT-1040: Fix typo in install script
   * PCT-1045: Timeout closing websocket
   * PCT-1085: Some "USE db" lines in slow logs are not parsed correctly
+  * PCT-1230: MySQL restart monitor sends false-positive signal
   * Add -status option to get agent status via API
   * Add time and Mbps to data-sender status
   * Add data-spooler-count, data-spooler-size, and data-spooler-oldest statuses
