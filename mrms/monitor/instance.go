@@ -91,3 +91,7 @@ func (m *MysqlInstance) CheckIfMysqlRestarted() bool {
 
 	return false
 }
+
+func (m *MysqlInstance) DSN() string {
+	return m.mysqlConn.DSN()
+}
