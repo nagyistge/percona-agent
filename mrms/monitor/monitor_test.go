@@ -20,14 +20,18 @@ package monitor_test
 import (
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mrms/monitor"
+	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
+	"os"
 	"testing"
 	"time"
 )
 
 func Test(t *testing.T) { TestingT(t) }
+
+var dsn = os.Getenv("PCT_TEST_MYSQL_DSN")
 
 /////////////////////////////////////////////////////////////////////////////
 // Test Suite
@@ -233,4 +237,23 @@ func (s *TestSuite) Test2Subscribers(t *C) {
 	default:
 	}
 	t.Check(notified, Equals, false)
+}
+
+func (s *TestSuite) TestRealMySQL(t *C) {
+	if dsn == "" {
+		t.Skip("PCT_TEST_MYSQL_DSN is not set")
+	}
+	m := monitor.NewMonitor(s.logger, &mysql.RealConnectionFactory{})
+	c, err := m.Add(dsn)
+	t.Assert(err, IsNil)
+	for i := 0; i < 2; i++ {
+		time.Sleep(1 * time.Second)
+		m.Check()
+		select {
+		case <-c:
+			t.Logf("False-positive restart reported on check number %d", i)
+			t.FailNow()
+		default:
+		}
+	}
 }
