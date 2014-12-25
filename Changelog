@@ -18,6 +18,7 @@ v1.0.10
   * Add -status option to get agent status via API
   * Add time and Mbps to data-sender status
   * Add data-spooler-count, data-spooler-size, and data-spooler-oldest statuses
+  * Change default API address to cloud-api.percona.com
   * Improve data sender timeout handling
   * SIGUSR1 causes agent to dump status to stdout (percona-agent.log)
   * SIGHUP causes agent to reconnect its command websocket
