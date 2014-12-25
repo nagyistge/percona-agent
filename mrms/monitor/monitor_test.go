@@ -191,3 +191,46 @@ func (s *TestSuite) TestNotifications(t *C) {
 	}
 	t.Assert(notified, Equals, false, Commentf("Subscriber was removed but MRMS still notified it about MySQL restart"))
 }
+
+func (s *TestSuite) Test2Subscribers(t *C) {
+	mockConn := mock.NewNullMySQL()
+	mockConnFactory := &mock.ConnectionFactory{
+		Conn: mockConn,
+	}
+	m := monitor.NewMonitor(s.logger, mockConnFactory)
+	dsn := "fake:dsn@tcp(127.0.0.1:3306)/?parseTime=true"
+
+	c1, err := m.Add(dsn)
+	t.Assert(err, IsNil)
+
+	c2, err := m.Add(dsn)
+	t.Assert(err, IsNil)
+
+	var notified bool
+
+	mockConn.SetUptime(1)
+	m.Check()
+	select {
+	case notified = <-c1:
+	default:
+	}
+	t.Check(notified, Equals, false)
+	select {
+	case notified = <-c2:
+	default:
+	}
+	t.Check(notified, Equals, false)
+
+	mockConn.SetUptime(2)
+	m.Check()
+	select {
+	case notified = <-c1:
+	default:
+	}
+	t.Check(notified, Equals, false)
+	select {
+	case notified = <-c2:
+	default:
+	}
+	t.Check(notified, Equals, false)
+}
