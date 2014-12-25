@@ -18,6 +18,7 @@
 package monitor
 
 import (
+	"fmt"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"sync"
@@ -63,6 +64,8 @@ func (m *MysqlInstance) CheckIfMysqlRestarted() bool {
 	lastUptime := m.lastUptime
 	lastUptimeCheck := m.lastUptimeCheck
 	currentUptime := m.mysqlConn.Uptime()
+	m.logger.Debug(fmt.Sprintf("lastUptime=%d lastUptimeCheck=%s currentUptime=%d",
+		lastUptime, lastUptimeCheck.UTC(), currentUptime))
 
 	// Calculate expected uptime
 	//   This protects against situation where after restarting MySQL
@@ -78,6 +81,7 @@ func (m *MysqlInstance) CheckIfMysqlRestarted() bool {
 	// * 120s < 180s (currentUptime < expectedUptime) => server was restarted
 	elapsedTime := time.Now().Unix() - lastUptimeCheck.Unix()
 	expectedUptime := lastUptime + elapsedTime
+	m.logger.Debug(fmt.Sprintf("elapsedTime=%d expectedUptime=%d", elapsedTime, expectedUptime))
 
 	// Save uptime from last check
 	m.lastUptime = currentUptime
