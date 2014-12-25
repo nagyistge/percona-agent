@@ -246,6 +246,7 @@ func (s *TestSuite) TestRealMySQL(t *C) {
 	m := monitor.NewMonitor(s.logger, &mysql.RealConnectionFactory{})
 	c, err := m.Add(dsn)
 	t.Assert(err, IsNil)
+	defer m.Remove(dsn, c)
 	for i := 0; i < 2; i++ {
 		time.Sleep(1 * time.Second)
 		m.Check()

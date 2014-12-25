@@ -61,6 +61,12 @@ func (m *MysqlInstance) CheckIfMysqlRestarted() bool {
 	m.Lock()
 	defer m.Unlock()
 
+	if err := m.mysqlConn.Connect(1); err != nil {
+		m.logger.Warn("Unable to connect to MySQL:", err)
+		return false
+	}
+	defer m.mysqlConn.Close()
+
 	lastUptime := m.lastUptime
 	lastUptimeCheck := m.lastUptimeCheck
 	currentUptime := m.mysqlConn.Uptime()
