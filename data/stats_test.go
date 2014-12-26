@@ -18,6 +18,7 @@
 package data_test
 
 import (
+	"fmt"
 	. "github.com/percona/go-test/test"
 	"github.com/percona/percona-agent/data"
 	. "gopkg.in/check.v1"
@@ -120,6 +121,13 @@ func (s *StatsTestSuite) TestRoundRobinFull(t *C) {
 		Dump(got)
 		t.Error(diff)
 	}
+
+	t.Check(
+		data.FormatSentReport(got),
+		Equals,
+		fmt.Sprintf(data.BaseReportFormat,
+			expect.LastSent, expect.Files, expect.Bytes, expect.Time, expect.Mbps),
+	)
 }
 
 func (s *StatsTestSuite) TestRoundRobinPartial(t *C) {
@@ -203,4 +211,56 @@ func (s *StatsTestSuite) TestOnlyLast(t *C) {
 		Dump(got)
 		t.Error(diff)
 	}
+}
+
+func (s *StatsTestSuite) TestErrors(t *C) {
+	ss := data.NewSenderStats(time.Duration(10 * time.Second))
+	t.Assert(ss, NotNil)
+
+	d := ss.Dump()
+	t.Check(d, HasLen, 1)
+
+	// Copy data so we can add errors.
+	send := make([]data.SentInfo, len(s.send))
+	for i, info := range s.send {
+		send[i] = info
+	}
+	send[0].Errs++
+	send[1].ApiErrs++
+	send[2].BadFiles++
+	send[3].Timeouts++
+	for _, info := range send {
+		ss.Sent(info)
+	}
+
+	d = ss.Dump()
+	if len(d) != len(send)+1 {
+		Dump(d)
+		t.Errorf("len(d)=%d, expected %d", len(d), len(send)+1)
+	}
+
+	got := ss.Report()
+	expect := data.SentReport{
+		LastSent: s.send[len(s.send)-1].At,
+		Time:     "4.8s",
+		Bytes:    "5.87 MB",
+		Mbps:     "9.79",
+		Files:    9,
+		Errs:     1,
+		ApiErrs:  1,
+		Timeouts: 1,
+		BadFiles: 1,
+	}
+	if same, diff := IsDeeply(got, expect); !same {
+		Dump(got)
+		t.Error(diff)
+	}
+
+	t.Check(
+		data.FormatSentReport(got),
+		Equals,
+		fmt.Sprintf(data.BaseReportFormat+", "+data.ErrorReportFormat,
+			expect.LastSent, expect.Files, expect.Bytes, expect.Time, expect.Mbps,
+			expect.Errs, expect.ApiErrs, expect.Timeouts, expect.BadFiles),
+	)
 }

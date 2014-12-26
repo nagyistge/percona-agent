@@ -18,6 +18,7 @@
 package data
 
 import (
+	"fmt"
 	"github.com/percona/percona-agent/pct"
 	"time"
 )
@@ -47,6 +48,11 @@ type SentReport struct {
 	Timeouts uint
 	BadFiles uint
 }
+
+var (
+	BaseReportFormat  string = "at %s, %d files, %s, %s, %s Mbps"
+	ErrorReportFormat        = "%d errors, %d API errors, %d timeouts, %d bad files"
+)
 
 type SenderStats struct {
 	d time.Duration
@@ -117,6 +123,14 @@ func (s *SenderStats) Report() SentReport {
 	r.Mbps = pct.Mbps(r.bytes, r.seconds)
 	r.Time = time.Duration(r.seconds * float64(time.Second)).String()
 	return r
+}
+
+func FormatSentReport(r SentReport) string {
+	report := fmt.Sprintf(BaseReportFormat, r.LastSent, r.Files, r.Bytes, r.Time, r.Mbps)
+	if (r.Errs + r.BadFiles + r.ApiErrs + r.Timeouts) > 0 {
+		report += ", " + fmt.Sprintf(ErrorReportFormat, r.Errs, r.ApiErrs, r.Timeouts, r.BadFiles)
+	}
+	return report
 }
 
 func (s *SenderStats) Dump() []SentInfo {
