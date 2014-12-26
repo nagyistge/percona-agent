@@ -83,3 +83,28 @@ func Mbps(bytes int, seconds float64) string {
 	bits := bytes * 8
 	return fmt.Sprintf("%.2f", (float64(bits)/1000000)/seconds)
 }
+
+// http://en.wikipedia.org/wiki/Metric_prefix
+var siPrefix []string = []string{"", "k", "M", "G", "T"}
+
+func Bytes(bytes int) string {
+	if bytes == 0 {
+		return "0"
+	}
+	prefix := ""
+	switch {
+	case bytes >= 1000000000000:
+		prefix = "T"
+	case bytes >= 1000000000:
+		prefix = "G"
+	case bytes >= 1000000:
+		prefix = "M"
+	case bytes >= 1000:
+		prefix = "k"
+	}
+	f := float64(bytes)
+	for f > 1000 {
+		f /= 1000
+	}
+	return fmt.Sprintf("%.2f %sB", f, prefix)
+}

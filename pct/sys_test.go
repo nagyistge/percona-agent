@@ -102,3 +102,12 @@ func (s *SysTestSuite) TestMbps(t *C) {
 	t.Check(pct.Mbps(222566303, 300.0), Equals, "5.94")  // 5m
 	t.Check(pct.Mbps(222566303, 3600.0), Equals, "0.49") // 1h
 }
+
+func (s *SysTestSuite) TestBytes(t *C) {
+	t.Check(pct.Bytes(0), Equals, "0")
+	t.Check(pct.Bytes(1024), Equals, "1.02 kB")
+	t.Check(pct.Bytes(12749201), Equals, "12.75 MB")
+	t.Check(pct.Bytes(222566303), Equals, "222.57 MB")
+	t.Check(pct.Bytes(1987654321), Equals, "1.99 GB")
+	t.Check(pct.Bytes(5001987654321), Equals, "5.00 TB")
+}
