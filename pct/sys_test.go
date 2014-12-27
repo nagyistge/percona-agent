@@ -111,3 +111,23 @@ func (s *SysTestSuite) TestBytes(t *C) {
 	t.Check(pct.Bytes(1987654321), Equals, "1.99 GB")
 	t.Check(pct.Bytes(5001987654321), Equals, "5.00 TB")
 }
+
+func (s *SysTestSuite) TestDuration(t *C) {
+	t.Check(pct.Duration(0), Equals, "0")
+	t.Check(pct.Duration(0.000001), Equals, "1µ")
+	t.Check(pct.Duration(0.000010), Equals, "10µ")
+	t.Check(pct.Duration(0.000100), Equals, "100µ")
+	t.Check(pct.Duration(0.001), Equals, "1ms")
+	t.Check(pct.Duration(0.010), Equals, "10ms")
+	t.Check(pct.Duration(0.100), Equals, "100ms")
+	t.Check(pct.Duration(0.100200300400), Equals, "100ms")
+	t.Check(pct.Duration(0.999999), Equals, "999ms")
+	t.Check(pct.Duration(1), Equals, "1s")
+	t.Check(pct.Duration(1.357901), Equals, "1.358s")
+	t.Check(pct.Duration(1.300000), Equals, "1.3s")
+	t.Check(pct.Duration(55), Equals, "55s")
+	t.Check(pct.Duration(72), Equals, "1m12s")
+	t.Check(pct.Duration(100.500600), Equals, "1m40.501s")
+	t.Check(pct.Duration(4000), Equals, "1h6m40s")
+	t.Check(pct.Duration(100000), Equals, "1d3h46m40s")
+}

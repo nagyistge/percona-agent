@@ -20,6 +20,8 @@ package pct
 import (
 	"fmt"
 	"os"
+	"strings"
+	"time"
 )
 
 func FileSize(fileName string) (int64, error) {
@@ -107,4 +109,65 @@ func Bytes(bytes int) string {
 		f /= 1000
 	}
 	return fmt.Sprintf("%.2f %sB", f, prefix)
+}
+
+func Duration(s float64) string {
+	if s == 0 {
+		return "0"
+	}
+	if s < 0.001 {
+		s *= 1000000
+		return fmt.Sprintf("%dµ", int(s))
+	}
+	if s < 1 {
+		s *= 1000
+		return fmt.Sprintf("%dms", int(s))
+	}
+	d := ""
+	// days
+	n := 0
+	for s >= 86400 {
+		n++
+		s -= 86400
+	}
+	if n > 0 {
+		d = fmt.Sprintf("%dd", n)
+	}
+	// hours
+	n = 0
+	for s >= 3600 {
+		n++
+		s -= 3600
+	}
+	if n > 0 || d != "" {
+		d += fmt.Sprintf("%dh", n)
+	}
+	// minutes
+	n = 0
+	for s >= 60 {
+		n++
+		s -= 60
+	}
+	if n > 0 || d != "" {
+		d += fmt.Sprintf("%dm", n)
+	}
+	// seconds
+	n = 0
+	x := s
+	for x >= 1 {
+		n++
+		x -= 1
+	}
+	if x > 0 {
+		d += fmt.Sprintf("%.3f", s)
+		d = strings.TrimRight(d, "0")
+	} else {
+		d += fmt.Sprintf("%d", n)
+	}
+	d += "s"
+	return d
+}
+
+func TimeString(t time.Time) string {
+	return t.Format("2006-01-02 15:04:05 MST")
 }
