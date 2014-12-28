@@ -117,20 +117,22 @@ func (s *Sender) send() {
 
 	sent := SentInfo{}
 	defer func() {
+		sent.At = time.Now()
+
 		s.status.Update("data-sender", "Disconnecting")
 		s.client.DisconnectOnce()
 
 		// Stats for this run.
 		s.lastStats.Sent(sent)
 		r := s.lastStats.Report()
-		report := fmt.Sprintf("at:%s %s", pct.TimeString(r.End), FormatSentReport(r))
+		report := fmt.Sprintf("at %s: %s", pct.TimeString(r.Begin), FormatSentReport(r))
 		s.status.Update("data-sender-last", report)
 		s.logger.Info(report)
 
 		// Stats for the last day.
 		s.dailyStats.Sent(sent)
 		r = s.dailyStats.Report()
-		report = fmt.Sprintf("since:%s %s", pct.TimeString(r.Begin), FormatSentReport(r))
+		report = fmt.Sprintf("since %s: %s", pct.TimeString(r.Begin), FormatSentReport(r))
 		s.status.Update("data-sender-1d", report)
 
 		s.status.Update("data-sender", "Idle")
@@ -138,7 +140,6 @@ func (s *Sender) send() {
 
 	// Connect and send files until too many errors occur.
 	startTime := time.Now()
-	sent.At = startTime
 	for sent.ApiErrs == 0 && sent.Errs < MAX_SEND_ERRORS && sent.Timeouts == 0 {
 
 		// Check runtime, don't send forever.

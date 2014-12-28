@@ -170,5 +170,5 @@ func Duration(s float64) string {
 }
 
 func TimeString(t time.Time) string {
-	return t.UTC().Format("2006-01-02T15:04:05Z")
+	return t.UTC().Format("2006-01-02 15:04:05 MST")
 }

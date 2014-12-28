@@ -52,8 +52,8 @@ type SentReport struct {
 }
 
 var (
-	BaseReportFormat  string = "files:%d bytes:%s time:%s net-util:%s net-speed:%s"
-	ErrorReportFormat        = "errors:%d errors api0errors:%d timeouts:%d bad-files:%d"
+	BaseReportFormat  string = "%d files, %s, %s, %s net util, %s net speed"
+	ErrorReportFormat        = "%d errors, %d API errors, %d timeouts, %d bad files"
 )
 
 type SenderStats struct {
