@@ -120,18 +120,18 @@ func (s *Sender) send() {
 		s.status.Update("data-sender", "Disconnecting")
 		s.client.DisconnectOnce()
 
-		// Update and report stats for this run.
+		// Stats for this run.
 		s.lastStats.Sent(sent)
 		r := s.lastStats.Report()
-		lastReport := fmt.Sprintf("at:%s %s", pct.TimeString(r.End), FormatSentReport(r))
-		s.status.Update("data-sender-last", lastReport)
-		s.logger.Info(lastReport)
+		report := fmt.Sprintf("at:%s %s", pct.TimeString(r.End), FormatSentReport(r))
+		s.status.Update("data-sender-last", report)
+		s.logger.Info(report)
 
-		// Update and report stats for the last 1 day.
+		// Stats for the last day.
 		s.dailyStats.Sent(sent)
-		r = s.lastStats.Report()
-		dailyReport := fmt.Sprintf("since:%s %s", pct.TimeString(r.Begin), FormatSentReport(r))
-		s.status.Update("data-sender-1d", dailyReport)
+		r = s.dailyStats.Report()
+		report = fmt.Sprintf("since:%s %s", pct.TimeString(r.Begin), FormatSentReport(r))
+		s.status.Update("data-sender-1d", report)
 
 		s.status.Update("data-sender", "Idle")
 	}()
