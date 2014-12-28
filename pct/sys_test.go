@@ -124,6 +124,7 @@ func (s *SysTestSuite) TestDuration(t *C) {
 	t.Check(pct.Duration(0.999999), Equals, "999ms")
 	t.Check(pct.Duration(1), Equals, "1s")
 	t.Check(pct.Duration(1.357901), Equals, "1.358s")
+	t.Check(pct.Duration(63.000001), Equals, "1m3s")
 	t.Check(pct.Duration(1.300000), Equals, "1.3s")
 	t.Check(pct.Duration(55), Equals, "55s")
 	t.Check(pct.Duration(72), Equals, "1m12s")

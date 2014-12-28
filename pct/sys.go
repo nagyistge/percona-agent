@@ -161,6 +161,7 @@ func Duration(s float64) string {
 	if x > 0 {
 		d += fmt.Sprintf("%.3f", s)
 		d = strings.TrimRight(d, "0")
+		d = strings.TrimSuffix(d, ".")
 	} else {
 		d += fmt.Sprintf("%d", n)
 	}
