@@ -49,7 +49,7 @@ func NewSender(logger *pct.Logger, client pct.WebsocketClient) *Sender {
 		logger:     logger,
 		client:     client,
 		sync:       pct.NewSyncChan(),
-		status:     pct.NewStatus([]string{"data-sender", "data-sender-1d"}),
+		status:     pct.NewStatus([]string{"data-sender", "data-sender-last", "data-sender-1d"}),
 		lastStats:  NewSenderStats(0),
 		dailyStats: NewSenderStats(24 * time.Hour),
 	}
@@ -122,13 +122,18 @@ func (s *Sender) send() {
 
 		// Update and report stats for this run.
 		s.lastStats.Sent(sent)
-		lastReport := FormatSentReport(s.lastStats.Report())
-		s.status.Update("data-sender", fmt.Sprintf("Idle (last %s)", lastReport))
+		r := s.lastStats.Report()
+		lastReport := fmt.Sprintf("at:%s %s", pct.TimeString(r.End), FormatSentReport(r))
+		s.status.Update("data-sender-last", lastReport)
 		s.logger.Info(lastReport)
 
 		// Update and report stats for the last 1 day.
 		s.dailyStats.Sent(sent)
-		s.status.Update("data-sender-1d", FormatSentReport(s.dailyStats.Report()))
+		r = s.lastStats.Report()
+		dailyReport := fmt.Sprintf("since:%s %s", pct.TimeString(r.Begin), FormatSentReport(r))
+		s.status.Update("data-sender-1d", dailyReport)
+
+		s.status.Update("data-sender", "Idle")
 	}()
 
 	// Connect and send files until too many errors occur.

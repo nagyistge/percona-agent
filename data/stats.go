@@ -25,7 +25,7 @@ import (
 
 type SentInfo struct {
 	At       time.Time
-	Seconds  float64
+	Seconds  float64 // sending
 	Files    uint
 	Bytes    int
 	Errs     uint
@@ -36,32 +36,34 @@ type SentInfo struct {
 
 type SentReport struct {
 	bytes   int
-	seconds float64
+	seconds float64 // sending
 	// --
-	LastSent time.Time
-	Time     string
-	Bytes    string
-	Mbps     string
-	Files    uint
-	Errs     uint
-	ApiErrs  uint
-	Timeouts uint
-	BadFiles uint
+	Begin       time.Time
+	End         time.Time
+	Bytes       string // humanized bytes, e.g. 443.59 kB
+	Duration    string // End - Begin, humanized
+	Utilization string // bytes / (End - Begin), Mbps
+	Throughput  string // bytes / seconds, Mbps
+	Files       uint
+	Errs        uint
+	ApiErrs     uint
+	Timeouts    uint
+	BadFiles    uint
 }
 
 var (
-	BaseReportFormat  string = "at %s, %d files, %s, %s, %s Mbps"
-	ErrorReportFormat        = "%d errors, %d API errors, %d timeouts, %d bad files"
+	BaseReportFormat  string = "files:%d bytes:%s time:%s net-util:%s net-speed:%s"
+	ErrorReportFormat        = "errors:%d errors api0errors:%d timeouts:%d bad-files:%d"
 )
 
 type SenderStats struct {
 	d time.Duration
 	// --
-	last   time.Time  // last SentInfo.At sent
-	oldest time.Time  // oldest SentInfo.At in sent
-	sent   []SentInfo // round-robin
-	full   bool       // sent is at max size
-	i      int        // index into sent once full
+	begin time.Time  // oldest SentInfo.At in sent
+	end   time.Time  // last SentInfo.At sent
+	sent  []SentInfo // round-robin
+	full  bool       // sent is at max size
+	i     int        // index into sent once full
 }
 
 func NewSenderStats(d time.Duration) *SenderStats {
@@ -71,17 +73,18 @@ func NewSenderStats(d time.Duration) *SenderStats {
 	s := &SenderStats{
 		d: d,
 		// --
-		sent:   sent,
-		oldest: sent[0].At.UTC(),
+		sent:  sent,
+		begin: sent[0].At.UTC(),
+		end:   sent[0].At.UTC(),
 	}
 	return s
 }
 
 func (s *SenderStats) Sent(info SentInfo) {
-	s.last = info.At.UTC()
+	s.end = info.At.UTC()
 
 	if !s.full {
-		if info.At.UTC().Sub(s.oldest) < s.d {
+		if info.At.UTC().Sub(s.begin) < s.d {
 			// Full duration hasn't elapsed yet. Keep growing the rrd.
 			s.sent = append(s.sent, info)
 			s.i++
@@ -97,7 +100,7 @@ func (s *SenderStats) Sent(info SentInfo) {
 
 	// Store info at next element in sent. Start over at sent[0]
 	// when we reach the end.
-	s.oldest = s.sent[s.i].At.UTC()
+	s.begin = s.sent[s.i].At.UTC()
 	s.sent[s.i] = info
 	s.i++
 	if s.i == len(s.sent) {
@@ -107,7 +110,8 @@ func (s *SenderStats) Sent(info SentInfo) {
 
 func (s *SenderStats) Report() SentReport {
 	r := SentReport{
-		LastSent: s.last,
+		Begin: s.begin,
+		End:   s.end,
 	}
 	for _, info := range s.sent {
 		r.bytes += info.Bytes
@@ -120,13 +124,14 @@ func (s *SenderStats) Report() SentReport {
 		r.BadFiles += info.BadFiles
 	}
 	r.Bytes = pct.Bytes(r.bytes)
-	r.Mbps = pct.Mbps(r.bytes, r.seconds)
-	r.Time = time.Duration(r.seconds * float64(time.Second)).String()
+	r.Duration = pct.Duration(s.end.Sub(s.begin).Seconds())
+	r.Utilization = pct.Mbps(r.bytes, s.end.Sub(s.begin).Seconds()) + " Mbps"
+	r.Throughput = pct.Mbps(r.bytes, r.seconds) + " Mbps"
 	return r
 }
 
 func FormatSentReport(r SentReport) string {
-	report := fmt.Sprintf(BaseReportFormat, r.LastSent, r.Files, r.Bytes, r.Time, r.Mbps)
+	report := fmt.Sprintf(BaseReportFormat, r.Files, r.Bytes, r.Duration, r.Utilization, r.Throughput)
 	if (r.Errs + r.BadFiles + r.ApiErrs + r.Timeouts) > 0 {
 		report += ", " + fmt.Sprintf(ErrorReportFormat, r.Errs, r.ApiErrs, r.Timeouts, r.BadFiles)
 	}

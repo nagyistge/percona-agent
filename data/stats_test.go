@@ -63,7 +63,7 @@ func (s *StatsTestSuite) SetUpSuite(t *C) {
 		},
 		data.SentInfo{
 			At:      s.now.Add(5100 * time.Millisecond),
-			Seconds: 1.2,
+			Seconds: 1.2, // todo: fix, can't be longer than interval between sends
 			Files:   3,
 			Bytes:   5155505,
 		},
@@ -107,15 +107,17 @@ func (s *StatsTestSuite) TestRoundRobinFull(t *C) {
 
 	got := ss.Report()
 	expect := data.SentReport{
-		LastSent: s.send[len(s.send)-1].At,
-		Time:     "3s",
-		Bytes:    "5.81 MB",
-		Mbps:     "15.48",
-		Files:    6,
-		Errs:     0,
-		ApiErrs:  0,
-		Timeouts: 0,
-		BadFiles: 0,
+		Begin:       s.send[len(s.send)-4].At,
+		End:         s.send[len(s.send)-1].At,
+		Bytes:       "5.81 MB",
+		Duration:    "3s",
+		Utilization: "15.48 Mbps",
+		Throughput:  "15.48 Mbps",
+		Files:       6,
+		Errs:        0,
+		ApiErrs:     0,
+		Timeouts:    0,
+		BadFiles:    0,
 	}
 	if same, diff := IsDeeply(got, expect); !same {
 		Dump(got)
@@ -126,7 +128,7 @@ func (s *StatsTestSuite) TestRoundRobinFull(t *C) {
 		data.FormatSentReport(got),
 		Equals,
 		fmt.Sprintf(data.BaseReportFormat,
-			expect.LastSent, expect.Files, expect.Bytes, expect.Time, expect.Mbps),
+			expect.Files, expect.Bytes, expect.Duration, expect.Utilization, expect.Throughput),
 	)
 }
 
@@ -159,15 +161,17 @@ func (s *StatsTestSuite) TestRoundRobinPartial(t *C) {
 
 	got := ss.Report()
 	expect := data.SentReport{
-		LastSent: d[2].At,
-		Time:     "2.1s",
-		Bytes:    "99.90 kB",
-		Mbps:     "0.38",
-		Files:    3,
-		Errs:     0,
-		ApiErrs:  0,
-		Timeouts: 0,
-		BadFiles: 0,
+		Begin:       s.send[0].At,
+		End:         s.send[3].At,
+		Bytes:       "99.90 kB",
+		Duration:    "3s",
+		Utilization: "0.27 Mbps",
+		Throughput:  "0.38 Mbps",
+		Files:       3,
+		Errs:        0,
+		ApiErrs:     0,
+		Timeouts:    0,
+		BadFiles:    0,
 	}
 	if same, diff := IsDeeply(got, expect); !same {
 		Dump(got)
@@ -197,15 +201,17 @@ func (s *StatsTestSuite) TestOnlyLast(t *C) {
 
 	got := ss.Report()
 	expect := data.SentReport{
-		LastSent: d[0].At,
-		Time:     "800ms",
-		Bytes:    "44.40 kB",
-		Mbps:     "0.44",
-		Files:    1,
-		Errs:     0,
-		ApiErrs:  0,
-		Timeouts: 0,
-		BadFiles: 0,
+		Begin:       s.send[2].At,
+		End:         s.send[3].At,
+		Bytes:       "44.40 kB",
+		Duration:    "1s",
+		Utilization: "0.36 Mbps",
+		Throughput:  "0.44 Mbps",
+		Files:       1,
+		Errs:        0,
+		ApiErrs:     0,
+		Timeouts:    0,
+		BadFiles:    0,
 	}
 	if same, diff := IsDeeply(got, expect); !same {
 		Dump(got)
@@ -241,15 +247,17 @@ func (s *StatsTestSuite) TestErrors(t *C) {
 
 	got := ss.Report()
 	expect := data.SentReport{
-		LastSent: s.send[len(s.send)-1].At,
-		Time:     "4.8s",
-		Bytes:    "5.87 MB",
-		Mbps:     "9.79",
-		Files:    9,
-		Errs:     1,
-		ApiErrs:  1,
-		Timeouts: 1,
-		BadFiles: 1,
+		Begin:       d[0].At,
+		End:         send[len(s.send)-1].At,
+		Bytes:       "5.87 MB",
+		Duration:    "6.1s",
+		Utilization: "7.70 Mbps",
+		Throughput:  "9.79 Mbps",
+		Files:       9,
+		Errs:        1,
+		ApiErrs:     1,
+		Timeouts:    1,
+		BadFiles:    1,
 	}
 	if same, diff := IsDeeply(got, expect); !same {
 		Dump(got)
@@ -260,7 +268,7 @@ func (s *StatsTestSuite) TestErrors(t *C) {
 		data.FormatSentReport(got),
 		Equals,
 		fmt.Sprintf(data.BaseReportFormat+", "+data.ErrorReportFormat,
-			expect.LastSent, expect.Files, expect.Bytes, expect.Time, expect.Mbps,
+			expect.Files, expect.Bytes, expect.Duration, expect.Utilization, expect.Throughput,
 			expect.Errs, expect.ApiErrs, expect.Timeouts, expect.BadFiles),
 	)
 }
