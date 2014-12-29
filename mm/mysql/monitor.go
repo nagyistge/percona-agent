@@ -40,7 +40,6 @@ type Monitor struct {
 	// --
 	tickChan       chan time.Time
 	collectionChan chan *mm.Collection
-	connected      bool
 	connectedChan  chan bool
 	restartChan    <-chan bool
 	status         *pct.Status
@@ -162,13 +161,14 @@ func (m *Monitor) connect(err error) {
 			m.logger.Warn(err)
 			continue
 		}
+		m.logger.Info("Connected")
+		m.status.Update(m.name+"-mysql", "Connected")
+
+		m.setGlobalVars()
 
 		// Tell run() goroutine that it can try to collect metrics.
 		// If connection is lost, it will call us again.
-		m.logger.Info("Connected")
-		m.status.Update(m.name+"-mysql", "Connected")
 		m.connectedChan <- true
-		m.setGlobalVars()
 		return
 	}
 }
@@ -176,6 +176,9 @@ func (m *Monitor) connect(err error) {
 // We need to set these vars everytime we connect to the DB because as these
 // are session variables, they get lost on MySQL restarts
 func (m *Monitor) setGlobalVars() {
+	m.logger.Debug("setGlobalVars:call")
+	defer m.logger.Debug("setGlobalVars:return")
+
 	// Set global vars we need.  If these fail, that's ok: they won't work,
 	// but don't let that stop us from collecting other metrics.
 	if len(m.config.InnoDB) > 0 {
@@ -215,6 +218,7 @@ func (m *Monitor) run() {
 		m.logger.Debug("run:return")
 	}()
 
+	connected := false
 	go m.connect(nil)
 
 	m.status.Update(m.name, "Ready")
@@ -232,7 +236,7 @@ func (m *Monitor) run() {
 		select {
 		case now := <-m.tickChan:
 			m.logger.Debug("run:collect:start")
-			if !m.connected {
+			if !connected {
 				m.logger.Debug("run:collect:disconnected")
 				lastError = "Not connected to MySQL"
 				continue
@@ -313,11 +317,12 @@ func (m *Monitor) run() {
 			}
 
 			m.logger.Debug("run:collect:stop")
-		case connected := <-m.connectedChan:
-			m.connected = connected
+		case connected = <-m.connectedChan:
 			m.logger.Debug("run:connected:true")
 			m.status.Update(m.name, "Ready")
 		case <-m.restartChan:
+			m.logger.Debug("run:mysql:restart")
+			connected = false
 			go m.connect(fmt.Errorf("Lost connection to MySQL, restarting"))
 		case <-m.sync.StopChan:
 			m.logger.Debug("run:stop")

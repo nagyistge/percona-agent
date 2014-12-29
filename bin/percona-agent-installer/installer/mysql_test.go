@@ -43,35 +43,36 @@ func (s *MySQLTestSuite) TestMakeGrant(t *C) {
 	}
 
 	dsn.Hostname = "localhost"
-	got := i.MakeGrant(dsn, user, pass)
+	maxOpenConnections := int64(1)
+	got := i.MakeGrant(dsn, user, pass, maxOpenConnections)
 	expect := []string{
-		"GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'new-user'@'localhost' IDENTIFIED BY 'some pass'",
-		"GRANT UPDATE, DELETE, DROP ON performance_schema.* TO 'new-user'@'localhost' IDENTIFIED BY 'some pass'",
+		"GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'new-user'@'localhost' IDENTIFIED BY 'some pass' WITH MAX_USER_CONNECTIONS 1",
+		"GRANT UPDATE, DELETE, DROP ON performance_schema.* TO 'new-user'@'localhost' IDENTIFIED BY 'some pass' WITH MAX_USER_CONNECTIONS 1",
 	}
 	t.Check(got, DeepEquals, expect)
 
 	dsn.Hostname = "127.0.0.1"
-	got = i.MakeGrant(dsn, user, pass)
+	got = i.MakeGrant(dsn, user, pass, maxOpenConnections)
 	expect = []string{
-		"GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'new-user'@'127.0.0.1' IDENTIFIED BY 'some pass'",
-		"GRANT UPDATE, DELETE, DROP ON performance_schema.* TO 'new-user'@'127.0.0.1' IDENTIFIED BY 'some pass'",
+		"GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'new-user'@'127.0.0.1' IDENTIFIED BY 'some pass' WITH MAX_USER_CONNECTIONS 1",
+		"GRANT UPDATE, DELETE, DROP ON performance_schema.* TO 'new-user'@'127.0.0.1' IDENTIFIED BY 'some pass' WITH MAX_USER_CONNECTIONS 1",
 	}
 	t.Check(got, DeepEquals, expect)
 
 	dsn.Hostname = "10.1.1.1"
-	got = i.MakeGrant(dsn, user, pass)
+	got = i.MakeGrant(dsn, user, pass, maxOpenConnections)
 	expect = []string{
-		"GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'new-user'@'%' IDENTIFIED BY 'some pass'",
-		"GRANT UPDATE, DELETE, DROP ON performance_schema.* TO 'new-user'@'%' IDENTIFIED BY 'some pass'",
+		"GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'new-user'@'%' IDENTIFIED BY 'some pass' WITH MAX_USER_CONNECTIONS 1",
+		"GRANT UPDATE, DELETE, DROP ON performance_schema.* TO 'new-user'@'%' IDENTIFIED BY 'some pass' WITH MAX_USER_CONNECTIONS 1",
 	}
 	t.Check(got, DeepEquals, expect)
 
 	dsn.Hostname = ""
 	dsn.Socket = "/var/lib/mysql.sock"
-	got = i.MakeGrant(dsn, user, pass)
+	got = i.MakeGrant(dsn, user, pass, maxOpenConnections)
 	expect = []string{
-		"GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'new-user'@'localhost' IDENTIFIED BY 'some pass'",
-		"GRANT UPDATE, DELETE, DROP ON performance_schema.* TO 'new-user'@'localhost' IDENTIFIED BY 'some pass'",
+		"GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'new-user'@'localhost' IDENTIFIED BY 'some pass' WITH MAX_USER_CONNECTIONS 1",
+		"GRANT UPDATE, DELETE, DROP ON performance_schema.* TO 'new-user'@'localhost' IDENTIFIED BY 'some pass' WITH MAX_USER_CONNECTIONS 1",
 	}
 	t.Check(got, DeepEquals, expect)
 }

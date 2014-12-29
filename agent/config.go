@@ -18,7 +18,7 @@
 package agent
 
 const (
-	DEFAULT_API_HOSTNAME = "v2-cloud-api.percona.com"
+	DEFAULT_API_HOSTNAME = "cloud-api.percona.com"
 	DEFAULT_KEEPALIVE    = 76
 )
 

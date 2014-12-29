@@ -72,3 +72,10 @@ func (s *DSNTestSuite) TestParseSocketFromNetstat(t *C) {
 	t.Assert(err, IsNil)
 	t.Check(mysql.ParseSocketFromNetstat(string(out)), Equals, "/var/lib/mysql/mysql.sock")
 }
+
+func (s *DSNTestSuite) TestHideDSNPassword(t *C) {
+	dsn := "user:pass@tcp/"
+	t.Check(mysql.HideDSNPassword(dsn), Equals, "user:"+mysql.HiddenPassword+"@tcp/")
+	dsn = "percona-agent:0xabd123def@tcp(host.example.com:3306)/?parseTime=true"
+	t.Check(mysql.HideDSNPassword(dsn), Equals, "percona-agent:"+mysql.HiddenPassword+"@tcp(host.example.com:3306)/?parseTime=true")
+}

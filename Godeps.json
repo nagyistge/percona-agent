@@ -16,11 +16,11 @@
 		},
 		{
 			"Pkg": "github.com/percona/cloud-protocol",
-			"Rev": "10f769d7bd5616db6cb2294c1725c866476d9e4c"
+			"Rev": "d729c25e20ee8fec56179358066028f48131468b"
 		},
 		{
 			"Pkg": "github.com/percona/go-mysql",
-			"Rev": "a1da3aa3e8020c3102d55688f7dacffa661cdb28"
+			"Rev": "1346a81058f6b6a7b74a84b214c3ce65c0e4de29"
 		},
 		{
 			"Pkg": "github.com/petar/GoLLRB",

@@ -242,6 +242,11 @@ uninstall() {
     exit 0
 }
 
+if [ "$*" == "--help" -o "$*" == "-help" -o "$*" == "-h" -o "$*" == "-?" ]; then
+   "$INSTALLER_DIR/bin/$BIN-installer" -h
+   echo "See http://cloud-docs.percona.com/Install.html for more information."
+   exit 0
+fi
 [[ $* == *-uninstall* ]] && uninstall
 install $@
 
