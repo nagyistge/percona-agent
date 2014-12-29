@@ -60,6 +60,7 @@ func (i *Installer) getAgentDSN() (dsn mysql.DSN, err error) {
 				fmt.Println(err)
 				return dsn, fmt.Errorf("Failed to get MySQL user for agent")
 			}
+			fmt.Printf("Using MySQL user: %s\n", dsn.StringWithSuffixes())
 		} else {
 			if i.flags.String["agent-mysql-user"] != "" && i.flags.String["agent-mysql-pass"] != "" {
 				dsn := i.defaultDSN
