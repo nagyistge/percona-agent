@@ -60,24 +60,23 @@ func (i *Installer) getAgentDSN() (dsn mysql.DSN, err error) {
 				fmt.Println(err)
 				return dsn, fmt.Errorf("Failed to get MySQL user for agent")
 			}
-			fmt.Printf("Using MySQL user: %s\n", dsn.StringWithSuffixes())
 		} else {
 			if i.flags.String["agent-mysql-user"] != "" && i.flags.String["agent-mysql-pass"] != "" {
 				dsn := i.defaultDSN
-				dsn.Username = i.flags.String["agent-mysql-user"]
-				dsn.Password = i.flags.String["agent-mysql-pass"]
 				if i.flags.Bool["auto-detect-mysql"] {
 					if err := i.autodetectDSN(&dsn); err != nil {
 						if i.flags.Bool["debug"] {
-							log.Println(err)
+							log.Printf("Error while auto detecting DSN: %v", err)
 						}
 					}
 				}
+				// Overwrite the detected user/pass with the ones specified in the command line
+				dsn.Username = i.flags.String["agent-mysql-user"]
+				dsn.Password = i.flags.String["agent-mysql-pass"]
 				// Verify new DSN
 				if err := i.verifyMySQLConnection(dsn); err != nil {
 					return dsn, err
 				}
-				fmt.Println("Using the agent credentials from paramaeters")
 			} else {
 				// Non-MySQL install (e.g. only system metrics).
 				fmt.Println("Skip creating MySQL user (-create-mysql-user=false)")
