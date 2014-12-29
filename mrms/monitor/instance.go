@@ -23,9 +23,6 @@ import (
 	"github.com/percona/percona-agent/pct"
 	"sync"
 	"time"
-
-	"github.com/percona/percona-agent/mysql"
-	"github.com/percona/percona-agent/pct"
 )
 
 type MysqlInstance struct {
@@ -76,7 +73,12 @@ func (m *MysqlInstance) CheckIfMysqlRestarted() bool {
 
 	lastUptime := m.lastUptime
 	lastUptimeCheck := m.lastUptimeCheck
-	currentUptime := m.mysqlConn.Uptime()
+	currentUptime, err := m.mysqlConn.Uptime()
+	if err != nil {
+		m.logger.Error(err)
+		return false
+	}
+
 	m.logger.Debug(fmt.Sprintf("lastUptime=%d lastUptimeCheck=%s currentUptime=%d",
 		lastUptime, lastUptimeCheck.UTC(), currentUptime))
 

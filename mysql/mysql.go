@@ -199,8 +199,7 @@ func (c *Connection) GetGlobalVarNumber(varName string) float64 {
 
 func (c *Connection) Uptime() (uptime int64, err error) {
 	if c.conn == nil {
-		fmt.Println("Conn is null in uptime")
-		return 0, fmt.Errorf("Not connected to the db: %s", c.DSN())
+		return 0, fmt.Errorf("Error while getting Uptime(). Not connected to the db: %s", c.DSN())
 	}
 	// Result from SHOW STATUS includes two columns,
 	// Variable_name and Value, we ignore the first one as we need only Value

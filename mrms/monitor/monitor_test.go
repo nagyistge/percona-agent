@@ -27,12 +27,9 @@ import (
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
-<<<<<<< HEAD
-=======
 	"os"
 	"testing"
 	"time"
->>>>>>> release
 )
 
 func Test(t *testing.T) { TestingT(t) }
@@ -202,7 +199,6 @@ func (s *TestSuite) TestNotifications(t *C) {
 	t.Assert(notified, Equals, false, Commentf("Subscriber was removed but MRMS still notified it about MySQL restart"))
 }
 
-<<<<<<< HEAD
 func (s *TestSuite) TestSubscribers(t *C) {
 	subs := monitor.NewSubscribers(s.logger)
 	rwChan := make(chan string, 100)
@@ -217,7 +213,8 @@ func (s *TestSuite) TestSubscribers(t *C) {
 	err = subs.GlobalRemove(dsn)
 	t.Assert(err, NotNil)
 
-=======
+}
+
 func (s *TestSuite) Test2Subscribers(t *C) {
 	mockConn := mock.NewNullMySQL()
 	mockConnFactory := &mock.ConnectionFactory{
@@ -279,5 +276,4 @@ func (s *TestSuite) TestRealMySQL(t *C) {
 		default:
 		}
 	}
->>>>>>> release
 }

@@ -170,12 +170,6 @@ func (m *Monitor) connect(err error) {
 
 		// Tell run() goroutine that it can try to collect metrics.
 		// If connection is lost, it will call us again.
-<<<<<<< HEAD
-		m.logger.Info("Connected")
-		m.status.Update(m.name+"-mysql", "Connected")
-		m.setGlobalVars()
-=======
->>>>>>> release
 		m.connectedChan <- true
 		return
 	}
@@ -225,11 +219,8 @@ func (m *Monitor) run() {
 		m.sync.Done()
 		m.logger.Debug("run:return")
 	}()
-<<<<<<< HEAD
-=======
 
 	connected := false
->>>>>>> release
 	go m.connect(nil)
 
 	m.status.Update(m.name, "Ready")

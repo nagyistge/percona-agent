@@ -21,6 +21,8 @@ import (
 	"github.com/percona/percona-agent/mrms"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
+	"sync"
+	"time"
 )
 
 const (
