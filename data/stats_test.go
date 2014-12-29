@@ -100,16 +100,16 @@ func (s *StatsTestSuite) TestRoundRobinFull(t *C) {
 		Dump(d)
 		t.Errorf("len(d)=%d, expected 4", len(d))
 	}
-	if same, diff := IsDeeply(d[0], s.send[4]); !same {
+	if same, diff := IsDeeply(d[0], s.send[2]); !same {
 		t.Error(diff)
 	}
-	if same, diff := IsDeeply(d[1], s.send[5]); !same {
+	if same, diff := IsDeeply(d[1], s.send[3]); !same {
 		t.Error(diff)
 	}
-	if same, diff := IsDeeply(d[2], s.send[2]); !same {
+	if same, diff := IsDeeply(d[2], s.send[4]); !same {
 		t.Error(diff)
 	}
-	if same, diff := IsDeeply(d[3], s.send[3]); !same {
+	if same, diff := IsDeeply(d[3], s.send[5]); !same {
 		t.Error(diff)
 	}
 
@@ -347,16 +347,16 @@ func (s *StatsTestSuite) TestDelayBeforeFull(t *C) {
 		Dump(d)
 		t.Errorf("len(d)=%d, expected 4", len(d))
 	}
-	if same, diff := IsDeeply(d[0], send[4]); !same {
+	if same, diff := IsDeeply(d[0], send[2]); !same {
 		t.Error(diff)
 	}
-	if same, diff := IsDeeply(d[1], send[5]); !same {
+	if same, diff := IsDeeply(d[1], send[3]); !same {
 		t.Error(diff)
 	}
-	if same, diff := IsDeeply(d[2], send[2]); !same {
+	if same, diff := IsDeeply(d[2], send[4]); !same {
 		t.Error(diff)
 	}
-	if same, diff := IsDeeply(d[3], send[3]); !same {
+	if same, diff := IsDeeply(d[3], send[5]); !same {
 		t.Error(diff)
 	}
 
@@ -441,9 +441,9 @@ func (s *StatsTestSuite) TestGaps(t *C) {
 	}
 
 	d = ss.Dump()
-	if len(d) != 4 {
+	if len(d) != 3 {
 		Dump(d)
-		t.Errorf("len(d)=%d, expected 4", len(d))
+		t.Errorf("len(d)=%d, expected 3", len(d))
 	}
 
 	got := ss.Report()
