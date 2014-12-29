@@ -465,3 +465,27 @@ func (s *StatsTestSuite) TestGaps(t *C) {
 		t.Error(diff)
 	}
 }
+
+func (s *StatsTestSuite) TestEmptyReport(t *C) {
+	ss := data.NewSenderStats(time.Duration(3 * time.Second))
+	t.Assert(ss, NotNil)
+
+	got := ss.Report()
+	expect := data.SentReport{
+		Begin:       time.Time{},
+		End:         time.Time{},
+		Bytes:       "0",
+		Duration:    "0",
+		Utilization: "0.00 Mbps",
+		Throughput:  "0.00 Mbps",
+		Files:       0,
+		Errs:        0,
+		ApiErrs:     0,
+		Timeouts:    0,
+		BadFiles:    0,
+	}
+	if same, diff := IsDeeply(got, expect); !same {
+		Dump(got)
+		t.Error(diff)
+	}
+}
