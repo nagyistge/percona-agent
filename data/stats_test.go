@@ -33,45 +33,51 @@ type StatsTestSuite struct {
 var _ = Suite(&StatsTestSuite{})
 
 func (s *StatsTestSuite) SetUpSuite(t *C) {
-	s.now = time.Now().UTC()
+	s.now = time.Now()
 
 	// +1s results in 0.999999s diff, so +1.1s to workaround.
 	s.send = []data.SentInfo{
 		data.SentInfo{
-			At:      s.now.Add(1100 * time.Millisecond),
-			Seconds: 0.5,
-			Files:   1,
-			Bytes:   11100,
+			Begin:    s.now.Add(1100 * time.Millisecond),
+			End:      s.now.Add(1400 * time.Millisecond),
+			SendTime: 0.2,
+			Files:    1,
+			Bytes:    11100,
 		},
 		data.SentInfo{
-			At:      s.now.Add(2100 * time.Millisecond),
-			Seconds: 0.6,
-			Files:   1,
-			Bytes:   22200,
+			Begin:    s.now.Add(2100 * time.Millisecond),
+			End:      s.now.Add(2500 * time.Millisecond),
+			SendTime: 0.3,
+			Files:    1,
+			Bytes:    22200,
 		},
 		data.SentInfo{
-			At:      s.now.Add(3100 * time.Millisecond),
-			Seconds: 0.7,
-			Files:   1,
-			Bytes:   33300,
+			Begin:    s.now.Add(3100 * time.Millisecond),
+			End:      s.now.Add(3500 * time.Millisecond),
+			SendTime: 0.3,
+			Files:    1,
+			Bytes:    33300,
 		},
 		data.SentInfo{
-			At:      s.now.Add(4100 * time.Millisecond),
-			Seconds: 0.8,
-			Files:   1,
-			Bytes:   44400,
+			Begin:    s.now.Add(4100 * time.Millisecond),
+			End:      s.now.Add(4700 * time.Millisecond),
+			SendTime: 0.5,
+			Files:    1,
+			Bytes:    44400,
 		},
 		data.SentInfo{
-			At:      s.now.Add(5100 * time.Millisecond),
-			Seconds: 1.2, // todo: fix, can't be longer than interval between sends
-			Files:   3,
-			Bytes:   5155505,
+			Begin:    s.now.Add(5100 * time.Millisecond),
+			End:      s.now.Add(5800 * time.Millisecond),
+			SendTime: 0.6,
+			Files:    3,
+			Bytes:    5155505,
 		},
 		data.SentInfo{
-			At:      s.now.Add(6100 * time.Millisecond),
-			Seconds: 1.0,
-			Files:   2,
-			Bytes:   606061,
+			Begin:    s.now.Add(6100 * time.Millisecond),
+			End:      s.now.Add(6900 * time.Millisecond),
+			SendTime: 0.850,
+			Files:    2,
+			Bytes:    606061,
 		},
 	}
 }
@@ -83,37 +89,39 @@ func (s *StatsTestSuite) TestRoundRobinFull(t *C) {
 	t.Assert(ss, NotNil)
 
 	d := ss.Dump()
-	t.Check(d, HasLen, 1)
+	t.Check(d, HasLen, 0)
 
 	for _, info := range s.send {
 		ss.Sent(info)
 	}
 
 	d = ss.Dump()
-	if len(d) != 3 {
+	if len(d) != 4 {
 		Dump(d)
-		t.Errorf("len(d)=%d, expected 3", len(d))
+		t.Errorf("len(d)=%d, expected 4", len(d))
 	}
-	if same, diff := IsDeeply(d[0], s.send[5]); !same {
+	if same, diff := IsDeeply(d[0], s.send[4]); !same {
 		t.Error(diff)
 	}
-
-	if same, diff := IsDeeply(d[1], s.send[3]); !same {
+	if same, diff := IsDeeply(d[1], s.send[5]); !same {
 		t.Error(diff)
 	}
-	if same, diff := IsDeeply(d[2], s.send[4]); !same {
+	if same, diff := IsDeeply(d[2], s.send[2]); !same {
+		t.Error(diff)
+	}
+	if same, diff := IsDeeply(d[3], s.send[3]); !same {
 		t.Error(diff)
 	}
 
 	got := ss.Report()
 	expect := data.SentReport{
-		Begin:       s.send[len(s.send)-4].At,
-		End:         s.send[len(s.send)-1].At,
-		Bytes:       "5.81 MB",
-		Duration:    "3s",
-		Utilization: "15.48 Mbps",
-		Throughput:  "15.48 Mbps",
-		Files:       6,
+		Begin:       s.send[2].Begin,
+		End:         s.send[5].End,
+		Bytes:       "5.84 MB",
+		Duration:    "3.8s",
+		Utilization: "12.29 Mbps",
+		Throughput:  "20.76 Mbps",
+		Files:       7,
 		Errs:        0,
 		ApiErrs:     0,
 		Timeouts:    0,
@@ -137,37 +145,39 @@ func (s *StatsTestSuite) TestRoundRobinPartial(t *C) {
 	t.Assert(ss, NotNil)
 
 	d := ss.Dump()
-	t.Check(d, HasLen, 1)
+	t.Check(d, HasLen, 0)
 
 	for i := 0; i < 4; i++ {
 		ss.Sent(s.send[i])
 	}
 
 	d = ss.Dump()
-	if len(d) != 3 {
+	if len(d) != 4 {
 		Dump(d)
-		t.Errorf("len(d)=%d, expected 3", len(d))
+		t.Errorf("len(d)=%d, expected 4", len(d))
 	}
-	if same, diff := IsDeeply(d[0], s.send[2]); !same {
+	if same, diff := IsDeeply(d[0], s.send[0]); !same {
 		t.Error(diff)
 	}
-
-	if same, diff := IsDeeply(d[1], s.send[3]); !same {
+	if same, diff := IsDeeply(d[1], s.send[1]); !same {
 		t.Error(diff)
 	}
-	if same, diff := IsDeeply(d[2], s.send[1]); !same {
+	if same, diff := IsDeeply(d[2], s.send[2]); !same {
+		t.Error(diff)
+	}
+	if same, diff := IsDeeply(d[3], s.send[3]); !same {
 		t.Error(diff)
 	}
 
 	got := ss.Report()
 	expect := data.SentReport{
-		Begin:       s.send[0].At,
-		End:         s.send[3].At,
-		Bytes:       "99.90 kB",
-		Duration:    "3s",
-		Utilization: "0.27 Mbps",
-		Throughput:  "0.38 Mbps",
-		Files:       3,
+		Begin:       s.send[0].Begin,
+		End:         s.send[3].End,
+		Bytes:       "111.00 kB",
+		Duration:    "3.6s",
+		Utilization: "0.25 Mbps",
+		Throughput:  "0.68 Mbps",
+		Files:       4,
 		Errs:        0,
 		ApiErrs:     0,
 		Timeouts:    0,
@@ -184,7 +194,7 @@ func (s *StatsTestSuite) TestOnlyLast(t *C) {
 	t.Assert(ss, NotNil)
 
 	d := ss.Dump()
-	t.Check(d, HasLen, 1)
+	t.Check(d, HasLen, 0)
 
 	for i := 0; i < 4; i++ {
 		ss.Sent(s.send[i])
@@ -201,12 +211,12 @@ func (s *StatsTestSuite) TestOnlyLast(t *C) {
 
 	got := ss.Report()
 	expect := data.SentReport{
-		Begin:       s.send[2].At,
-		End:         s.send[3].At,
+		Begin:       s.send[3].Begin,
+		End:         s.send[3].End,
 		Bytes:       "44.40 kB",
-		Duration:    "1s",
-		Utilization: "0.36 Mbps",
-		Throughput:  "0.44 Mbps",
+		Duration:    "600ms",
+		Utilization: "0.59 Mbps",
+		Throughput:  "0.71 Mbps",
 		Files:       1,
 		Errs:        0,
 		ApiErrs:     0,
@@ -224,7 +234,7 @@ func (s *StatsTestSuite) TestErrors(t *C) {
 	t.Assert(ss, NotNil)
 
 	d := ss.Dump()
-	t.Check(d, HasLen, 1)
+	t.Check(d, HasLen, 0)
 
 	// Copy data so we can add errors.
 	send := make([]data.SentInfo, len(s.send))
@@ -240,19 +250,19 @@ func (s *StatsTestSuite) TestErrors(t *C) {
 	}
 
 	d = ss.Dump()
-	if len(d) != len(send)+1 {
+	if len(d) != len(send) {
 		Dump(d)
-		t.Errorf("len(d)=%d, expected %d", len(d), len(send)+1)
+		t.Errorf("len(d)=%d, expected %d", len(d), len(send))
 	}
 
 	got := ss.Report()
 	expect := data.SentReport{
-		Begin:       d[0].At,
-		End:         send[len(s.send)-1].At,
+		Begin:       send[0].Begin,
+		End:         send[5].End,
 		Bytes:       "5.87 MB",
-		Duration:    "6.1s",
-		Utilization: "7.70 Mbps",
-		Throughput:  "9.79 Mbps",
+		Duration:    "5.8s",
+		Utilization: "8.10 Mbps",
+		Throughput:  "17.08 Mbps",
 		Files:       9,
 		Errs:        1,
 		ApiErrs:     1,
@@ -271,4 +281,187 @@ func (s *StatsTestSuite) TestErrors(t *C) {
 			expect.Files, expect.Bytes, expect.Duration, expect.Utilization, expect.Throughput,
 			expect.Errs, expect.ApiErrs, expect.Timeouts, expect.BadFiles),
 	)
+}
+
+func (s *StatsTestSuite) TestDelayBeforeFull(t *C) {
+	s.now = time.Now()
+
+	send := []data.SentInfo{
+		data.SentInfo{
+			Begin:    s.now.Add(1100 * time.Millisecond),
+			End:      s.now.Add(1400 * time.Millisecond),
+			SendTime: 0.2,
+			Files:    1,
+			Bytes:    11100,
+		},
+		// 4s delay
+		data.SentInfo{
+			Begin:    s.now.Add(5100 * time.Millisecond),
+			End:      s.now.Add(5500 * time.Millisecond),
+			SendTime: 0.3,
+			Files:    2,
+			Bytes:    22200,
+		},
+		// resume normal
+		data.SentInfo{
+			Begin:    s.now.Add(6100 * time.Millisecond),
+			End:      s.now.Add(6500 * time.Millisecond),
+			SendTime: 0.3,
+			Files:    3,
+			Bytes:    33300,
+		},
+		data.SentInfo{
+			Begin:    s.now.Add(7100 * time.Millisecond),
+			End:      s.now.Add(7700 * time.Millisecond),
+			SendTime: 0.5,
+			Files:    4,
+			Bytes:    44400,
+		},
+		data.SentInfo{
+			Begin:    s.now.Add(8100 * time.Millisecond),
+			End:      s.now.Add(8800 * time.Millisecond),
+			SendTime: 0.6,
+			Files:    5,
+			Bytes:    5155505,
+		},
+		data.SentInfo{
+			Begin:    s.now.Add(9100 * time.Millisecond),
+			End:      s.now.Add(9900 * time.Millisecond),
+			SendTime: 0.850,
+			Files:    6,
+			Bytes:    606061,
+		},
+	}
+	ss := data.NewSenderStats(time.Duration(3 * time.Second))
+	t.Assert(ss, NotNil)
+
+	d := ss.Dump()
+	t.Check(d, HasLen, 0)
+
+	for _, info := range send {
+		ss.Sent(info)
+	}
+
+	d = ss.Dump()
+	if len(d) != 4 {
+		Dump(d)
+		t.Errorf("len(d)=%d, expected 4", len(d))
+	}
+	if same, diff := IsDeeply(d[0], send[4]); !same {
+		t.Error(diff)
+	}
+	if same, diff := IsDeeply(d[1], send[5]); !same {
+		t.Error(diff)
+	}
+	if same, diff := IsDeeply(d[2], send[2]); !same {
+		t.Error(diff)
+	}
+	if same, diff := IsDeeply(d[3], send[3]); !same {
+		t.Error(diff)
+	}
+
+	got := ss.Report()
+	expect := data.SentReport{
+		Begin:       send[2].Begin,
+		End:         send[5].End,
+		Bytes:       "5.84 MB",
+		Duration:    "3.8s",
+		Utilization: "12.29 Mbps",
+		Throughput:  "20.76 Mbps",
+		Files:       18,
+		Errs:        0,
+		ApiErrs:     0,
+		Timeouts:    0,
+		BadFiles:    0,
+	}
+	if same, diff := IsDeeply(got, expect); !same {
+		Dump(got)
+		t.Error(diff)
+	}
+}
+
+func (s *StatsTestSuite) TestGaps(t *C) {
+	s.now = time.Now()
+
+	send := []data.SentInfo{
+		data.SentInfo{
+			Begin:    s.now.Add(1100 * time.Millisecond),
+			End:      s.now.Add(1400 * time.Millisecond),
+			SendTime: 0.2,
+			Files:    1,
+			Bytes:    11100,
+		},
+		data.SentInfo{
+			Begin:    s.now.Add(2100 * time.Millisecond),
+			End:      s.now.Add(2500 * time.Millisecond),
+			SendTime: 0.3,
+			Files:    2,
+			Bytes:    22200,
+		},
+		data.SentInfo{
+			Begin:    s.now.Add(3100 * time.Millisecond),
+			End:      s.now.Add(3500 * time.Millisecond),
+			SendTime: 0.3,
+			Files:    3,
+			Bytes:    33300,
+		},
+		// missing 3
+		data.SentInfo{
+			Begin:    s.now.Add(7100 * time.Millisecond),
+			End:      s.now.Add(7700 * time.Millisecond),
+			SendTime: 0.5,
+			Files:    4,
+			Bytes:    44400,
+		},
+		// missing 2
+		data.SentInfo{
+			Begin:    s.now.Add(10100 * time.Millisecond),
+			End:      s.now.Add(10700 * time.Millisecond),
+			SendTime: 0.6,
+			Files:    5,
+			Bytes:    5155505,
+		},
+		// missing 1
+		data.SentInfo{
+			Begin:    s.now.Add(12100 * time.Millisecond),
+			End:      s.now.Add(12900 * time.Millisecond),
+			SendTime: 0.850,
+			Files:    6,
+			Bytes:    606061,
+		},
+	}
+	ss := data.NewSenderStats(time.Duration(3 * time.Second))
+	t.Assert(ss, NotNil)
+
+	d := ss.Dump()
+	t.Check(d, HasLen, 0)
+
+	for _, info := range send {
+		ss.Sent(info)
+	}
+
+	d = ss.Dump()
+	if len(d) != 4 {
+		Dump(d)
+		t.Errorf("len(d)=%d, expected 4", len(d))
+	}
+
+	got := ss.Report()
+	expect := data.SentReport{
+		Begin:       send[3].Begin,
+		End:         send[5].End,
+		Bytes:       "5.81 MB",
+		Duration:    "5.8s",
+		Utilization: "8.01 Mbps",
+		Throughput:  "23.82 Mbps",
+		Files:       15,
+		Errs:        0,
+		ApiErrs:     0,
+		Timeouts:    0,
+		BadFiles:    0,
+	}
+	if same, diff := IsDeeply(got, expect); !same {
+		Dump(got)
+		t.Error(diff)
+	}
 }

@@ -117,7 +117,7 @@ func (s *Sender) send() {
 
 	sent := SentInfo{}
 	defer func() {
-		sent.At = time.Now()
+		sent.End = time.Now()
 
 		s.status.Update("data-sender", "Disconnecting")
 		s.client.DisconnectOnce()
@@ -140,6 +140,7 @@ func (s *Sender) send() {
 
 	// Connect and send files until too many errors occur.
 	startTime := time.Now()
+	sent.Begin = startTime
 	for sent.ApiErrs == 0 && sent.Errs < MAX_SEND_ERRORS && sent.Timeouts == 0 {
 
 		// Check runtime, don't send forever.
@@ -212,7 +213,7 @@ func (s *Sender) sendAllFiles(startTime time.Time, sent *SentInfo) error {
 		if err := s.client.SendBytes(data, s.timeout); err != nil {
 			return fmt.Errorf("Sending %s: %s", file, err)
 		}
-		sent.Seconds += time.Now().Sub(t0).Seconds()
+		sent.SendTime += time.Now().Sub(t0).Seconds()
 		sent.Bytes += len(data)
 
 		s.status.Update("data-sender", "Waiting for API to ack "+file)
