@@ -18,10 +18,6 @@
 package monitor
 
 import (
-	"fmt"
-	"sync"
-	"time"
-
 	"github.com/percona/percona-agent/mrms"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
@@ -86,8 +82,8 @@ func (m *Monitor) Status() map[string]string {
 }
 
 func (m *Monitor) Add(dsn string) (c <-chan bool, err error) {
-	m.logger.Debug("Add:call")
-	defer m.logger.Debug("Add:return")
+	m.logger.Debug("Add:call:" + mysql.HideDSNPassword(dsn))
+	defer m.logger.Debug("Add:return:" + mysql.HideDSNPassword(dsn))
 
 	m.Lock()
 	defer m.Unlock()
@@ -127,8 +123,8 @@ func (m *Monitor) GlobalSubscribe() (chan string, error) {
 }
 
 func (m *Monitor) Remove(dsn string, c <-chan bool) {
-	m.logger.Debug("Remove:call")
-	defer m.logger.Debug("Remove:return")
+	m.logger.Debug("Remove:call:" + mysql.HideDSNPassword(dsn))
+	defer m.logger.Debug("Remove:return:" + mysql.HideDSNPassword(dsn))
 
 	m.Lock()
 	defer m.Unlock()
@@ -151,6 +147,7 @@ func (m *Monitor) Check() {
 
 	for _, mysqlInstance := range m.mysqlInstances {
 		if mysqlInstance.CheckIfMysqlRestarted() {
+			m.logger.Debug("Check:restarted:" + mysql.HideDSNPassword(mysqlInstance.DSN()))
 			mysqlInstance.Subscribers.Notify()
 		}
 	}
@@ -162,18 +159,15 @@ func (m *Monitor) Check() {
 
 func (m *Monitor) run(interval time.Duration) {
 	m.logger.Debug("run:call")
+	defer m.logger.Debug("run:return")
+
 	defer func() {
 		if err := recover(); err != nil {
 			m.logger.Error("MySQL Restart Monitor Service (MRMS) crashsed: ", err)
 		}
+		m.status.Update(MONITOR_NAME, "Stopped")
+		m.sync.Done()
 	}()
-	defer m.logger.Debug("run:return")
-
-	// After finishing signal manager that we are done
-	defer m.sync.Done()
-
-	m.status.Update(MONITOR_NAME, "Started")
-	defer m.status.Update(MONITOR_NAME, "Stopped")
 
 	for {
 		// Immediately run first check...
@@ -192,10 +186,12 @@ func (m *Monitor) run(interval time.Duration) {
 }
 
 func (m *Monitor) createMysqlInstance(dsn string) (mi *MysqlInstance, err error) {
-	m.logger.Debug(fmt.Sprintf("createMysqlInstance:call:%s", dsn))
-	defer m.logger.Debug("createMysqlInstance:return")
+	m.logger.Debug("createMysqlInstance:call:" + mysql.HideDSNPassword(dsn))
+	defer m.logger.Debug("createMysqlInstance:return:" + mysql.HideDSNPassword(dsn))
 
 	mysqlConn := m.mysqlConnFactory.Make(dsn)
-	subscribers := NewSubscribers(m.logger)
-	return NewMysqlInstance(m.logger, mysqlConn, subscribers)
+	// todo: fix
+	logger := pct.NewLogger(m.logger.LogChan(), "mrms-monitor-mysql")
+	subscribers := NewSubscribers(logger)
+	return NewMysqlInstance(logger, mysqlConn, subscribers)
 }

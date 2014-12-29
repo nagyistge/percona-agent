@@ -18,6 +18,9 @@
 package monitor
 
 import (
+	"fmt"
+	"github.com/percona/percona-agent/mysql"
+	"github.com/percona/percona-agent/pct"
 	"sync"
 	"time"
 
@@ -65,15 +68,17 @@ func (m *MysqlInstance) CheckIfMysqlRestarted() bool {
 	m.Lock()
 	defer m.Unlock()
 
-	lastUptime := m.lastUptime
-	lastUptimeCheck := m.lastUptimeCheck
-	currentUptime, err := m.mysqlConn.Uptime()
-	if err != nil { // Connection closed/lost
-		m.logger.Warn("Cannot check Uptime. Lost connection to %s: ", m.mysqlConn.DSN(), err)
-		// Return false because we don't know for sure if the connection has been
-		// closed or MySQL is really down and this method checks only restarts.
+	if err := m.mysqlConn.Connect(1); err != nil {
+		m.logger.Warn("Unable to connect to MySQL:", err)
 		return false
 	}
+	defer m.mysqlConn.Close()
+
+	lastUptime := m.lastUptime
+	lastUptimeCheck := m.lastUptimeCheck
+	currentUptime := m.mysqlConn.Uptime()
+	m.logger.Debug(fmt.Sprintf("lastUptime=%d lastUptimeCheck=%s currentUptime=%d",
+		lastUptime, lastUptimeCheck.UTC(), currentUptime))
 
 	// Calculate expected uptime
 	//   This protects against situation where after restarting MySQL
@@ -89,6 +94,7 @@ func (m *MysqlInstance) CheckIfMysqlRestarted() bool {
 	// * 120s < 180s (currentUptime < expectedUptime) => server was restarted
 	elapsedTime := time.Now().Unix() - lastUptimeCheck.Unix()
 	expectedUptime := lastUptime + elapsedTime
+	m.logger.Debug(fmt.Sprintf("elapsedTime=%d expectedUptime=%d", elapsedTime, expectedUptime))
 
 	// Save uptime from last check
 	m.lastUptime = currentUptime
@@ -101,4 +107,8 @@ func (m *MysqlInstance) CheckIfMysqlRestarted() bool {
 	}
 
 	return false
+}
+
+func (m *MysqlInstance) DSN() string {
+	return m.mysqlConn.DSN()
 }

@@ -23,12 +23,21 @@ import (
 
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mrms/monitor"
+	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
+<<<<<<< HEAD
+=======
+	"os"
+	"testing"
+	"time"
+>>>>>>> release
 )
 
 func Test(t *testing.T) { TestingT(t) }
+
+var dsn = os.Getenv("PCT_TEST_MYSQL_DSN")
 
 /////////////////////////////////////////////////////////////////////////////
 // Test Suite
@@ -193,6 +202,7 @@ func (s *TestSuite) TestNotifications(t *C) {
 	t.Assert(notified, Equals, false, Commentf("Subscriber was removed but MRMS still notified it about MySQL restart"))
 }
 
+<<<<<<< HEAD
 func (s *TestSuite) TestSubscribers(t *C) {
 	subs := monitor.NewSubscribers(s.logger)
 	rwChan := make(chan string, 100)
@@ -207,4 +217,67 @@ func (s *TestSuite) TestSubscribers(t *C) {
 	err = subs.GlobalRemove(dsn)
 	t.Assert(err, NotNil)
 
+=======
+func (s *TestSuite) Test2Subscribers(t *C) {
+	mockConn := mock.NewNullMySQL()
+	mockConnFactory := &mock.ConnectionFactory{
+		Conn: mockConn,
+	}
+	m := monitor.NewMonitor(s.logger, mockConnFactory)
+	dsn := "fake:dsn@tcp(127.0.0.1:3306)/?parseTime=true"
+
+	c1, err := m.Add(dsn)
+	t.Assert(err, IsNil)
+
+	c2, err := m.Add(dsn)
+	t.Assert(err, IsNil)
+
+	var notified bool
+
+	mockConn.SetUptime(1)
+	m.Check()
+	select {
+	case notified = <-c1:
+	default:
+	}
+	t.Check(notified, Equals, false)
+	select {
+	case notified = <-c2:
+	default:
+	}
+	t.Check(notified, Equals, false)
+
+	mockConn.SetUptime(2)
+	m.Check()
+	select {
+	case notified = <-c1:
+	default:
+	}
+	t.Check(notified, Equals, false)
+	select {
+	case notified = <-c2:
+	default:
+	}
+	t.Check(notified, Equals, false)
+}
+
+func (s *TestSuite) TestRealMySQL(t *C) {
+	if dsn == "" {
+		t.Skip("PCT_TEST_MYSQL_DSN is not set")
+	}
+	m := monitor.NewMonitor(s.logger, &mysql.RealConnectionFactory{})
+	c, err := m.Add(dsn)
+	t.Assert(err, IsNil)
+	defer m.Remove(dsn, c)
+	for i := 0; i < 2; i++ {
+		time.Sleep(1 * time.Second)
+		m.Check()
+		select {
+		case <-c:
+			t.Logf("False-positive restart reported on check number %d", i)
+			t.FailNow()
+		default:
+		}
+	}
+>>>>>>> release
 }

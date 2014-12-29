@@ -44,7 +44,7 @@ func (n *NullMySQL) DB() *sql.DB {
 }
 
 func (n *NullMySQL) DSN() string {
-	return "dsn"
+	return "user:pass@tcp(127.0.0.1:3306)/?parseTime=true"
 }
 
 func (n *NullMySQL) Connect(tries uint) error {

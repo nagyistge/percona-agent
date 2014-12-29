@@ -1,7 +1,9 @@
 package mysql
 
 import (
+	"fmt"
 	"github.com/go-sql-driver/mysql"
+	"net"
 )
 
 func MySQLErrorCode(err error) uint16 {
@@ -10,6 +12,17 @@ func MySQLErrorCode(err error) uint16 {
 	}
 
 	return 0 // not a mysql error
+}
+
+func FormatError(err error) string {
+	switch err.(type) {
+	case *net.OpError:
+		e := err.(*net.OpError)
+		if e.Op == "dial" {
+			return fmt.Sprintf("%s: %s", e.Err, e.Addr)
+		}
+	}
+	return fmt.Sprintf("%s", err)
 }
 
 // MySQL error codes
