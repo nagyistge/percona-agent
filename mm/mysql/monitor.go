@@ -147,7 +147,6 @@ func (m *Monitor) connect(err error) {
 		m.logger.Debug("connect:return")
 	}()
 	// Close/release previous connection, if any.
-	m.connected = false
 	m.conn.Close()
 
 	// Try forever to connect to MySQL...
@@ -247,7 +246,6 @@ func (m *Monitor) run() {
 			m.status.Update(m.name, "Running")
 			if m.conn.DB() == nil {
 				fmt.Printf("Lost connection")
-				m.connected = false
 				go m.connect(fmt.Errorf("e1"))
 			}
 			c := &mm.Collection{
