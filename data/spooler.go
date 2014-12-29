@@ -165,7 +165,7 @@ func (s *DiskvSpooler) Status() map[string]string {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 	s.status.Update("data-spooler-count", fmt.Sprintf("%d", s.count))
-	s.status.Update("data-spooler-size", fmt.Sprintf("%d", s.size))
+	s.status.Update("data-spooler-size", pct.Bytes(s.size))
 	s.status.Update("data-spooler-oldest", fmt.Sprintf("%s", time.Unix(0, s.oldest).UTC()))
 	return s.status.All()
 }

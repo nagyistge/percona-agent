@@ -36,7 +36,7 @@
 		},
 		{
 			"Pkg": "github.com/go-test/test",
-			"Rev": "de87dfd31e4bb0d35cbcd142349d32528bd7b26f"
+			"Rev": "65f3771e91669a6e4251fafcc6d93ffe5e2ff03f"
 		}
 	]
 }
