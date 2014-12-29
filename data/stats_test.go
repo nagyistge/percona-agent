@@ -19,7 +19,7 @@ package data_test
 
 import (
 	"fmt"
-	. "github.com/percona/go-test/test"
+	. "github.com/go-test/test"
 	"github.com/percona/percona-agent/data"
 	. "gopkg.in/check.v1"
 	"time"
