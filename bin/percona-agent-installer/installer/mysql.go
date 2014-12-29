@@ -44,7 +44,7 @@ func MakeGrant(dsn mysql.DSN, user string, pass string, mysqlMaxUserConns int64)
 }
 
 func (i *Installer) getAgentDSN() (dsn mysql.DSN, err error) {
-	if i.flags.Bool["create-mysql-user"] {
+	if i.flags.Bool["create-mysql-user"] && i.flags.String["agent-mysql-user"] == "" {
 		// Connect as root, create percona-agent MySQL user.
 		dsn, err = i.createNewMySQLUser()
 		if err != nil {
@@ -73,6 +73,7 @@ func (i *Installer) getAgentDSN() (dsn mysql.DSN, err error) {
 				// Overwrite the detected user/pass with the ones specified in the command line
 				dsn.Username = i.flags.String["agent-mysql-user"]
 				dsn.Password = i.flags.String["agent-mysql-pass"]
+				fmt.Printf("Using provided user/pass for mysql-agent user. DSN: %s\n", dsn)
 				// Verify new DSN
 				if err := i.verifyMySQLConnection(dsn); err != nil {
 					return dsn, err

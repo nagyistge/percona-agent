@@ -80,7 +80,7 @@ func init() {
 	flag.BoolVar(&flagInteractive, "interactive", true, "Prompt for input on STDIN")
 	flag.BoolVar(&flagAutoDetectMySQL, "auto-detect-mysql", true, "Auto detect MySQL options")
 	flag.BoolVar(&flagCreateMySQLUser, "create-mysql-user", true, "Create MySQL user for agent")
-	flag.StringVar(&flagAgentMySQLUser, "agent-mysql-user", "percona-agent", "MySQL username for agent")
+	flag.StringVar(&flagAgentMySQLUser, "agent-mysql-user", "", "MySQL username for agent")
 	flag.StringVar(&flagAgentMySQLPass, "agent-mysql-pass", "", "MySQL password for agent")
 	flag.StringVar(&flagMySQLDefaultsFile, "mysql-defaults-file", "", "Path to my.cnf, used for auto detection of connection details")
 	flag.StringVar(&flagMySQLUser, "mysql-user", "", "MySQL username")
