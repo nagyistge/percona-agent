@@ -28,8 +28,6 @@ import (
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
 	"os"
-	"testing"
-	"time"
 )
 
 func Test(t *testing.T) { TestingT(t) }
