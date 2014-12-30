@@ -20,17 +20,24 @@ package mysql
 import (
 	"database/sql"
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 
+	"errors"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mm"
 	"github.com/percona/percona-agent/mrms"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
+)
+
+var (
+	accessDenied = errors.New("Access Denied")
+	networkError = errors.New("Network error")
 )
 
 type Monitor struct {
@@ -243,9 +250,6 @@ func (m *Monitor) run() {
 			}
 
 			m.status.Update(m.name, "Running")
-			if m.conn.DB() == nil {
-				go m.connect(fmt.Errorf("Lost DB connection"))
-			}
 			c := &mm.Collection{
 				ServiceInstance: proto.ServiceInstance{
 					Service:    m.config.Service,
@@ -262,14 +266,21 @@ func (m *Monitor) run() {
 
 			// SHOW GLOBAL STATUS
 			if err := m.GetShowStatusMetrics(conn, c); err != nil {
-				m.collectError(err)
+				if m.collectError(err) == networkError {
+					connected = false
+					continue
+				}
 			}
 
 			// SELECT NAME, ... FROM INFORMATION_SCHEMA.INNODB_METRICS
 			if len(m.config.InnoDB) > 0 {
 				if err := m.GetInnoDBMetrics(conn, c); err != nil {
-					if disable := m.collectError(err); disable {
+					switch m.collectError(err) {
+					case accessDenied:
 						m.config.InnoDB = []string{}
+					case networkError:
+						connected = false
+						continue
 					}
 				}
 			}
@@ -277,14 +288,22 @@ func (m *Monitor) run() {
 			if m.config.UserStats {
 				// SELECT ... FROM INFORMATION_SCHEMA.TABLE_STATISTICS
 				if err := m.getTableUserStats(conn, c, m.config.UserStatsIgnoreDb); err != nil {
-					if disable := m.collectError(err); disable {
+					switch m.collectError(err) {
+					case accessDenied:
 						m.config.UserStats = false
+					case networkError:
+						connected = false
+						continue
 					}
 				}
 				// SELECT ... FROM INFORMATION_SCHEMA.INDEX_STATISTICS
 				if err := m.getIndexUserStats(conn, c, m.config.UserStatsIgnoreDb); err != nil {
-					if disable := m.collectError(err); disable {
+					switch m.collectError(err) {
+					case accessDenied:
 						m.config.UserStats = false
+					case networkError:
+						connected = false
+						continue
 					}
 				}
 			}
@@ -538,13 +557,17 @@ func (m *Monitor) getIndexUserStats(conn *sql.DB, c *mm.Collection, ignoreDb str
 	return nil
 }
 
-func (m *Monitor) collectError(err error) bool {
+func (m *Monitor) collectError(err error) error {
 	switch {
 	case mysql.MySQLErrorCode(err) == mysql.ER_SPECIFIC_ACCESS_DENIED_ERROR:
 		m.logger.Error(fmt.Sprintf("Cannot collect InnoDB stats: %s", err))
-		return true
-	default:
-		m.logger.Warn(err)
-		return false
+		return accessDenied
 	}
+	switch err.(type) {
+	case *net.OpError:
+		m.logger.Error("Lost connection to MySQL. Waiting for re-connection")
+		return networkError
+	}
+	m.logger.Warn(err)
+	return err
 }
