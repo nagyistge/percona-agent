@@ -65,7 +65,7 @@ type DiskvSpooler struct {
 	mux          *sync.Mutex
 	trashDataDir string
 	count        uint
-	size         int
+	size         uint64
 	oldest       int64
 	fileSize     map[string]int
 }
@@ -144,7 +144,7 @@ func (s *DiskvSpooler) Start(sz Serializer) error {
 			s.oldest = ts
 		}
 		s.count++
-		s.size += len(data)
+		s.size += uint64(len(data))
 	}
 
 	go s.run()
@@ -237,7 +237,7 @@ func (s *DiskvSpooler) Remove(file string) error {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 	s.count--
-	s.size -= size
+	s.size -= uint64(size)
 	if ok {
 		delete(s.fileSize, file)
 	}
@@ -299,7 +299,7 @@ func (s *DiskvSpooler) run() {
 
 			s.mux.Lock()
 			s.count++
-			s.size += len(bytes)
+			s.size += uint64(len(bytes))
 			if ts < s.oldest {
 				s.oldest = ts
 			}

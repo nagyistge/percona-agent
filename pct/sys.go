@@ -78,7 +78,7 @@ func FileExists(file string) bool {
 	return true
 }
 
-func Mbps(bytes int, seconds float64) string {
+func Mbps(bytes uint64, seconds float64) string {
 	if seconds == 0 {
 		return "0.00"
 	}
@@ -89,7 +89,7 @@ func Mbps(bytes int, seconds float64) string {
 // http://en.wikipedia.org/wiki/Metric_prefix
 var siPrefix []string = []string{"", "k", "M", "G", "T"}
 
-func Bytes(bytes int) string {
+func Bytes(bytes uint64) string {
 	if bytes == 0 {
 		return "0"
 	}
