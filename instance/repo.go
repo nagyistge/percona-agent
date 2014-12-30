@@ -102,8 +102,8 @@ func (r *Repo) loadInstances(service string) error {
 }
 
 func (r *Repo) Add(service string, id uint, data []byte, writeToDisk bool) error {
-	r.logger.Debug("Get:call")
-	defer r.logger.Debug("Get:return")
+	r.logger.Debug("Add:call")
+	defer r.logger.Debug("Add:return")
 
 	if !valid(service, id) {
 		return pct.InvalidServiceInstanceError{Service: service, Id: id}

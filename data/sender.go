@@ -35,29 +35,31 @@ type Sender struct {
 	// --
 	spool      Spooler
 	tickerChan <-chan time.Time
+	timeout    uint
 	blackhole  bool
 	sync       *pct.SyncChan
 	status     *pct.Status
 	// --
-	sent   uint
-	errs   uint
-	bad    uint
-	apiErr bool
+	lastStats  *SenderStats
+	dailyStats *SenderStats
 }
 
 func NewSender(logger *pct.Logger, client pct.WebsocketClient) *Sender {
 	s := &Sender{
-		logger: logger,
-		client: client,
-		sync:   pct.NewSyncChan(),
-		status: pct.NewStatus([]string{"data-sender"}),
+		logger:     logger,
+		client:     client,
+		sync:       pct.NewSyncChan(),
+		status:     pct.NewStatus([]string{"data-sender", "data-sender-last", "data-sender-1d"}),
+		lastStats:  NewSenderStats(0),
+		dailyStats: NewSenderStats(24 * time.Hour),
 	}
 	return s
 }
 
-func (s *Sender) Start(spool Spooler, tickerChan <-chan time.Time, blackhole bool) error {
+func (s *Sender) Start(spool Spooler, tickerChan <-chan time.Time, timeout uint, blackhole bool) error {
 	s.spool = spool
 	s.tickerChan = tickerChan
+	s.timeout = timeout
 	s.blackhole = blackhole
 	go s.run()
 	s.logger.Info("Started")
@@ -113,43 +115,58 @@ func (s *Sender) send() {
 	s.logger.Debug("send:call")
 	defer s.logger.Debug("send:return")
 
-	s.sent = 0
-	s.errs = 0
-	s.bad = 0
-	s.apiErr = false
+	sent := SentInfo{}
 	defer func() {
-		s.logger.Debug(fmt.Sprintf("sent:%d bad:%d errs:%d apiErr:%t", s.sent, s.bad, s.errs, s.apiErr))
+		sent.End = time.Now()
 
 		s.status.Update("data-sender", "Disconnecting")
 		s.client.DisconnectOnce()
-		if s.sent == 0 && !s.apiErr {
-			s.logger.Warn("No data sent")
-		}
-		if s.errs > 0 || s.bad > 0 || s.apiErr {
-			s.status.Update("data-sender", fmt.Sprintf("Idle (last sent at %s: %d ok, %d bad, %d error, API error %t)",
-				time.Now(), s.sent, s.bad, s.errs, s.apiErr))
-		} else {
-			s.status.Update("data-sender", fmt.Sprintf("Idle (last sent at %s: all %d files ok)", time.Now(), s.sent))
-		}
+
+		// Stats for this run.
+		s.lastStats.Sent(sent)
+		r := s.lastStats.Report()
+		report := fmt.Sprintf("at %s: %s", pct.TimeString(r.Begin), FormatSentReport(r))
+		s.status.Update("data-sender-last", report)
+		s.logger.Info(report)
+
+		// Stats for the last day.
+		s.dailyStats.Sent(sent)
+		r = s.dailyStats.Report()
+		report = fmt.Sprintf("since %s: %s", pct.TimeString(r.Begin), FormatSentReport(r))
+		s.status.Update("data-sender-1d", report)
+
+		s.status.Update("data-sender", "Idle")
 	}()
 
 	// Connect and send files until too many errors occur.
-	for !s.apiErr && s.errs < MAX_SEND_ERRORS {
+	startTime := time.Now()
+	sent.Begin = startTime
+	for sent.ApiErrs == 0 && sent.Errs < MAX_SEND_ERRORS && sent.Timeouts == 0 {
+
+		// Check runtime, don't send forever.
+		runTime := time.Now().Sub(startTime).Seconds()
+		if uint(runTime) > s.timeout {
+			sent.Timeouts++
+			s.logger.Warn(fmt.Sprintf("Timeout sending data: %.2fs > %ds", runTime, s.timeout))
+			return
+		}
+
+		// Connect to API, or retry.
 		s.status.Update("data-sender", "Connecting")
 		s.logger.Debug("send:connecting")
-		if s.errs > 0 {
+		if sent.Errs > 0 {
 			time.Sleep(CONNECT_ERROR_WAIT * time.Second)
 		}
 		if err := s.client.ConnectOnce(10); err != nil {
+			sent.Errs++
 			s.logger.Warn("Cannot connect to API: ", err)
-			s.errs++
-			continue
+			continue // retry
 		}
 		s.logger.Debug("send:connected")
 
-		if err := s.sendAllFiles(); err != nil {
-			s.logger.Debug("sendAllFiles:err:", err)
-			s.errs++
+		// Send all files, or stop on error or timeout.
+		if err := s.sendAllFiles(startTime, &sent); err != nil {
+			sent.Errs++
 			s.logger.Warn(err)
 			s.client.DisconnectOnce()
 			continue // error sending files, re-connect and try again
@@ -158,10 +175,18 @@ func (s *Sender) send() {
 	}
 }
 
-func (s *Sender) sendAllFiles() error {
+func (s *Sender) sendAllFiles(startTime time.Time, sent *SentInfo) error {
 	s.status.Update("data-sender", "Running")
 	for file := range s.spool.Files() {
 		s.logger.Debug("send:" + file)
+
+		// Check runtime, don't send forever.
+		runTime := time.Now().Sub(startTime).Seconds()
+		if uint(runTime) > s.timeout {
+			sent.Timeouts++
+			s.logger.Warn(fmt.Sprintf("Timeout sending data: %.2fs > %ds", runTime, s.timeout))
+			return nil // warn about timeout error here, not in caller
+		}
 
 		s.status.Update("data-sender", "Reading "+file)
 		data, err := s.spool.Read(file)
@@ -184,9 +209,12 @@ func (s *Sender) sendAllFiles() error {
 
 		// todo: number/time/rate limit so we dont DDoS API
 		s.status.Update("data-sender", "Sending "+file)
-		if err := s.client.SendBytes(data); err != nil {
+		t0 := time.Now()
+		if err := s.client.SendBytes(data, s.timeout); err != nil {
 			return fmt.Errorf("Sending %s: %s", file, err)
 		}
+		sent.SendTime += time.Now().Sub(t0).Seconds()
+		sent.Bytes += uint64(len(data))
 
 		s.status.Update("data-sender", "Waiting for API to ack "+file)
 		resp := &proto.Response{}
@@ -198,22 +226,22 @@ func (s *Sender) sendAllFiles() error {
 		switch {
 		case resp.Code >= 500:
 			// API had problem, try sending files again later.
-			s.apiErr = true
+			sent.ApiErrs++
 			return nil // don't warn about API errors
 		case resp.Code >= 400:
 			// File is bad, remove it.
 			s.status.Update("data-sender", "Removing "+file)
 			s.spool.Remove(file)
 			s.logger.Warn(fmt.Sprintf("Removed %s because API returned %d: %s", file, resp.Code, resp.Error))
-			s.sent++
-			s.bad++
+			sent.Files++
+			sent.BadFiles++
 		case resp.Code >= 300:
 			// This shouldn't happen.
 			return fmt.Errorf("Recieved unhandled response code from API: %d: %s", resp.Code, resp.Error)
 		case resp.Code >= 200:
 			s.status.Update("data-sender", "Removing "+file)
 			s.spool.Remove(file)
-			s.sent++
+			sent.Files++
 		default:
 			// This shouldn't happen.
 			return fmt.Errorf("Recieved unknown response code from API: %d: %s", resp.Code, resp.Error)

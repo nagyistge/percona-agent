@@ -68,13 +68,15 @@ func (c *DataClient) ConnectOnce(timeout uint) error {
 	return c.ConnectError
 }
 
-func (c *DataClient) Disconnect() {
+func (c *DataClient) Disconnect() error {
 	c.TraceChan <- "Disconnect"
 	c.connectChan <- true
+	return nil
 }
 
-func (c *DataClient) DisconnectOnce() {
+func (c *DataClient) DisconnectOnce() error {
 	c.TraceChan <- "DisconnectOnce"
+	return nil
 }
 
 func (c *DataClient) Start() {
@@ -97,7 +99,7 @@ func (c *DataClient) Send(data interface{}, timeout uint) error {
 }
 
 // First, agent calls this to send encoded proto.Data to API.
-func (c *DataClient) SendBytes(data []byte) error {
+func (c *DataClient) SendBytes(data []byte, timeout uint) error {
 	c.TraceChan <- "SendBytes"
 	c.dataChan <- data
 	return nil

@@ -88,3 +88,47 @@ func (s *SysTestSuite) TestSameFile(t *C) {
 		t.Error(err)
 	}
 }
+
+func (s *SysTestSuite) TestMbps(t *C) {
+	t.Check(pct.Mbps(0, 1.0), Equals, "0.00")
+	t.Check(pct.Mbps(12749201, 0), Equals, "0.00")
+
+	// 1 Mbps = 1048576 bytes = 8 388 608 bits = 8.39 Mbps
+	t.Check(pct.Mbps(1048576, 1.0), Equals, "8.39")
+
+	// 222566303 bytes = 1 780 530 424 bits = 1780.53 Mbps
+	t.Check(pct.Mbps(222566303, 1.0), Equals, "1780.53")
+	t.Check(pct.Mbps(222566303, 2.0), Equals, "890.27")
+	t.Check(pct.Mbps(222566303, 300.0), Equals, "5.94")  // 5m
+	t.Check(pct.Mbps(222566303, 3600.0), Equals, "0.49") // 1h
+}
+
+func (s *SysTestSuite) TestBytes(t *C) {
+	t.Check(pct.Bytes(0), Equals, "0")
+	t.Check(pct.Bytes(1024), Equals, "1.02 kB")
+	t.Check(pct.Bytes(12749201), Equals, "12.75 MB")
+	t.Check(pct.Bytes(222566303), Equals, "222.57 MB")
+	t.Check(pct.Bytes(1987654321), Equals, "1.99 GB")
+	t.Check(pct.Bytes(5001987654321), Equals, "5.00 TB")
+}
+
+func (s *SysTestSuite) TestDuration(t *C) {
+	t.Check(pct.Duration(0), Equals, "0")
+	t.Check(pct.Duration(0.000001), Equals, "1µ")
+	t.Check(pct.Duration(0.000010), Equals, "10µ")
+	t.Check(pct.Duration(0.000100), Equals, "100µ")
+	t.Check(pct.Duration(0.001), Equals, "1ms")
+	t.Check(pct.Duration(0.010), Equals, "10ms")
+	t.Check(pct.Duration(0.100), Equals, "100ms")
+	t.Check(pct.Duration(0.100200300400), Equals, "100ms")
+	t.Check(pct.Duration(0.999999), Equals, "999ms")
+	t.Check(pct.Duration(1), Equals, "1s")
+	t.Check(pct.Duration(1.357901), Equals, "1.358s")
+	t.Check(pct.Duration(63.000001), Equals, "1m3s")
+	t.Check(pct.Duration(1.300000), Equals, "1.3s")
+	t.Check(pct.Duration(55), Equals, "55s")
+	t.Check(pct.Duration(72), Equals, "1m12s")
+	t.Check(pct.Duration(100.500600), Equals, "1m40.501s")
+	t.Check(pct.Duration(4000), Equals, "1h6m40s")
+	t.Check(pct.Duration(100000), Equals, "1d3h46m40s")
+}

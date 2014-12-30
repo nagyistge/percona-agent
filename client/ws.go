@@ -208,21 +208,22 @@ func (c *WebsocketClient) dialTimeout(config *websocket.Config, timeout uint) (w
 	return ws, nil
 }
 
-func (c *WebsocketClient) Disconnect() {
+func (c *WebsocketClient) Disconnect() error {
 	c.logger.DebugOffline("Disconnect:call")
 	defer c.logger.DebugOffline("Disconnect:return")
 
 	c.mux.Lock()
 	defer c.mux.Unlock()
 	if !c.connected {
-		return
+		return nil
 	}
 
-	c.disconnect()
+	err := c.disconnect()
 	c.notifyConnect(false)
+	return err
 }
 
-func (c *WebsocketClient) DisconnectOnce() {
+func (c *WebsocketClient) DisconnectOnce() error {
 	c.logger.DebugOffline("DisconnectOnce:call")
 	defer c.logger.DebugOffline("DisconnectOnce:return")
 
@@ -236,16 +237,29 @@ func (c *WebsocketClient) DisconnectOnce() {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 	if !c.connected {
-		return
+		return nil
 	}
 
-	c.disconnect()
+	return c.disconnect()
 }
 
-func (c *WebsocketClient) disconnect() {
-	if err := c.conn.Close(); err != nil {
+func (c *WebsocketClient) disconnect() error {
+	c.logger.DebugOffline("disconnect:call")
+	defer c.logger.DebugOffline("disconnect:return")
+
+	// Close() causes a write, therefore it's affected by the write timeout.
+	// Since Send() also sets the write timeout, we must reset it here else
+	// Close() can fail immediately due to previous timeout set for Send()
+	// already having passed.
+	// https://jira.percona.com/browse/PCT-1045
+	c.conn.SetWriteDeadline(time.Now().Add(3 * time.Second))
+	defer c.conn.SetWriteDeadline(time.Time{})
+
+	var err error
+	if err = c.conn.Close(); err != nil {
 		// Example: write tcp 127.0.0.1:8000: i/o timeout
-		// That ^ can happen if remote end hangs up, then we call Close().
+		// That ^ can happen if remote end hangs up, then we call Close(),
+		// or if there's a timeout (shouldn't happen afaik).
 		// Since there's nothing we can do about errors here, we ignore them.
 		c.logger.DebugOffline("disconnect:websocket.Conn.Close:err:" + err.Error())
 	}
@@ -261,6 +275,7 @@ func (c *WebsocketClient) disconnect() {
 
 	c.logger.DebugOffline("disconnected")
 	c.status.Update(c.name, "Disconnected")
+	return err
 }
 
 func (c *WebsocketClient) send() {
@@ -384,16 +399,22 @@ func (c *WebsocketClient) Send(data interface{}, timeout uint) error {
 	// defer c.logger.DebugOffline("Send:return")
 	if timeout > 0 {
 		c.conn.SetWriteDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
+		defer c.conn.SetWriteDeadline(time.Time{})
 	} else {
 		c.conn.SetWriteDeadline(time.Time{})
 	}
 	return websocket.JSON.Send(c.conn, data)
 }
 
-func (c *WebsocketClient) SendBytes(data []byte) error {
+func (c *WebsocketClient) SendBytes(data []byte, timeout uint) error {
 	c.logger.DebugOffline("SendBytes:call")
 	defer c.logger.DebugOffline("SendBytes:return")
-	c.conn.SetWriteDeadline(time.Now().Add(20 * time.Second))
+	if timeout > 0 {
+		c.conn.SetWriteDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
+	} else {
+		c.conn.SetWriteDeadline(time.Time{})
+	}
+	defer c.conn.SetWriteDeadline(time.Time{})
 	return websocket.Message.Send(c.conn, data)
 }
 
@@ -401,8 +422,8 @@ func (c *WebsocketClient) Recv(data interface{}, timeout uint) error {
 	c.logger.DebugOffline("Recv:call")
 	defer c.logger.DebugOffline("Recv:return")
 	if timeout > 0 {
-		t := time.Now().Add(time.Duration(timeout) * time.Second)
-		c.conn.SetReadDeadline(t)
+		c.conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
+		defer c.conn.SetReadDeadline(time.Time{})
 	} else {
 		c.conn.SetReadDeadline(time.Time{})
 	}

@@ -22,6 +22,7 @@ import (
 )
 
 type MrmsMonitor struct {
+	c chan bool
 }
 
 func NewMrmsMonitor() *MrmsMonitor {
@@ -29,12 +30,12 @@ func NewMrmsMonitor() *MrmsMonitor {
 	return m
 }
 
-func (m *MrmsMonitor) Add(dsn string) (c chan bool, err error) {
-	c = make(chan bool, 10)
-	return c, nil
+func (m *MrmsMonitor) Add(dsn string) (<-chan bool, error) {
+	m.c = make(chan bool, 10)
+	return m.c, nil
 }
 
-func (m *MrmsMonitor) Remove(dsn string, c chan bool) {
+func (m *MrmsMonitor) Remove(dsn string, c <-chan bool) {
 }
 
 func (m *MrmsMonitor) Check() {
@@ -52,4 +53,11 @@ func (m *MrmsMonitor) Status() (status map[string]string) {
 	return map[string]string{
 		"mrms-monitor-mock": "Idle",
 	}
+}
+
+// The restartChan in the real MrmsMonitor is read only.
+// To be consistent with that, instead of returning the channel just for
+// testing purposes, we have this method to simulate a MySQL restart
+func (m *MrmsMonitor) SimulateMySQLRestart() {
+	m.c <- true
 }

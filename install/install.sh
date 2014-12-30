@@ -30,7 +30,7 @@ fi
 
 PLATFORM=`uname -m`
 if [ "$PLATFORM" != "x86_64" -a "$PLATFORM" != "i686" -a "$PLATFORM" != "i386" ]; then
-   error "$BIN only support x86_64 and i686 platforms; detected $PLATFORM"
+   error "$BIN supports only x86_64 and i686 platforms; detected $PLATFORM"
 fi
 
 echo "Detected $KERNEL $PLATFORM"
@@ -242,6 +242,11 @@ uninstall() {
     exit 0
 }
 
+if [ "$*" == "--help" -o "$*" == "-help" -o "$*" == "-h" -o "$*" == "-?" ]; then
+   "$INSTALLER_DIR/bin/$BIN-installer" -h
+   echo "See http://cloud-docs.percona.com/Install.html for more information."
+   exit 0
+fi
 [[ $* == *-uninstall* ]] && uninstall
 install $@
 

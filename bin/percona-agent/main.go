@@ -47,6 +47,7 @@ import (
 	golog "log"
 	"os"
 	"os/signal"
+	"os/user"
 	"runtime"
 	"syscall"
 	"time"
@@ -54,6 +55,7 @@ import (
 
 var (
 	flagPing    bool
+	flagStatus  bool
 	flagBasedir string
 	flagPidFile string
 	flagVersion bool
@@ -64,6 +66,7 @@ func init() {
 	golog.SetOutput(os.Stdout)
 
 	flag.BoolVar(&flagPing, "ping", false, "Ping API")
+	flag.BoolVar(&flagStatus, "status", false, "Agent status")
 	flag.StringVar(&flagBasedir, "basedir", pct.DEFAULT_BASEDIR, "Agent basedir")
 	flag.StringVar(&flagPidFile, "pidfile", "", "PID file")
 	flag.BoolVar(&flagVersion, "version", false, "Print version")
@@ -151,9 +154,30 @@ func run() error {
 	 * REST API
 	 */
 
-	api, err := ConnectAPI(agentConfig)
+	retry := -1 // unlimited
+	if flagStatus {
+		retry = 1
+	}
+	api, err := ConnectAPI(agentConfig, retry)
 	if err != nil {
 		golog.Fatal(err)
+	}
+
+	// Get agent status via API and exit.
+	if flagStatus {
+		code, bytes, err := api.Get(agentConfig.ApiKey, api.AgentLink("self")+"/status")
+		if err != nil {
+			return err
+		}
+		if code == 404 {
+			return fmt.Errorf("Agent not found")
+		}
+		status := make(map[string]string)
+		if err := json.Unmarshal(bytes, &status); err != nil {
+			return err
+		}
+		golog.Println(status)
+		return nil
 	}
 
 	/**
@@ -197,13 +221,13 @@ func run() error {
 	 * MRMS (MySQL Restart Monitoring Service)
 	 */
 
-	mysqlRestartMonitor := mrmsMonitor.NewMonitor(
+	mrm := mrmsMonitor.NewMonitor(
 		pct.NewLogger(logChan, "mrms-monitor"),
 		connFactory,
 	)
 	mrmsManager := mrms.NewManager(
 		pct.NewLogger(logChan, "mrms-manager"),
-		mysqlRestartMonitor,
+		mrm,
 	)
 	if err := mrmsManager.Start(); err != nil {
 		return fmt.Errorf("Error starting mrms manager: %s\n", err)
@@ -243,10 +267,11 @@ func run() error {
 
 	mmManager := mm.NewManager(
 		pct.NewLogger(logChan, "mm"),
-		mmMonitor.NewFactory(logChan, itManager.Repo()),
+		mmMonitor.NewFactory(logChan, itManager.Repo(), mrm),
 		clock,
 		dataManager.Spooler(),
 		itManager.Repo(),
+		mrm,
 	)
 	if err := mmManager.Start(); err != nil {
 		return fmt.Errorf("Error starting mm manager: %s\n", err)
@@ -291,7 +316,7 @@ func run() error {
 		qan.NewRealWorkerFactory(logChan),
 		dataManager.Spooler(),
 		itManager.Repo(),
-		mysqlRestartMonitor,
+		mrm,
 	)
 	if err := qanManager.Start(); err != nil {
 		return fmt.Errorf("Error starting qan manager: %s\n", err)
@@ -393,21 +418,50 @@ func run() error {
 		}()
 		stopChan <- agent.Run()
 	}()
-	stopErr = <-stopChan // agent or signal
-	golog.Println("Agent stopped, shutting down...")
+
+	// Wait for agent to stop, or for signals.
+	agentRunning := true
+	statusSigChan := make(chan os.Signal, 1)
+	signal.Notify(statusSigChan, syscall.SIGUSR1) // kill -USER1 PID
+	reconnectSigChan := make(chan os.Signal, 1)
+	signal.Notify(reconnectSigChan, syscall.SIGHUP) // kill -HUP PID
+	for agentRunning {
+		select {
+		case stopErr = <-stopChan: // agent or signal
+			golog.Println("Agent stopped, shutting down...")
+			agentRunning = false
+		case <-statusSigChan:
+			status := agent.AllStatus()
+			golog.Printf("Status: %+v\n", status)
+		case <-reconnectSigChan:
+			u, _ := user.Current()
+			cmd := &proto.Cmd{
+				Ts:        time.Now().UTC(),
+				User:      u.Username + " (SIGHUP)",
+				AgentUuid: agentConfig.AgentUuid,
+				Service:   "agent",
+				Cmd:       "Reconnect",
+			}
+			agent.Handle(cmd)
+		}
+	}
+
 	qanManager.Stop()           // see Signal handler ^
 	time.Sleep(2 * time.Second) // wait for final replies and log entries
 	return stopErr
 }
 
-func ConnectAPI(agentConfig *agent.Config) (*pct.API, error) {
+func ConnectAPI(agentConfig *agent.Config, retry int) (*pct.API, error) {
 	golog.Println("ApiHostname: " + agentConfig.ApiHostname)
 	golog.Println("ApiKey: " + agentConfig.ApiKey)
 
 	api := pct.NewAPI()
 	backoff := pct.NewBackoff(5 * time.Minute)
+	week := time.Hour * 24 * 7
 	t0 := time.Now()
-	for time.Now().Sub(t0) < time.Hour*24*7 {
+	try := 0
+	for (retry == -1 || try < retry) && time.Now().Sub(t0) < week {
+		try++
 		time.Sleep(backoff.Wait())
 		golog.Println("Connecting to API")
 		if err := api.Connect(agentConfig.ApiHostname, agentConfig.ApiKey, agentConfig.AgentUuid); err != nil {

@@ -26,6 +26,8 @@ import (
 	"github.com/peterbourgon/diskv"
 	"os"
 	"path"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -62,6 +64,10 @@ type DiskvSpooler struct {
 	status       *pct.Status
 	mux          *sync.Mutex
 	trashDataDir string
+	count        uint
+	size         uint64
+	oldest       int64
+	fileSize     map[string]int
 }
 
 func NewDiskvSpooler(logger *pct.Logger, dataDir, trashDir, hostname string) *DiskvSpooler {
@@ -73,8 +79,9 @@ func NewDiskvSpooler(logger *pct.Logger, dataDir, trashDir, hostname string) *Di
 		// --
 		dataChan: make(chan *proto.Data, WRITE_BUFFER),
 		sync:     pct.NewSyncChan(),
-		status:   pct.NewStatus([]string{"data-spooler"}),
+		status:   pct.NewStatus([]string{"data-spooler", "data-spooler-count", "data-spooler-size", "data-spooler-oldest"}),
 		mux:      new(sync.Mutex),
+		fileSize: make(map[string]int),
 	}
 	return s
 }
@@ -84,6 +91,8 @@ func NewDiskvSpooler(logger *pct.Logger, dataDir, trashDir, hostname string) *Di
 /////////////////////////////////////////////////////////////////////////////
 
 func (s *DiskvSpooler) Start(sz Serializer) error {
+	s.status.Update("data-spooler", "Starting")
+
 	// Create the data dir if necessary.  Normally the manager does this,
 	// but it's necessary to create it here for testing.
 	if err := pct.MakeDir(s.dataDir); err != nil {
@@ -108,6 +117,36 @@ func (s *DiskvSpooler) Start(sz Serializer) error {
 		IndexLess:    func(a, b string) bool { return a < b },
 	})
 
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	s.oldest = time.Now().UTC().UnixNano()
+	for key := range s.cache.Keys() {
+		data, err := s.cache.Read(key)
+		if err != nil {
+			s.logger.Error("Cannot read data file", key, ":", err)
+			s.cache.Erase(key)
+			continue
+		}
+		parts := strings.Split(key, "_") // service_nanoUnixTs
+		if len(parts) != 2 {
+			s.logger.Error("Invalid data file name:", key)
+			s.cache.Erase(key)
+			continue
+		}
+
+		ts, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			s.logger.Error("ParseInt", key, ":", err)
+			s.cache.Erase(key)
+			continue
+		}
+		if ts < s.oldest {
+			s.oldest = ts
+		}
+		s.count++
+		s.size += uint64(len(data))
+	}
+
 	go s.run()
 	s.logger.Info("Started")
 	return nil
@@ -123,6 +162,11 @@ func (s *DiskvSpooler) Stop() error {
 }
 
 func (s *DiskvSpooler) Status() map[string]string {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	s.status.Update("data-spooler-count", fmt.Sprintf("%d", s.count))
+	s.status.Update("data-spooler-size", pct.Bytes(s.size))
+	s.status.Update("data-spooler-oldest", fmt.Sprintf("%s", time.Unix(0, s.oldest).UTC()))
 	return s.status.All()
 }
 
@@ -174,11 +218,30 @@ func (s *DiskvSpooler) Files() <-chan string {
 }
 
 func (s *DiskvSpooler) Read(file string) ([]byte, error) {
-	return s.cache.Read(file)
+	bytes, err := s.cache.Read(file)
+	// Cache file size because we expect caller to call Remove() next.
+	s.fileSize[file] = len(bytes)
+	return bytes, err
 }
 
 func (s *DiskvSpooler) Remove(file string) error {
-	return s.cache.Erase(file)
+	size, ok := s.fileSize[file]
+	if !ok {
+		data, _ := s.Read(file)
+		size = len(data)
+	}
+	// Don't lock mutex yet in case this takes awhile (it shouldn't):
+	if err := s.cache.Erase(file); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	s.count--
+	s.size -= uint64(size)
+	if ok {
+		delete(s.fileSize, file)
+	}
+	return nil
 }
 
 func (s *DiskvSpooler) Reject(file string) error {
@@ -219,7 +282,8 @@ func (s *DiskvSpooler) run() {
 		s.status.Update("data-spooler", "Idle")
 		select {
 		case protoData := <-s.dataChan:
-			key := fmt.Sprintf("%s_%d", protoData.Service, protoData.Created.UnixNano())
+			ts := protoData.Created.UnixNano()
+			key := fmt.Sprintf("%s_%d", protoData.Service, ts)
 			s.logger.Debug("run:spool:" + key)
 			s.status.Update("data-spooler", "Spooling "+key)
 
@@ -232,6 +296,14 @@ func (s *DiskvSpooler) run() {
 			if err := s.cache.Write(key, bytes); err != nil {
 				s.logger.Error(err)
 			}
+
+			s.mux.Lock()
+			s.count++
+			s.size += uint64(len(bytes))
+			if ts < s.oldest {
+				s.oldest = ts
+			}
+			s.mux.Unlock()
 		case <-s.sync.StopChan:
 			s.sync.Graceful()
 			return

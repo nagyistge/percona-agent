@@ -37,7 +37,7 @@ import (
 // REV="$(git rev-parse HEAD)"
 // go build -ldflags "-X github.com/percona/percon-agent/agnet.REVISION $REV"
 var REVISION string = "0"
-var VERSION string = "1.0.9"
+var VERSION string = "1.0.10"
 
 const (
 	CMD_QUEUE_SIZE    = 10
@@ -54,7 +54,7 @@ type Agent struct {
 	api       pct.APIConnector
 	services  map[string]pct.ServiceManager
 	updater   *pct.Updater
-	keepalive *time.Timer
+	keepalive *time.Ticker
 	// --
 	cmdSync        *pct.SyncChan
 	cmdChan        chan *proto.Cmd
@@ -99,6 +99,7 @@ func (agent *Agent) Run() error {
 	client := agent.client
 	client.Start()
 	cmdChan := client.RecvChan()
+	connected := false
 	go agent.connect()
 
 	/*
@@ -124,7 +125,7 @@ func (agent *Agent) Run() error {
 
 	// Send Pong to API to keep cmd ws open or detect if API end is closed.
 	// https://jira.percona.com/browse/PCT-765
-	agent.keepalive = time.NewTimer(time.Duration(agent.config.Keepalive) * time.Second)
+	agent.keepalive = time.NewTicker(time.Duration(agent.config.Keepalive) * time.Second)
 
 	logger.Info("Started")
 
@@ -224,7 +225,7 @@ func (agent *Agent) Run() error {
 			}
 		case err := <-client.ErrorChan():
 			logger.Warn("ws error:", err)
-		case connected := <-client.ConnectChan():
+		case connected = <-client.ConnectChan():
 			if connected {
 				logger.Info("Connected to API")
 				cmdHandlerErrors = 0
@@ -237,13 +238,10 @@ func (agent *Agent) Run() error {
 		case <-agent.keepalive.C:
 			// Send keepalive (i.e. check if ws cmd chan is still open on API end).
 			logger.Debug("pong")
-			cmd := &proto.Cmd{Cmd: "Pong"}
-			agent.reply(cmd.Reply(nil, nil))
-
-			// Reset keepalive timer.
-			agent.configMux.RLock()
-			agent.keepalive.Reset(time.Duration(agent.config.Keepalive) * time.Second)
-			agent.configMux.RUnlock()
+			if connected {
+				cmd := &proto.Cmd{Cmd: "Pong"}
+				agent.reply(cmd.Reply(nil, nil))
+			}
 		}
 	}
 }
@@ -357,20 +355,6 @@ func (agent *Agent) cmdHandler() {
 		case cmd := <-agent.cmdChan:
 			agent.status.UpdateRe("agent-cmd-handler", "Handling", cmd)
 
-			if cmd.Cmd == "Reconnect" && cmd.Service == "agent" {
-				/**
-				 * Reconnect is a special case: there's no reply because we can't
-				 * recv cmd on connection 1 and send reply on connection 2.  The
-				 * "reply" in a sense is making a successful connection again.
-				 * If that doesn't happen, then user/API knows reconnect failed.
-				 */
-
-				// Do NOT call connect() here because Disconnect() causes Run() to receive
-				// false on client.ConnectChan() which causes it to call connect().
-				agent.client.Disconnect()
-				continue
-			}
-
 			// Handle the cmd in a separate goroutine so if it gets stuck it won't affect us.
 			go func() {
 				var reply *proto.Reply
@@ -408,7 +392,11 @@ func (agent *Agent) cmdHandler() {
 			}
 
 			// Reply to cmd.
-			agent.reply(reply)
+			if reply != nil {
+				agent.reply(reply)
+			} else {
+				agent.logger.Info(cmd, "executed, no reply")
+			}
 		case <-agent.cmdHandlerSync.StopChan: // from stop()
 			agent.cmdHandlerSync.Graceful()
 			return
@@ -454,6 +442,18 @@ func (agent *Agent) Handle(cmd *proto.Cmd) *proto.Reply {
 		data, errs = agent.handleUpdate(cmd)
 	case "Version":
 		data, errs = agent.handleVersion(cmd)
+	case "Reconnect":
+		/*
+			Reconnect is a special case: there's no reply because we can't
+			recv cmd on connection 1 and send reply on connection 2.  The
+			"reply" in a sense is making a successful connection again.
+			If that doesn't happen, then user/API knows reconnect failed.
+
+			Do NOT call connect() here because Disconnect() causes Run() to receive
+			false on client.ConnectChan() which causes it to call connect().
+		*/
+		agent.client.Disconnect()
+		return nil // no reply
 	default:
 		errs = append(errs, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
@@ -584,10 +584,10 @@ func (agent *Agent) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 		}
 	}
 
-	// Change keepalive if valid.
+	// Change keepalive if valid. It is not dynamic.
 	if newConfig.Keepalive > 0 {
-		agent.logger.Warn("Changing keepalive from", finalConfig.Keepalive, "to", newConfig.Keepalive)
-		agent.keepalive.Reset(time.Duration(newConfig.Keepalive) * time.Second)
+		agent.logger.Warn("Changing keepalive from", finalConfig.Keepalive, "to", newConfig.Keepalive,
+			"; restart agent to take effect")
 		finalConfig.Keepalive = newConfig.Keepalive
 	}
 

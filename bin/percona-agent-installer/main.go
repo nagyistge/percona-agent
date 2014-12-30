@@ -33,28 +33,31 @@ const (
 )
 
 var (
-	flagApiHostname          string
-	flagApiKey               string
-	flagBasedir              string
-	flagDebug                bool
-	flagCreateMySQLInstance  bool
-	flagCreateServerInstance bool
-	flagStartServices        bool
-	flagCreateAgent          bool
-	flagStartMySQLServices   bool
-	flagMySQL                bool
-	flagOldPasswords         bool
-	flagPlainPasswords       bool
-	flagInteractive          bool
-	flagMySQLDefaultsFile    string
-	flagAutoDetectMySQL      bool
-	flagCreateMySQLUser      bool
-	flagMySQLUser            string
-	flagMySQLPass            string
-	flagMySQLHost            string
-	flagMySQLPort            string
-	flagMySQLSocket          string
-	flagIgnoreFailures       bool
+	flagApiHostname             string
+	flagApiKey                  string
+	flagBasedir                 string
+	flagDebug                   bool
+	flagCreateMySQLInstance     bool
+	flagCreateServerInstance    bool
+	flagStartServices           bool
+	flagCreateAgent             bool
+	flagStartMySQLServices      bool
+	flagMySQL                   bool
+	flagOldPasswords            bool
+	flagPlainPasswords          bool
+	flagInteractive             bool
+	flagMySQLDefaultsFile       string
+	flagAutoDetectMySQL         bool
+	flagCreateMySQLUser         bool
+	flagAgentMySQLUser          string
+	flagAgentMySQLPass          string
+	flagMySQLUser               string
+	flagMySQLPass               string
+	flagMySQLHost               string
+	flagMySQLPort               string
+	flagMySQLSocket             string
+	flagIgnoreFailures          bool
+	flagMySQLMaxUserConnections int64
 )
 
 func init() {
@@ -77,12 +80,15 @@ func init() {
 	flag.BoolVar(&flagInteractive, "interactive", true, "Prompt for input on STDIN")
 	flag.BoolVar(&flagAutoDetectMySQL, "auto-detect-mysql", true, "Auto detect MySQL options")
 	flag.BoolVar(&flagCreateMySQLUser, "create-mysql-user", true, "Create MySQL user for agent")
+	flag.StringVar(&flagAgentMySQLUser, "agent-mysql-user", "", "MySQL username for agent")
+	flag.StringVar(&flagAgentMySQLPass, "agent-mysql-pass", "", "MySQL password for agent")
 	flag.StringVar(&flagMySQLDefaultsFile, "mysql-defaults-file", "", "Path to my.cnf, used for auto detection of connection details")
 	flag.StringVar(&flagMySQLUser, "mysql-user", "", "MySQL username")
 	flag.StringVar(&flagMySQLPass, "mysql-pass", "", "MySQL password")
 	flag.StringVar(&flagMySQLHost, "mysql-host", "", "MySQL host")
 	flag.StringVar(&flagMySQLPort, "mysql-port", "", "MySQL port")
 	flag.StringVar(&flagMySQLSocket, "mysql-socket", "", "MySQL socket file")
+	flag.Int64Var(&flagMySQLMaxUserConnections, "mysql-max-user-connections", 5, "Max number of MySQL connections")
 }
 
 func main() {
@@ -133,11 +139,16 @@ func main() {
 		String: map[string]string{
 			"app-host":            DEFAULT_APP_HOSTNAME,
 			"mysql-defaults-file": flagMySQLDefaultsFile,
+			"agent-mysql-user":    flagAgentMySQLUser,
+			"agent-mysql-pass":    flagAgentMySQLPass,
 			"mysql-user":          flagMySQLUser,
 			"mysql-pass":          flagMySQLPass,
 			"mysql-host":          flagMySQLHost,
 			"mysql-port":          flagMySQLPort,
 			"mysql-socket":        flagMySQLSocket,
+		},
+		Int64: map[string]int64{
+			"mysql-max-user-connections": flagMySQLMaxUserConnections,
 		},
 	}
 

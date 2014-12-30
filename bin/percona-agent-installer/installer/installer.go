@@ -38,6 +38,7 @@ var portNumberRe = regexp.MustCompile(`\.\d+$`)
 type Flags struct {
 	Bool   map[string]bool
 	String map[string]string
+	Int64  map[string]int64
 }
 
 type Installer struct {

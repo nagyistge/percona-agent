@@ -27,6 +27,7 @@ import (
 
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mm"
+	"github.com/percona/percona-agent/mrms"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 )
@@ -39,15 +40,16 @@ type Monitor struct {
 	// --
 	tickChan       chan time.Time
 	collectionChan chan *mm.Collection
-	connected      bool
 	connectedChan  chan bool
+	restartChan    <-chan bool
 	status         *pct.Status
 	sync           *pct.SyncChan
 	running        bool
 	collectLimit   float64
+	mrm            mrms.Monitor
 }
 
-func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Connector) *Monitor {
+func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Connector, mrm mrms.Monitor) *Monitor {
 	m := &Monitor{
 		name:   name,
 		config: config,
@@ -55,9 +57,11 @@ func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Conn
 		conn:   conn,
 		// --
 		connectedChan: make(chan bool, 1),
+		restartChan:   nil,
 		status:        pct.NewStatus([]string{name, name + "-mysql"}),
 		sync:          pct.NewSyncChan(),
 		collectLimit:  float64(config.Collect) * 0.1, // 10% of Collect time
+		mrm:           mrm,
 	}
 	return m
 }
@@ -68,6 +72,7 @@ func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Conn
 
 // @goroutine[0]
 func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collection) error {
+	var err error
 	m.logger.Debug("Start:call")
 	defer m.logger.Debug("Start:return")
 
@@ -78,6 +83,10 @@ func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collect
 	m.tickChan = tickChan
 	m.collectionChan = collectionChan
 
+	m.restartChan, err = m.mrm.Add(m.conn.DSN())
+	if err != nil {
+		return err
+	}
 	go m.run()
 	m.running = true
 	m.logger.Info("Started")
@@ -98,6 +107,8 @@ func (m *Monitor) Stop() error {
 	m.status.Update(m.name, "Stopping")
 	m.sync.Stop()
 	m.sync.Wait()
+
+	m.mrm.Remove(m.conn.DSN(), m.restartChan)
 
 	m.running = false
 	m.logger.Info("Stopped")
@@ -141,7 +152,6 @@ func (m *Monitor) connect(err error) {
 	// Try forever to connect to MySQL...
 	for {
 		m.logger.Debug("connect:try")
-
 		if err != nil {
 			m.status.Update(m.name+"-mysql", fmt.Sprintf("Connecting (%s)", err))
 		} else {
@@ -151,38 +161,47 @@ func (m *Monitor) connect(err error) {
 			m.logger.Warn(err)
 			continue
 		}
+		m.logger.Info("Connected")
+		m.status.Update(m.name+"-mysql", "Connected")
 
-		// Set global vars we need.  If these fail, that's ok: they won't work,
-		// but don't let that stop us from collecting other metrics.
-		if len(m.config.InnoDB) > 0 {
-			for _, module := range m.config.InnoDB {
-				sql := "SET GLOBAL innodb_monitor_enable = '" + module + "'"
-				if _, err := m.conn.DB().Exec(sql); err != nil {
-					errMsg := fmt.Sprintf("Cannot collect InnoDB stats because '%s' failed: %s", sql, err)
-					m.logger.Error(errMsg)
-					m.config.InnoDB = []string{}
-					break
-				}
-			}
-		}
-
-		if m.config.UserStats {
-			// 5.1.49 <= v <= 5.5.10: SET GLOBAL userstat_running=ON
-			// 5.5.10 <  v:           SET GLOBAL userstat=ON
-			sql := "SET GLOBAL userstat=ON"
-			if _, err := m.conn.DB().Exec(sql); err != nil {
-				errMsg := fmt.Sprintf("Cannot collect user stats because '%s' failed: %s", sql, err)
-				m.logger.Error(errMsg)
-				m.config.UserStats = false
-			}
-		}
+		m.setGlobalVars()
 
 		// Tell run() goroutine that it can try to collect metrics.
 		// If connection is lost, it will call us again.
-		m.logger.Info("Connected")
-		m.status.Update(m.name+"-mysql", "Connected")
 		m.connectedChan <- true
 		return
+	}
+}
+
+// We need to set these vars everytime we connect to the DB because as these
+// are session variables, they get lost on MySQL restarts
+func (m *Monitor) setGlobalVars() {
+	m.logger.Debug("setGlobalVars:call")
+	defer m.logger.Debug("setGlobalVars:return")
+
+	// Set global vars we need.  If these fail, that's ok: they won't work,
+	// but don't let that stop us from collecting other metrics.
+	if len(m.config.InnoDB) > 0 {
+		for _, module := range m.config.InnoDB {
+			sql := "SET GLOBAL innodb_monitor_enable = '" + module + "'"
+			if _, err := m.conn.DB().Exec(sql); err != nil {
+				errMsg := fmt.Sprintf("Cannot collect InnoDB stats because '%s' failed: %s", sql, err)
+				m.logger.Error(errMsg)
+				m.config.InnoDB = []string{}
+				break
+			}
+		}
+	}
+
+	if m.config.UserStats {
+		// 5.1.49 <= v <= 5.5.10: SET GLOBAL userstat_running=ON
+		// 5.5.10 <  v:           SET GLOBAL userstat=ON
+		sql := "SET GLOBAL userstat=ON"
+		if _, err := m.conn.DB().Exec(sql); err != nil {
+			errMsg := fmt.Sprintf("Cannot collect user stats because '%s' failed: %s", sql, err)
+			m.logger.Error(errMsg)
+			m.config.UserStats = false
+		}
 	}
 }
 
@@ -199,6 +218,7 @@ func (m *Monitor) run() {
 		m.logger.Debug("run:return")
 	}()
 
+	connected := false
 	go m.connect(nil)
 
 	m.status.Update(m.name, "Ready")
@@ -212,10 +232,11 @@ func (m *Monitor) run() {
 		} else {
 			m.status.Update(m.name, fmt.Sprintf("Idle (last collected at %s, error: %s)", t, lastError))
 		}
+
 		select {
 		case now := <-m.tickChan:
 			m.logger.Debug("run:collect:start")
-			if !m.connected {
+			if !connected {
 				m.logger.Debug("run:collect:disconnected")
 				lastError = "Not connected to MySQL"
 				continue
@@ -296,15 +317,13 @@ func (m *Monitor) run() {
 			}
 
 			m.logger.Debug("run:collect:stop")
-		case connected := <-m.connectedChan:
-			m.connected = connected
-			if connected {
-				m.logger.Debug("run:connected:true")
-				m.status.Update(m.name, "Ready")
-			} else {
-				m.logger.Debug("run:connected:false")
-				go m.connect(nil)
-			}
+		case connected = <-m.connectedChan:
+			m.logger.Debug("run:connected:true")
+			m.status.Update(m.name, "Ready")
+		case <-m.restartChan:
+			m.logger.Debug("run:mysql:restart")
+			connected = false
+			go m.connect(fmt.Errorf("Lost connection to MySQL, restarting"))
 		case <-m.sync.StopChan:
 			m.logger.Debug("run:stop")
 			return

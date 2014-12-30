@@ -62,7 +62,7 @@ func (c *NullClient) RecvChan() chan *proto.Cmd {
 	return nil
 }
 
-func (c *NullClient) SendBytes(data []byte) error {
+func (c *NullClient) SendBytes(data []byte, timeout uint) error {
 	return nil
 }
 

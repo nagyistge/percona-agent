@@ -1,5 +1,30 @@
 percona-agent Changelog
 
+v1.0.10
+
+  * PCT-770: Agent can use all MySQL connections
+  * PCT-791: Improve error messages
+  * PCT-857: install --help doesn't work if agent installed
+  * PCT-879: Agent sends keepalive when disconnected
+  * PCT-934: Agent 1.0.7 not sending data
+  * PCT-967: Agent becomes unresponsive
+  * PCT-970: Agent 1.0.8 running but web app says it's not connected
+  * PCT-979: Enable data compression on install
+  * PCT-985: InnoDB Stats are not re-enabled after MySQL restart
+  * PCT-1040: Fix typo in install script
+  * PCT-1045: Timeout closing websocket
+  * PCT-1049: User can install agent using existing MySQL user (PCT-721, PCT-845)
+  * PCT-1085: Some "USE db" lines in slow logs are not parsed correctly
+  * PCT-1230: MySQL restart monitor sends false-positive signal
+  * PCT-1244: Report data sender stats for last day
+  * Add -status option to get agent status via API
+  * Add time and Mbps to data-sender status
+  * Add data-spooler-count, data-spooler-size, and data-spooler-oldest statuses
+  * Change default API address to cloud-api.percona.com
+  * Improve data sender timeout handling
+  * SIGUSR1 causes agent to dump status to stdout (percona-agent.log)
+  * SIGHUP causes agent to reconnect its command websocket
+
 v1.0.9 released 2014-10-22
 
   * PCT-380: Numbers in table names are replaced with question marks

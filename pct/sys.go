@@ -18,7 +18,10 @@
 package pct
 
 import (
+	"fmt"
 	"os"
+	"strings"
+	"time"
 )
 
 func FileSize(fileName string) (int64, error) {
@@ -73,4 +76,99 @@ func FileExists(file string) bool {
 		return false
 	}
 	return true
+}
+
+func Mbps(bytes uint64, seconds float64) string {
+	if seconds == 0 {
+		return "0.00"
+	}
+	bits := bytes * 8
+	return fmt.Sprintf("%.2f", (float64(bits)/1000000)/seconds)
+}
+
+// http://en.wikipedia.org/wiki/Metric_prefix
+var siPrefix []string = []string{"", "k", "M", "G", "T"}
+
+func Bytes(bytes uint64) string {
+	if bytes == 0 {
+		return "0"
+	}
+	prefix := ""
+	switch {
+	case bytes >= 1000000000000:
+		prefix = "T"
+	case bytes >= 1000000000:
+		prefix = "G"
+	case bytes >= 1000000:
+		prefix = "M"
+	case bytes >= 1000:
+		prefix = "k"
+	}
+	f := float64(bytes)
+	for f > 1000 {
+		f /= 1000
+	}
+	return fmt.Sprintf("%.2f %sB", f, prefix)
+}
+
+func Duration(s float64) string {
+	if s == 0 {
+		return "0"
+	}
+	if s < 0.001 {
+		s *= 1000000
+		return fmt.Sprintf("%dµ", int(s))
+	}
+	if s < 1 {
+		s *= 1000
+		return fmt.Sprintf("%dms", int(s))
+	}
+	d := ""
+	// days
+	n := 0
+	for s >= 86400 {
+		n++
+		s -= 86400
+	}
+	if n > 0 {
+		d = fmt.Sprintf("%dd", n)
+	}
+	// hours
+	n = 0
+	for s >= 3600 {
+		n++
+		s -= 3600
+	}
+	if n > 0 || d != "" {
+		d += fmt.Sprintf("%dh", n)
+	}
+	// minutes
+	n = 0
+	for s >= 60 {
+		n++
+		s -= 60
+	}
+	if n > 0 || d != "" {
+		d += fmt.Sprintf("%dm", n)
+	}
+	// seconds
+	n = 0
+	x := s
+	for x >= 1 {
+		n++
+		x -= 1
+	}
+	if x > 0 {
+		d += fmt.Sprintf("%.3f", s)
+		d = strings.TrimRight(d, "0")
+		d = strings.TrimSuffix(d, ".")
+	} else {
+		d += fmt.Sprintf("%d", n)
+	}
+	d += "s"
+	return d
+}
+
+func TimeString(t time.Time) string {
+	return t.UTC().Format("2006-01-02 15:04:05 MST")
 }
