@@ -64,15 +64,13 @@ func (s *Subscribers) GlobalAdd(rwChan chan string, dsn string) error {
 	return nil
 }
 
-func (s *Subscribers) GlobalRemove(inDsn string) (err error) {
-	err = fmt.Errorf("Invalid DSN")
+func (s *Subscribers) GlobalRemove(inDsn string) {
 	for ch, dsn := range s.globalSubscribers {
 		if dsn == inDsn {
 			delete(s.globalSubscribers, ch)
-			err = nil
 		}
 	}
-	return err
+	return
 }
 
 func (s *Subscribers) Remove(rChan <-chan bool) {

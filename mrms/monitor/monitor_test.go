@@ -203,14 +203,6 @@ func (s *TestSuite) TestSubscribers(t *C) {
 	dsn := "fake:dsn@tcp(127.0.0.1:3306)/?parseTime=true"
 	err := subs.GlobalAdd(rwChan, dsn)
 	t.Assert(err, Equals, nil)
-
-	err = subs.GlobalRemove(dsn)
-	t.Assert(err, Equals, nil)
-
-	// If we try to remove the same dsn twice, we will get an error
-	err = subs.GlobalRemove(dsn)
-	t.Assert(err, NotNil)
-
 }
 
 func (s *TestSuite) Test2Subscribers(t *C) {

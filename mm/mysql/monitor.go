@@ -159,7 +159,6 @@ func (m *Monitor) connect(err error) {
 		}
 		if err = m.conn.Connect(1); err != nil {
 			m.logger.Warn(err)
-			fmt.Printf("error conectando: %v\n", err)
 			continue
 		}
 		m.logger.Info("Connected")
@@ -245,8 +244,7 @@ func (m *Monitor) run() {
 
 			m.status.Update(m.name, "Running")
 			if m.conn.DB() == nil {
-				fmt.Printf("Lost connection")
-				go m.connect(fmt.Errorf("e1"))
+				go m.connect(fmt.Errorf("Lost DB connection"))
 			}
 			c := &mm.Collection{
 				ServiceInstance: proto.ServiceInstance{
@@ -345,10 +343,6 @@ func (m *Monitor) GetShowStatusMetrics(conn *sql.DB, c *mm.Collection) error {
 	m.logger.Debug("GetShowStatusMetrics:call")
 	defer m.logger.Debug("GetShowStatusMetrics:return")
 
-	if conn == nil {
-		fmt.Printf("conn es nil")
-		return fmt.Errorf("Es nil")
-	}
 	m.status.Update(m.name, "Getting global status metrics")
 
 	rows, err := conn.Query("SHOW /*!50002 GLOBAL */ STATUS")

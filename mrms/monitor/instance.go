@@ -40,12 +40,11 @@ func NewMysqlInstance(logger *pct.Logger, mysqlConn mysql.Connector, subscribers
 		logger.Warn("Unable to connect to MySQL:", err)
 		return nil, err
 	}
-	//defer mysqlConn.Close()
+	defer mysqlConn.Close()
 
 	// Get current MySQL uptime - this is later used to detect if MySQL was restarted
 	lastUptime, err := mysqlConn.Uptime()
 	if err != nil { // This shouldn't happen because we just opened the connection
-		logger.Warn("Unespected connections close: ", err)
 		return nil, err
 	}
 	lastUptimeCheck := time.Now()
@@ -61,13 +60,12 @@ func NewMysqlInstance(logger *pct.Logger, mysqlConn mysql.Connector, subscribers
 	return mi, nil
 }
 
-func (m *MysqlInstance) CheckIfMysqlRestarted() bool {
+func (m *MysqlInstance) CheckIfMysqlRestarted() (bool, error) {
 	m.Lock()
 	defer m.Unlock()
 
 	if err := m.mysqlConn.Connect(1); err != nil {
-		m.logger.Warn("Unable to connect to MySQL:", err)
-		return false
+		return false, err
 	}
 	defer m.mysqlConn.Close()
 
@@ -75,8 +73,7 @@ func (m *MysqlInstance) CheckIfMysqlRestarted() bool {
 	lastUptimeCheck := m.lastUptimeCheck
 	currentUptime, err := m.mysqlConn.Uptime()
 	if err != nil {
-		m.logger.Error(err)
-		return false
+		return false, err
 	}
 
 	m.logger.Debug(fmt.Sprintf("lastUptime=%d lastUptimeCheck=%s currentUptime=%d",
@@ -105,10 +102,10 @@ func (m *MysqlInstance) CheckIfMysqlRestarted() bool {
 	// If current server uptime is lower than last registered uptime
 	// then we can assume that server was restarted
 	if currentUptime < expectedUptime {
-		return true
+		return true, nil
 	}
 
-	return false
+	return false, nil
 }
 
 func (m *MysqlInstance) DSN() string {

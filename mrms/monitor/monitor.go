@@ -115,11 +115,8 @@ func (m *Monitor) GlobalSubscribe() (chan string, error) {
 	for _, instance := range m.mysqlInstances {
 		err = instance.Subscribers.GlobalAdd(m.globalChan, instance.mysqlConn.DSN())
 		if err != nil {
-			break
+			return nil, err
 		}
-	}
-	if err != nil {
-		return nil, err
 	}
 	return m.globalChan, nil
 }
@@ -148,7 +145,12 @@ func (m *Monitor) Check() {
 	defer m.RUnlock()
 
 	for _, mysqlInstance := range m.mysqlInstances {
-		if mysqlInstance.CheckIfMysqlRestarted() {
+		wasRestarted, err := mysqlInstance.CheckIfMysqlRestarted()
+		if err != nil {
+			m.logger.Error(err)
+			return
+		}
+		if wasRestarted == true {
 			m.logger.Debug("Check:restarted:" + mysql.HideDSNPassword(mysqlInstance.DSN()))
 			mysqlInstance.Subscribers.Notify()
 		}
