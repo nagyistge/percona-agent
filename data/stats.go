@@ -31,7 +31,7 @@ type SentInfo struct {
 	End      time.Time
 	SendTime float64
 	Files    uint
-	Bytes    int
+	Bytes    uint64
 	Errs     uint
 	ApiErrs  uint
 	Timeouts uint
@@ -39,7 +39,7 @@ type SentInfo struct {
 }
 
 type SentReport struct {
-	bytes    int
+	bytes    uint64
 	sendTime float64
 	// --
 	Begin       time.Time

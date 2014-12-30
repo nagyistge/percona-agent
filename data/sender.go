@@ -214,7 +214,7 @@ func (s *Sender) sendAllFiles(startTime time.Time, sent *SentInfo) error {
 			return fmt.Errorf("Sending %s: %s", file, err)
 		}
 		sent.SendTime += time.Now().Sub(t0).Seconds()
-		sent.Bytes += len(data)
+		sent.Bytes += uint64(len(data))
 
 		s.status.Update("data-sender", "Waiting for API to ack "+file)
 		resp := &proto.Response{}
