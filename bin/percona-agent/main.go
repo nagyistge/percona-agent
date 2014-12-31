@@ -228,7 +228,6 @@ func run() error {
 		pct.Basedir.Dir("config"),
 		api,
 		mrm,
-		agentConfig,
 	)
 	if err := itManager.Start(); err != nil {
 		return fmt.Errorf("Error starting instance manager: %s\n", err)

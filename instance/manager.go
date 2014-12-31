@@ -50,7 +50,7 @@ type Manager struct {
 	agentConfig    *agent.Config
 }
 
-func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm mrms.Monitor, conf *agent.Config) *Manager {
+func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm mrms.Monitor) *Manager {
 	repo := NewRepo(pct.NewLogger(logger.LogChan(), "instance-repo"), configDir, api)
 	m := &Manager{
 		logger:    logger,
@@ -62,7 +62,6 @@ func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm 
 		mrm:            mrm,
 		mrmChans:       make(map[string]<-chan bool),
 		mrmsGlobalChan: make(chan string, 100), // monitor up to 100 instances
-		agentConfig:    conf,
 	}
 	return m
 }
@@ -237,7 +236,7 @@ func (m *Manager) getMySQLInstances() ([]*proto.MySQLInstance, error) {
 				return nil, err
 			}
 			err = GetMySQLInfo(it)
-			if err != nil {
+			if err == nil {
 				instances = append(instances, it)
 			}
 		}
@@ -266,7 +265,7 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 				continue
 			}
 			GetMySQLInfo(instance)
-			uri := pct.URL(m.agentConfig.ApiHostname, "instances", "mysql", fmt.Sprintf("%d", instance.Id))
+			uri := fmt.Sprintf("%s/%s/%d", m.api.EntryLink("instances"), "mysql", instance.Id)
 			data, err := json.Marshal(instance)
 			if err != nil {
 				m.logger.Error(err)
