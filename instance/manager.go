@@ -57,7 +57,7 @@ func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm 
 		configDir: configDir,
 		api:       api,
 		// --
-		status:         pct.NewStatus([]string{"instance", "instance-repo"}),
+		status:         pct.NewStatus([]string{"instance", "instance-repo", "instance-mrms"}),
 		repo:           repo,
 		mrm:            mrm,
 		mrmChans:       make(map[string]<-chan bool),
@@ -84,14 +84,11 @@ func (m *Manager) Start() error {
 	if err != nil {
 		return err
 	}
-	instances, err := m.getMySQLInstances()
-	if err != nil {
-		return err
-	}
-	for _, instance := range instances {
+
+	for _, instance := range m.getMySQLInstances() {
 		ch, err := m.mrm.Add(instance.DSN)
 		if err != nil {
-			m.logger.Error(fmt.Errorf("Cannot add instance to the monitor: %s", err.Error()))
+			m.logger.Error("Cannot add instance to the monitor:", err)
 			continue
 		}
 		// Store the channel to be able to remove it from mrms
@@ -147,9 +144,6 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 			if err != nil {
 				return cmd.Reply(nil, err)
 			}
-			if err != nil {
-				return cmd.Reply(nil, err)
-			}
 			m.mrm.Remove(iit.DSN, m.mrmChans[iit.DSN])
 		}
 		return cmd.Reply(nil, err)
@@ -202,6 +196,7 @@ func GetMySQLInfo(it *proto.MySQLInstance) error {
 	if err := conn.Connect(1); err != nil {
 		return err
 	}
+	defer conn.Close()
 	sql := "SELECT /* percona-agent */" +
 		" CONCAT_WS('.', @@hostname, IF(@@port='3306',NULL,@@port)) AS Hostname," +
 		" @@version_comment AS Distro," +
@@ -214,64 +209,91 @@ func GetMySQLInfo(it *proto.MySQLInstance) error {
 	if err != nil {
 		return err
 	}
-	conn.Close()
 	return nil
 }
 
-func (m *Manager) getMySQLInstances() ([]*proto.MySQLInstance, error) {
+func (m *Manager) getMySQLInstances() []*proto.MySQLInstance {
+	m.logger.Debug("monitorInstancesRestart:call")
+	defer m.logger.Debug("monitorInstancesRestart:return")
+
 	var instances []*proto.MySQLInstance
 	for _, name := range m.Repo().List() {
 		parts := strings.Split(name, "-") // mysql-1 or server-12
 		if len(parts) != 2 {
-			return nil, fmt.Errorf("Invalid instance name: %+v", name)
+			m.logger.Error("Invalid instance name: %s: expected 2 parts, got %d", name, len(parts))
+			continue
 		}
 		if parts[0] == "mysql" {
 			id, err := strconv.ParseInt(parts[1], 10, 64)
 			if err != nil {
-				return nil, err
+				m.logger.Error("Invalid instance ID: %s: %s", name, err)
+				continue
 			}
 			it := &proto.MySQLInstance{}
-			err = m.Repo().Get(parts[0], uint(id), it)
-			if err != nil {
-				return nil, err
+			if err := m.Repo().Get(parts[0], uint(id), it); err != nil {
+				m.logger.Error("Failed to get instance %s: %s", name, err)
+				continue
 			}
-			err = GetMySQLInfo(it)
-			if err == nil {
-				instances = append(instances, it)
-			}
+			instances = append(instances, it)
 		}
 	}
-	return instances, nil
+	return instances
 }
 
 func (m *Manager) monitorInstancesRestart(ch chan string) {
+	m.logger.Debug("monitorInstancesRestart:call")
+	defer func() {
+		if err := recover(); err != nil {
+			m.logger.Error("MySQL connection crashed: ", err)
+			m.status.Update("instance-mrms", "Crashed")
+		} else {
+			m.status.Update("instance-mrms", "Stopped")
+		}
+		m.logger.Debug("monitorInstancesRestart:return")
+	}()
+
 	// Cast mrms monitor as its real type and not the interface
 	// because the interface doesn't implements GlobalSubscribe()
 	mm := m.mrm.(*monitor.Monitor)
 	ch, err := mm.GlobalSubscribe()
 	if err != nil {
-		m.status.Update("instance", fmt.Sprintf("Error %v", err))
+		m.logger.Error(fmt.Sprintf("Failed to get MySQL restart monitor global channel: %s", err))
+		return
 	}
 
-	for dsn := range ch {
-		// Get the updated instances list. It should be updated every time since
-		// the Add method can add new instances to the list
-		instances, err := m.getMySQLInstances()
-		if err != nil {
-			m.logger.Error(fmt.Errorf("Error in Global Instance Monitor: %v", err.Error()))
-		}
-		for _, instance := range instances {
-			if instance.DSN != dsn {
-				continue
+	for {
+		m.status.Update("instance-mrms", "Idle")
+		select {
+		case dsn := <-ch:
+			safeDSN := mysql.HideDSNPassword(dsn)
+			m.logger.Debug("mrms:restart" + safeDSN)
+			m.status.Update("instance-mrms", "Updating "+safeDSN)
+
+			// Get the updated instances list. It should be updated every time since
+			// the Add method can add new instances to the list.
+			for _, instance := range m.getMySQLInstances() {
+				if instance.DSN != dsn {
+					continue
+				}
+
+				m.status.Update("instance-mrms", "Getting info "+safeDSN)
+				if err := GetMySQLInfo(instance); err != nil {
+					m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
+					continue
+				}
+
+				m.status.Update("instance-mrms", "Updating info "+safeDSN)
+				uri := fmt.Sprintf("%s/%s/%d", m.api.EntryLink("instances"), "mysql", instance.Id)
+				data, err := json.Marshal(instance)
+				if err != nil {
+					m.logger.Error(err)
+					continue
+				}
+				if resp, _, err := m.api.Put(m.api.ApiKey(), uri, data); err != nil {
+					m.logger.Warn("Failed to PUT %s: %s", uri, err)
+					m.logger.Debug(resp)
+				}
 			}
-			GetMySQLInfo(instance)
-			uri := fmt.Sprintf("%s/%s/%d", m.api.EntryLink("instances"), "mysql", instance.Id)
-			data, err := json.Marshal(instance)
-			if err != nil {
-				m.logger.Error(err)
-				continue
-			}
-			m.api.Put(m.api.ApiKey(), uri, data)
 		}
 	}
 }
