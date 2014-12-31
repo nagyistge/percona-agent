@@ -266,7 +266,7 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 		select {
 		case dsn := <-ch:
 			safeDSN := mysql.HideDSNPassword(dsn)
-			m.logger.Debug("mrms:restart" + safeDSN)
+			m.logger.Debug("mrms:restart:" + safeDSN)
 			m.status.Update("instance-mrms", "Updating "+safeDSN)
 
 			// Get the updated instances list. It should be updated every time since
@@ -291,7 +291,7 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 				}
 				if resp, _, err := m.api.Put(m.api.ApiKey(), uri, data); err != nil {
 					m.logger.Warn("Failed to PUT %s: %s", uri, err)
-					m.logger.Debug(resp)
+					m.logger.Debug("mrms:", resp)
 				}
 			}
 		}
