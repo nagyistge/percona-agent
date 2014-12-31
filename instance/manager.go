@@ -213,8 +213,8 @@ func GetMySQLInfo(it *proto.MySQLInstance) error {
 }
 
 func (m *Manager) getMySQLInstances() []*proto.MySQLInstance {
-	m.logger.Debug("monitorInstancesRestart:call")
-	defer m.logger.Debug("monitorInstancesRestart:return")
+	m.logger.Debug("getMySQLInstances:call")
+	defer m.logger.Debug("getMySQLInstances:return")
 
 	var instances []*proto.MySQLInstance
 	for _, name := range m.Repo().List() {
