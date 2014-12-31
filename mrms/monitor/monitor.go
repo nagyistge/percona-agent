@@ -96,7 +96,6 @@ func (m *Monitor) Add(dsn string) (c <-chan bool, err error) {
 		if err != nil {
 			return nil, err
 		}
-
 		m.mysqlInstances[dsn] = mysqlInstance
 	}
 
@@ -148,9 +147,9 @@ func (m *Monitor) Check() {
 		wasRestarted, err := mysqlInstance.CheckIfMysqlRestarted()
 		if err != nil {
 			m.logger.Error(err)
-			return
+			continue
 		}
-		if wasRestarted == true {
+		if wasRestarted {
 			m.logger.Debug("Check:restarted:" + mysql.HideDSNPassword(mysqlInstance.DSN()))
 			mysqlInstance.Subscribers.Notify()
 		}

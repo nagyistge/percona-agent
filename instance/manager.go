@@ -91,10 +91,12 @@ func (m *Manager) Start() error {
 	}
 	for _, instance := range instances {
 		ch, err := m.mrm.Add(instance.DSN)
-		if err == nil {
-			// Store the channel to be able to remove it from mrms
-			m.mrmChans[instance.DSN] = ch
+		if err != nil {
+			m.logger.Error(fmt.Errorf("Cannot add instance to the monitor: %s", err.Error()))
+			continue
 		}
+		// Store the channel to be able to remove it from mrms
+		m.mrmChans[instance.DSN] = ch
 	}
 	go m.monitorInstancesRestart(mrmsGlobalChan)
 	return nil
@@ -235,7 +237,9 @@ func (m *Manager) getMySQLInstances() ([]*proto.MySQLInstance, error) {
 				return nil, err
 			}
 			err = GetMySQLInfo(it)
-			instances = append(instances, it)
+			if err != nil {
+				instances = append(instances, it)
+			}
 		}
 	}
 	return instances, nil
@@ -258,16 +262,17 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 			m.logger.Error(fmt.Errorf("Error in Global Instance Monitor: %v", err.Error()))
 		}
 		for _, instance := range instances {
-			if instance.DSN == dsn {
-				GetMySQLInfo(instance)
-				uri := pct.URL(m.agentConfig.ApiHostname, "instances", "mysql", fmt.Sprintf("%d", instance.Id))
-				data, err := json.Marshal(instance)
-				if err != nil {
-					m.status.Update("instance", err.Error())
-					continue
-				}
-				m.api.Put(m.api.ApiKey(), uri, data)
+			if instance.DSN != dsn {
+				continue
 			}
+			GetMySQLInfo(instance)
+			uri := pct.URL(m.agentConfig.ApiHostname, "instances", "mysql", fmt.Sprintf("%d", instance.Id))
+			data, err := json.Marshal(instance)
+			if err != nil {
+				m.logger.Error(err)
+				continue
+			}
+			m.api.Put(m.api.ApiKey(), uri, data)
 		}
 	}
 }

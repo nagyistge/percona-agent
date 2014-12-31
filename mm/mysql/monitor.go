@@ -565,7 +565,7 @@ func (m *Monitor) collectError(err error) error {
 	}
 	switch err.(type) {
 	case *net.OpError:
-		m.logger.Error("Lost connection to MySQL. Waiting for re-connection")
+		m.logger.Warn("Lost connection to MySQL %s", err)
 		return networkError
 	}
 	m.logger.Warn(err)
