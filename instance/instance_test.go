@@ -331,4 +331,10 @@ func (s *ManagerTestSuite) TestHandleAdd(t *C) {
 
 	reply := m.Handle(cmd)
 	t.Assert(reply.Error, Equals, "")
+
+	// Test GetMySQLInstances here beacause we already have a Repo with instances
+	is := m.GetMySQLInstances()
+	t.Assert(is, NotNil)
+	t.Assert(len(is), Equals, 1)
+	t.Assert(is[0].Id, Equals, uint(9))
 }

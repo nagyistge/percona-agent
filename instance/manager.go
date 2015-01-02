@@ -85,7 +85,7 @@ func (m *Manager) Start() error {
 		return err
 	}
 
-	for _, instance := range m.getMySQLInstances() {
+	for _, instance := range m.GetMySQLInstances() {
 		ch, err := m.mrm.Add(instance.DSN)
 		if err != nil {
 			m.logger.Error("Cannot add instance to the monitor:", err)
@@ -217,7 +217,7 @@ func GetMySQLInfo(it *proto.MySQLInstance) error {
 	return nil
 }
 
-func (m *Manager) getMySQLInstances() []*proto.MySQLInstance {
+func (m *Manager) GetMySQLInstances() []*proto.MySQLInstance {
 	m.logger.Debug("getMySQLInstances:call")
 	defer m.logger.Debug("getMySQLInstances:return")
 
@@ -276,7 +276,7 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 
 			// Get the updated instances list. It should be updated every time since
 			// the Add method can add new instances to the list.
-			for _, instance := range m.getMySQLInstances() {
+			for _, instance := range m.GetMySQLInstances() {
 				if instance.DSN != dsn {
 					continue
 				}
