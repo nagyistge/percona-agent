@@ -152,6 +152,11 @@ func ParseSocketFromNetstat(out string) string {
 
 func HideDSNPassword(dsn string) string {
 	dsnParts := strings.Split(dsn, "@")
-	userPasswordParts := strings.Split(dsnParts[0], ":")
-	return userPasswordParts[0] + ":" + HiddenPassword + "@" + dsnParts[1]
+	userPart := dsnParts[0]
+	hostPart := ""
+	if len(dsnParts) > 1 {
+		hostPart = dsnParts[1]
+	}
+	userPasswordParts := strings.Split(userPart, ":")
+	return userPasswordParts[0] + ":" + HiddenPassword + "@" + hostPart
 }
