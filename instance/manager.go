@@ -29,7 +29,6 @@ import (
 
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mrms"
-	"github.com/percona/percona-agent/mrms/monitor"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 )
@@ -79,7 +78,8 @@ func (m *Manager) Start() error {
 	m.logger.Info("Started")
 	m.status.Update("instance", "Running")
 
-	mrm := m.mrm.(*monitor.Monitor)
+	//mrm := m.mrm.(*monitor.Monitor)
+	mrm := m.mrm
 	mrmsGlobalChan, err := mrm.GlobalSubscribe()
 	if err != nil {
 		return err
@@ -94,6 +94,7 @@ func (m *Manager) Start() error {
 			m.logger.Error(fmt.Errorf("Cannot add instance to the monitor: %s", err.Error()))
 			continue
 		}
+		m.pushInstanceInfo(instance)
 		// Store the channel to be able to remove it from mrms
 		m.mrmChans[instance.DSN] = ch
 	}
@@ -134,6 +135,10 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 			ch, err := m.mrm.Add(iit.DSN)
 			if err != nil {
 				m.mrmChans[iit.DSN] = ch
+			}
+			err = m.pushInstanceInfo(iit)
+			if err != nil {
+				m.logger.Error(err)
 			}
 		}
 		return cmd.Reply(nil, err)
@@ -247,7 +252,7 @@ func (m *Manager) getMySQLInstances() ([]*proto.MySQLInstance, error) {
 func (m *Manager) monitorInstancesRestart(ch chan string) {
 	// Cast mrms monitor as its real type and not the interface
 	// because the interface doesn't implements GlobalSubscribe()
-	mm := m.mrm.(*monitor.Monitor)
+	mm := m.mrm
 	ch, err := mm.GlobalSubscribe()
 	if err != nil {
 		m.status.Update("instance", fmt.Sprintf("Error %v", err))
@@ -264,14 +269,34 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 			if instance.DSN != dsn {
 				continue
 			}
-			GetMySQLInfo(instance)
-			uri := fmt.Sprintf("%s/%s/%d", m.api.EntryLink("instances"), "mysql", instance.Id)
-			data, err := json.Marshal(instance)
+			err := m.pushInstanceInfo(instance)
 			if err != nil {
 				m.logger.Error(err)
-				continue
 			}
-			m.api.Put(m.api.ApiKey(), uri, data)
 		}
 	}
+}
+
+func (m *Manager) pushInstanceInfo(instance *proto.MySQLInstance) error {
+	if instance == nil {
+		return fmt.Errorf("instance nil")
+	}
+	GetMySQLInfo(instance)
+	uri := fmt.Sprintf("%s/%s/%d", m.api.EntryLink("instances"), "mysql", instance.Id)
+	data, err := json.Marshal(instance)
+	if err != nil {
+		m.logger.Error(err)
+		return err
+	}
+	resp, body, err := m.api.Put(m.api.ApiKey(), uri, data)
+	if err != nil {
+		return err
+	}
+	if body == nil {
+		body = []byte{}
+	}
+	if resp != nil && resp.StatusCode != 200 {
+		err = fmt.Errorf("Error while updating instance info: %d, %s", resp.StatusCode, string(body))
+	}
+	return err
 }

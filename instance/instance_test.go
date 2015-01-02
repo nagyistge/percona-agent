@@ -25,7 +25,6 @@ import (
 	"testing"
 
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
@@ -260,10 +259,12 @@ func (s *ManagerTestSuite) TestHandleGetInfoMySQL(t *C) {
 
 	// Create an instance manager.
 	mrm := mock.NewMrmsMonitor()
-	agentConfig := &agent.Config{}
 
-	m := instance.NewManager(s.logger, s.configDir, s.api, mrm, agentConfig)
+	m := instance.NewManager(s.logger, s.configDir, s.api, mrm)
 	t.Assert(m, NotNil)
+
+	err := m.Start()
+	t.Assert(err, IsNil)
 
 	// API sends Cmd[Service:"instance", Cmd:"GetInfo",
 	//               Data:proto.ServiceInstance[Service:"mysql",
@@ -305,9 +306,8 @@ func (s *ManagerTestSuite) TestHandleGetInfoMySQL(t *C) {
 func (s *ManagerTestSuite) TestHandleAdd(t *C) {
 	// Create an instance manager.
 	mrm := mock.NewMrmsMonitor()
-	agentConfig := &agent.Config{}
 
-	m := instance.NewManager(s.logger, s.configDir, s.api, mrm, agentConfig)
+	m := instance.NewManager(s.logger, s.configDir, s.api, mrm)
 	t.Assert(m, NotNil)
 
 	mysqlIt := &proto.MySQLInstance{
