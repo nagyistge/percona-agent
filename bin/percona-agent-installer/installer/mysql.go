@@ -44,7 +44,7 @@ func MakeGrant(dsn mysql.DSN, user string, pass string, mysqlMaxUserConns int64)
 }
 
 func (i *Installer) getAgentDSN() (dsn mysql.DSN, err error) {
-	if i.flags.Bool["create-mysql-user"] {
+	if i.flags.Bool["create-mysql-user"] && i.flags.String["agent-mysql-user"] == "" {
 		// Connect as root, create percona-agent MySQL user.
 		dsn, err = i.createNewMySQLUser()
 		if err != nil {
@@ -62,8 +62,27 @@ func (i *Installer) getAgentDSN() (dsn mysql.DSN, err error) {
 			}
 			fmt.Printf("Using MySQL user: %s\n", dsn.StringWithSuffixes())
 		} else {
-			// Non-MySQL install (e.g. only system metrics).
-			fmt.Println("Skip creating MySQL user (-create-mysql-user=false)")
+			if i.flags.String["agent-mysql-user"] != "" && i.flags.String["agent-mysql-pass"] != "" {
+				dsn := i.defaultDSN
+				if i.flags.Bool["auto-detect-mysql"] {
+					if err := i.autodetectDSN(&dsn); err != nil {
+						if i.flags.Bool["debug"] {
+							log.Printf("Error while auto detecting DSN: %v", err)
+						}
+					}
+				}
+				// Overwrite the detected user/pass with the ones specified in the command line
+				dsn.Username = i.flags.String["agent-mysql-user"]
+				dsn.Password = i.flags.String["agent-mysql-pass"]
+				fmt.Printf("Using provided user/pass for mysql-agent user. DSN: %s\n", dsn)
+				// Verify new DSN
+				if err := i.verifyMySQLConnection(dsn); err != nil {
+					return dsn, err
+				}
+			} else {
+				// Non-MySQL install (e.g. only system metrics).
+				fmt.Println("Skip creating MySQL user (-create-mysql-user=false)")
+			}
 			return dsn, nil
 		}
 	}

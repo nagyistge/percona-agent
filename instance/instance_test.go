@@ -259,7 +259,6 @@ func (s *ManagerTestSuite) TestHandleGetInfoMySQL(t *C) {
 
 	// Create an instance manager.
 	mrm := mock.NewMrmsMonitor()
-
 	m := instance.NewManager(s.logger, s.configDir, s.api, mrm)
 	t.Assert(m, NotNil)
 
@@ -306,7 +305,6 @@ func (s *ManagerTestSuite) TestHandleGetInfoMySQL(t *C) {
 func (s *ManagerTestSuite) TestHandleAdd(t *C) {
 	// Create an instance manager.
 	mrm := mock.NewMrmsMonitor()
-
 	m := instance.NewManager(s.logger, s.configDir, s.api, mrm)
 	t.Assert(m, NotNil)
 
