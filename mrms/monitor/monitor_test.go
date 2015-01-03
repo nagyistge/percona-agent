@@ -18,6 +18,9 @@
 package monitor_test
 
 import (
+	"testing"
+	"time"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mrms/monitor"
 	"github.com/percona/percona-agent/mysql"
@@ -25,8 +28,6 @@ import (
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
 	"os"
-	"testing"
-	"time"
 )
 
 func Test(t *testing.T) { TestingT(t) }
@@ -111,6 +112,21 @@ func (s *TestSuite) TestStartStop(t *C) {
 	t.Assert(notified, Equals, true, Commentf("MRMS notified subscribers after being stopped"))
 }
 
+func (s *TestSuite) TestGlobalSubscribe(t *C) {
+	mockConn := mock.NewNullMySQL()
+	mockConnFactory := &mock.ConnectionFactory{
+		Conn: mockConn,
+	}
+	m := monitor.NewMonitor(s.logger, mockConnFactory)
+	dsn := "fake:dsn@tcp(127.0.0.1:3306)/?parseTime=true"
+	subChan, err := m.Add(dsn)
+	t.Assert(err, IsNil)
+	t.Assert(subChan, NotNil)
+
+	gc, err := m.GlobalSubscribe()
+	t.Assert(err, IsNil)
+	t.Assert(gc, NotNil)
+}
 func (s *TestSuite) TestNotifications(t *C) {
 	mockConn := mock.NewNullMySQL()
 	mockConnFactory := &mock.ConnectionFactory{
@@ -194,6 +210,17 @@ func (s *TestSuite) TestNotifications(t *C) {
 	default:
 	}
 	t.Assert(notified, Equals, false, Commentf("Subscriber was removed but MRMS still notified it about MySQL restart"))
+}
+
+func (s *TestSuite) TestSubscribers(t *C) {
+	subs := monitor.NewSubscribers(s.logger)
+	rwChan := make(chan string, 100)
+	dsn := "fake:dsn@tcp(127.0.0.1:3306)/?parseTime=true"
+	err := subs.GlobalAdd(rwChan, dsn)
+	t.Assert(err, Equals, nil)
+
+	err = subs.GlobalAdd(rwChan, "")
+	t.Assert(err, NotNil)
 }
 
 func (s *TestSuite) Test2Subscribers(t *C) {

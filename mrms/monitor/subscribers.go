@@ -18,22 +18,27 @@
 package monitor
 
 import (
-	"github.com/percona/percona-agent/pct"
+	"fmt"
 	"sync"
 	"time"
+
+	"github.com/percona/percona-agent/pct"
 )
 
 type Subscribers struct {
 	logger *pct.Logger
 	// --
-	subscribers map[<-chan bool]chan bool
+	subscribers       map[<-chan bool]chan bool
+	globalSubscribers map[chan string]string
+
 	sync.RWMutex
 }
 
 func NewSubscribers(logger *pct.Logger) *Subscribers {
 	return &Subscribers{
-		logger:      logger,
-		subscribers: make(map[<-chan bool]chan bool),
+		logger:            logger,
+		subscribers:       make(map[<-chan bool]chan bool),
+		globalSubscribers: make(map[chan string]string),
 	}
 }
 
@@ -46,6 +51,26 @@ func (s *Subscribers) Add() (rChan <-chan bool) {
 	s.subscribers[rChan] = rwChan
 
 	return rChan
+}
+
+func (s *Subscribers) GlobalAdd(rwChan chan string, dsn string) error {
+	if rwChan == nil {
+		return fmt.Errorf("Invalid global channel")
+	}
+	if dsn == "" {
+		return fmt.Errorf("DSN cannot be blank")
+	}
+	s.globalSubscribers[rwChan] = dsn
+	return nil
+}
+
+func (s *Subscribers) GlobalRemove(inDsn string) {
+	for ch, dsn := range s.globalSubscribers {
+		if dsn == inDsn {
+			delete(s.globalSubscribers, ch)
+		}
+	}
+	return
 }
 
 func (s *Subscribers) Remove(rChan <-chan bool) {
@@ -73,6 +98,18 @@ func (s *Subscribers) Notify() {
 		case rwChan <- true:
 		case <-time.After(1 * time.Second):
 			s.logger.Warn("Unable to notify subscriber")
+		}
+	}
+	s.notifyGlobalSubscribers()
+}
+
+func (s *Subscribers) notifyGlobalSubscribers() {
+	for globalChan, dsn := range s.globalSubscribers {
+		select {
+		case globalChan <- dsn:
+			fmt.Println(dsn)
+		case <-time.After(1 * time.Second):
+			s.logger.Warn("Unable to notify global subscriber")
 		}
 	}
 }

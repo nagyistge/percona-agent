@@ -78,4 +78,6 @@ func (s *DSNTestSuite) TestHideDSNPassword(t *C) {
 	t.Check(mysql.HideDSNPassword(dsn), Equals, "user:"+mysql.HiddenPassword+"@tcp/")
 	dsn = "percona-agent:0xabd123def@tcp(host.example.com:3306)/?parseTime=true"
 	t.Check(mysql.HideDSNPassword(dsn), Equals, "percona-agent:"+mysql.HiddenPassword+"@tcp(host.example.com:3306)/?parseTime=true")
+	dsn = ""
+	t.Check(mysql.HideDSNPassword(dsn), Equals, ":"+mysql.HiddenPassword+"@")
 }
