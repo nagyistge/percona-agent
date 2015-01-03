@@ -22,11 +22,14 @@ import (
 )
 
 type MrmsMonitor struct {
-	c chan bool
+	c          chan bool
+	globalChan chan string
 }
 
 func NewMrmsMonitor() *MrmsMonitor {
-	m := &MrmsMonitor{}
+	m := &MrmsMonitor{
+		globalChan: make(chan string, 100),
+	}
 	return m
 }
 
@@ -60,4 +63,9 @@ func (m *MrmsMonitor) Status() (status map[string]string) {
 // testing purposes, we have this method to simulate a MySQL restart
 func (m *MrmsMonitor) SimulateMySQLRestart() {
 	m.c <- true
+}
+
+func (m *MrmsMonitor) GlobalSubscribe() (chan string, error) {
+	return m.globalChan, nil
+
 }

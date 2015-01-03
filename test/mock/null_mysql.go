@@ -19,6 +19,7 @@ package mock
 
 import (
 	"database/sql"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mysql"
 )
@@ -81,9 +82,9 @@ func (n *NullMySQL) GetGlobalVarString(varName string) string {
 	return ""
 }
 
-func (n *NullMySQL) Uptime() int64 {
+func (n *NullMySQL) Uptime() (int64, error) {
 	n.uptimeCount++
-	return n.uptime
+	return n.uptime, nil
 }
 
 func (n *NullMySQL) GetUptimeCount() uint {

@@ -19,6 +19,11 @@ package instance_test
 
 import (
 	"encoding/json"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"testing"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/mysql"
@@ -26,10 +31,6 @@ import (
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
-	"io/ioutil"
-	"os"
-	"path/filepath"
-	"testing"
 )
 
 // Hook up gocheck into the "go test" runner.
@@ -257,8 +258,12 @@ func (s *ManagerTestSuite) TestHandleGetInfoMySQL(t *C) {
 	 */
 
 	// Create an instance manager.
-	m := instance.NewManager(s.logger, s.configDir, s.api)
+	mrm := mock.NewMrmsMonitor()
+	m := instance.NewManager(s.logger, s.configDir, s.api, mrm)
 	t.Assert(m, NotNil)
+
+	err := m.Start()
+	t.Assert(err, IsNil)
 
 	// API sends Cmd[Service:"instance", Cmd:"GetInfo",
 	//               Data:proto.ServiceInstance[Service:"mysql",
@@ -295,4 +300,41 @@ func (s *ManagerTestSuite) TestHandleGetInfoMySQL(t *C) {
 	t.Check(got.Hostname, Equals, hostname) // new
 	t.Check(got.Distro, Equals, distro)     // new
 	t.Check(got.Version, Equals, version)   // new
+}
+
+func (s *ManagerTestSuite) TestHandleAdd(t *C) {
+	// Create an instance manager.
+	mrm := mock.NewMrmsMonitor()
+	m := instance.NewManager(s.logger, s.configDir, s.api, mrm)
+	t.Assert(m, NotNil)
+
+	mysqlIt := &proto.MySQLInstance{
+		Id:  9,
+		DSN: dsn,
+	}
+	mysqlData, err := json.Marshal(mysqlIt)
+	t.Assert(err, IsNil)
+
+	serviceIt := &proto.ServiceInstance{
+		Service:    "mysql",
+		Instance:   mysqlData,
+		InstanceId: 2,
+	}
+	serviceData, err := json.Marshal(serviceIt)
+	t.Assert(err, IsNil)
+
+	cmd := &proto.Cmd{
+		Cmd:     "Add",
+		Service: "mysql",
+		Data:    serviceData,
+	}
+
+	reply := m.Handle(cmd)
+	t.Assert(reply.Error, Equals, "")
+
+	// Test GetMySQLInstances here beacause we already have a Repo with instances
+	is := m.GetMySQLInstances()
+	t.Assert(is, NotNil)
+	t.Assert(len(is), Equals, 1)
+	t.Assert(is[0].Id, Equals, uint(9))
 }

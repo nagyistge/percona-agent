@@ -28,4 +28,5 @@ type Monitor interface {
 	Add(dsn string) (c <-chan bool, err error)
 	Remove(dsn string, c <-chan bool)
 	Check()
+	GlobalSubscribe() (chan string, error)
 }
