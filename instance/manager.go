@@ -118,7 +118,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	switch cmd.Cmd {
 	case "Add":
 		err := m.repo.Add(it.Service, it.InstanceId, it.Instance, true) // true = write to disk
-		if it.Service == "mysql" {
+		if err == nil && it.Service == "mysql" {
 			// Get the instance as type proto.MySQLInstance instead of proto.ServiceInstance
 			// because we need the dsn field
 			iit := &proto.MySQLInstance{}
