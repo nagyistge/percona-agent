@@ -421,10 +421,14 @@ func run() error {
 
 	// Wait for agent to stop, or for signals.
 	agentRunning := true
-	statusSigChan := make(chan os.Signal, 1)
-	signal.Notify(statusSigChan, syscall.SIGUSR1) // kill -USER1 PID
-	reconnectSigChan := make(chan os.Signal, 1)
-	signal.Notify(reconnectSigChan, syscall.SIGHUP) // kill -HUP PID
+	/*
+		statusSigChan := make(chan os.Signal, 1)
+		signal.Notify(statusSigChan, syscall.SIGUSR1) // kill -USER1 PID
+		reconnectSigChan := make(chan os.Signal, 1)
+		signal.Notify(reconnectSigChan, syscall.SIGHUP) // kill -HUP PID
+	*/
+
+	statusSigChan, reconnectSigChan := hookOnSignals()
 	for agentRunning {
 		select {
 		case stopErr = <-stopChan: // agent or signal
