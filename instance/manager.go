@@ -139,20 +139,21 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 				m.logger.Error(err)
 			}
 		}
-		// Only return error if repo.Add fails.
 		return cmd.Reply(nil, nil)
 	case "Remove":
-		err := m.repo.Remove(it.Service, it.InstanceId)
 		if it.Service == "mysql" {
 			// Get the instance as type proto.MySQLInstance instead of proto.ServiceInstance
 			// because we need the dsn field
 			iit := &proto.MySQLInstance{}
 			err := m.repo.Get(it.Service, it.InstanceId, iit)
+			// Don't return an error. This is just a remove from mrms
 			if err != nil {
-				return cmd.Reply(nil, err)
+				m.logger.Error(err)
+			} else {
+				m.mrm.Remove(iit.DSN, m.mrmChans[iit.DSN])
 			}
-			m.mrm.Remove(iit.DSN, m.mrmChans[iit.DSN])
 		}
+		err := m.repo.Remove(it.Service, it.InstanceId)
 		return cmd.Reply(nil, err)
 	case "GetInfo":
 		info, err := m.handleGetInfo(it.Service, it.Instance)
