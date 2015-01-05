@@ -122,21 +122,24 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		if it.Service == "mysql" {
 			// Get the instance as type proto.MySQLInstance instead of proto.ServiceInstance
 			// because we need the dsn field
+			// We only return errors for repo.Add, not for mrm so all returns within this block
+			// will return nil, nil
 			iit := &proto.MySQLInstance{}
 			err := m.repo.Get(it.Service, it.InstanceId, iit)
 			if err != nil {
-				return cmd.Reply(nil, err)
-			}
-			if err != nil {
-				return cmd.Reply(nil, err)
+				m.logger.Error(err)
+				return cmd.Reply(nil, nil)
 			}
 			ch, err := m.mrm.Add(iit.DSN)
 			if err != nil {
-				m.mrmChans[iit.DSN] = ch
+				m.logger.Error(err)
+				return cmd.Reply(nil, nil)
 			}
+			m.mrmChans[iit.DSN] = ch
 			err = m.pushInstanceInfo(iit)
 			if err != nil {
 				m.logger.Error(err)
+				return cmd.Reply(nil, nil)
 			}
 		}
 		return cmd.Reply(nil, nil)
@@ -280,13 +283,6 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 				if instance.DSN != dsn {
 					continue
 				}
-
-				m.status.Update("instance-mrms", "Getting info "+safeDSN)
-				if err := GetMySQLInfo(instance); err != nil {
-					m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
-					continue
-				}
-
 				m.status.Update("instance-mrms", "Updating info "+safeDSN)
 				err := m.pushInstanceInfo(instance)
 				if err != nil {
@@ -298,6 +294,13 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 }
 
 func (m *Manager) pushInstanceInfo(instance *proto.MySQLInstance) error {
+	safeDSN := mysql.HideDSNPassword(instance.DSN)
+	m.status.Update("instance-mrms", "Getting info "+safeDSN)
+	if err := GetMySQLInfo(instance); err != nil {
+		m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
+		return err
+	}
+
 	uri := fmt.Sprintf("%s/%s/%d", m.api.EntryLink("instances"), "mysql", instance.Id)
 	data, err := json.Marshal(instance)
 	if err != nil {
