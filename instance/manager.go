@@ -90,12 +90,12 @@ func (m *Manager) Start() error {
 			continue
 		}
 		safeDSN := mysql.HideDSNPassword(instance.DSN)
-		m.status.Update("instance-mrms", "Getting info "+safeDSN)
+		m.status.Update("instance", "Getting info "+safeDSN)
 		if err := GetMySQLInfo(instance); err != nil {
 			m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
 			continue
 		}
-		m.status.Update("instance-mrms", "Updating info "+safeDSN)
+		m.status.Update("instance", "Updating info "+safeDSN)
 		m.pushInstanceInfo(instance)
 		// Store the channel to be able to remove it from mrms
 		m.mrmChans[instance.DSN] = ch
@@ -145,13 +145,13 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 			m.mrmChans[iit.DSN] = ch
 
 			safeDSN := mysql.HideDSNPassword(iit.DSN)
-			m.status.Update("instance-mrms", "Getting info "+safeDSN)
+			m.status.Update("instance", "Getting info "+safeDSN)
 			if err := GetMySQLInfo(iit); err != nil {
 				m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
 				return cmd.Reply(nil, nil)
 			}
 
-			m.status.Update("instance-mrms", "Updating info "+safeDSN)
+			m.status.Update("instance", "Updating info "+safeDSN)
 			err = m.pushInstanceInfo(iit)
 			if err != nil {
 				m.logger.Error(err)
@@ -291,7 +291,7 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 		case dsn := <-ch:
 			safeDSN := mysql.HideDSNPassword(dsn)
 			m.logger.Debug("mrms:restart:" + safeDSN)
-			m.status.Update("instance-mrms", "Updating "+safeDSN)
+			m.status.Update("instance", "Updating "+safeDSN)
 
 			// Get the updated instances list. It should be updated every time since
 			// the Add method can add new instances to the list.
@@ -304,7 +304,7 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 					m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
 					break
 				}
-				m.status.Update("instance-mrms", "Updating info "+safeDSN)
+				m.status.Update("instance", "Updating info "+safeDSN)
 				err := m.pushInstanceInfo(instance)
 				if err != nil {
 					m.logger.Warn(err)
