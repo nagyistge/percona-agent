@@ -78,9 +78,7 @@ func (m *Manager) Start() error {
 	m.logger.Info("Started")
 	m.status.Update("instance", "Running")
 
-	//mrm := m.mrm.(*monitor.Monitor)
-	mrm := m.mrm
-	mrmsGlobalChan, err := mrm.GlobalSubscribe()
+	mrmsGlobalChan, err := m.mrm.GlobalSubscribe()
 	if err != nil {
 		return err
 	}
@@ -263,8 +261,7 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 
 	// Cast mrms monitor as its real type and not the interface
 	// because the interface doesn't implements GlobalSubscribe()
-	mm := m.mrm
-	ch, err := mm.GlobalSubscribe()
+	ch, err := m.mrm.GlobalSubscribe()
 	if err != nil {
 		m.logger.Error(fmt.Sprintf("Failed to get MySQL restart monitor global channel: %s", err))
 		return
@@ -305,7 +302,10 @@ func (m *Manager) pushInstanceInfo(instance *proto.MySQLInstance) error {
 	if instance == nil {
 		return fmt.Errorf("instance nil")
 	}
-	GetMySQLInfo(instance)
+	err := GetMySQLInfo(instance)
+	if err != nil {
+		return err
+	}
 	uri := fmt.Sprintf("%s/%s/%d", m.api.EntryLink("instances"), "mysql", instance.Id)
 	data, err := json.Marshal(instance)
 	if err != nil {
@@ -316,11 +316,13 @@ func (m *Manager) pushInstanceInfo(instance *proto.MySQLInstance) error {
 	if err != nil {
 		return err
 	}
+	// Sometimes the API returns only a status code for an error, without a message
+	// so body = nil and in that case string(body) can fail.
 	if body == nil {
 		body = []byte{}
 	}
 	if resp != nil && resp.StatusCode != 200 {
-		err = fmt.Errorf("Failed to PUT: %d, %s", resp.StatusCode, string(body))
+		return fmt.Errorf("Failed to PUT: %d, %s", resp.StatusCode, string(body))
 	}
-	return err
+	return nil
 }
