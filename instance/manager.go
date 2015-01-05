@@ -259,8 +259,6 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 		m.logger.Debug("monitorInstancesRestart:return")
 	}()
 
-	// Cast mrms monitor as its real type and not the interface
-	// because the interface doesn't implements GlobalSubscribe()
 	ch, err := m.mrm.GlobalSubscribe()
 	if err != nil {
 		m.logger.Error(fmt.Sprintf("Failed to get MySQL restart monitor global channel: %s", err))
@@ -299,13 +297,6 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 }
 
 func (m *Manager) pushInstanceInfo(instance *proto.MySQLInstance) error {
-	if instance == nil {
-		return fmt.Errorf("instance nil")
-	}
-	err := GetMySQLInfo(instance)
-	if err != nil {
-		return err
-	}
 	uri := fmt.Sprintf("%s/%s/%d", m.api.EntryLink("instances"), "mysql", instance.Id)
 	data, err := json.Marshal(instance)
 	if err != nil {
@@ -317,7 +308,7 @@ func (m *Manager) pushInstanceInfo(instance *proto.MySQLInstance) error {
 		return err
 	}
 	// Sometimes the API returns only a status code for an error, without a message
-	// so body = nil and in that case string(body) can fail.
+	// so body = nil and in that case string(body) will fail.
 	if body == nil {
 		body = []byte{}
 	}
