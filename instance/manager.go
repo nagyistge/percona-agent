@@ -78,9 +78,7 @@ func (m *Manager) Start() error {
 	m.logger.Info("Started")
 	m.status.Update("instance", "Running")
 
-	//mrm := m.mrm.(*monitor.Monitor)
-	mrm := m.mrm
-	mrmsGlobalChan, err := mrm.GlobalSubscribe()
+	mrmsGlobalChan, err := m.mrm.GlobalSubscribe()
 	if err != nil {
 		return err
 	}
@@ -91,6 +89,13 @@ func (m *Manager) Start() error {
 			m.logger.Error("Cannot add instance to the monitor:", err)
 			continue
 		}
+		safeDSN := mysql.HideDSNPassword(instance.DSN)
+		m.status.Update("instance", "Getting info "+safeDSN)
+		if err := GetMySQLInfo(instance); err != nil {
+			m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
+			continue
+		}
+		m.status.Update("instance", "Updating info "+safeDSN)
 		m.pushInstanceInfo(instance)
 		// Store the channel to be able to remove it from mrms
 		m.mrmChans[instance.DSN] = ch
@@ -118,39 +123,56 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	switch cmd.Cmd {
 	case "Add":
 		err := m.repo.Add(it.Service, it.InstanceId, it.Instance, true) // true = write to disk
+		if err != nil {
+			return cmd.Reply(nil, err)
+		}
 		if it.Service == "mysql" {
 			// Get the instance as type proto.MySQLInstance instead of proto.ServiceInstance
 			// because we need the dsn field
+			// We only return errors for repo.Add, not for mrm so all returns within this block
+			// will return nil, nil
 			iit := &proto.MySQLInstance{}
 			err := m.repo.Get(it.Service, it.InstanceId, iit)
 			if err != nil {
-				return cmd.Reply(nil, err)
-			}
-			if err != nil {
-				return cmd.Reply(nil, err)
+				m.logger.Error(err)
+				return cmd.Reply(nil, nil)
 			}
 			ch, err := m.mrm.Add(iit.DSN)
 			if err != nil {
-				m.mrmChans[iit.DSN] = ch
+				m.logger.Error(err)
+				return cmd.Reply(nil, nil)
 			}
+			m.mrmChans[iit.DSN] = ch
+
+			safeDSN := mysql.HideDSNPassword(iit.DSN)
+			m.status.Update("instance", "Getting info "+safeDSN)
+			if err := GetMySQLInfo(iit); err != nil {
+				m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
+				return cmd.Reply(nil, nil)
+			}
+
+			m.status.Update("instance", "Updating info "+safeDSN)
 			err = m.pushInstanceInfo(iit)
 			if err != nil {
 				m.logger.Error(err)
+				return cmd.Reply(nil, nil)
 			}
 		}
-		return cmd.Reply(nil, err)
+		return cmd.Reply(nil, nil)
 	case "Remove":
-		err := m.repo.Remove(it.Service, it.InstanceId)
 		if it.Service == "mysql" {
 			// Get the instance as type proto.MySQLInstance instead of proto.ServiceInstance
 			// because we need the dsn field
 			iit := &proto.MySQLInstance{}
 			err := m.repo.Get(it.Service, it.InstanceId, iit)
+			// Don't return an error. This is just a remove from mrms
 			if err != nil {
-				return cmd.Reply(nil, err)
+				m.logger.Error(err)
+			} else {
+				m.mrm.Remove(iit.DSN, m.mrmChans[iit.DSN])
 			}
-			m.mrm.Remove(iit.DSN, m.mrmChans[iit.DSN])
 		}
+		err := m.repo.Remove(it.Service, it.InstanceId)
 		return cmd.Reply(nil, err)
 	case "GetInfo":
 		info, err := m.handleGetInfo(it.Service, it.Instance)
@@ -257,10 +279,7 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 		m.logger.Debug("monitorInstancesRestart:return")
 	}()
 
-	// Cast mrms monitor as its real type and not the interface
-	// because the interface doesn't implements GlobalSubscribe()
-	mm := m.mrm
-	ch, err := mm.GlobalSubscribe()
+	ch, err := m.mrm.GlobalSubscribe()
 	if err != nil {
 		m.logger.Error(fmt.Sprintf("Failed to get MySQL restart monitor global channel: %s", err))
 		return
@@ -280,28 +299,24 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 				if instance.DSN != dsn {
 					continue
 				}
-
 				m.status.Update("instance-mrms", "Getting info "+safeDSN)
 				if err := GetMySQLInfo(instance); err != nil {
 					m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
-					continue
+					break
 				}
-
 				m.status.Update("instance-mrms", "Updating info "+safeDSN)
 				err := m.pushInstanceInfo(instance)
 				if err != nil {
 					m.logger.Warn(err)
 				}
+				break
 			}
 		}
 	}
 }
 
 func (m *Manager) pushInstanceInfo(instance *proto.MySQLInstance) error {
-	if instance == nil {
-		return fmt.Errorf("instance nil")
-	}
-	GetMySQLInfo(instance)
+
 	uri := fmt.Sprintf("%s/%s/%d", m.api.EntryLink("instances"), "mysql", instance.Id)
 	data, err := json.Marshal(instance)
 	if err != nil {
@@ -312,11 +327,13 @@ func (m *Manager) pushInstanceInfo(instance *proto.MySQLInstance) error {
 	if err != nil {
 		return err
 	}
+	// Sometimes the API returns only a status code for an error, without a message
+	// so body = nil and in that case string(body) will fail.
 	if body == nil {
 		body = []byte{}
 	}
 	if resp != nil && resp.StatusCode != 200 {
-		err = fmt.Errorf("Failed to PUT: %d, %s", resp.StatusCode, string(body))
+		return fmt.Errorf("Failed to PUT: %d, %s", resp.StatusCode, string(body))
 	}
-	return err
+	return nil
 }
