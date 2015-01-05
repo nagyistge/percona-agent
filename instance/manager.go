@@ -291,7 +291,7 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 		case dsn := <-ch:
 			safeDSN := mysql.HideDSNPassword(dsn)
 			m.logger.Debug("mrms:restart:" + safeDSN)
-			m.status.Update("instance", "Updating "+safeDSN)
+			m.status.Update("instance-mrms", "Updating "+safeDSN)
 
 			// Get the updated instances list. It should be updated every time since
 			// the Add method can add new instances to the list.
@@ -304,7 +304,7 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 					m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
 					break
 				}
-				m.status.Update("instance", "Updating info "+safeDSN)
+				m.status.Update("instance-mrms", "Updating info "+safeDSN)
 				err := m.pushInstanceInfo(instance)
 				if err != nil {
 					m.logger.Warn(err)
