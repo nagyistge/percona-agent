@@ -89,6 +89,13 @@ func (m *Manager) Start() error {
 			m.logger.Error("Cannot add instance to the monitor:", err)
 			continue
 		}
+		safeDSN := mysql.HideDSNPassword(instance.DSN)
+		m.status.Update("instance-mrms", "Getting info "+safeDSN)
+		if err := GetMySQLInfo(instance); err != nil {
+			m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
+			continue
+		}
+		m.status.Update("instance-mrms", "Updating info "+safeDSN)
 		m.pushInstanceInfo(instance)
 		// Store the channel to be able to remove it from mrms
 		m.mrmChans[instance.DSN] = ch
@@ -136,6 +143,15 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 				return cmd.Reply(nil, nil)
 			}
 			m.mrmChans[iit.DSN] = ch
+
+			safeDSN := mysql.HideDSNPassword(iit.DSN)
+			m.status.Update("instance-mrms", "Getting info "+safeDSN)
+			if err := GetMySQLInfo(iit); err != nil {
+				m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
+				return cmd.Reply(nil, nil)
+			}
+
+			m.status.Update("instance-mrms", "Updating info "+safeDSN)
 			err = m.pushInstanceInfo(iit)
 			if err != nil {
 				m.logger.Error(err)
@@ -283,23 +299,23 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 				if instance.DSN != dsn {
 					continue
 				}
+				m.status.Update("instance-mrms", "Getting info "+safeDSN)
+				if err := GetMySQLInfo(instance); err != nil {
+					m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
+					break
+				}
 				m.status.Update("instance-mrms", "Updating info "+safeDSN)
 				err := m.pushInstanceInfo(instance)
 				if err != nil {
 					m.logger.Warn(err)
 				}
+				break
 			}
 		}
 	}
 }
 
 func (m *Manager) pushInstanceInfo(instance *proto.MySQLInstance) error {
-	safeDSN := mysql.HideDSNPassword(instance.DSN)
-	m.status.Update("instance-mrms", "Getting info "+safeDSN)
-	if err := GetMySQLInfo(instance); err != nil {
-		m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
-		return err
-	}
 
 	uri := fmt.Sprintf("%s/%s/%d", m.api.EntryLink("instances"), "mysql", instance.Id)
 	data, err := json.Marshal(instance)
