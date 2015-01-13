@@ -28,4 +28,5 @@ type Config struct {
 	ApiKey      string
 	Keepalive   uint
 	Links       map[string]string `json:",omitempty"`
+	PidFile     string
 }

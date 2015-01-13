@@ -143,9 +143,13 @@ func run() error {
 	 * PID file
 	 */
 
+	pidFilePath := agentConfig.PidFile
 	if flagPidFile != "" {
+		pidFilePath = flagPidFile
+	}
+	if pidFilePath != "" {
 		pidFile := pct.NewPidFile()
-		if err := pidFile.Set(flagPidFile); err != nil {
+		if err := pidFile.Set(pidFilePath); err != nil {
 			golog.Fatalln(err)
 		}
 		defer pidFile.Remove()
