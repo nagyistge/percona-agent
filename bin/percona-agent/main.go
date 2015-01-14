@@ -69,7 +69,7 @@ func init() {
 	flag.BoolVar(&flagPing, "ping", false, "Ping API")
 	flag.BoolVar(&flagStatus, "status", false, "Agent status")
 	flag.StringVar(&flagBasedir, "basedir", pct.DEFAULT_BASEDIR, "Agent basedir")
-	flag.StringVar(&flagPidFile, "pidfile", "", "PID file")
+	flag.StringVar(&flagPidFile, "pidfile", agent.DEFAULT_PIDFILE, "PID file")
 	flag.BoolVar(&flagVersion, "version", false, "Print version")
 	flag.Parse()
 

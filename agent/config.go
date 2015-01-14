@@ -20,6 +20,7 @@ package agent
 const (
 	DEFAULT_API_HOSTNAME = "cloud-api.percona.com"
 	DEFAULT_KEEPALIVE    = 76
+	DEFAULT_PIDFILE      = "percona-agent.pid"
 )
 
 type Config struct {
