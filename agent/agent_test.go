@@ -486,7 +486,7 @@ func (s *AgentTestSuite) TestLoadConfig(t *C) {
 		ApiHostname: agent.DEFAULT_API_HOSTNAME,
 		ApiKey:      "123",
 		Keepalive:   agent.DEFAULT_KEEPALIVE,
-		PidFile:     "",
+		PidFile:     agent.DEFAULT_PIDFILE,
 	}
 	if same, diff := test.IsDeeply(got, expect); !same {
 		// @todo: if expect is not ptr, IsDeeply dies with "got ptr, expected struct"

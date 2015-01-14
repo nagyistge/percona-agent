@@ -293,6 +293,9 @@ func LoadConfig() ([]byte, error) {
 	if config.Keepalive == 0 {
 		config.Keepalive = DEFAULT_KEEPALIVE
 	}
+	if config.PidFile == "" {
+		config.PidFile = DEFAULT_PIDFILE
+	}
 	if config.ApiKey == "" {
 		return nil, errors.New("Missing ApiKey")
 	}
