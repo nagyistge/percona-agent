@@ -18,10 +18,13 @@
 package pct_test
 
 import (
+	"fmt"
 	"github.com/percona/percona-agent/pct"
 	. "gopkg.in/check.v1"
 	"io/ioutil"
+	"math/rand"
 	"os"
+	"path/filepath"
 )
 
 type TestSuite struct {
@@ -50,14 +53,33 @@ func getTmpFileName(t *C) (string, error) {
 }
 
 func removeTmpFile(tmpFileName string, t *C) error {
-	if err := os.Remove(tmpFileName); err != nil || !os.IsNotExist(err) {
+	if err := os.Remove(tmpFileName); err != nil {
 		t.Logf("Could not delete tmp file: %v", err)
 		return err
 	}
 	return nil
 }
 
+func getRandFilename() string {
+	return fmt.Sprintf("%v.pid", rand.Int())
+}
+
+func openCloseFile(tmpFileName string, t *C) error {
+	tmpFile, err := os.Open(tmpFileName)
+	if err != nil && os.IsNotExist(err) {
+		t.Logf("PidFile not found")
+		return err
+	} else if err != nil {
+		t.Logf("Could not open PidFile: %v", err)
+		return err
+	}
+	tmpFile.Close()
+	return nil
+}
+
 func (s *TestSuite) TestSet(t *C) {
+	t.Assert(s.testPidFile.Set(""), Equals, nil)
+
 	tmpFileName, err := getTmpFileName(t)
 	if err != nil {
 		t.Fail()
@@ -71,28 +93,44 @@ func (s *TestSuite) TestSet(t *C) {
 	}
 
 	t.Assert(s.testPidFile.Set(tmpFileName), Equals, nil)
-	t.Assert(s.testPidFile.Get(), Equals, tmpFileName)
+	defer os.Remove(tmpFileName)
+
+	if err := openCloseFile(tmpFileName, t); err != nil {
+		t.Fail()
+	}
+
+	randPidFileName := getRandFilename()
+	t.Assert(s.testPidFile.Set(randPidFileName), Equals, nil)
+	fullPath := filepath.Join(pct.Basedir.Path(), randPidFileName)
+	defer os.Remove(fullPath)
 }
 
 func (s *TestSuite) TestRemove(t *C) {
-	tmpFileName, err := getTmpFileName(t)
+	t.Assert(s.testPidFile.Set(""), Equals, nil)
+	t.Assert(s.testPidFile.Remove(), Equals, nil)
+
+	tmpFilePath, err := getTmpFileName(t)
 	if err != nil {
 		t.Fail()
 	}
+	// We have a valid tmp file name now, remove it
+	t.Assert(removeTmpFile(tmpFilePath, t), Equals, nil)
 
-	if err := removeTmpFile(tmpFileName, t); err != nil {
-		t.Fail()
-	}
+	t.Assert(s.testPidFile.Set(tmpFilePath), Equals, nil)
+	t.Assert(s.testPidFile.Remove(), Equals, nil)
+	_, err = os.Open(tmpFilePath)
+	t.Assert(err, NotNil)
 
-	t.Assert(s.testPidFile.Set(tmpFileName), Equals, nil)
+	t.Assert(s.testPidFile.Set(tmpFilePath), Equals, nil)
+	t.Assert(removeTmpFile(tmpFilePath, t), Equals, nil)
 	t.Assert(s.testPidFile.Remove(), Equals, nil)
 
-	if tmpFile, err := os.Open(tmpFileName); err != nil && !os.IsNotExist(err) {
-		t.Errorf("Failed removal of PidFile: %v", err)
+	//_, err = os.Open(tmpFilePath)
+	//t.Assert(err, NotNil)
+
+	if tmpFile, err := os.Open(tmpFilePath); err != nil && !os.IsNotExist(err) {
 		tmpFile.Close()
-		removeTmpFile(tmpFileName, t)
+		defer removeTmpFile(tmpFilePath, t)
+		t.Errorf("Failed removal of PidFile: %v", err)
 	}
-
-	//t.Assert(s.testPidFile.Remove(), NotNil)
-
 }
