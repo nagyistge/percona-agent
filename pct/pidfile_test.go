@@ -125,12 +125,13 @@ func (s *TestSuite) TestRemove(t *C) {
 	t.Assert(removeTmpFile(tmpFilePath, t), Equals, nil)
 	t.Assert(s.testPidFile.Remove(), Equals, nil)
 
-	//_, err = os.Open(tmpFilePath)
-	//t.Assert(err, NotNil)
-
+	t.Assert(s.testPidFile.Set(tmpFilePath), Equals, nil)
+	t.Assert(removeTmpFile(tmpFilePath, t), Equals, nil)
+	t.Assert(s.testPidFile.Remove(), Equals, nil)
 	if tmpFile, err := os.Open(tmpFilePath); err != nil && !os.IsNotExist(err) {
 		tmpFile.Close()
 		defer removeTmpFile(tmpFilePath, t)
 		t.Errorf("Failed removal of PidFile: %v", err)
 	}
+
 }
