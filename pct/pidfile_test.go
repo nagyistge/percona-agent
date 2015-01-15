@@ -28,13 +28,31 @@ import (
 )
 
 type TestSuite struct {
+	basedir     string
 	testPidFile *pct.PidFile
 	tmpFile     *os.File
 }
 
 var _ = Suite(&TestSuite{})
 
-func (s *TestSuite) SetUpTest(c *C) {
+func (s *TestSuite) SetUpSuite(t *C) {
+	// We can't/shouldn't use /usr/local/percona/ (the default basedir), so use
+	// a tmpdir instead with roughly the same structure.
+	basedir, err := ioutil.TempDir("", "pidfile-test-")
+	s.basedir = basedir
+	t.Assert(err, IsNil)
+	if err := pct.Basedir.Init(s.basedir); err != nil {
+		t.Errorf("Could initialize tmp Basedir: %v", err)
+	}
+}
+
+func (s *TestSuite) TearDownSuite(t *C) {
+	if err := os.RemoveAll(s.basedir); err != nil {
+		t.Error(err)
+	}
+}
+
+func (s *TestSuite) SetUpTest(t *C) {
 	s.testPidFile = pct.NewPidFile()
 
 }
