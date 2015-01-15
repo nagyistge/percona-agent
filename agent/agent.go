@@ -38,6 +38,7 @@ import (
 // go build -ldflags "-X github.com/percona/percon-agent/agnet.REVISION $REV"
 var REVISION string = "0"
 var VERSION string = "1.0.10"
+var MIN_SUPPORTED_MYSQL_VERSION = "5.1.0"
 
 const (
 	CMD_QUEUE_SIZE    = 10

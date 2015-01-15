@@ -18,8 +18,42 @@
 package installer_test
 
 import (
+	"github.com/percona/percona-agent/agent"
+	"github.com/percona/percona-agent/bin/percona-agent-installer/installer"
+	"github.com/percona/percona-agent/bin/percona-agent-installer/term"
+	"github.com/percona/percona-agent/pct"
+	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
+	"os"
 	"testing"
 )
 
 func Test(t *testing.T) { TestingT(t) }
+
+type InstallerTestSuite struct{}
+
+var _ = Suite(&InstallerTestSuite{})
+
+func (i *InstallerTestSuite) TestIsSupportedMySQLVersion(t *C) {
+	conn := mock.NewNullMySQL()
+	conn.SetGlobalVarString("version", "5.0") // Mockup MySQL version
+
+	agentConfig := &agent.Config{}
+	flags := installer.Flags{}
+
+	inst := installer.NewInstaller(term.NewTerminal(os.Stdin, false, true), "", pct.NewAPI(), agentConfig, flags)
+
+	got, err := inst.IsVersionSupported(conn)
+	t.Assert(err, IsNil)
+	t.Assert(got, Equals, false) // Installer doesn't support MySQL 5.0
+
+	conn.SetGlobalVarString("version", "5.0.1-ubuntu-something")
+	got, err = inst.IsVersionSupported(conn)
+	t.Assert(err, IsNil)
+	t.Assert(got, Equals, false)
+
+	conn.SetGlobalVarString("version", "5.1.0-ubuntu-something")
+	got, err = inst.IsVersionSupported(conn)
+	t.Assert(err, IsNil)
+	t.Assert(got, Equals, true)
+}
