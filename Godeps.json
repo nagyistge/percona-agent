@@ -39,7 +39,7 @@
 			"Rev": "65f3771e91669a6e4251fafcc6d93ffe5e2ff03f"
 		},
         {
-            "ImportPath": "github.com/hashicorp/go-version",
+            "Pkg": "github.com/hashicorp/go-version",
             "Rev": "bb92dddfa9792e738a631f04ada52858a139bcf7"
         }
 	]
