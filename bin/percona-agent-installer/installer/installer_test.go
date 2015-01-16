@@ -56,4 +56,6 @@ func (i *InstallerTestSuite) TestIsSupportedMySQLVersion(t *C) {
 	got, err = inst.IsVersionSupported(conn)
 	t.Assert(err, IsNil)
 	t.Assert(got, Equals, true)
+
+	conn.Close()
 }
