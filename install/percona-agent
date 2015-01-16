@@ -85,20 +85,20 @@ REALPATH=`echo $REALPATH | sed -e 's;:; ;g'`
  
 # Change the current directory to the location of the script
 cd "`dirname "$REALPATH"`"
-  
-# Resolve the location of the 'ps' command
-PSEXE="/usr/bin/ps"
-if [ ! -x $PSEXE ]
+
+# Resolve the location of the 'readlink' command
+READLINK="/usr/bin/readlink"
+if [ ! -x $READLINK ]
 then
-    PSEXE="/bin/ps"
-    if [ ! -x $PSEXE ]
+    READLINK="/bin/readlink"
+    if [ ! -x $READLINK ]
     then
-        echo "Unable to locate 'ps'." >&2
+        echo "Unable to locate 'readlink'." >&2
         echo "Please report this with the location on your system." >&2
         exit 1
     fi
 fi
- 
+
 # Build the nice clause
 if [ "X$PRIORITY" = "X" ]
 then
@@ -120,10 +120,12 @@ getpid() {
          exit 1
       fi
       pid=`cat $PIDFILE`
-      # Verify that a process with this pid is still running.
-      pid=`$PSEXE -p $pid | grep $pid | grep -v grep | tail -1 | awk '{print $1}'`
-      if [ -z "$pid" ]; then
+      # Verify that a process with this pid is still running percona-agent
+      binforpid=`$READLINK -m "/proc/$pid/exe" | awk '{print $1}'`
+      if [ ! "$binforpid" = "$CMD" ]
+      then
          # This is a stale pid file.
+         pid=""
          rm -f $PIDFILE
          echo "Removed stale pid file: $PIDFILE"
       fi
@@ -131,10 +133,11 @@ getpid() {
 }
 
 testpid() {
-    pid=`$PSEXE -p $pid | grep $pid | grep -v grep | tail -1 | awk '{print $1}'`
-    if [ "X$pid" = "X" ]
+    binforpid=`$READLINK -m "/proc/$pid/exe" | awk '{print $1}'`
+    if [ ! "$binforpid" = "$CMD" ]
     then
         # Process is gone so remove the pid file.
+        pid=""
         rm -f $PIDFILE
     fi
 }
