@@ -133,7 +133,6 @@ func (i *Installer) createNewMySQLUser() (dsn mysql.DSN, err error) {
 	if err != nil {
 		return dsn, err
 	}
-	tmpConn.Close()
 
 	if !isVersionSupported {
 		return dsn, fmt.Errorf("MySQL version not supported. It should be > %s", agent.MIN_SUPPORTED_MYSQL_VERSION)
@@ -193,7 +192,6 @@ func (i *Installer) useExistingMySQLUser() (mysql.DSN, error) {
 	if err != nil {
 		return userDSN, err
 	}
-	tmpConn.Close()
 	if !isVersionSupported {
 		return userDSN, fmt.Errorf("MySQL version not supported. It should be > %s", agent.MIN_SUPPORTED_MYSQL_VERSION)
 	}
@@ -363,6 +361,7 @@ func (i *Installer) IsVersionSupported(conn mysql.Connector) (bool, error) {
 	if err := conn.Connect(1); err != nil {
 		return false, err
 	}
+	defer conn.Close()
 	mysqlVersion := conn.GetGlobalVarString("version") // Version in the form m.n.o-ubuntu
 	re := regexp.MustCompile("-.*$")
 	mysqlVersion = re.ReplaceAllString(mysqlVersion, "") // Strip everything after the first dash
