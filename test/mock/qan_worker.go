@@ -22,54 +22,67 @@ import (
 )
 
 type QanWorker struct {
-	name     string
-	stopChan chan bool
-	result   *qan.Result
-	err      error
-	crash    bool
-	// --
-	runningChan chan bool
+	SetupChan   chan bool
+	RunChan     chan bool
+	StopChan    chan bool
+	CleanupChan chan bool
+	ErrorChan   chan error
+	CrashChan   chan bool
+	Interval    *qan.Interval
+	Result      *qan.Result
 }
 
-func NewQanWorker(name string, stopChan chan bool, result *qan.Result, err error, crash bool) *QanWorker {
+func NewQanWorker() *QanWorker {
 	w := &QanWorker{
-		name:        name,
-		stopChan:    stopChan,
-		result:      result,
-		err:         err,
-		crash:       crash,
-		runningChan: make(chan bool, 1),
+		SetupChan:   make(chan bool, 1),
+		RunChan:     make(chan bool, 1),
+		StopChan:    make(chan bool, 1),
+		CleanupChan: make(chan bool, 1),
+		ErrorChan:   make(chan error, 1),
+		CrashChan:   make(chan bool, 1),
 	}
 	return w
 }
 
-func (w *QanWorker) Setup(*qan.Interval) error {
-	return nil
+func (w *QanWorker) Setup(interval *qan.Interval) error {
+	w.Interval = interval
+	w.SetupChan <- true
+	return w.crashOrError()
 }
 
 func (w *QanWorker) Run() (*qan.Result, error) {
-	w.runningChan <- true
-
-	if w.crash {
-		panic(w.name)
-	}
-
-	// Pretend like we're running until test says to stop.
-	<-w.stopChan
-
-	return w.result, w.err
+	w.RunChan <- true
+	return w.Result, w.crashOrError()
 }
 
 func (w *QanWorker) Stop() error {
-	return nil
+	w.StopChan <- true
+	return w.crashOrError()
 }
 
 func (w *QanWorker) Cleanup() error {
-	return nil
+	w.CleanupChan <- true
+	return w.crashOrError()
 }
 
 func (w *QanWorker) Status() map[string]string {
 	return map[string]string{
 		"qan-worker": "ok",
 	}
+}
+
+// --------------------------------------------------------------------------
+
+func (w *QanWorker) crashOrError() error {
+	select {
+	case <-w.CrashChan:
+		panic("mock.QanWorker crash")
+	default:
+	}
+	select {
+	case err := <-w.ErrorChan:
+		return err
+	default:
+	}
+	return nil
 }

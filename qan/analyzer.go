@@ -105,17 +105,21 @@ func (a *RealAnalyzer) String() string {
 }
 
 func (a *RealAnalyzer) Start() error {
+	a.logger.Debug("Start:call")
+	defer a.logger.Debug("Start:return")
 	a.mux.Lock()
 	defer a.mux.Unlock()
 	if a.running {
 		return nil
 	}
-	a.run()
+	go a.run()
 	a.running = true
 	return nil
 }
 
 func (a *RealAnalyzer) Stop() error {
+	a.logger.Debug("Stop:call")
+	defer a.logger.Debug("Stop:return")
 	a.mux.Lock()
 	defer a.mux.Unlock()
 	if !a.running {
@@ -146,7 +150,6 @@ func (a *RealAnalyzer) configureMySQL(config []mysql.Query, tryLimit int) {
 		if err := recover(); err != nil {
 			a.logger.Error(a.name+":configureMySQL crashed: ", err)
 		}
-		a.configureMySQLSync.Done()
 		a.logger.Debug("configureMySQL:return")
 	}()
 
@@ -157,6 +160,7 @@ func (a *RealAnalyzer) configureMySQL(config []mysql.Query, tryLimit int) {
 		select {
 		case <-a.configureMySQLSync.StopChan:
 			a.logger.Debug("configureMySQL:stop")
+			a.configureMySQLSync.Done()
 			return
 		default:
 		}
@@ -182,31 +186,37 @@ func (a *RealAnalyzer) configureMySQL(config []mysql.Query, tryLimit int) {
 			return // success
 		case <-a.configureMySQLSync.StopChan:
 			a.logger.Debug("configureMySQL:stop")
+			a.configureMySQLSync.Done()
 			return
 		}
 	}
 }
 
 func (a *RealAnalyzer) run() {
-	a.status.Update(a.name, "Starting")
+	a.logger.Debug("run:call")
+	defer a.logger.Debug("run:return")
 
 	mysqlConfigured := false
 	go a.configureMySQL(a.config.Start, 0) // try forever
 
 	defer func() {
 		a.status.Update(a.name, "Stopping worker")
+		a.logger.Info("Stopping worker")
 		a.worker.Stop()
 
 		a.status.Update(a.name, "Stopping interval iter")
+		a.logger.Info("Stopping interval iter")
 		a.iter.Stop()
 
 		if !mysqlConfigured {
 			a.status.Update(a.name, "Stopping MySQL config")
+			a.logger.Info("Stopping MySQL config")
 			a.configureMySQLSync.Stop()
 			a.configureMySQLSync.Wait()
 		}
 
 		a.status.Update(a.name, "Stopping QAN on MySQL")
+		a.logger.Info("Stopping QAN on MySQL")
 		a.configureMySQL(a.config.Stop, 1) // try once
 
 		if err := recover(); err != nil {
@@ -300,9 +310,9 @@ func (a *RealAnalyzer) run() {
 }
 
 func (a *RealAnalyzer) runWorker(interval *Interval) {
-	a.logger.Debug(fmt.Sprintf("run:interval:%d:start", interval.Number))
+	a.logger.Debug(fmt.Sprintf("runWorker:call:%d", interval.Number))
 	defer func() {
-		a.logger.Debug(fmt.Sprintf("run:interval:%d:done", interval.Number))
+		a.logger.Debug(fmt.Sprintf("runWorker:return:%d", interval.Number))
 		if err := recover(); err != nil {
 			a.logger.Error(fmt.Sprintf(a.name+"-worker crashed: '%s': %s", interval, err))
 		}

@@ -46,36 +46,42 @@ func (tf *IntervalIterFactory) Reset() {
 
 // --------------------------------------------------------------------------
 
-type MockIntervalIter struct {
+type Iter struct {
 	testIntervalChan chan *qan.Interval
 	intervalChan     chan *qan.Interval
 	sync             *pct.SyncChan
+	tickChan         chan time.Time
 }
 
-func NewMockIntervalIter(intervalChan chan *qan.Interval) *MockIntervalIter {
-	iter := &MockIntervalIter{
+func NewIter(intervalChan chan *qan.Interval) *Iter {
+	iter := &Iter{
 		intervalChan:     make(chan *qan.Interval),
 		testIntervalChan: intervalChan,
 		sync:             pct.NewSyncChan(),
+		tickChan:         make(chan time.Time),
 	}
 	return iter
 }
 
-func (i *MockIntervalIter) Start() {
+func (i *Iter) Start() {
 	go i.run()
 	return
 }
 
-func (i *MockIntervalIter) Stop() {
+func (i *Iter) Stop() {
 	i.sync.Stop()
 	i.sync.Wait()
 }
 
-func (i *MockIntervalIter) IntervalChan() chan *qan.Interval {
+func (i *Iter) IntervalChan() chan *qan.Interval {
 	return i.intervalChan
 }
 
-func (i *MockIntervalIter) run() {
+func (i *Iter) TickChan() chan time.Time {
+	return i.tickChan
+}
+
+func (i *Iter) run() {
 	defer func() {
 		i.sync.Done()
 	}()
