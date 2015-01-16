@@ -316,7 +316,7 @@ func WaitState(c chan bool) bool {
 	select {
 	case state := <-c:
 		return state
-	case <-time.After(100 * time.Millisecond):
+	case <-time.After(1 * time.Second):
 		return false
 	}
 }

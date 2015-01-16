@@ -18,30 +18,8 @@
 package mock
 
 import (
-	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/qan"
 )
-
-type QanWorkerFactory struct {
-	workers  []*QanWorker
-	workerNo int
-}
-
-func NewQanWorkerFactory(workers []*QanWorker) qan.WorkerFactory {
-	f := &QanWorkerFactory{
-		workers: workers,
-	}
-	return f
-}
-
-func (f *QanWorkerFactory) Make(collectFrom, name string, mysqlConn mysql.Connector) qan.Worker {
-	if f.workerNo > len(f.workers) {
-		return f.workers[f.workerNo-1]
-	}
-	nextWorker := f.workers[f.workerNo]
-	f.workerNo++
-	return nextWorker
-}
 
 type QanWorker struct {
 	name     string
@@ -51,7 +29,6 @@ type QanWorker struct {
 	crash    bool
 	// --
 	runningChan chan bool
-	Job         *qan.Job
 }
 
 func NewQanWorker(name string, stopChan chan bool, result *qan.Result, err error, crash bool) *QanWorker {
@@ -66,16 +43,11 @@ func NewQanWorker(name string, stopChan chan bool, result *qan.Result, err error
 	return w
 }
 
-func (w *QanWorker) Name() string {
-	return w.name
+func (w *QanWorker) Setup(*qan.Interval) error {
+	return nil
 }
 
-func (w *QanWorker) Status() string {
-	return "ok"
-}
-
-func (w *QanWorker) Run(job *qan.Job) (*qan.Result, error) {
-	w.Job = job
+func (w *QanWorker) Run() (*qan.Result, error) {
 	w.runningChan <- true
 
 	if w.crash {
@@ -88,6 +60,16 @@ func (w *QanWorker) Run(job *qan.Job) (*qan.Result, error) {
 	return w.result, w.err
 }
 
-func (w *QanWorker) Running() chan bool {
-	return w.runningChan
+func (w *QanWorker) Stop() error {
+	return nil
+}
+
+func (w *QanWorker) Cleanup() error {
+	return nil
+}
+
+func (w *QanWorker) Status() map[string]string {
+	return map[string]string{
+		"qan-worker": "ok",
+	}
 }

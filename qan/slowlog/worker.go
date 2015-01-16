@@ -15,10 +15,13 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package qan
+package slowlog
 
 import (
 	"fmt"
+	"os"
+	"time"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/go-mysql/event"
 	"github.com/percona/go-mysql/log"
@@ -26,36 +29,12 @@ import (
 	"github.com/percona/go-mysql/query"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
-	"os"
-	"time"
+	"github.com/percona/percona-agent/qan"
 )
 
-type Job struct {
-	Id             string
-	SlowLogFile    string
-	RunTime        time.Duration
-	StartOffset    int64
-	EndOffset      int64
-	ExampleQueries bool
-	// --
-	ZeroRunTime bool // testing
-}
-
-func (j *Job) String() string {
-	return fmt.Sprintf("%s %d-%d", j.SlowLogFile, j.StartOffset, j.EndOffset)
-}
-
-type Worker interface {
-	Name() string
-	Status() string
-	Run(job *Job) (*Result, error)
-}
-
 type WorkerFactory interface {
-	Make(collectFrom, name string, mysqlConn mysql.Connector) Worker
+	Make(name string, config qan.Config, mysqlConn mysql.Connector) qan.Worker
 }
-
-// --------------------------------------------------------------------------
 
 type RealWorkerFactory struct {
 	logChan chan *proto.LogEntry
@@ -68,60 +47,87 @@ func NewRealWorkerFactory(logChan chan *proto.LogEntry) *RealWorkerFactory {
 	return f
 }
 
-func (f *RealWorkerFactory) Make(collectFrom, name string, mysqlConn mysql.Connector) Worker {
-	switch collectFrom {
-	case "slowlog":
-		return NewSlowLogWorker(pct.NewLogger(f.logChan, "qan-worker"), name)
-	case "perfschema":
-		return NewPfsWorker(pct.NewLogger(f.logChan, "qan-worker"), name, mysqlConn)
-	}
-	return nil
+func (f *RealWorkerFactory) Make(name string, config qan.Config, mysqlConn mysql.Connector) *Worker {
+	return NewWorker(pct.NewLogger(f.logChan, name), config, mysqlConn)
 }
 
 // --------------------------------------------------------------------------
 
-type SlowLogWorker struct {
-	logger *pct.Logger
-	name   string
+type Job struct {
+	Id             string
+	SlowLogFile    string
+	RunTime        time.Duration
+	StartOffset    int64
+	EndOffset      int64
+	ExampleQueries bool
+}
+
+func (j *Job) String() string {
+	return fmt.Sprintf("%s %d-%d", j.SlowLogFile, j.StartOffset, j.EndOffset)
+}
+
+type Worker struct {
+	logger    *pct.Logger
+	config    qan.Config
+	mysqlConn mysql.Connector
 	// --
+	ZeroRunTime bool // testing
+	// --
+	name            string
 	status          *pct.Status
 	queryChan       chan string
 	fingerprintChan chan string
 	errChan         chan interface{}
 	doneChan        chan bool
+	oldSlowLogs     map[int]string
+	job             *Job
 }
 
-func NewSlowLogWorker(logger *pct.Logger, name string) *SlowLogWorker {
-	w := &SlowLogWorker{
-		logger: logger,
-		name:   name,
+func NewWorker(logger *pct.Logger, config qan.Config, mysqlConn mysql.Connector) *Worker {
+	name := logger.Service()
+	w := &Worker{
+		logger:    logger,
+		config:    config,
+		mysqlConn: mysqlConn,
 		// --
+		name:            name,
 		status:          pct.NewStatus([]string{name}),
 		queryChan:       make(chan string, 1),
 		fingerprintChan: make(chan string, 1),
 		errChan:         make(chan interface{}, 1),
 		doneChan:        make(chan bool, 1),
+		oldSlowLogs:     make(map[int]string),
 	}
 	return w
 }
 
-func (w *SlowLogWorker) Name() string {
-	return w.name
+func (w *Worker) Setup(interval *qan.Interval) error {
+	if interval.EndOffset >= w.config.MaxSlowLogSize {
+		w.logger.Info("Rotating slow log")
+		if err := w.rotateSlowLog(interval); err != nil {
+			w.logger.Error(err)
+		}
+	}
+	w.job = &Job{
+		Id:             fmt.Sprintf("%d", interval.Number),
+		SlowLogFile:    interval.Filename,
+		StartOffset:    interval.StartOffset,
+		EndOffset:      interval.EndOffset,
+		RunTime:        time.Duration(w.config.WorkerRunTime) * time.Second,
+		ExampleQueries: w.config.ExampleQueries,
+	}
+	return nil
 }
 
-func (w *SlowLogWorker) Status() string {
-	return w.status.Get(w.name)
-}
-
-func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
+func (w *Worker) Run() (*qan.Result, error) {
 	w.logger.Debug("Run:call")
 	defer w.logger.Debug("Run:return")
 
-	w.status.Update(w.name, "Starting job "+job.Id)
-	result := &Result{}
+	w.status.Update(w.name, "Starting job "+w.job.Id)
+	result := &qan.Result{}
 
 	// Open the slow log file.
-	file, err := os.Open(job.SlowLogFile)
+	file, err := os.Open(w.job.SlowLogFile)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +136,7 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 	// Create a slow log parser and run it.  It sends log.Event via its channel.
 	// Be sure to stop it when done, else we'll leak goroutines.
 	opts := log.Options{
-		StartOffset: uint64(job.StartOffset),
+		StartOffset: uint64(w.job.StartOffset),
 		FilterAdminCommand: map[string]bool{
 			"Binlog Dump":      true,
 			"Binlog Dump GTID": true,
@@ -141,7 +147,7 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 	go func() {
 		defer func() {
 			if err := recover(); err != nil {
-				errMsg := fmt.Sprintf("Slow log parser for %s crashed: %s", job, err)
+				errMsg := fmt.Sprintf("Slow log parser for %s crashed: %s", w.job, err)
 				w.logger.Error(errMsg)
 				result.Error = errMsg
 			}
@@ -154,10 +160,10 @@ func (w *SlowLogWorker) Run(job *Job) (*Result, error) {
 
 	// Make an event aggregate to do all the heavy lifting: fingerprint
 	// queries, group, and aggregate.
-	a := event.NewEventAggregator(job.ExampleQueries)
+	a := event.NewEventAggregator(w.job.ExampleQueries)
 
 	// Misc runtime meta data.
-	jobSize := job.EndOffset - job.StartOffset
+	jobSize := w.job.EndOffset - w.job.StartOffset
 	runtime := time.Duration(0)
 	progress := "Not started"
 	rateType := ""
@@ -171,18 +177,18 @@ EVENT_LOOP:
 	for event := range p.EventChan() {
 		runtime = time.Now().Sub(t0)
 		progress = fmt.Sprintf("%.1f%% %d/%d %d %.1fs",
-			float64(event.Offset)/float64(job.EndOffset)*100, event.Offset, job.EndOffset, jobSize, runtime.Seconds())
-		w.status.Update(w.name, fmt.Sprintf("Parsing %s: %s", job.SlowLogFile, progress))
+			float64(event.Offset)/float64(w.job.EndOffset)*100, event.Offset, w.job.EndOffset, jobSize, runtime.Seconds())
+		w.status.Update(w.name, fmt.Sprintf("Parsing %s: %s", w.job.SlowLogFile, progress))
 
 		// Check runtime, stop if exceeded.
-		if runtime >= job.RunTime {
-			errMsg := fmt.Sprintf("Timeout parsing %s: %s", job, progress)
+		if runtime >= w.job.RunTime {
+			errMsg := fmt.Sprintf("Timeout parsing %s: %s", w.job, progress)
 			w.logger.Warn(errMsg)
 			result.Error = errMsg
 			break EVENT_LOOP
 		}
 
-		if int64(event.Offset) >= job.EndOffset {
+		if int64(event.Offset) >= w.job.EndOffset {
 			result.StopOffset = int64(event.Offset)
 			break EVENT_LOOP
 		}
@@ -219,7 +225,7 @@ EVENT_LOOP:
 	}
 
 	// Finalize the global and class metrics, i.e. calculate metric stats.
-	w.status.Update(w.name, "Finalizing job "+job.Id)
+	w.status.Update(w.name, "Finalizing job "+w.job.Id)
 	r := a.Finalize()
 
 	// The aggregator result is a map, but we need an array of classes for
@@ -234,16 +240,38 @@ EVENT_LOOP:
 	result.Class = classes
 
 	// Zero the runtime for testing.
-	if !job.ZeroRunTime {
+	if !w.ZeroRunTime {
 		result.RunTime = time.Now().Sub(t0).Seconds()
 	}
 
-	w.status.Update(w.name, "Done job "+job.Id)
-	w.logger.Info(fmt.Sprintf("Parsed %s: %s", job, progress))
+	w.status.Update(w.name, "Done job "+w.job.Id)
+	w.logger.Info(fmt.Sprintf("Parsed %s: %s", w.job, progress))
 	return result, nil
 }
 
-func (w *SlowLogWorker) fingerprinter() {
+func (w *Worker) Stop() error {
+	return nil
+}
+
+func (w *Worker) Cleanup() {
+	for i, file := range w.oldSlowLogs {
+		w.status.Update(w.name, "Removing old slow log "+file)
+		if err := os.Remove(file); err != nil {
+			w.logger.Warn(err)
+			continue
+		}
+		delete(w.oldSlowLogs, i)
+		w.logger.Info("Removed " + file)
+	}
+}
+
+func (w *Worker) Status() string {
+	return w.status.Get(w.name)
+}
+
+// --------------------------------------------------------------------------
+
+func (w *Worker) fingerprinter() {
 	w.logger.Debug("fingerprinter:call")
 	defer w.logger.Debug("fingerprinter:return")
 	defer func() {
@@ -260,4 +288,43 @@ func (w *SlowLogWorker) fingerprinter() {
 			return
 		}
 	}
+}
+
+func (w *Worker) rotateSlowLog(interval *qan.Interval) error {
+	w.logger.Debug("rotateSlowLog:call")
+	defer w.logger.Debug("rotateSlowLog:return")
+
+	w.status.Update(w.name, "Rotating slow log")
+
+	if err := w.mysqlConn.Connect(2); err != nil {
+		return err
+	}
+	defer w.mysqlConn.Close()
+
+	// Stop slow log so we don't move it while MySQL is using it.
+	if err := w.mysqlConn.Set(w.config.Stop); err != nil {
+		return err
+	}
+
+	// Move current slow log by renaming it.
+	newSlowLogFile := fmt.Sprintf("%s-%d", interval.Filename, time.Now().UTC().Unix())
+	if err := os.Rename(interval.Filename, newSlowLogFile); err != nil {
+		return err
+	}
+
+	// Re-enable slow log.
+	if err := w.mysqlConn.Set(w.config.Start); err != nil {
+		return err
+	}
+
+	// Modify interval so worker parses the rest of the old slow log.
+	interval.Filename = newSlowLogFile
+	interval.EndOffset, _ = pct.FileSize(newSlowLogFile) // todo: handle err
+
+	// Save old slow log and remove later if configured to do so.
+	if w.config.RemoveOldSlowLogs {
+		w.oldSlowLogs[interval.Number] = newSlowLogFile
+	}
+
+	return nil
 }

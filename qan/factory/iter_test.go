@@ -15,18 +15,27 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package qan_test
+package factory_test
 
 import (
 	"testing"
 
-	. "github.com/go-test/test"
-	gomysql "github.com/percona/go-mysql/test"
+	"github.com/percona/percona-agent/qan/factory"
 	. "gopkg.in/check.v1"
 )
 
 // Hook up gocheck into the "go test" runner.
 func Test(t *testing.T) { TestingT(t) }
 
-var inputDir = gomysql.RootDir + "/test/slow-logs/"
-var outputDir = RootDir() + "/test/qan/"
+type IterTestSuite struct {
+}
+
+var _ = Suite(&IterTestSuite{})
+
+func (s *IterTestSuite) TestAbsDataFile(t *C) {
+	// Test AbsDataFile. It is used to get an absolute path for a MySQL data file
+	// like slow_query_log_file
+	dataDir := "/home/somedir/"
+	testFileName := factory.AbsDataFile(dataDir, "anotherdir")
+	t.Check(testFileName, Equals, "/home/somedir/anotherdir")
+}

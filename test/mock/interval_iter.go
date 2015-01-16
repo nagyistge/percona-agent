@@ -20,6 +20,7 @@ package mock
 import (
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/qan"
+	"github.com/percona/percona-agent/qan/slowlog"
 	"time"
 )
 
@@ -29,7 +30,7 @@ type IntervalIterFactory struct {
 	TickChans map[qan.IntervalIter]chan time.Time
 }
 
-func (tf *IntervalIterFactory) Make(collectFrom string, filename qan.FilenameFunc, tickChan chan time.Time) qan.IntervalIter {
+func (tf *IntervalIterFactory) Make(collectFrom string, filename slowlog.FilenameFunc, tickChan chan time.Time) qan.IntervalIter {
 	if tf.iterNo >= len(tf.Iters) {
 		return tf.Iters[tf.iterNo-1]
 	}
