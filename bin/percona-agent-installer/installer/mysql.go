@@ -19,6 +19,7 @@ package installer
 
 import (
 	"fmt"
+	"github.com/hashicorp/go-version"
 	"github.com/mewpkg/gopass"
 	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/mysql"
@@ -362,8 +363,19 @@ func (i *Installer) IsVersionSupported(conn mysql.Connector) (bool, error) {
 	if err := conn.Connect(1); err != nil {
 		return false, err
 	}
-	version := conn.GetGlobalVarString("version")
-	if version >= agent.MIN_SUPPORTED_MYSQL_VERSION {
+	mysqlVersion := conn.GetGlobalVarString("version") // Version in the form m.n.o-ubuntu
+	re := regexp.MustCompile("-.*$")
+	mysqlVersion = re.ReplaceAllString(mysqlVersion, "") // Strip everything after the first dash
+
+	v, err := version.NewVersion(mysqlVersion)
+	if err != nil {
+		return false, err
+	}
+	constraints, err := version.NewConstraint(">= " + agent.MIN_SUPPORTED_MYSQL_VERSION)
+	if err != nil {
+		return false, err
+	}
+	if constraints.Check(v) {
 		return true, nil
 	}
 	return false, nil
