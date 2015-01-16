@@ -1,5 +1,5 @@
 /*
-   Copyright (c) 2014-2015, Percona LLC and/or its affiliates. All rights reserved.
+   Copyright (c) 2015, Percona LLC and/or its affiliates. All rights reserved.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU Affero General Public License as published by
@@ -19,16 +19,18 @@ package pct_test
 
 import (
 	"fmt"
-	"github.com/percona/percona-agent/pct"
-	. "gopkg.in/check.v1"
 	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
+
+	"github.com/percona/percona-agent/pct"
+	. "gopkg.in/check.v1"
 )
 
 type TestSuite struct {
-	basedir     string
+	baseDir     string
+	tmpDir      string
 	testPidFile *pct.PidFile
 	tmpFile     *os.File
 }
@@ -39,35 +41,33 @@ func (s *TestSuite) SetUpSuite(t *C) {
 	// We can't/shouldn't use /usr/local/percona/ (the default basedir), so use
 	// a tmpdir instead with roughly the same structure.
 	basedir, err := ioutil.TempDir("", "pidfile-test-")
-	s.basedir = basedir
 	t.Assert(err, IsNil)
-	if err := pct.Basedir.Init(s.basedir); err != nil {
+	s.baseDir = basedir
+	if err := pct.Basedir.Init(s.baseDir); err != nil {
 		t.Errorf("Could initialize tmp Basedir: %v", err)
 	}
+	// We need and extra tmpdir for tests (!= basedir)
+	tmpdir, err := ioutil.TempDir("", "pidfile-test-")
+	t.Assert(err, IsNil)
+	s.tmpDir = tmpdir
 }
 
 func (s *TestSuite) TearDownSuite(t *C) {
-	if err := os.RemoveAll(s.basedir); err != nil {
+	if err := os.RemoveAll(s.baseDir); err != nil {
+		t.Error(err)
+	}
+
+	if err := os.RemoveAll(s.tmpDir); err != nil {
 		t.Error(err)
 	}
 }
 
 func (s *TestSuite) SetUpTest(t *C) {
 	s.testPidFile = pct.NewPidFile()
-
 }
 
 func (s *TestSuite) TestGet(t *C) {
 	t.Assert(s.testPidFile.Get(), Equals, "")
-}
-
-func getTmpFileName(t *C) (string, error) {
-	tmpFile, err := ioutil.TempFile("", "")
-	if err != nil {
-		t.Logf("Could not get a valid tmp filename: %v", err)
-		return "", err
-	}
-	return tmpFile.Name(), nil
 }
 
 func removeTmpFile(tmpFileName string, t *C) error {
@@ -78,78 +78,75 @@ func removeTmpFile(tmpFileName string, t *C) error {
 	return nil
 }
 
-func getRandFilename() string {
+func getTmpFileName() string {
 	return fmt.Sprintf("%v.pid", rand.Int())
 }
 
-func openCloseFile(tmpFileName string, t *C) error {
-	tmpFile, err := os.Open(tmpFileName)
-	if err != nil && os.IsNotExist(err) {
-		t.Logf("PidFile not found")
-		return err
-	} else if err != nil {
-		t.Logf("Could not open PidFile: %v", err)
-		return err
-	}
-	tmpFile.Close()
-	return nil
+func getTmpAbsFileName(tmpDir string) string {
+	return filepath.Join(tmpDir, getTmpFileName())
 }
 
-func (s *TestSuite) TestSet(t *C) {
+func (s *TestSuite) TestSetEmpty(t *C) {
 	t.Assert(s.testPidFile.Set(""), Equals, nil)
-
-	tmpFileName, err := getTmpFileName(t)
-	if err != nil {
-		t.Fail()
-	}
-	// Should fail, file already exists
-	t.Assert(s.testPidFile.Set(tmpFileName), NotNil)
-
-	// Remove the pid file from the fs
-	if err := removeTmpFile(tmpFileName, t); err != nil {
-		t.Fail()
-	}
-
-	t.Assert(s.testPidFile.Set(tmpFileName), Equals, nil)
-	defer os.Remove(tmpFileName)
-
-	if err := openCloseFile(tmpFileName, t); err != nil {
-		t.Fail()
-	}
-
-	randPidFileName := getRandFilename()
-	t.Assert(s.testPidFile.Set(randPidFileName), Equals, nil)
-	fullPath := filepath.Join(pct.Basedir.Path(), randPidFileName)
-	defer os.Remove(fullPath)
 }
 
-func (s *TestSuite) TestRemove(t *C) {
-	t.Assert(s.testPidFile.Set(""), Equals, nil)
-	t.Assert(s.testPidFile.Remove(), Equals, nil)
-
-	tmpFilePath, err := getTmpFileName(t)
+func (s *TestSuite) TestSetExistsAbs(t *C) {
+	tmpFile, err := ioutil.TempFile(s.tmpDir, "")
 	if err != nil {
-		t.Fail()
+		t.Errorf("Could not create a tmp file: %v", err)
 	}
-	// We have a valid tmp file name now, remove it
-	t.Assert(removeTmpFile(tmpFilePath, t), Equals, nil)
+	t.Assert(s.testPidFile.Set(tmpFile.Name()), NotNil, Commentf("Set should have failed, pidfile exists"))
+}
 
-	t.Assert(s.testPidFile.Set(tmpFilePath), Equals, nil)
-	t.Assert(s.testPidFile.Remove(), Equals, nil)
-	_, err = os.Open(tmpFilePath)
-	t.Assert(err, NotNil)
+func (s *TestSuite) TestSetNotExistsAbs(t *C) {
+	randPidFileName := getTmpAbsFileName(s.tmpDir)
+	t.Assert(s.testPidFile.Set(randPidFileName), Equals, nil, Commentf("Set should not have failed, pidfile does not exist"))
+}
 
-	t.Assert(s.testPidFile.Set(tmpFilePath), Equals, nil)
-	t.Assert(removeTmpFile(tmpFilePath, t), Equals, nil)
-	t.Assert(s.testPidFile.Remove(), Equals, nil)
+func (s *TestSuite) TestSetNotExistsRel(t *C) {
+	randPidFileName := getTmpFileName()
+	t.Assert(s.testPidFile.Set(randPidFileName), Equals, nil, Commentf("Set should have failed, pidfile exists"))
+}
 
-	t.Assert(s.testPidFile.Set(tmpFilePath), Equals, nil)
-	t.Assert(removeTmpFile(tmpFilePath, t), Equals, nil)
-	t.Assert(s.testPidFile.Remove(), Equals, nil)
-	if tmpFile, err := os.Open(tmpFilePath); err != nil && !os.IsNotExist(err) {
-		tmpFile.Close()
-		defer removeTmpFile(tmpFilePath, t)
-		t.Errorf("Failed removal of PidFile: %v", err)
+func (s *TestSuite) TestSetExistsRel(t *C) {
+	tmpFile, err := ioutil.TempFile(pct.Basedir.Path(), "")
+	if err != nil {
+		t.Errorf("Could not create a tmp file: %v", err)
 	}
+	t.Assert(s.testPidFile.Set(tmpFile.Name()), NotNil, Commentf("Set should have failed, pidfile exists"))
+}
 
+func (s *TestSuite) TestRemoveEmpty(t *C) {
+	t.Check(s.testPidFile.Set(""), Equals, nil)
+	t.Assert(s.testPidFile.Remove(), Equals, nil, Commentf("Remove should have not failed, empty pidfile string provided"))
+}
+
+func (s *TestSuite) TestRemoveRel(t *C) {
+	tmpFileName := getTmpFileName()
+	t.Check(s.testPidFile.Set(tmpFileName), Equals, nil)
+	t.Assert(s.testPidFile.Remove(), Equals, nil, Commentf("Remove should have not failed, pidfile exists"))
+	absFilePath := filepath.Join(pct.Basedir.Path(), tmpFileName)
+	t.Assert(pct.FileExists(absFilePath), Equals, false, Commentf("Remove should have deleted pidfile"))
+}
+
+func (s *TestSuite) TestRemoveAbs(t *C) {
+	absFilePath := getTmpAbsFileName(s.tmpDir)
+	t.Check(s.testPidFile.Set(absFilePath), Equals, nil)
+	t.Assert(s.testPidFile.Remove(), Equals, nil, Commentf("Remove should have not failed, pidfile exists"))
+	t.Assert(pct.FileExists(absFilePath), Equals, false, Commentf("Remove should have deleted pidfile"))
+}
+
+func (s *TestSuite) TestRemoveNotExistsRel(t *C) {
+	randPidFileName := getTmpFileName()
+	t.Check(s.testPidFile.Set(randPidFileName), Equals, nil)
+	absFilePath := filepath.Join(pct.Basedir.Path(), randPidFileName)
+	t.Check(removeTmpFile(absFilePath, t), Equals, nil)
+	t.Assert(s.testPidFile.Remove(), Equals, nil, Commentf("Remove should have succedeed even when pidfile is missing"))
+}
+
+func (s *TestSuite) TestRemoveNotExistsAbs(t *C) {
+	absFilePath := getTmpAbsFileName(s.tmpDir)
+	t.Check(s.testPidFile.Set(absFilePath), Equals, nil)
+	t.Check(removeTmpFile(absFilePath, t), Equals, nil)
+	t.Assert(s.testPidFile.Remove(), Equals, nil, Commentf("Remove should have succedeed even when pidfile is missing"))
 }
