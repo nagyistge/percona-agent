@@ -474,6 +474,93 @@ func (s *WorkerTestSuite) TestRotateSlowLog(t *C) {
 	}
 }
 
+func (s *WorkerTestSuite) TestStop(t *C) {
+	config := qan.Config{
+		ServiceInstance:   s.mysqlInstance,
+		Interval:          300,
+		MaxSlowLogSize:    1024 * 1024 * 1024,
+		RemoveOldSlowLogs: true,
+		WorkerRunTime:     60,
+		Start:             []mysql.Query{},
+		Stop:              []mysql.Query{},
+		CollectFrom:       "slowlog",
+	}
+	w := slowlog.NewWorker(s.logger, config, s.nullmysql)
+
+	// Make and set a mock log.LogParser. The worker will use this once when
+	// Start() is called instead of making a real slow log parser.
+	p := mock.NewLogParser()
+	w.SetLogParser(p)
+
+	now := time.Now()
+	i := &qan.Interval{
+		Number:      1,
+		StartTime:   now,
+		StopTime:    now.Add(1 * time.Minute),
+		Filename:    inputDir + "slow006.log",
+		StartOffset: 0,
+		EndOffset:   100000,
+	}
+	w.Setup(i)
+
+	// Run the worker. It calls p.Start() and p.Stop() when done.
+	doneChan := make(chan bool, 1)
+	var res *qan.Result
+	var err error
+	go func() {
+		res, err = w.Run() // calls p.Start()
+		doneChan <- true
+	}()
+
+	// Send first event. This is aggregated.
+	e := &log.Event{
+		Offset: 0,
+		Ts:     "071015 21:45:10",
+		Query:  "select 1 from t",
+		Db:     "db1",
+		TimeMetrics: map[string]float32{
+			"Query_time": 1.111,
+		},
+	}
+	p.Send(e) // blocks until received
+
+	// This will block until we send a 2nd event...
+	stopChan := make(chan bool, 1)
+	go func() {
+		w.Stop()
+		stopChan <- true
+	}()
+
+	// Give Stop() time to send its signal. This isn't ideal, but it's necessary.
+	time.Sleep(500 * time.Millisecond)
+
+	// Send 2nd event which is not aggregated because a stop ^ is pending.
+	e = &log.Event{
+		Offset: 100,
+		Ts:     "071015 21:50:10",
+		Query:  "select 2 from u",
+		Db:     "db2",
+		TimeMetrics: map[string]float32{
+			"Query_time": 2.222,
+		},
+	}
+	p.Send(e) // blocks until received
+
+	// Side test: Status()
+	status := w.Status()
+	t.Check(strings.HasPrefix(status, "Parsing "+i.Filename), Equals, true)
+
+	if !test.WaitState(stopChan) {
+		t.Fatal("Timeout waiting for <-stopChan")
+	}
+	if !test.WaitState(doneChan) {
+		t.Fatal("Timeout waiting for <-doneChan")
+	}
+
+	t.Check(res.Global.TotalQueries, Equals, uint64(1))
+	t.Check(res.Class, HasLen, 1)
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // IntervalIter test suite
 /////////////////////////////////////////////////////////////////////////////
@@ -583,91 +670,4 @@ func (s *IterTestSuite) TestIterFile(t *C) {
 	t.Check(got, test.DeepEquals, expect)
 
 	i.Stop()
-}
-
-func (s *WorkerTestSuite) TestStop(t *C) {
-	config := qan.Config{
-		ServiceInstance:   s.mysqlInstance,
-		Interval:          300,
-		MaxSlowLogSize:    1024 * 1024 * 1024,
-		RemoveOldSlowLogs: true,
-		WorkerRunTime:     60,
-		Start:             []mysql.Query{},
-		Stop:              []mysql.Query{},
-		CollectFrom:       "slowlog",
-	}
-	w := slowlog.NewWorker(s.logger, config, s.nullmysql)
-
-	// Make and set a mock log.LogParser. The worker will use this once when
-	// Start() is called instead of making a real slow log parser.
-	p := mock.NewLogParser()
-	w.SetLogParser(p)
-
-	now := time.Now()
-	i := &qan.Interval{
-		Number:      1,
-		StartTime:   now,
-		StopTime:    now.Add(1 * time.Minute),
-		Filename:    inputDir + "slow006.log",
-		StartOffset: 0,
-		EndOffset:   100000,
-	}
-	w.Setup(i)
-
-	// Run the worker. It calls p.Start() and p.Stop() when done.
-	doneChan := make(chan bool, 1)
-	var res *qan.Result
-	var err error
-	go func() {
-		res, err = w.Run() // calls p.Start()
-		doneChan <- true
-	}()
-
-	// Send first event. This is aggregated.
-	e := &log.Event{
-		Offset: 0,
-		Ts:     "071015 21:45:10",
-		Query:  "select 1 from t",
-		Db:     "db1",
-		TimeMetrics: map[string]float32{
-			"Query_time": 1.111,
-		},
-	}
-	p.Send(e) // blocks until received
-
-	// This will block until we send a 2nd event...
-	stopChan := make(chan bool, 1)
-	go func() {
-		w.Stop()
-		stopChan <- true
-	}()
-
-	// Give Stop() time to send its signal. This isn't ideal, but it's necessary.
-	time.Sleep(500 * time.Millisecond)
-
-	// Send 2nd event which is not aggregated because a stop ^ is pending.
-	e = &log.Event{
-		Offset: 100,
-		Ts:     "071015 21:50:10",
-		Query:  "select 2 from u",
-		Db:     "db2",
-		TimeMetrics: map[string]float32{
-			"Query_time": 2.222,
-		},
-	}
-	p.Send(e) // blocks until received
-
-	// Side test: Status()
-	status := w.Status()
-	t.Check(strings.HasPrefix(status, "Parsing "+i.Filename), Equals, true)
-
-	if !test.WaitState(stopChan) {
-		t.Fatal("Timeout waiting for <-stopChan")
-	}
-	if !test.WaitState(doneChan) {
-		t.Fatal("Timeout waiting for <-doneChan")
-	}
-
-	t.Check(res.Global.TotalQueries, Equals, uint64(1))
-	t.Check(res.Class, HasLen, 1)
 }
