@@ -311,14 +311,14 @@ func (m *Manager) startAnalyzer(config Config) error {
 		return err
 	}
 
-	// Make a chan on which the clock will tick at even intervals. This is used
-	// to create an IntervalIter that's used to create the Analyzer. We need
-	// to track so that we can remove it from the clock if/when the analyzer is
-	// stopped.
+	// Make a chan on which the clock will tick at even intervals:
+	// clock -> tickChan -> iter -> analyzer -> worker
 	tickChan := make(chan time.Time, 1)
+	m.clock.Add(tickChan, config.Interval, true)
 
 	// Create and start a new analyzer. This should return immediately.
-	// The analyzer will start its Worker once it's able to configure MySQL.
+	// The analyzer will configure MySQL, start its iter, then run it worker
+	// for each interval.
 	analyzer := m.analyzerFactory.Make(
 		config,
 		"qan-"+mysqlInstance.Alias,
@@ -328,21 +328,6 @@ func (m *Manager) startAnalyzer(config Config) error {
 	)
 	if err := analyzer.Start(); err != nil {
 		return err
-	}
-
-	// Add the tickChan to the clock so it receives ticks at intervals. If the
-	// analyzer isn't ready yet, that's ok: ticks not received are dropped.
-	m.clock.Add(tickChan, config.Interval, true)
-
-	// Start the analyzer earlier if the next interval is more than 1 minute
-	// in the future. This means the first interval will have partial results.
-	t := m.clock.ETA(tickChan)
-	if t > 60 {
-		began := ticker.Began(config.Interval, uint(time.Now().UTC().Unix()))
-		m.logger.Info("First interval began at", began)
-		tickChan <- began
-	} else {
-		m.logger.Info(fmt.Sprintf("First interval begins in %.1f seconds", t))
 	}
 
 	// Save the new analyzer and its associated parts.
@@ -382,8 +367,7 @@ func (m *Manager) stopAnalyzer(instanceId uint) error {
 	// instance are not affected.
 	m.mrm.Remove(a.mysqlConn.DSN(), a.restartChan)
 
-	// Stop the analyzer. It stops its Worker and IntervalIter,
-	// and un-configures MySQL.
+	// Stop the analyzer. It stops its iter and worker and un-configures MySQL.
 	if err := a.analyzer.Stop(); err != nil {
 		return err
 	}
@@ -391,7 +375,7 @@ func (m *Manager) stopAnalyzer(instanceId uint) error {
 	// Stop managing this analyzer.
 	delete(m.analyzers, instanceId)
 
-	// todo-1.1: remove the analyzer's config file.
+	// todo-1.1: remove the analyzer's config file?
 
 	return nil // success
 }

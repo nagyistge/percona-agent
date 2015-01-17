@@ -257,13 +257,6 @@ func (a *RealAnalyzer) run() {
 			a.logger.Debug(fmt.Sprintf("run:interval:%s", interval))
 			currentInterval = interval
 
-			// Let worker do whatever it needs before it starts processing
-			// the interval. This mostly makes testing easier.
-			if err := a.worker.Setup(interval); err != nil {
-				a.logger.Warn(err)
-				continue
-			}
-
 			// Run the worker, timing it, make a report from its results, spool
 			// the report. When done the interval is returned on workerDoneChan.
 			go a.runWorker(interval)
@@ -279,19 +272,28 @@ func (a *RealAnalyzer) run() {
 				a.status.Update(a.name+"-last-interval", fmt.Sprintf("%s to %s", t0, t1))
 				lastTs = interval.StartTime
 			}
-
-			// Let worker do whatever it needs after processing the interval.
-			// This mostly maske testing easier.
-			if err := a.worker.Cleanup(); err != nil {
-				a.logger.Warn(err)
-				continue
-			}
 		case mysqlConfigured = <-a.mysqlConfiguredChan:
 			a.logger.Debug("run:mysql:configured")
 			// Start the IntervalIter once MySQL has been configured.
 			// This avoids no data or partial data, e.g. slow log verbosity
 			// not set yet.
 			a.iter.Start()
+
+			// If the next interval is more than 1 minute in the future,
+			// simulate a clock tick now to start the iter early. For example,
+			// if the interval is 5m and it's currently 01:00, the next interval
+			// starts in 4m and stops in 9m, so data won't be reported for about
+			// 10m. Instead, tick now so start interval=01:00 and end interval
+			// =05:00 and data is reported in about 6m.
+			tickChan := a.iter.TickChan()
+			t := a.clock.ETA(tickChan)
+			if t > 60 {
+				began := ticker.Began(a.config.Interval, uint(time.Now().UTC().Unix()))
+				a.logger.Info("First interval began at", began)
+				tickChan <- began
+			} else {
+				a.logger.Info(fmt.Sprintf("First interval begins in %.1f seconds", t))
+			}
 		case <-a.restartChan:
 			a.logger.Debug("run:mysql:restart")
 			// If MySQL is not configured, then configureMySQL() should already
@@ -312,11 +314,26 @@ func (a *RealAnalyzer) run() {
 func (a *RealAnalyzer) runWorker(interval *Interval) {
 	a.logger.Debug(fmt.Sprintf("runWorker:call:%d", interval.Number))
 	defer func() {
-		a.logger.Debug(fmt.Sprintf("runWorker:return:%d", interval.Number))
 		if err := recover(); err != nil {
 			a.logger.Error(fmt.Sprintf(a.name+"-worker crashed: '%s': %s", interval, err))
 		}
 		a.workerDoneChan <- interval
+		a.logger.Debug(fmt.Sprintf("runWorker:return:%d", interval.Number))
+	}()
+
+	// Let worker do whatever it needs before it starts processing
+	// the interval. This mostly makes testing easier.
+	if err := a.worker.Setup(interval); err != nil {
+		a.logger.Warn(err)
+		return
+	}
+
+	// Let worker do whatever it needs after processing the interval.
+	// This mostly maske testing easier.
+	defer func() {
+		if err := a.worker.Cleanup(); err != nil {
+			a.logger.Warn(err)
+		}
 	}()
 
 	// Run the worker to process the interval.

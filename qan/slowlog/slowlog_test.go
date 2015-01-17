@@ -158,10 +158,6 @@ func (s *WorkerTestSuite) TestWorkerSlow001NoExamples(t *C) {
 		Dump(got)
 		t.Error(diff)
 	}
-
-	// Worker should be able to report its name and status.
-	//t.Check(w.Name(), Equals, "qan-worker-1")
-	//t.Check(w.Status(), Equals, "Done job "+job.Id)
 }
 
 func (s *WorkerTestSuite) TestWorkerSlow001Half(t *C) {
@@ -548,7 +544,7 @@ func (s *WorkerTestSuite) TestStop(t *C) {
 
 	// Side test: Status()
 	status := w.Status()
-	t.Check(strings.HasPrefix(status, "Parsing "+i.Filename), Equals, true)
+	t.Check(strings.HasPrefix(status["qan-worker"], "Parsing "+i.Filename), Equals, true)
 
 	if !test.WaitState(stopChan) {
 		t.Fatal("Timeout waiting for <-stopChan")

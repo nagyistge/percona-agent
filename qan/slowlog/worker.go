@@ -291,7 +291,7 @@ func (w *Worker) Stop() error {
 	return nil
 }
 
-func (w *Worker) Cleanup() {
+func (w *Worker) Cleanup() error {
 	w.logger.Debug("Cleanup:call")
 	defer w.logger.Debug("Cleanup:return")
 	for i, file := range w.oldSlowLogs {
@@ -303,10 +303,11 @@ func (w *Worker) Cleanup() {
 		delete(w.oldSlowLogs, i)
 		w.logger.Info("Removed " + file)
 	}
+	return nil
 }
 
-func (w *Worker) Status() string {
-	return w.status.Get(w.name)
+func (w *Worker) Status() map[string]string {
+	return w.status.All()
 }
 
 func (w *Worker) SetLogParser(p log.LogParser) {

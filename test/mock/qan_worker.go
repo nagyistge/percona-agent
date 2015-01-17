@@ -22,24 +22,28 @@ import (
 )
 
 type QanWorker struct {
-	SetupChan   chan bool
-	RunChan     chan bool
-	StopChan    chan bool
-	CleanupChan chan bool
-	ErrorChan   chan error
-	CrashChan   chan bool
-	Interval    *qan.Interval
-	Result      *qan.Result
+	SetupChan        chan bool
+	RunChan          chan bool
+	StopChan         chan bool
+	CleanupChan      chan bool
+	ErrorChan        chan error
+	SetupCrashChan   chan bool
+	RunCrashChan     chan bool
+	CleanupCrashChan chan bool
+	Interval         *qan.Interval
+	Result           *qan.Result
 }
 
 func NewQanWorker() *QanWorker {
 	w := &QanWorker{
-		SetupChan:   make(chan bool, 1),
-		RunChan:     make(chan bool, 1),
-		StopChan:    make(chan bool, 1),
-		CleanupChan: make(chan bool, 1),
-		ErrorChan:   make(chan error, 1),
-		CrashChan:   make(chan bool, 1),
+		SetupChan:        make(chan bool, 1),
+		RunChan:          make(chan bool, 1),
+		StopChan:         make(chan bool, 1),
+		CleanupChan:      make(chan bool, 1),
+		ErrorChan:        make(chan error, 1),
+		SetupCrashChan:   make(chan bool, 1),
+		RunCrashChan:     make(chan bool, 1),
+		CleanupCrashChan: make(chan bool, 1),
 	}
 	return w
 }
@@ -75,7 +79,11 @@ func (w *QanWorker) Status() map[string]string {
 
 func (w *QanWorker) crashOrError() error {
 	select {
-	case <-w.CrashChan:
+	case <-w.SetupCrashChan:
+		panic("mock.QanWorker crash")
+	case <-w.RunCrashChan:
+		panic("mock.QanWorker crash")
+	case <-w.CleanupCrashChan:
 		panic("mock.QanWorker crash")
 	default:
 	}

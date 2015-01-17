@@ -29,12 +29,14 @@ type NullMySQL struct {
 	explain     map[string]*proto.ExplainResult
 	uptime      int64
 	uptimeCount uint
+	SetChan     chan bool
 }
 
 func NewNullMySQL() *NullMySQL {
 	n := &NullMySQL{
 		set:     []mysql.Query{},
 		explain: make(map[string]*proto.ExplainResult),
+		SetChan: make(chan bool),
 	}
 	return n
 }
@@ -66,6 +68,10 @@ func (n *NullMySQL) SetExplain(query string, explain *proto.ExplainResult) {
 func (n *NullMySQL) Set(queries []mysql.Query) error {
 	for _, q := range queries {
 		n.set = append(n.set, q)
+	}
+	select {
+	case n.SetChan <- true:
+	default:
 	}
 	return nil
 }
