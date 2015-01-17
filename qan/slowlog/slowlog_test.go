@@ -18,15 +18,20 @@
 package slowlog_test
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
 	. "github.com/go-test/test"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/go-mysql/event"
+	"github.com/percona/go-mysql/log"
 	gomysql "github.com/percona/go-mysql/test"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
@@ -63,6 +68,7 @@ type WorkerTestSuite struct {
 	config        qan.Config
 	mysqlConn     mysql.Connector
 	worker        *slowlog.Worker
+	nullmysql     *mock.NullMySQL
 }
 
 var _ = Suite(&WorkerTestSuite{})
@@ -90,6 +96,11 @@ func (s *WorkerTestSuite) SetUpSuite(t *C) {
 		WorkerRunTime:     60, // 1 min
 		CollectFrom:       "slowlog",
 	}
+	s.nullmysql = mock.NewNullMySQL()
+}
+
+func (s *WorkerTestSuite) SetUpTest(t *C) {
+	s.nullmysql.Reset()
 }
 
 func (s *WorkerTestSuite) RunWorker(config qan.Config, mysqlConn mysql.Connector, i *qan.Interval) (*qan.Result, error) {
@@ -100,6 +111,8 @@ func (s *WorkerTestSuite) RunWorker(config qan.Config, mysqlConn mysql.Connector
 	w.Cleanup()
 	return err, res
 }
+
+// -------------------------------------------------------------------------
 
 func (s *WorkerTestSuite) TestWorkerSlow001(t *C) {
 	i := &qan.Interval{
@@ -225,120 +238,110 @@ func (s *WorkerTestSuite) TestWorkerSlow011(t *C) {
 	}
 }
 
-// Rotate and remove slow logs
-
-func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(t *C) {
-
+func (s *WorkerTestSuite) TestRotateAndRemoveSlowLog(t *C) {
 	// Clean up files that may interfere with test.
-	slowlog := "slow006.log"
-	files, _ := filepath.Glob("/tmp/" + slowlog + "-[0-9]*")
+	slowlogFile := "slow006.log"
+	files, _ := filepath.Glob("/tmp/" + slowlogFile + "-[0-9]*")
 	for _, file := range files {
 		os.Remove(file)
 	}
 
 	/**
-	 * slow006.log is 2200 bytes large.  Rotation happens when manager
-	 * see interval.EndOffset >= MaxSlowLogSize.  So we'll use these
-	 * intervals,
+	 * slow006.log is 2200 bytes large.  Rotation happens when the worker
+	 * sees interval.EndOffset >= MaxSlowLogSize.  So we'll use these
+	 * intervals:
 	 *      0 -  736
 	 *    736 - 1833
 	 *   1833 - 2200
-	 * and set MaxSlowLogSize=1000 which should make manager rotate the log
-	 * after the 2nd interval.  When manager rotates log, it 1) renames log
+	 * and set MaxSlowLogSize=1000 which should make the worker rotate the log
+	 * after the 2nd interval.  When the worker rotates log, it 1) renames log
 	 * to NAME-TS where NAME is the original name and TS is the current Unix
 	 * timestamp (UTC); and 2) it sets interval.StopOff = file size of NAME-TS
-	 * to finish parsing the log.  Therefore, results for 2nd interval should
-	 * include our 3rd interval. -- Manager also calls Start and Stop so the
+	 * to finish parsing the log. Therefore, results for 2nd interval should
+	 * include our 3rd interval. -- The worker also calls Start and Stop so the
 	 * nullmysql conn should record the queries being set.
 	 */
 
 	// See TestStartService() for description of these startup tasks.
-	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
-	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im, s.mrmsMonitor)
-	if m == nil {
-		t.Fatal("Create qan.Manager")
-	}
-	config := &qan.Config{
+	config := qan.Config{
 		ServiceInstance:   s.mysqlInstance,
 		Interval:          300,
 		MaxSlowLogSize:    1000, // <-- HERE
 		RemoveOldSlowLogs: true, // <-- HERE too
 		ExampleQueries:    false,
-		MaxWorkers:        2,
 		WorkerRunTime:     600,
 		Start: []mysql.Query{
-			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-			mysql.Query{Set: "SET GLOBAL long_query_time=0.456"},
-			mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+			mysql.Query{Set: "-- start"},
 		},
 		Stop: []mysql.Query{
-			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
+			mysql.Query{Set: "-- stop"},
 		},
 		CollectFrom: "slowlog",
 	}
-	qanConfig, _ := json.Marshal(config)
-	cmd := &proto.Cmd{
-		Ts:   time.Now(),
-		Cmd:  "StartService",
-		Data: qanConfig,
-	}
-	reply := m.Handle(cmd)
-	t.Assert(reply.Error, Equals, "")
-
-	test.WaitStatusPrefix(1, m, "qan-parser", "Idle")
+	w := slowlog.NewWorker(s.logger, config, s.nullmysql)
 
 	// Make copy of slow log because test will mv/rename it.
-	cp := exec.Command("cp", inputDir+slowlog, "/tmp/"+slowlog)
+	cp := exec.Command("cp", inputDir+slowlogFile, "/tmp/"+slowlogFile)
 	cp.Run()
 
 	// First interval: 0 - 736
 	now := time.Now()
 	i1 := &qan.Interval{
-		Filename:    "/tmp/" + slowlog,
+		Filename:    "/tmp/" + slowlogFile,
 		StartOffset: 0,
 		EndOffset:   736,
 		StartTime:   now,
 		StopTime:    now,
 	}
-	s.intervalChan <- i1
-	resultData := <-s.dataChan
-	report := *resultData.(*qan.Report)
-	if report.Global.TotalQueries != 2 {
-		t.Error("First interval has 2 queries, got ", report.Global.TotalQueries)
-	}
-	if report.Global.UniqueQueries != 1 {
-		t.Error("First interval has 1 unique query, got ", report.Global.UniqueQueries)
-	}
+	// Rotation happens in Setup(), but the log isn't rotated yet.
+	w.Setup(i1)
+	gotSet := s.nullmysql.GetSet()
+	t.Check(gotSet, HasLen, 0)
 
-	// Second interval: 736 - 1833, but will actually go to end: 2200, if not
-	// the next two test will fail.
+	res, err := w.Run()
+	t.Assert(err, IsNil)
+
+	w.Cleanup()
+	t.Check(res.Global.TotalQueries, Equals, uint64(2))
+	t.Check(res.Global.UniqueQueries, Equals, uint64(1))
+
+	// Second interval: 736 - 1833, but will actually go to end: 2200.
 	i2 := &qan.Interval{
-		Filename:    "/tmp/" + slowlog,
+		Filename:    "/tmp/" + slowlogFile,
 		StartOffset: 736,
 		EndOffset:   1833,
 		StartTime:   now,
 		StopTime:    now,
 	}
-	s.intervalChan <- i2
-	resultData = <-s.dataChan
-	report = *resultData.(*qan.Report)
-	if report.Global.TotalQueries != 4 {
-		t.Error("Second interval has 2 queries, got ", report.Global.TotalQueries)
-	}
-	if report.Global.UniqueQueries != 2 {
-		t.Error("Second interval has 2 unique queries, got ", report.Global.UniqueQueries)
+	w.Setup(i2)
+	gotSet = s.nullmysql.GetSet()
+	expectSet := append(config.Stop, config.Start...)
+	if same, diff := IsDeeply(gotSet, expectSet); !same {
+		Dump(gotSet)
+		t.Error(diff)
 	}
 
-	test.WaitStatus(1, m, "qan-parser", "Idle (0 of 2 running)")
+	// When rotated, the interval end offset is extended to end of file.
+	t.Check(i2.EndOffset, Equals, int64(2200))
+
+	res, err = w.Run()
+	t.Assert(err, IsNil)
+
+	// The old slow log is removed in Cleanup(), so it should still exist.
+	files, _ = filepath.Glob("/tmp/" + slowlogFile + "-[0-9]*")
+	t.Check(files, HasLen, 1)
+
+	w.Cleanup()
+	t.Check(res.Global.TotalQueries, Equals, uint64(4))
+	t.Check(res.Global.UniqueQueries, Equals, uint64(2))
 
 	// Original slow log should no longer exist; it was rotated away.
-	if _, err := os.Stat("/tmp/" + slowlog); !os.IsNotExist(err) {
-		t.Error("/tmp/" + slowlog + " no longer exists")
+	if _, err := os.Stat("/tmp/" + slowlogFile); !os.IsNotExist(err) {
+		t.Error("/tmp/" + slowlogFile + " no longer exists")
 	}
 
 	// The original slow log should have been renamed to slow006-TS, parsed, and removed.
-	files, _ = filepath.Glob("/tmp/" + slowlog + "-[0-9]*")
+	files, _ = filepath.Glob("/tmp/" + slowlogFile + "-[0-9]*")
 	if len(files) != 0 {
 		t.Errorf("Old slow log removed, got %+v", files)
 	}
@@ -355,291 +358,121 @@ func (s *ManagerTestSuite) TestRotateAndRemoveSlowLog(t *C) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(out), "/tmp/"+slowlog+"-") {
+	if strings.Contains(string(out), "/tmp/"+slowlogFile+"-") {
 		t.Logf("%s\n", string(out))
 		t.Error("Old slow log removed but not freed in filesystem (PCT-466)")
 	}
-
-	// Stop manager
-	reply = m.Handle(&proto.Cmd{Cmd: "StopService"})
-	t.Assert(reply.Error, Equals, "")
 }
 
-func (s *ManagerTestSuite) TestRotateSlowLog(t *C) {
+func (s *WorkerTestSuite) TestRotateSlowLog(t *C) {
+	// Same as TestRotateAndRemoveSlowLog but qan.Config.RemoveOldSlowLogs=false
+	// so the old slow log file is not removed.
 
-	// Same as TestRotateAndRemoveSlowLog, but with qan.Config.RemoveOldSlowLogs=false
-	// and testing that Start and Stop queries were executed.
-
-	slowlog := "slow006.log"
-	files, _ := filepath.Glob("/tmp/" + slowlog + "-[0-9]*")
+	slowlogFile := "slow006.log"
+	files, _ := filepath.Glob("/tmp/" + slowlogFile + "-[0-9]*")
 	for _, file := range files {
 		os.Remove(file)
 	}
 
-	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
-	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im, s.mrmsMonitor)
-	if m == nil {
-		t.Fatal("Create qan.Manager")
-	}
-	config := &qan.Config{
+	// See TestStartService() for description of these startup tasks.
+	config := qan.Config{
 		ServiceInstance:   s.mysqlInstance,
 		Interval:          300,
 		MaxSlowLogSize:    1000,
 		RemoveOldSlowLogs: false, // <-- HERE
 		ExampleQueries:    false,
-		MaxWorkers:        2,
 		WorkerRunTime:     600,
 		Start: []mysql.Query{
-			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-			mysql.Query{Set: "SET GLOBAL long_query_time=0.456"},
-			mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+			mysql.Query{Set: "-- start"},
 		},
 		Stop: []mysql.Query{
-			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
+			mysql.Query{Set: "-- stop"},
 		},
 		CollectFrom: "slowlog",
 	}
-	qanConfig, _ := json.Marshal(config)
-	cmd := &proto.Cmd{
-		Ts:   time.Now(),
-		Cmd:  "StartService",
-		Data: qanConfig,
-	}
-	reply := m.Handle(cmd)
-	t.Assert(reply.Error, Equals, "")
+	w := slowlog.NewWorker(s.logger, config, s.nullmysql)
 
-	test.WaitStatusPrefix(1, m, "qan-parser", "Idle")
-	s.nullmysql.Reset()
-	cp := exec.Command("cp", inputDir+slowlog, "/tmp/"+slowlog)
+	// Make copy of slow log because test will mv/rename it.
+	cp := exec.Command("cp", inputDir+slowlogFile, "/tmp/"+slowlogFile)
 	cp.Run()
 
 	// First interval: 0 - 736
 	now := time.Now()
 	i1 := &qan.Interval{
-		Filename:    "/tmp/" + slowlog,
+		Filename:    "/tmp/" + slowlogFile,
 		StartOffset: 0,
 		EndOffset:   736,
 		StartTime:   now,
 		StopTime:    now,
 	}
-	s.intervalChan <- i1
-	resultData := <-s.dataChan
-	report := *resultData.(*qan.Report)
-	if report.Global.TotalQueries != 2 {
-		t.Error("First interval has 2 queries, got ", report.Global.TotalQueries)
-	}
-	if report.Global.UniqueQueries != 1 {
-		t.Error("First interval has 1 unique query, got ", report.Global.UniqueQueries)
-	}
+	// Rotation happens in Setup(), but the log isn't rotated yet.
+	w.Setup(i1)
+	gotSet := s.nullmysql.GetSet()
+	t.Check(gotSet, HasLen, 0)
 
-	// Second interval: 736 - 1833, but will actually go to end: 2200, if not
-	// the next two test will fail.
+	res, err := w.Run()
+	t.Assert(err, IsNil)
+
+	w.Cleanup()
+	t.Check(res.Global.TotalQueries, Equals, uint64(2))
+	t.Check(res.Global.UniqueQueries, Equals, uint64(1))
+
+	// Second interval: 736 - 1833, but will actually go to end: 2200.
 	i2 := &qan.Interval{
-		Filename:    "/tmp/" + slowlog,
+		Filename:    "/tmp/" + slowlogFile,
 		StartOffset: 736,
 		EndOffset:   1833,
 		StartTime:   now,
 		StopTime:    now,
 	}
-	s.intervalChan <- i2
-	resultData = <-s.dataChan
-	report = *resultData.(*qan.Report)
-	if report.Global.TotalQueries != 4 {
-		t.Error("Second interval has 2 queries, got ", report.Global.TotalQueries)
-	}
-	if report.Global.UniqueQueries != 2 {
-		t.Error("Second interval has 2 unique queries, got ", report.Global.UniqueQueries)
-	}
-
-	test.WaitStatus(1, m, "qan-parser", "Idle (0 of 2 running)")
-
-	// Original slow log should no longer exist; it was rotated away.
-	if _, err := os.Stat("/tmp/" + slowlog); !os.IsNotExist(err) {
-		t.Error("/tmp/" + slowlog + " no longer exists")
-	}
-
-	// The original slow log should NOT have been removed.
-	files, _ = filepath.Glob("/tmp/" + slowlog + "-[0-9]*")
-	if len(files) != 1 {
-		t.Errorf("Old slow log not removed, got %+v", files)
-	}
-	defer func() {
-		for _, file := range files {
-			os.Remove(file)
-		}
-	}()
-
-	expect := []mysql.Query{}
-	for _, q := range config.Stop {
-		expect = append(expect, q)
-	}
-	for _, q := range config.Start {
-		expect = append(expect, q)
-	}
-	if same, diff := IsDeeply(s.nullmysql.GetSet(), expect); !same {
-		t.Logf("%+v", s.nullmysql.GetSet())
-		t.Logf("%+v", expect)
+	w.Setup(i2)
+	gotSet = s.nullmysql.GetSet()
+	expectSet := append(config.Stop, config.Start...)
+	if same, diff := IsDeeply(gotSet, expectSet); !same {
+		Dump(gotSet)
 		t.Error(diff)
 	}
 
-	// Stop manager
-	reply = m.Handle(&proto.Cmd{Cmd: "StopService"})
-	t.Assert(reply.Error, Equals, "")
-}
+	// When rotated, the interval end offset is extended to end of file.
+	t.Check(i2.EndOffset, Equals, int64(2200))
 
-func (s *ManagerTestSuite) TestWaitRemoveSlowLog(t *C) {
+	res, err = w.Run()
+	t.Assert(err, IsNil)
 
-	// Same as TestRotateAndRemoveSlowLog, but we use mock workers so we can
-	// test that slow log is not removed until previous workers are done.
-	// Mock worker factory will return our mock workers when manager calls Make().
-	w1StopChan := make(chan bool)
-	w1 := mock.NewQanWorker("qan-worker-1", w1StopChan, nil, nil, false)
+	// The old slow log is removed in Cleanup(), so it should still exist.
+	files, _ = filepath.Glob("/tmp/" + slowlogFile + "-[0-9]*")
+	t.Check(files, HasLen, 1)
 
-	w2StopChan := make(chan bool)
-	w2 := mock.NewQanWorker("qan-worker-2", w2StopChan, nil, nil, false)
+	w.Cleanup()
+	t.Check(res.Global.TotalQueries, Equals, uint64(4))
+	t.Check(res.Global.UniqueQueries, Equals, uint64(2))
 
-	// Let's take this time to also test that MaxWorkers is enforced.
-	w3 := mock.NewQanWorker("qan-worker-3", nil, nil, nil, false)
-
-	f := mock.NewQanWorkerFactory([]*mock.QanWorker{w1, w2, w3})
-
-	// Clean up files that may interfere with test.  Then copy the test log.
-	slowlog := "slow006.log"
-	files, _ := filepath.Glob("/tmp/" + slowlog + "-[0-9]*")
-	for _, file := range files {
-		os.Remove(file)
-	}
-	cp := exec.Command("cp", inputDir+slowlog, "/tmp/"+slowlog)
-	cp.Run()
-
-	// Create and start manager with mock workers.
-	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
-	m := qan.NewManager(s.logger, mockConnFactory, s.clock, s.iterFactory, f, s.spool, s.im, s.mrmsMonitor)
-	if m == nil {
-		t.Fatal("Create qan.Manager")
-	}
-	config := &qan.Config{
-		ServiceInstance:   s.mysqlInstance,
-		MaxSlowLogSize:    1000,
-		RemoveOldSlowLogs: true, // done after w2 and w1 done
-		MaxWorkers:        2,    // w1 and w2 but not w3
-		Interval:          60,
-		WorkerRunTime:     60,
-		Start: []mysql.Query{
-			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-		},
-		Stop: []mysql.Query{
-			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-		},
-		CollectFrom: "slowlog",
-	}
-	qanConfig, _ := json.Marshal(config)
-	cmd := &proto.Cmd{
-		Ts:   time.Now(),
-		Cmd:  "StartService",
-		Data: qanConfig,
-	}
-	reply := m.Handle(cmd)
-	t.Assert(reply.Error, Equals, "")
-
-	test.WaitStatusPrefix(1, m, "qan-parser", "Idle")
-
-	// Start first mock worker (w1) with interval 0 - 736.  The worker's Run()
-	// func won't return until we send true to its stop chan, so manager will
-	// think worker is still running until then.
-	now := time.Now()
-	i1 := &qan.Interval{
-		Filename:    "/tmp/" + slowlog,
-		StartOffset: 0,
-		EndOffset:   736,
-		StartTime:   now,
-		StopTime:    now,
-	}
-	s.intervalChan <- i1
-	<-w1.Running() // wait for manager to run worker
-
-	// Start 2nd mock worker (w2) with interval 736 - 1833.  Manager will rotate
-	// but not remove original slow log because w1 is still running.
-	i2 := &qan.Interval{
-		Filename:    "/tmp/" + slowlog,
-		StartOffset: 736,
-		EndOffset:   1833,
-		StartTime:   now,
-		StopTime:    now,
-	}
-	s.intervalChan <- i2
-	<-w2.Running()
-
-	test.WaitStatus(1, m, "qan-parser", "Idle (2 of 2 running)")
-
-	/**
-	 * Worker status test
-	 */
-
-	// Workers should have status and QAN manager should report them all.
-	status := m.Status()
-	t.Check(status["qan-worker-1"], Equals, "ok")
-	t.Check(status["qan-worker-2"], Equals, "ok")
-	t.Check(status["qan-worker-3"], Equals, "") // not running due to MaxWorkers
-
-	/**
-	 * Quick side test: qan.Config.MaxWorkers is enforced.
-	 */
-	test.DrainLogChan(s.logChan)
-	s.intervalChan <- i2
-	logs := test.WaitLogChan(s.logChan, 3)
-	test.WaitStatus(1, m, "qan-parser", "Idle (2 of 2 running)")
-	gotWarning := false
-	for _, log := range logs {
-		if log.Level == proto.LOG_WARNING && strings.Contains(log.Msg, "All workers busy") {
-			gotWarning = true
-			break
-		}
-	}
-	if !gotWarning {
-		t.Error("Too many workers causes \"All workers busy\" warning")
+	// Original slow log should no longer exist; it was rotated away.
+	if _, err := os.Stat("/tmp/" + slowlogFile); !os.IsNotExist(err) {
+		t.Error("/tmp/" + slowlogFile + " no longer exists")
 	}
 
-	// Original slow log should no longer exist; it was rotated away, but...
-	if _, err := os.Stat("/tmp/" + slowlog); !os.IsNotExist(err) {
-		t.Error("/tmp/" + slowlog + " no longer exists")
-	}
-
-	// ...old slow log should exist because w1 is still running.
-	files, _ = filepath.Glob("/tmp/" + slowlog + "-[0-9]*")
-	if len(files) != 1 {
-		t.Errorf("w1 running so old slow log not removed, got %+v", files)
-	}
+	// The original slow log should NOT have been removed.
+	files, _ = filepath.Glob("/tmp/" + slowlogFile + "-[0-9]*")
+	t.Check(files, HasLen, 1)
 	defer func() {
 		for _, file := range files {
 			os.Remove(file)
 		}
 	}()
 
-	// Stop w2 which is holding "holding" the "lock" on removing the old
-	// slog log (figuratively speaking; there are no real locks).  Because
-	// w1 is still running, manager should not remove the old log yet because
-	// w1 could still be parsing it.
-	w2StopChan <- true
-	test.WaitStatus(1, m, "qan-parser", "Idle (1 of 2 running)")
-	if _, err := os.Stat(files[0]); os.IsNotExist(err) {
-		t.Errorf("w1 still running so old slow log not removed")
+	// https://jira.percona.com/browse/PCT-466
+	// Old slow log removed but space not freed in filesystem
+	pid := fmt.Sprintf("%d", os.Getpid())
+	out, err := exec.Command("lsof", "-p", pid).Output()
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	// Stop w1 and now, even though slow log was rotated for w2, manager
-	// should remove old slow log.
-	w1StopChan <- true
-	test.WaitStatus(1, m, "qan-parser", "Idle (0 of 2 running)")
-	if _, err := os.Stat(files[0]); !os.IsNotExist(err) {
-		t.Errorf("w1 done running so old slow log removed")
+	if strings.Contains(string(out), "/tmp/"+slowlogFile+"-") {
+		t.Logf("%s\n", string(out))
+		t.Error("Old slow log removed but not freed in filesystem (PCT-466)")
 	}
-
-	// Stop manager
-	reply = m.Handle(&proto.Cmd{Cmd: "StopService"})
-	t.Assert(reply.Error, Equals, "")
 }
-
 
 /////////////////////////////////////////////////////////////////////////////
 // IntervalIter test suite
@@ -750,4 +583,91 @@ func (s *IterTestSuite) TestIterFile(t *C) {
 	t.Check(got, test.DeepEquals, expect)
 
 	i.Stop()
+}
+
+func (s *WorkerTestSuite) TestStop(t *C) {
+	config := qan.Config{
+		ServiceInstance:   s.mysqlInstance,
+		Interval:          300,
+		MaxSlowLogSize:    1024 * 1024 * 1024,
+		RemoveOldSlowLogs: true,
+		WorkerRunTime:     60,
+		Start:             []mysql.Query{},
+		Stop:              []mysql.Query{},
+		CollectFrom:       "slowlog",
+	}
+	w := slowlog.NewWorker(s.logger, config, s.nullmysql)
+
+	// Make and set a mock log.LogParser. The worker will use this once when
+	// Start() is called instead of making a real slow log parser.
+	p := mock.NewLogParser()
+	w.SetLogParser(p)
+
+	now := time.Now()
+	i := &qan.Interval{
+		Number:      1,
+		StartTime:   now,
+		StopTime:    now.Add(1 * time.Minute),
+		Filename:    inputDir + "slow006.log",
+		StartOffset: 0,
+		EndOffset:   100000,
+	}
+	w.Setup(i)
+
+	// Run the worker. It calls p.Start() and p.Stop() when done.
+	doneChan := make(chan bool, 1)
+	var res *qan.Result
+	var err error
+	go func() {
+		res, err = w.Run() // calls p.Start()
+		doneChan <- true
+	}()
+
+	// Send first event. This is aggregated.
+	e := &log.Event{
+		Offset: 0,
+		Ts:     "071015 21:45:10",
+		Query:  "select 1 from t",
+		Db:     "db1",
+		TimeMetrics: map[string]float32{
+			"Query_time": 1.111,
+		},
+	}
+	p.Send(e) // blocks until received
+
+	// This will block until we send a 2nd event...
+	stopChan := make(chan bool, 1)
+	go func() {
+		w.Stop()
+		stopChan <- true
+	}()
+
+	// Give Stop() time to send its signal. This isn't ideal, but it's necessary.
+	time.Sleep(500 * time.Millisecond)
+
+	// Send 2nd event which is not aggregated because a stop ^ is pending.
+	e = &log.Event{
+		Offset: 100,
+		Ts:     "071015 21:50:10",
+		Query:  "select 2 from u",
+		Db:     "db2",
+		TimeMetrics: map[string]float32{
+			"Query_time": 2.222,
+		},
+	}
+	p.Send(e) // blocks until received
+
+	// Side test: Status()
+	status := w.Status()
+	t.Check(strings.HasPrefix(status, "Parsing "+i.Filename), Equals, true)
+
+	if !test.WaitState(stopChan) {
+		t.Fatal("Timeout waiting for <-stopChan")
+	}
+	if !test.WaitState(doneChan) {
+		t.Fatal("Timeout waiting for <-doneChan")
+	}
+
+	t.Check(res.Global.TotalQueries, Equals, uint64(1))
+	t.Check(res.Class, HasLen, 1)
 }

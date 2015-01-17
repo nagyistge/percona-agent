@@ -81,6 +81,9 @@ type Worker struct {
 	doneChan        chan bool
 	oldSlowLogs     map[int]string
 	job             *Job
+	sync            *pct.SyncChan
+	running         bool
+	logParser       log.LogParser
 }
 
 func NewWorker(logger *pct.Logger, config qan.Config, mysqlConn mysql.Connector) *Worker {
@@ -97,13 +100,19 @@ func NewWorker(logger *pct.Logger, config qan.Config, mysqlConn mysql.Connector)
 		errChan:         make(chan interface{}, 1),
 		doneChan:        make(chan bool, 1),
 		oldSlowLogs:     make(map[int]string),
+		sync:            pct.NewSyncChan(),
 	}
 	return w
 }
 
 func (w *Worker) Setup(interval *qan.Interval) error {
+	w.logger.Debug("Setup:call")
+	defer w.logger.Debug("Setup:return")
+	w.logger.Debug("Setup:", interval)
 	if interval.EndOffset >= w.config.MaxSlowLogSize {
-		w.logger.Info("Rotating slow log")
+		w.logger.Info(fmt.Sprintf("Rotating slow log: %s >= %s",
+			pct.Bytes(uint64(interval.EndOffset)),
+			pct.Bytes(uint64(w.config.MaxSlowLogSize))))
 		if err := w.rotateSlowLog(interval); err != nil {
 			w.logger.Error(err)
 		}
@@ -116,6 +125,7 @@ func (w *Worker) Setup(interval *qan.Interval) error {
 		RunTime:        time.Duration(w.config.WorkerRunTime) * time.Second,
 		ExampleQueries: w.config.ExampleQueries,
 	}
+	w.logger.Debug("Setup:", w.job)
 	return nil
 }
 
@@ -123,8 +133,19 @@ func (w *Worker) Run() (*qan.Result, error) {
 	w.logger.Debug("Run:call")
 	defer w.logger.Debug("Run:return")
 
+	stopped := false
+	w.running = true
+	defer func() {
+		if stopped {
+			w.sync.Done()
+		}
+		w.running = false
+	}()
+
 	w.status.Update(w.name, "Starting job "+w.job.Id)
 	result := &qan.Result{}
+
+	defer w.status.Update(w.name, "Idle")
 
 	// Open the slow log file.
 	file, err := os.Open(w.job.SlowLogFile)
@@ -142,7 +163,7 @@ func (w *Worker) Run() (*qan.Result, error) {
 			"Binlog Dump GTID": true,
 		},
 	}
-	p := parser.NewSlowLogParser(file, opts)
+	p := w.MakeLogParser(file, opts)
 	defer p.Stop()
 	go func() {
 		defer func() {
@@ -180,7 +201,16 @@ EVENT_LOOP:
 			float64(event.Offset)/float64(w.job.EndOffset)*100, event.Offset, w.job.EndOffset, jobSize, runtime.Seconds())
 		w.status.Update(w.name, fmt.Sprintf("Parsing %s: %s", w.job.SlowLogFile, progress))
 
-		// Check runtime, stop if exceeded.
+		// Stop if Stop() called.
+		select {
+		case <-w.sync.StopChan:
+			w.logger.Debug("Run:stop")
+			stopped = true
+			break EVENT_LOOP
+		default:
+		}
+
+		// Stop if runtime exceeded.
 		if runtime >= w.job.RunTime {
 			errMsg := fmt.Sprintf("Timeout parsing %s: %s", w.job, progress)
 			w.logger.Warn(errMsg)
@@ -188,11 +218,13 @@ EVENT_LOOP:
 			break EVENT_LOOP
 		}
 
+		// Stop if past file end offset.
 		if int64(event.Offset) >= w.job.EndOffset {
 			result.StopOffset = int64(event.Offset)
 			break EVENT_LOOP
 		}
 
+		// Stop if rate limits are mixed.
 		if event.RateType != "" {
 			if rateType != "" {
 				if rateType != event.RateType || rateLimit != event.RateLimit {
@@ -208,6 +240,7 @@ EVENT_LOOP:
 			}
 		}
 
+		// Fingerprint the query and add it to the event aggregator.
 		var fingerprint string
 		w.queryChan <- event.Query
 		select {
@@ -244,18 +277,25 @@ EVENT_LOOP:
 		result.RunTime = time.Now().Sub(t0).Seconds()
 	}
 
-	w.status.Update(w.name, "Done job "+w.job.Id)
 	w.logger.Info(fmt.Sprintf("Parsed %s: %s", w.job, progress))
 	return result, nil
 }
 
 func (w *Worker) Stop() error {
+	w.logger.Debug("Stop:call")
+	defer w.logger.Debug("Stop:return")
+	if w.running {
+		w.sync.Stop()
+		w.sync.Wait()
+	}
 	return nil
 }
 
 func (w *Worker) Cleanup() {
+	w.logger.Debug("Cleanup:call")
+	defer w.logger.Debug("Cleanup:return")
 	for i, file := range w.oldSlowLogs {
-		w.status.Update(w.name, "Removing old slow log "+file)
+		w.status.Update(w.name, "Removing slow log "+file)
 		if err := os.Remove(file); err != nil {
 			w.logger.Warn(err)
 			continue
@@ -267,6 +307,19 @@ func (w *Worker) Cleanup() {
 
 func (w *Worker) Status() string {
 	return w.status.Get(w.name)
+}
+
+func (w *Worker) SetLogParser(p log.LogParser) {
+	w.logParser = p
+}
+
+func (w *Worker) MakeLogParser(file *os.File, opts log.Options) log.LogParser {
+	if w.logParser != nil {
+		p := w.logParser
+		w.logParser = nil
+		return p
+	}
+	return parser.NewSlowLogParser(file, opts)
 }
 
 // --------------------------------------------------------------------------
