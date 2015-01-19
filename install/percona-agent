@@ -22,10 +22,22 @@ SERVICE="percona-agent"
 
 # Agent needs to run as root to read MySQL slow log for Query Analytics (QAN).
 # If not running QAN, a normal user will work.
-USERNAME="root"
+# Environment variable config takes priority
+if [ -n "$PERCONA_AGENT_USER" ]; then
+    USERNAME="$PERCONA_AGENT_USER"
+else
+    USERNAME='root'
+fi
 
 # Agent uses a single base directory for all its files and data.
-BASEDIR="/usr/local/percona/$SERVICE"
+# Environment variable config takes priority
+if [ -n "$PERCONA_AGENT_DIR" ] && [ -d "$PERCONA_AGENT_DIR" ] ; then
+    # Remove trailing slash
+    BASEDIR=$( cd "$PERCONA_AGENT_DIR" && pwd )
+else
+    BASEDIR="/usr/local/percona/$SERVICE"
+fi
+
 if [ ! -d "$BASEDIR" ]; then
    mkdir -p "$BASEDIR" || exit 1
 fi
