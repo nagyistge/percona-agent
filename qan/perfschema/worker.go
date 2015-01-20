@@ -31,27 +31,10 @@ import (
 	"github.com/percona/percona-agent/qan"
 )
 
-type WorkerFactory interface {
-	Make(name string, mysqlConn mysql.Connector) qan.Worker
-}
-
-type RealWorkerFactory struct {
-	logChan chan *proto.LogEntry
-}
-
-func NewRealWorkerFactory(logChan chan *proto.LogEntry) *RealWorkerFactory {
-	f := &RealWorkerFactory{
-		logChan: logChan,
-	}
-	return f
-}
-
-func (f *RealWorkerFactory) Make(name string, mysqlConn mysql.Connector) *Worker {
-	return NewWorker(pct.NewLogger(f.logChan, name), mysqlConn)
-}
-
 // A DigestRow is a row from performance_schema.events_statements_summary_by_digest.
 type DigestRow struct {
+	Schema                  string
+	Digest                  string
 	CountStar               uint
 	SumTimerWait            uint
 	MinTimerWait            uint
@@ -75,73 +58,37 @@ type Class struct {
 	Rows       map[string]*DigestRow // keyed on schema
 }
 
-type Snapshot struct {
-	Interval *qan.Interval
-	Classes  map[string]Class // keyed on digest (class ID)
-}
-
-type Worker struct {
-	logger    *pct.Logger
-	mysqlConn mysql.Connector
-	// --
-	name   string
-	status *pct.Status
-	sync   *pct.SyncChan
-	prev   *Snapshot
-	curr   *Snapshot
-}
-
-func NewWorker(logger *pct.Logger, mysqlConn mysql.Connector) *Worker {
-	name := logger.Service()
-	w := &Worker{
-		logger:    logger,
-		mysqlConn: mysqlConn,
-		// --
-		name:   name,
-		status: pct.NewStatus([]string{name}),
-		sync:   pct.NewSyncChan(),
-		curr: &Snapshot{
-			Classes: make(map[string]Class),
-		},
-	}
-	return w
-}
-
-func (w *Worker) Setup(interval *qan.Interval) error {
-	w.prev = w.curr
-	w.curr = &Snapshot{
-		Interval: interval,
-		Classes:  make(map[string]Class),
-	}
-	return nil
-}
-
-func (w *Worker) Run() (*qan.Result, error) {
-	if err := w.CollectData(); err != nil {
-		return nil, err
-	}
-	return w.PrepareResult()
-}
-
-func (w *Worker) Stop() error {
-	w.sync.Stop()
-	w.sync.Wait()
-	return nil
-}
-
-func (w *Worker) Cleanup() error {
-	return nil
-}
-
-func (w *Worker) Status() map[string]string {
-	return w.status.All()
-}
+type Snapshot map[string]Class // keyed on digest (classId)
 
 // --------------------------------------------------------------------------
 
-func (w *Worker) CollectData() error {
-	w.status.Update(w.name, "SELECT performance_schema.events_statements_summary_by_digest")
-	rows, err := w.mysqlConn.DB().Query(
+type WorkerFactory interface {
+	Make(name string, mysqlConn mysql.Connector) qan.Worker
+}
+
+type RealWorkerFactory struct {
+	logChan chan *proto.LogEntry
+}
+
+func NewRealWorkerFactory(logChan chan *proto.LogEntry) *RealWorkerFactory {
+	f := &RealWorkerFactory{
+		logChan: logChan,
+	}
+	return f
+}
+
+func (f *RealWorkerFactory) Make(name string, mysqlConn mysql.Connector) *Worker {
+	getRows := func(c chan<- *DigestRow) error {
+		return GetDigestRows(mysqlConn, c)
+	}
+	getText := func(digest string) (string, error) {
+		return GetDigestText(mysqlConn, digest)
+	}
+	return NewWorker(pct.NewLogger(f.logChan, name), mysqlConn, getRows, getText)
+}
+
+func GetDigestRows(mysqlConn mysql.Connector, c chan<- *DigestRow) error {
+	rows, err := mysqlConn.DB().Query(
 		"SELECT " +
 			" COALESCE(SCHEMA_NAME, ''), COALESCE(DIGEST, ''), COUNT_STAR," +
 			" SUM_TIMER_WAIT, MIN_TIMER_WAIT, AVG_TIMER_WAIT, MAX_TIMER_WAIT," +
@@ -152,99 +99,199 @@ func (w *Worker) CollectData() error {
 			" FIRST_SEEN, LAST_SEEN" +
 			" FROM performance_schema.events_statements_summary_by_digest")
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil
-		}
 		return err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var (
-			schema string
-			digest string
-		)
-		row := &DigestRow{}
-		err := rows.Scan(
-			&schema,
-			&digest,
-			&row.CountStar,
-			&row.SumTimerWait,
-			&row.MinTimerWait,
-			&row.AvgTimerWait,
-			&row.MaxTimerWait,
-			&row.SumLockTime,
-			&row.SumRowsAffected,
-			&row.SumRowsSent,
-			&row.SumRowsExamined,
-			&row.SumCreatedTmpDiskTables,
-			&row.SumCreatedTmpTables,
-			&row.SumSelectFullJoin,
-			&row.SumSelectScan,
-			&row.SumSortMergePasses,
-			&row.FirstSeen,
-			&row.LastSeen,
-		)
-		if err != nil {
-			w.logger.Warn(err)
-			continue
-		}
-		classId := strings.ToUpper(digest[16:32])
-		if class, haveClass := w.curr.Classes[classId]; haveClass {
-			if _, haveRow := class.Rows[schema]; haveRow {
-				w.logger.Error("Got class twice: ", schema, digest)
+	go func() {
+		defer close(c)
+		defer rows.Close()
+		for rows.Next() {
+			row := &DigestRow{}
+			err := rows.Scan(
+				&row.Schema,
+				&row.Digest,
+				&row.CountStar,
+				&row.SumTimerWait,
+				&row.MinTimerWait,
+				&row.AvgTimerWait,
+				&row.MaxTimerWait,
+				&row.SumLockTime,
+				&row.SumRowsAffected,
+				&row.SumRowsSent,
+				&row.SumRowsExamined,
+				&row.SumCreatedTmpDiskTables,
+				&row.SumCreatedTmpTables,
+				&row.SumSelectFullJoin,
+				&row.SumSelectScan,
+				&row.SumSortMergePasses,
+				&row.FirstSeen,
+				&row.LastSeen,
+			)
+			if err != nil {
+				// todo
 				continue
 			}
-			class.Rows[schema] = row
+			c <- row
+		}
+		if err := rows.Err(); err != nil {
+			// todo
+		}
+	}()
+	return nil
+}
+
+func GetDigestText(mysqlConn mysql.Connector, digest string) (string, error) {
+	query := fmt.Sprintf("SELECT DIGEST_TEXT"+
+		" FROM performance_schema.events_statements_summary_by_digest"+
+		" WHERE DIGEST='%s' LIMIT 1", digest)
+	var digestText string
+	err := mysqlConn.DB().QueryRow(query).Scan(&digestText)
+	return digestText, err
+}
+
+// --------------------------------------------------------------------------
+
+type GetDigestRowsFunc func(c chan<- *DigestRow) error
+type GetDigestTextFunc func(string) (string, error)
+
+type Worker struct {
+	logger    *pct.Logger
+	mysqlConn mysql.Connector
+	getRows   GetDigestRowsFunc
+	getText   GetDigestTextFunc
+	// --
+	name   string
+	status *pct.Status
+	sync   *pct.SyncChan
+	prev   Snapshot
+	curr   Snapshot
+}
+
+func NewWorker(logger *pct.Logger, mysqlConn mysql.Connector, getRows GetDigestRowsFunc, getText GetDigestTextFunc) *Worker {
+	name := logger.Service()
+	w := &Worker{
+		logger:    logger,
+		mysqlConn: mysqlConn,
+		getRows:   getRows,
+		getText:   getText,
+		// --
+		name:   name,
+		status: pct.NewStatus([]string{name}),
+		sync:   pct.NewSyncChan(),
+		prev:   make(Snapshot),
+	}
+	return w
+}
+
+func (w *Worker) Setup(interval *qan.Interval) error {
+	return nil
+}
+
+func (w *Worker) Run() (*qan.Result, error) {
+	w.logger.Debug("Run:call")
+	defer w.logger.Debug("Run:return")
+
+	if err := w.mysqlConn.Connect(1); err != nil {
+		w.logger.Warn("Cannot connect to MySQL:", err)
+		return nil, nil
+	}
+	defer w.mysqlConn.Close()
+	var err error
+	w.curr, err = w.GetSnapshot(w.prev)
+	if err != nil {
+		return nil, err
+	}
+	return w.PrepareResult(w.prev, w.curr)
+}
+
+func (w *Worker) Cleanup() error {
+	w.prev = w.curr
+	return nil
+}
+
+func (w *Worker) Stop() error {
+	w.sync.Stop()
+	w.sync.Wait()
+	return nil
+}
+
+func (w *Worker) Status() map[string]string {
+	return w.status.All()
+}
+
+// --------------------------------------------------------------------------
+
+func (w *Worker) GetSnapshot(prev Snapshot) (Snapshot, error) {
+	w.status.Update(w.name, "Processing rows")
+	defer w.status.Update(w.name, "Idle")
+
+	curr := make(Snapshot)
+	rowChan := make(chan *DigestRow)
+	if err := w.getRows(rowChan); err != nil {
+		if err == sql.ErrNoRows {
+			return curr, nil
+		}
+		return nil, err
+	}
+	for row := range rowChan {
+		classId := strings.ToUpper(row.Digest[16:32])
+		if class, haveClass := curr[classId]; haveClass {
+			fmt.Println("have class in curr", classId)
+			if _, haveRow := class.Rows[row.Schema]; haveRow {
+				w.logger.Error("Got class twice: ", row.Schema, row.Digest)
+				continue
+			}
+			class.Rows[row.Schema] = row
 		} else {
 			// Get class digext text (fingerprint).
 			var digestText string
-			if prevClass, havePrevClass := w.prev.Classes[classId]; havePrevClass {
+			if prevClass, havePrevClass := prev[classId]; havePrevClass {
 				// Class was in previous iter, so re-use its digest text.
+				fmt.Println("class in prev", classId)
 				digestText = prevClass.DigestText
 			} else {
 				// Have never seen class before, so get digext text from perf schema.
+				fmt.Println("never seen class", classId)
 				var err error
-				digestText, err = w.getDigestText(digest)
+				digestText, err = w.getText(row.Digest)
 				if err != nil {
 					w.logger.Error(err)
 					continue
 				}
 			}
 			// Create the class and init with this schema and row.
-			w.curr.Classes[classId] = Class{
+			curr[classId] = Class{
 				DigestText: digestText,
 				Rows: map[string]*DigestRow{
-					schema: row,
+					row.Schema: row,
 				},
 			}
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("rows.Err error: %s: ", err)
-	}
-	return nil
+	return curr, nil
 }
 
-func (w *Worker) PrepareResult() (*qan.Result, error) {
+func (w *Worker) PrepareResult(prev, curr Snapshot) (*qan.Result, error) {
 	w.status.Update(w.name, "Preparing result")
+	defer w.status.Update(w.name, "Idle")
 
 	global := event.NewGlobalClass()
 	classes := []*event.QueryClass{}
 
 	// Compare current classes to previous.
 CLASS_LOOP:
-	for classId, class := range w.curr.Classes {
+	for classId, class := range curr {
 
 		// If this class does not exist in prev, skip the entire class.
-		prevClass, ok := w.prev.Classes[classId]
+		prevClass, ok := prev[classId]
 		if !ok {
+			fmt.Println(classId, "not in prev, skip")
 			continue CLASS_LOOP
 		}
 
 		// This class exists in prev, so create a class aggregate of the per-schema
 		// query value diffs, for rows that exist in both prev and curr.
-		d := DigestRow{} // class aggregate, becomes class metrics
-		n := uint(0)     // total queries in this class
+		d := DigestRow{MinTimerWait: 0xFFFFFFFF} // class aggregate, becomes class metrics
+		n := uint(0)                             // total queries in this class
 
 		// Each row is an instance of the query executed in the schema.
 	ROW_LOOP:
@@ -254,17 +301,20 @@ CLASS_LOOP:
 			// the first time we've seen this query in this schema.
 			prevRow, ok := prevClass.Rows[schema]
 			if !ok {
+				fmt.Println(classId, schema, "not in prev, skip")
 				continue ROW_LOOP
 			}
 
 			// If query count has not changed, skip it. This means the query was
 			// not executed between prev and curr interval.
 			if row.CountStar == prevRow.CountStar {
+				fmt.Println(classId, schema, "not executed, skip")
 				continue ROW_LOOP
 			}
 
 			// This per-schema query exists in both prev and curr, so add the diff
 			// of its values to the class aggregate.
+			fmt.Println(classId, schema, "diff")
 			n++
 
 			// Add the diff of the totals to the class metric totals. For example,
@@ -292,11 +342,11 @@ CLASS_LOOP:
 				d.MaxTimerWait = row.MaxTimerWait
 			}
 			// Add the averages, divide later.
-			d.MaxTimerWait += row.MaxTimerWait
+			d.AvgTimerWait += row.AvgTimerWait
 		}
 
 		// Divide the total averages to yield the average of the averages.
-		d.MaxTimerWait /= n // todo: d.CountStar instead of n?
+		d.AvgTimerWait /= n // todo: d.CountStar instead of n?
 
 		// Create standard metric stats from the class metrics just calculated.
 		stats := event.NewMetrics()
@@ -371,6 +421,9 @@ CLASS_LOOP:
 
 	// Each row/class was unique, so update the global counts.
 	nClasses := uint64(len(classes))
+	if nClasses == 0 {
+		return nil, nil
+	}
 	global.TotalQueries = nClasses
 	global.UniqueQueries = nClasses
 
@@ -380,19 +433,4 @@ CLASS_LOOP:
 	}
 
 	return result, nil
-}
-
-func (w *Worker) TruncateTable() error {
-	w.status.Update(w.name, "TRUNCATE performance_schema.events_statements_summary_by_digest")
-	_, err := w.mysqlConn.DB().Exec("TRUNCATE performance_schema.events_statements_summary_by_digest")
-	return err
-}
-
-func (w *Worker) getDigestText(digest string) (string, error) {
-	query := fmt.Sprintf("SELECT DIGEST_TEXT"+
-		" FROM performance_schema.events_statements_summary_by_digest"+
-		" WHERE DIGEST='%s' LIMIT 1", digest)
-	var digestText string
-	err := w.mysqlConn.DB().QueryRow(query).Scan(&digestText)
-	return digestText, err
 }

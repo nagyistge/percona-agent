@@ -21,22 +21,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"os"
-	"os/exec"
 	"path/filepath"
-	"sort"
-	"strings"
 	"testing"
 	"time"
 
 	. "github.com/go-test/test"
 	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/go-mysql/event"
-	gomysql "github.com/percona/go-mysql/test"
-	"github.com/percona/percona-agent/instance"
-	"github.com/percona/percona-agent/mysql"
+	//"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/qan"
+	"github.com/percona/percona-agent/qan/perfschema"
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
@@ -45,25 +39,13 @@ import (
 // Hook up gocheck into the "go test" runner.
 func Test(t *testing.T) { TestingT(t) }
 
-var inputDir = gomysql.RootDir + "/test/slow-logs/"
-var outputDir = RootDir() + "/test/qan/"
-
-/*
-    start = []mysql.Query{
-mysql.Query{Verify: "performance_schema", Expect: "1"},
-mysql.Query{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'YES' WHERE NAME = 'statements_digest'"},
-mysql.Query{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'YES', TIMED = 'YES' WHERE NAME LIKE 'statement/sql/%'"},
-mysql.Query{Set: "TRUNCATE performance_schema.events_statements_summary_by_digest"},
-}
-stop = []mysql.Query{
-mysql.Query{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'NO' WHERE NAME = 'statements_digest'"},
-mysql.Query{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'NO', TIMED = 'NO' WHERE NAME LIKE 'statement/sql/%'"},
-}
-*/
+var inputDir = RootDir() + "/test/qan/perfschema/"
+var outputDir = RootDir() + "/test/qan/perfschema/"
 
 type WorkerTestSuite struct {
-	logChan chan *proto.LogEntry
-	logger  *pct.Logger
+	logChan   chan *proto.LogEntry
+	logger    *pct.Logger
+	nullmysql *mock.NullMySQL
 }
 
 var _ = Suite(&WorkerTestSuite{})
@@ -71,108 +53,120 @@ var _ = Suite(&WorkerTestSuite{})
 func (s *WorkerTestSuite) SetUpSuite(t *C) {
 	s.logChan = make(chan *proto.LogEntry, 100)
 	s.logger = pct.NewLogger(s.logChan, "qan-worker")
+	s.nullmysql = mock.NewNullMySQL()
 }
 
-func (s *WorkerTestSuite) RunWorker(job *qan.Job) (*qan.Result, error) {
-	w := qan.NewWorker(s.logger, "qan-worker")
-	return w.Run(job)
+func (s *WorkerTestSuite) SetUpTest(t *C) {
+	s.nullmysql.Reset()
+}
+
+func (s *WorkerTestSuite) loadData(dir string) ([][]*perfschema.DigestRow, error) {
+	files, err := filepath.Glob(filepath.Join(inputDir, dir, "/iter*.json"))
+	if err != nil {
+		return nil, err
+	}
+	iters := [][]*perfschema.DigestRow{}
+	for _, file := range files {
+		bytes, err := ioutil.ReadFile(file)
+		if err != nil {
+			return nil, err
+		}
+		rows := []*perfschema.DigestRow{}
+		if err := json.Unmarshal(bytes, &rows); err != nil {
+			return nil, err
+		}
+		iters = append(iters, rows)
+	}
+	return iters, nil
+}
+
+func (s *WorkerTestSuite) loadResult(file string) (*qan.Result, error) {
+	file = filepath.Join(inputDir, file)
+	bytes, err := ioutil.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	res := &qan.Result{}
+	if err := json.Unmarshal(bytes, &res); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func makeGetRowsFunc(iters [][]*perfschema.DigestRow) perfschema.GetDigestRowsFunc {
+	return func(c chan<- *perfschema.DigestRow) error {
+		if len(iters) == 0 {
+			return fmt.Errorf("No more iters")
+		}
+		rows := iters[0]
+		iters = iters[1:len(iters)]
+		go func() {
+			defer close(c)
+			for _, row := range rows {
+				c <- row
+			}
+		}()
+		return nil
+	}
+}
+
+func makeGetTextFunc(texts ...string) perfschema.GetDigestTextFunc {
+	return func(digest string) (string, error) {
+		if len(texts) == 0 {
+			return "", fmt.Errorf("No more texts")
+		}
+		text := texts[0]
+		texts = texts[1:len(texts)]
+		return text, nil
+	}
 }
 
 // --------------------------------------------------------------------------
 
-func (s *ManagerTestSuite) TestStartPfs(t *C) {
-	if s.dsn == "" {
-		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
-	}
-	mysqlConn := mysql.NewConnection(s.dsn)
-	err := mysqlConn.Connect(1)
+func (s *WorkerTestSuite) Test001(t *C) {
+	rows, err := s.loadData("001")
 	t.Assert(err, IsNil)
-	defer mysqlConn.Close()
+	getRows := makeGetRowsFunc(rows)
+	getText := makeGetTextFunc("select 1")
+	w := perfschema.NewWorker(s.logger, s.nullmysql, getRows, getText)
 
-	// These queries eanble/configure perfomance_schema:
-	start := []mysql.Query{
-		mysql.Query{Verify: "performance_schema", Expect: "1"},
-		mysql.Query{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'YES' WHERE NAME = 'statements_digest'"},
-		mysql.Query{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'YES', TIMED = 'YES' WHERE NAME LIKE 'statement/sql/%'"},
-		mysql.Query{Set: "TRUNCATE performance_schema.events_statements_summary_by_digest"},
+	// First run doesn't produce a result because 2 snapshots are required.
+	i := &qan.Interval{
+		Number:    1,
+		StartTime: time.Now().UTC(),
+	}
+	err = w.Setup(i)
+	t.Assert(err, IsNil)
+
+	res, err := w.Run()
+	t.Assert(err, IsNil)
+	t.Check(res, IsNil)
+
+	err = w.Cleanup()
+	t.Assert(err, IsNil)
+
+	// The second run produces a result: the diff of 2nd - 1st.
+	i = &qan.Interval{
+		Number:    2,
+		StartTime: time.Now().UTC(),
+	}
+	err = w.Setup(i)
+	t.Assert(err, IsNil)
+
+	res, err = w.Run()
+	t.Assert(err, IsNil)
+	expect, err := s.loadResult("001/res01.json")
+	t.Assert(err, IsNil)
+	if same, diff := IsDeeply(res, expect); !same {
+		Dump(diff)
+		t.Error(diff)
 	}
 
-	// These queries disable performance_schema:
-	stop := []mysql.Query{
-		mysql.Query{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'NO' WHERE NAME = 'statements_digest'"},
-		mysql.Query{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'NO', TIMED = 'NO' WHERE NAME LIKE 'statement/sql/%'"},
-	}
-
-	// Disable perf schema because the qan manager should enable it when we start the pfs parser.
-	if err := mysqlConn.Set(stop); err != nil {
-		t.Fatal(err)
-	}
-
-	// Make a qan manager.
-	m := qan.NewManager(s.logger, &mysql.RealConnectionFactory{}, s.clock, s.iterFactory, s.workerFactory, s.spool, s.im, s.mrmsMonitor)
-	t.Assert(m, NotNil)
-
-	// Create the qan config for perf schema.
-	config := &qan.Config{
-		CollectFrom:     "perfschema", // <-- the magic
-		ServiceInstance: s.mysqlInstance,
-		Interval:        60, // 1m
-		ExampleQueries:  true,
-		MaxWorkers:      1,
-		WorkerRunTime:   50, // 50s
-		Start:           start,
-		Stop:            stop,
-	}
-
-	// Create the StartService cmd which contains the qan config.
-	now := time.Now()
-	qanConfig, _ := json.Marshal(config)
-	cmd := &proto.Cmd{
-		User:      "Oleg",
-		Ts:        now,
-		AgentUuid: "123",
-		Service:   "agent",
-		Cmd:       "StartService",
-		Data:      qanConfig,
-	}
-
-	// Have the qan manager start the pfs parser.
-	reply := m.Handle(cmd)
-	t.Assert(reply.Error, Equals, "")
-
-	test.WaitStatus(1, m, "qan-parser", "Starting")
-	tickChan := s.iterFactory.TickChans[s.iter]
-	t.Assert(tickChan, NotNil)
-
-	// Exec any query so there's at least 1 row/class in the pfs table.
-	db := mysqlConn.DB()
-	_, err = db.Exec("SELECT 1")
-
-	// Send a fake interval to make qan manager run a pfs parser/worker.
-	stopTs := time.Now()
-	startTs := stopTs.Add(-1 * time.Minute)
-	interv := &qan.Interval{
-		StartTime: startTs,
-		StopTime:  stopTs,
-	}
-	s.intervalChan <- interv
-
-	// The pfs parser/worker parser the pfs interval and sends the result.
-	v := test.WaitData(s.dataChan)
-	t.Assert(v, HasLen, 1)
-	report := v[0].(*qan.Report)
-	t.Check(report.StartTs, Equals, startTs)
-	t.Check(report.EndTs, Equals, stopTs)
-	if len(report.Class) == 0 {
-		t.Error("Report has no classes")
-	}
-
-	// Stop the pfs parser.
-	cmd.Cmd = "StopService"
-	reply = m.Handle(cmd)
-	t.Assert(reply.Error, Equals, "")
+	err = w.Cleanup()
+	t.Assert(err, IsNil)
 }
 
+/*
 func (s *PfsWorkerTestSuite) TestCollectData(t *C) {
 	if s.dsn == "" {
 		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
@@ -197,10 +191,8 @@ func (s *PfsWorkerTestSuite) TestCollectData(t *C) {
 	_, err = db.Exec("SELECT 1")
 	_, err = db.Exec("SELECT * FROM `events_statements_summary_by_digest`")
 
-	/**
-	 * as we don't have consistent order in maps from Go v1.3,
-	 * let's use pre-defined map with queries
-	 */
+	 // as we don't have consistent order in maps from Go v1.3,
+	 //let's use pre-defined map with queries
 	expectedResult := make(map[string]bool)
 	expectedResult["TRUNCATE `performance_schema` . `events_statements_summary_by_digest` "] = true
 	expectedResult["SELECT NOW ( ) "] = true
@@ -336,3 +328,4 @@ func (s *PfsWorkerTestSuite) TestPrepareResult001(t *C) {
 		t.Error(diff)
 	}
 }
+*/
