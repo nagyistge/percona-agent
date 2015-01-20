@@ -353,10 +353,12 @@ func (a *RealAnalyzer) runWorker(interval *Interval) {
 		a.logger.Error(err)
 		return
 	}
-	if result == nil && a.config.CollectFrom == "slowlog" {
-		// This shouldn't happen. If it does, the slow log worker has a bug
-		// because it should have returned an error above.
-		a.logger.Error("Nil result", interval)
+	if result == nil {
+		if a.config.CollectFrom == "slowlog" {
+			// This shouldn't happen. If it does, the slow log worker has a bug
+			// because it should have returned an error above.
+			a.logger.Error("Nil result", interval)
+		}
 		return
 	}
 	result.RunTime = t1.Sub(t0).Seconds()
