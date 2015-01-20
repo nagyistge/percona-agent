@@ -33,7 +33,7 @@ import (
 )
 
 type WorkerFactory interface {
-	Make(name string, config qan.Config, mysqlConn mysql.Connector) qan.Worker
+	Make(name string, config qan.Config, mysqlConn mysql.Connector) *Worker
 }
 
 type RealWorkerFactory struct {

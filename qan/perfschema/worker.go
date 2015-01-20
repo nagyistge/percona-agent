@@ -67,7 +67,7 @@ type Snapshot map[string]Class // keyed on digest (classId)
 // --------------------------------------------------------------------------
 
 type WorkerFactory interface {
-	Make(name string, mysqlConn mysql.Connector) qan.Worker
+	Make(name string, mysqlConn mysql.Connector) *Worker
 }
 
 type RealWorkerFactory struct {

@@ -66,6 +66,7 @@ func (f *RealAnalyzerFactory) Make(
 	tickChan chan time.Time,
 ) qan.Analyzer {
 	var worker qan.Worker
+	analyzerType := config.CollectFrom
 	switch analyzerType {
 	case "slowlog":
 		worker = f.slowlogWorkerFactory.Make(name+"-worker", config, mysqlConn)
