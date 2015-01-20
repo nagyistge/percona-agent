@@ -23,7 +23,7 @@ SERVICE="percona-agent"
 # Agent needs to run as root to read MySQL slow log for Query Analytics (QAN).
 # If not running QAN, a normal user will work.
 # Environment variable config takes priority
-if [ -n "$PERCONA_AGENT_USER" ]; then
+if [ ! "x$PERCONA_AGENT_USER" = "x" ]; then
     USERNAME="$PERCONA_AGENT_USER"
 else
     USERNAME='root'
@@ -31,7 +31,7 @@ fi
 
 # Agent uses a single base directory for all its files and data.
 # Environment variable config takes priority
-if [ -n "$PERCONA_AGENT_DIR" ] && [ -d "$PERCONA_AGENT_DIR" ] ; then
+if [ ! "x$PERCONA_AGENT_DIR" = "x" ] && [ -d "$PERCONA_AGENT_DIR" ] ; then
     # Remove trailing slash
     BASEDIR=$( cd "$PERCONA_AGENT_DIR" && pwd )
 else
@@ -48,6 +48,32 @@ if [ ! -x "$CMD" ]; then
    echo "$CMD does not exist or is not executable. Check that $SERVICE" \
         "has been installed correctly." >&2
    exit 1
+fi
+
+DEFAULT_START_TIMEOUT="5"
+# Set default if env not set
+if [ "x$PERCONA_AGENT_START_TIMEOUT" = "x" ]; then
+    PERCONA_AGENT_START_TIMEOUT=$DEFAULT_START_TIMEOUT
+fi
+
+# validate
+echo "$PERCONA_AGENT_START_TIMEOUT" | grep -q '^[0-9]+$' &> /dev/null
+if [ $? -ne 0 ]; then
+     # Using default start timeout
+     PERCONA_AGENT_START_TIMEOUT=$DEFAULT_START_TIMEOUT
+fi
+
+DEFAULT_STOP_TIMEOUT="60"
+# Set default if env not set
+if [ "x$PERCONA_AGENT_STOP_TIMEOUT" = "x" ]; then
+    PERCONA_AGENT_STOP_TIMEOUT=$DEFAULT_STOP_TIMEOUT
+fi
+
+# validate
+echo "$PERCONA_AGENT_STOP_TIMEOUT" | grep -q '^[0-9]+$' &> /dev/null
+if [ $? -ne 0 ]; then
+     # Using default start timeout
+     PERCONA_AGENT_STOP_TIMEOUT=$DEFAULT_STOP_TIMEOUT
 fi
 
 # Agent may use a different log file, or no log file (online logging only),
@@ -132,7 +158,7 @@ getpid() {
          exit 1
       fi
       pid=`cat $PIDFILE`
-      # Verify that a process with this pid is still running percona-agent
+	  # Verify that a process with this pid is still running percona-agent
       binforpid=`$READLINK -m "/proc/$pid/exe" | awk '{print $1}'`
       if [ ! "$binforpid" = "$CMD" ]
       then
@@ -170,7 +196,7 @@ start() {
    # as we are starting agent in background,
    # so let's give an agent some time to start
    echo "Waiting for $SERVICE to start..."
-   for x in $(_seq 5); do
+   for x in $(_seq $PERCONA_AGENT_START_TIMEOUT); do
        getpid
        if [ -n "$pid" ]; then
            break
@@ -197,7 +223,7 @@ stop() {
         return 0
     else
          # Running so try to stop it.
-        su --command="kill $pid" $USERNAME
+        kill $pid &> /dev/null
         if [ $? -ne 0 ]
         then
             # An explanation for the failure should have been given
@@ -208,7 +234,7 @@ stop() {
         #  Loop until it does.
         echo "Waiting for $SERVICE to exit..."
         savepid=$pid
-        for x in $(_seq 60); do
+        for x in $(_seq $PERCONA_AGENT_STOP_TIMEOUT); do
             testpid
             if [ -z "$pid" ]; then
                 break
