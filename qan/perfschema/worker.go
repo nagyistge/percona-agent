@@ -22,12 +22,10 @@ import (
 	"fmt"
 	"math"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/go-mysql/event"
-	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/qan"
@@ -52,29 +50,45 @@ func (f *RealWorkerFactory) Make(name string, mysqlConn mysql.Connector) *Worker
 	return NewWorker(pct.NewLogger(f.logChan, name), mysqlConn)
 }
 
-// --------------------------------------------------------------------------
-// A row from performance_schema.events_statements_summary_by_digest.
+// A DigestRow is a row from performance_schema.events_statements_summary_by_digest.
 type DigestRow struct {
-	Digest, DigestText                                         string
-	SumTimerWait, MinTimerWait, AvgTimerWait, MaxTimerWait     uint64
-	SumLockTime, SumRowsAffected, SumRowsSent, SumRowsExamined uint64
-	SumSelectFullJoin, SumSelectScan, SumSortMergePasses       uint
-	SumCreatedTmpDiskTables, SumCreatedTmpTables, CountStar    uint
-	FirstSeen, LastSeen                                        time.Time
+	CountStar               uint
+	SumTimerWait            uint
+	MinTimerWait            uint
+	AvgTimerWait            uint
+	MaxTimerWait            uint
+	SumLockTime             uint
+	SumRowsAffected         uint64
+	SumRowsSent             uint64
+	SumRowsExamined         uint64
+	SumCreatedTmpDiskTables uint
+	SumCreatedTmpTables     uint
+	SumSelectFullJoin       uint
+	SumSelectScan           uint
+	SumSortMergePasses      uint64
+	FirstSeen               time.Time
+	LastSeen                time.Time
+}
+
+type Class struct {
+	DigestText string
+	Rows       map[string]*DigestRow // keyed on schema
+}
+
+type Snapshot struct {
+	Interval *qan.Interval
+	Classes  map[string]Class // keyed on digest (class ID)
 }
 
 type Worker struct {
-	logger      *pct.Logger
-	mysqlConn   mysql.Connector
-	restartChan <-chan bool
-	tickChan    chan time.Time
-	spool       data.Spooler
+	logger    *pct.Logger
+	mysqlConn mysql.Connector
 	// --
-	name           string
-	workerDoneChan chan bool
-	running        bool
-	mux            *sync.Mutex
-	status         *pct.Status
+	name   string
+	status *pct.Status
+	sync   *pct.SyncChan
+	prev   *Snapshot
+	curr   *Snapshot
 }
 
 func NewWorker(logger *pct.Logger, mysqlConn mysql.Connector) *Worker {
@@ -85,26 +99,33 @@ func NewWorker(logger *pct.Logger, mysqlConn mysql.Connector) *Worker {
 		// --
 		name:   name,
 		status: pct.NewStatus([]string{name}),
+		sync:   pct.NewSyncChan(),
+		curr: &Snapshot{
+			Classes: make(map[string]Class),
+		},
 	}
 	return w
 }
 
 func (w *Worker) Setup(interval *qan.Interval) error {
+	w.prev = w.curr
+	w.curr = &Snapshot{
+		Interval: interval,
+		Classes:  make(map[string]Class),
+	}
 	return nil
 }
 
 func (w *Worker) Run() (*qan.Result, error) {
-	rows, err := w.CollectData()
-	if err != nil {
+	if err := w.CollectData(); err != nil {
 		return nil, err
 	}
-	if err := w.TruncateTable(); err != nil {
-		return nil, err
-	}
-	return w.PrepareResult(rows)
+	return w.PrepareResult()
 }
 
 func (w *Worker) Stop() error {
+	w.sync.Stop()
+	w.sync.Wait()
 	return nil
 }
 
@@ -118,126 +139,229 @@ func (w *Worker) Status() map[string]string {
 
 // --------------------------------------------------------------------------
 
-func (w *Worker) CollectData() ([]*DigestRow, error) {
+func (w *Worker) CollectData() error {
 	w.status.Update(w.name, "SELECT performance_schema.events_statements_summary_by_digest")
-
-	query := "SELECT " +
-		"DIGEST, DIGEST_TEXT, COUNT_STAR, " +
-		"SUM_TIMER_WAIT, MIN_TIMER_WAIT, AVG_TIMER_WAIT, " +
-		"MAX_TIMER_WAIT, SUM_LOCK_TIME, SUM_ROWS_AFFECTED, " +
-		"SUM_ROWS_SENT, SUM_ROWS_EXAMINED, SUM_CREATED_TMP_DISK_TABLES, " +
-		"SUM_CREATED_TMP_TABLES, SUM_SELECT_FULL_JOIN, SUM_SELECT_SCAN, " +
-		"SUM_SORT_MERGE_PASSES, FIRST_SEEN, LAST_SEEN " +
-		"FROM performance_schema.events_statements_summary_by_digest"
-	rows, err := w.mysqlConn.DB().Query(query)
+	rows, err := w.mysqlConn.DB().Query(
+		"SELECT " +
+			" COALESCE(SCHEMA_NAME, ''), COALESCE(DIGEST, ''), COUNT_STAR," +
+			" SUM_TIMER_WAIT, MIN_TIMER_WAIT, AVG_TIMER_WAIT, MAX_TIMER_WAIT," +
+			" SUM_LOCK_TIME," +
+			" SUM_ROWS_AFFECTED, SUM_ROWS_SENT, SUM_ROWS_EXAMINED," +
+			" SUM_CREATED_TMP_DISK_TABLES, SUM_CREATED_TMP_TABLES," +
+			" SUM_SELECT_FULL_JOIN, SUM_SELECT_SCAN, SUM_SORT_MERGE_PASSES," +
+			" FIRST_SEEN, LAST_SEEN" +
+			" FROM performance_schema.events_statements_summary_by_digest")
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, nil
+			return nil
 		}
-		return nil, err
+		return err
 	}
 	defer rows.Close()
-	data := []*DigestRow{}
 	for rows.Next() {
+		var (
+			schema string
+			digest string
+		)
 		row := &DigestRow{}
 		err := rows.Scan(
-			&row.Digest, &row.DigestText, &row.CountStar,
-			&row.SumTimerWait, &row.MinTimerWait, &row.AvgTimerWait, &row.MaxTimerWait, &row.SumLockTime,
-			&row.SumRowsAffected, &row.SumRowsSent, &row.SumRowsExamined, &row.SumCreatedTmpDiskTables, &row.SumCreatedTmpTables,
-			&row.SumSelectFullJoin, &row.SumSelectScan, &row.SumSortMergePasses, &row.FirstSeen, &row.LastSeen,
+			&schema,
+			&digest,
+			&row.CountStar,
+			&row.SumTimerWait,
+			&row.MinTimerWait,
+			&row.AvgTimerWait,
+			&row.MaxTimerWait,
+			&row.SumLockTime,
+			&row.SumRowsAffected,
+			&row.SumRowsSent,
+			&row.SumRowsExamined,
+			&row.SumCreatedTmpDiskTables,
+			&row.SumCreatedTmpTables,
+			&row.SumSelectFullJoin,
+			&row.SumSelectScan,
+			&row.SumSortMergePasses,
+			&row.FirstSeen,
+			&row.LastSeen,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("rows.Scan error: %s: ", err)
+			w.logger.Warn(err)
+			continue
 		}
-		data = append(data, row)
+		classId := strings.ToUpper(digest[16:32])
+		if class, haveClass := w.curr.Classes[classId]; haveClass {
+			if _, haveRow := class.Rows[schema]; haveRow {
+				w.logger.Error("Got class twice: ", schema, digest)
+				continue
+			}
+			class.Rows[schema] = row
+		} else {
+			// Get class digext text (fingerprint).
+			var digestText string
+			if prevClass, havePrevClass := w.prev.Classes[classId]; havePrevClass {
+				// Class was in previous iter, so re-use its digest text.
+				digestText = prevClass.DigestText
+			} else {
+				// Have never seen class before, so get digext text from perf schema.
+				var err error
+				digestText, err = w.getDigestText(digest)
+				if err != nil {
+					w.logger.Error(err)
+					continue
+				}
+			}
+			// Create the class and init with this schema and row.
+			w.curr.Classes[classId] = Class{
+				DigestText: digestText,
+				Rows: map[string]*DigestRow{
+					schema: row,
+				},
+			}
+		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("rows.Err error: %s: ", err)
+		return fmt.Errorf("rows.Err error: %s: ", err)
 	}
-	return data, nil
+	return nil
 }
 
-func (w *Worker) TruncateTable() error {
-	w.status.Update(w.name, "TRUNCATE performance_schema.events_statements_summary_by_digest")
-	_, err := w.mysqlConn.DB().Exec("TRUNCATE performance_schema.events_statements_summary_by_digest")
-	return err
-}
-
-func (w *Worker) PrepareResult(rows []*DigestRow) (*qan.Result, error) {
+func (w *Worker) PrepareResult() (*qan.Result, error) {
 	w.status.Update(w.name, "Preparing result")
 
 	global := event.NewGlobalClass()
 	classes := []*event.QueryClass{}
-	for _, row := range rows {
-		// Each row is a pre-aggregated query class, so all we have to do is save
-		// the stats for the available metrics.  Unlike events from a slow log,
-		// these values do not need to be aggregated or finalized because they
-		// already are.
+
+	// Compare current classes to previous.
+CLASS_LOOP:
+	for classId, class := range w.curr.Classes {
+
+		// If this class does not exist in prev, skip the entire class.
+		prevClass, ok := w.prev.Classes[classId]
+		if !ok {
+			continue CLASS_LOOP
+		}
+
+		// This class exists in prev, so create a class aggregate of the per-schema
+		// query value diffs, for rows that exist in both prev and curr.
+		d := DigestRow{} // class aggregate, becomes class metrics
+		n := uint(0)     // total queries in this class
+
+		// Each row is an instance of the query executed in the schema.
+	ROW_LOOP:
+		for schema, row := range class.Rows {
+
+			// If the row does not exist in prev, skip it. This means this is
+			// the first time we've seen this query in this schema.
+			prevRow, ok := prevClass.Rows[schema]
+			if !ok {
+				continue ROW_LOOP
+			}
+
+			// If query count has not changed, skip it. This means the query was
+			// not executed between prev and curr interval.
+			if row.CountStar == prevRow.CountStar {
+				continue ROW_LOOP
+			}
+
+			// This per-schema query exists in both prev and curr, so add the diff
+			// of its values to the class aggregate.
+			n++
+
+			// Add the diff of the totals to the class metric totals. For example,
+			// if query 1 in db1 has prev.CountStar=50 and curr.CountStar=100,
+			// and query 1 in db2 has prev.CountStar=100 and curr.CountStar=200,
+			// that's +50 and +100 executions respectively, so +150 executions for
+			// the class metrics.
+			d.CountStar += row.CountStar - prevRow.CountStar
+			d.SumTimerWait += row.SumTimerWait - prevRow.SumTimerWait
+			d.SumLockTime += row.SumLockTime - prevRow.SumLockTime
+			d.SumRowsAffected += row.SumRowsAffected - prevRow.SumRowsAffected
+			d.SumRowsSent += row.SumRowsSent - prevRow.SumRowsSent
+			d.SumRowsExamined += row.SumRowsExamined - prevRow.SumRowsExamined
+			d.SumCreatedTmpDiskTables += row.SumCreatedTmpDiskTables - prevRow.SumCreatedTmpDiskTables
+			d.SumCreatedTmpTables += row.SumCreatedTmpTables - prevRow.SumCreatedTmpTables
+			d.SumSelectFullJoin += row.SumSelectFullJoin - prevRow.SumSelectFullJoin
+			d.SumSelectScan += row.SumSelectScan - prevRow.SumSelectScan
+			d.SumSortMergePasses += row.SumSortMergePasses - prevRow.SumSortMergePasses
+
+			// Take the current min and max.
+			if row.MinTimerWait < d.MinTimerWait {
+				d.MinTimerWait = row.MinTimerWait
+			}
+			if row.MaxTimerWait > d.MaxTimerWait {
+				d.MaxTimerWait = row.MaxTimerWait
+			}
+			// Add the averages, divide later.
+			d.MaxTimerWait += row.MaxTimerWait
+		}
+
+		// Divide the total averages to yield the average of the averages.
+		d.MaxTimerWait /= n // todo: d.CountStar instead of n?
+
+		// Create standard metric stats from the class metrics just calculated.
 		stats := event.NewMetrics()
-		cnt := row.CountStar
 
 		// Time metircs, in picoseconds (x10^-12 to convert to seconds)
 		stats.TimeMetrics["Query_time"] = &event.TimeStats{
-			Cnt: cnt,
-			Sum: float64(row.SumTimerWait) * math.Pow10(-12),
-			Min: float64(row.MinTimerWait) * math.Pow10(-12),
-			Max: float64(row.MaxTimerWait) * math.Pow10(-12),
-			Avg: float64(row.AvgTimerWait) * math.Pow10(-12),
+			Cnt: d.CountStar,
+			Sum: float64(d.SumTimerWait) * math.Pow10(-12),
+			Min: float64(d.MinTimerWait) * math.Pow10(-12),
+			Max: float64(d.MaxTimerWait) * math.Pow10(-12),
+			Avg: float64(d.AvgTimerWait) * math.Pow10(-12),
 		}
 
 		stats.TimeMetrics["Lock_time"] = &event.TimeStats{
-			Cnt: cnt,
-			Sum: float64(row.SumLockTime) * math.Pow10(-12),
+			Cnt: d.CountStar,
+			Sum: float64(d.SumLockTime) * math.Pow10(-12),
 		}
 
 		// Number metrics
 		stats.NumberMetrics["Rows_affected"] = &event.NumberStats{
-			Cnt: cnt,
-			Sum: row.SumRowsAffected,
+			Cnt: d.CountStar,
+			Sum: d.SumRowsAffected,
 		}
 
 		stats.NumberMetrics["Rows_sent"] = &event.NumberStats{
-			Cnt: cnt,
-			Sum: row.SumRowsSent,
+			Cnt: d.CountStar,
+			Sum: d.SumRowsSent,
 		}
 
 		stats.NumberMetrics["Rows_examined"] = &event.NumberStats{
-			Cnt: cnt,
-			Sum: row.SumRowsExamined,
+			Cnt: d.CountStar,
+			Sum: d.SumRowsExamined,
 		}
 
 		stats.NumberMetrics["Merge_passes"] = &event.NumberStats{
-			Cnt: cnt,
-			Sum: uint64(row.SumSortMergePasses),
+			Cnt: d.CountStar,
+			Sum: d.SumSortMergePasses,
 		}
 
 		// Bool metrics
 		stats.BoolMetrics["Tmp_table_on_disk"] = &event.BoolStats{
-			Cnt:  cnt,
-			True: row.SumCreatedTmpDiskTables,
+			Cnt:  d.CountStar,
+			True: d.SumCreatedTmpDiskTables,
 		}
 
 		stats.BoolMetrics["Tmp_table"] = &event.BoolStats{
-			Cnt:  cnt,
-			True: row.SumCreatedTmpTables,
+			Cnt:  d.CountStar,
+			True: d.SumCreatedTmpTables,
 		}
 
 		stats.BoolMetrics["Full_join"] = &event.BoolStats{
-			Cnt:  cnt,
-			True: row.SumSelectFullJoin,
+			Cnt:  d.CountStar,
+			True: d.SumSelectFullJoin,
 		}
 
 		stats.BoolMetrics["Full_scan"] = &event.BoolStats{
-			Cnt:  cnt,
-			True: row.SumSelectScan,
+			Cnt:  d.CountStar,
+			True: d.SumSelectScan,
 		}
 
 		// Create and save the pre-aggregated class.  Using only last 16 digits
 		// of checksum is historical: pt-query-digest does the same:
 		// my $checksum = uc substr(md5_hex($val), -16);
-		classId := strings.ToUpper(row.Digest[16:32])
-		class := event.NewQueryClass(classId, row.DigestText, false)
-		class.TotalQueries = uint64(row.CountStar)
+		class := event.NewQueryClass(classId, class.DigestText, false)
+		class.TotalQueries = uint64(n) // todo: d.CountStar instead of n?
 		class.Metrics = stats
 		classes = append(classes, class)
 
@@ -256,4 +380,19 @@ func (w *Worker) PrepareResult(rows []*DigestRow) (*qan.Result, error) {
 	}
 
 	return result, nil
+}
+
+func (w *Worker) TruncateTable() error {
+	w.status.Update(w.name, "TRUNCATE performance_schema.events_statements_summary_by_digest")
+	_, err := w.mysqlConn.DB().Exec("TRUNCATE performance_schema.events_statements_summary_by_digest")
+	return err
+}
+
+func (w *Worker) getDigestText(digest string) (string, error) {
+	query := fmt.Sprintf("SELECT DIGEST_TEXT"+
+		" FROM performance_schema.events_statements_summary_by_digest"+
+		" WHERE DIGEST='%s' LIMIT 1", digest)
+	var digestText string
+	err := w.mysqlConn.DB().QueryRow(query).Scan(&digestText)
+	return digestText, err
 }

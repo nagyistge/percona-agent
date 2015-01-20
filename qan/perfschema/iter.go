@@ -18,20 +18,16 @@
 package perfschema
 
 import (
-	"fmt"
 	"time"
 
-	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/qan"
 )
 
 type Iter struct {
-	logger    *pct.Logger
-	msyqlConn mysql.Connector
-	tickChan  chan time.Time
+	logger   *pct.Logger
+	tickChan chan time.Time
 	// --
-	intervalNo   int
 	intervalChan chan *qan.Interval
 	sync         *pct.SyncChan
 }
@@ -78,34 +74,15 @@ func (i *Iter) run() {
 	cur := &qan.Interval{}
 	for {
 		i.logger.Debug("run:wait")
-
 		select {
 		case now := <-i.tickChan:
 			i.logger.Debug("run:tick")
-
-			if !cur.StartTime.IsZero() { // StartTime is set
-				i.logger.Debug("run:next")
-				i.intervalNo++
-
-				cur.StopTime = now
-				cur.Number = i.intervalNo
-
-				// Send interval to manager which should be ready to receive it.
-				select {
-				case i.intervalChan <- cur:
-				case <-time.After(1 * time.Second):
-					i.logger.Warn(fmt.Sprintf("Lost interval: %+v", cur))
-				}
-
-				// Next interval:
-				cur = &qan.Interval{
-					StartTime: now,
-				}
-			} else {
-				// First interval, either due to first tick or because an error
-				// occurred earlier so a new interval was started.
-				i.logger.Debug("run:first")
-				cur.StartTime = now
+			cur.Number++
+			cur.StartTime = now
+			select {
+			case i.intervalChan <- cur:
+			case <-time.After(1 * time.Second):
+				i.logger.Warn("Lost interval: ", cur)
 			}
 		case <-i.sync.StopChan:
 			i.logger.Debug("run:stop")
