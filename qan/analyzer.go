@@ -19,6 +19,7 @@ package qan
 
 import (
 	"fmt"
+	"log"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -321,9 +322,8 @@ func (a *RealAnalyzer) runWorker(interval *Interval) {
 	defer func() {
 		if err := recover(); err != nil {
 			errMsg := fmt.Sprintf(a.name+"-worker crashed: '%s': %s", interval, err)
-			fmt.Printf("\n%s %s\nstack trace:\n", time.Now().UTC(), errMsg)
+			log.Println(errMsg)
 			debug.PrintStack()
-			fmt.Println()
 			a.logger.Error(errMsg)
 		}
 		a.workerDoneChan <- interval
