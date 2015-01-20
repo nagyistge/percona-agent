@@ -237,9 +237,13 @@ func (a *RealAnalyzer) run() {
 	for {
 		a.logger.Debug("run:idle")
 		if mysqlConfigured {
-			a.status.Update(a.name, "Idle")
+			if workerRunning {
+				a.status.Update(a.name, "Running")
+			} else {
+				a.status.Update(a.name, "Idle")
+			}
 		} else {
-			a.status.Update(a.name, "Idle (MySQL not configured)")
+			a.status.Update(a.name, "Trying to configure MySQL")
 		}
 
 		select {
@@ -250,8 +254,8 @@ func (a *RealAnalyzer) run() {
 			}
 
 			if workerRunning {
-				a.logger.Warn(fmt.Sprintf("Skipping interval '%s' because interval '%s' is still being parsed"),
-					currentInterval, interval)
+				a.logger.Warn(fmt.Sprintf("Skipping interval '%s' because interval '%s' is still being parsed",
+					interval, currentInterval))
 				continue
 			}
 

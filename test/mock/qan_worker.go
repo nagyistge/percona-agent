@@ -80,11 +80,11 @@ func (w *QanWorker) Status() map[string]string {
 func (w *QanWorker) crashOrError() error {
 	select {
 	case <-w.SetupCrashChan:
-		panic("mock.QanWorker crash")
+		panic("mock.QanWorker setup crash")
 	case <-w.RunCrashChan:
-		panic("mock.QanWorker crash")
+		panic("mock.QanWorker run crash")
 	case <-w.CleanupCrashChan:
-		panic("mock.QanWorker crash")
+		panic("mock.QanWorker cleanup crash")
 	default:
 	}
 	select {

@@ -370,6 +370,9 @@ func (s *AnalyzerTestSuite) TestRecoverWorkerPanic(t *C) {
 		t.Fatal("Timeout waiting for <-s.worker.SetupChan")
 	}
 
+	// Wait for that ^ run of the worker to fully stop and return.
+	test.WaitStatus(1, a, "qan-analyzer", "Idle")
+
 	i = &qan.Interval{
 		Number:      2,
 		StartTime:   now,
