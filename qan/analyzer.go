@@ -268,8 +268,12 @@ func (a *RealAnalyzer) run() {
 
 			if interval.StartTime.After(lastTs) {
 				t0 := interval.StartTime.Format("2006-01-02 15:04:05")
-				t1 := interval.StopTime.Format("15:04:05 MST")
-				a.status.Update(a.name+"-last-interval", fmt.Sprintf("%s to %s", t0, t1))
+				if a.config.CollectFrom == "slowlog" {
+					t1 := interval.StopTime.Format("15:04:05 MST")
+					a.status.Update(a.name+"-last-interval", fmt.Sprintf("%s to %s", t0, t1))
+				} else {
+					a.status.Update(a.name+"-last-interval", fmt.Sprintf("%s", t0))
+				}
 				lastTs = interval.StartTime
 			}
 		case mysqlConfigured = <-a.mysqlConfiguredChan:
@@ -344,9 +348,9 @@ func (a *RealAnalyzer) runWorker(interval *Interval) {
 		a.logger.Error(err)
 		return
 	}
-	if result == nil {
-		// This shouldn't happen. If it does, the worker has a bug because
-		// it should have returned an error above.
+	if result == nil && a.config.CollectFrom == "slowlog" {
+		// This shouldn't happen. If it does, the slow log worker has a bug
+		// because it should have returned an error above.
 		a.logger.Error("Nil result", interval)
 		return
 	}

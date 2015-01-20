@@ -321,7 +321,7 @@ func (m *Manager) startAnalyzer(config Config) error {
 	// for each interval.
 	analyzer := m.analyzerFactory.Make(
 		config,
-		"qan-"+mysqlInstance.Alias,
+		"qan", // todo-1.1: append instance name
 		mysqlConn,
 		restartChan,
 		tickChan,
