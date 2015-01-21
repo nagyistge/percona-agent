@@ -26,7 +26,9 @@ import (
 	"os/user"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/percona/percona-agent/pct"
@@ -50,27 +52,17 @@ const (
 
 var _ = Suite(&MainTestSuite{})
 
-func resetTestEnvVars(s *MainTestSuite) {
-	// Sadly no os.Unsetenv in Go 1.3.3
-	os.Setenv("TEST_PERCONA_AGENT_START_DELAY", "")
-	os.Setenv("TEST_PERCONA_AGENT_STOP_DELAY", "")
-	os.Setenv("PERCONA_AGENT_START_TIMEOUT", "")
-	os.Setenv("PERCONA_AGENT_STOP_TIMEOUT", "")
-	os.Setenv("PERCONA_AGENT_USER", s.username)
-	os.Setenv("PERCONA_AGENT_DIR", s.basedir)
-}
-
 func (s *MainTestSuite) SetUpSuite(t *C) {
 	var err error
 
-	// We can't/shouldn't use /usr/local/percona/ (the default basedir), so use
-	// a tmpdir instead with only a bin dir inside
+	// We can't/shouldn't use /usr/local/percona/ (the default basedir),
+	// so use a tmpdir instead with only a bin dir inside
 	s.basedir, err = ioutil.TempDir("/tmp", "percona-agent-init-test-")
 	t.Assert(err, IsNil)
 	err = os.Mkdir(filepath.Join(s.basedir, pct.BIN_DIR), 0777)
 	t.Assert(err, IsNil)
 
-	// Lets compile and place the fake percona-agent on the tmp basedir
+	// Lets compile and place the mocked percona-agent on the tmp basedir
 	s.bin = filepath.Join(s.basedir, pct.BIN_DIR, "percona-agent")
 	cmd := exec.Command("go", "build", "-o", s.bin, MOCKED_PERCONA_AGENT)
 	err = cmd.Run()
@@ -92,14 +84,16 @@ func (s *MainTestSuite) SetUpSuite(t *C) {
 	resetTestEnvVars(s)
 }
 
-func (s *MainTestSuite) SetUpTest(t *C) {
-	// Clean env vars
-	os.Remove(filepath.Join(s.basedir, "percona-agent.pid"))
-}
-
 func (s *MainTestSuite) TearDownTest(t *C) {
 	// Delete any left pid file and set mocked agent start delay to 0
 	resetTestEnvVars(s)
+	// Kill any remaining process before deleting pidfile
+	if pid, err := readPidFile(filepath.Join(s.basedir, "percona-agent.pid")); pid != "" && err == nil {
+		if numPid, err := strconv.ParseInt(pid, 10, 0); err == nil {
+			syscall.Kill(int(numPid), syscall.SIGTERM)
+		}
+	}
+	// Delete if pidFile exists
 	os.Remove(filepath.Join(s.basedir, "percona-agent.pid"))
 }
 
@@ -114,6 +108,16 @@ func (s *MainTestSuite) TearDownSuite(t *C) {
 // Helper functions
 ///////////////////////////////////////////////////////////////////////////////
 
+func resetTestEnvVars(s *MainTestSuite) {
+	// Sadly no os.Unsetenv in Go 1.3.x
+	os.Setenv("TEST_PERCONA_AGENT_START_DELAY", "")
+	os.Setenv("TEST_PERCONA_AGENT_STOP_DELAY", "")
+	os.Setenv("PERCONA_AGENT_START_TIMEOUT", "")
+	os.Setenv("PERCONA_AGENT_STOP_TIMEOUT", "")
+	os.Setenv("PERCONA_AGENT_USER", s.username)
+	os.Setenv("PERCONA_AGENT_DIR", s.basedir)
+}
+
 func writePidFile(filePath, pid string) error {
 	flags := os.O_CREATE | os.O_EXCL | os.O_WRONLY
 	file, err := os.OpenFile(filePath, flags, 0644)
@@ -121,13 +125,22 @@ func writePidFile(filePath, pid string) error {
 		//Could not create pidfile
 		return err
 	}
-	// Pollulate pidfile with valid PID but not corresponding to a fake percona-agent instance
+	// Write PID to file
 	if _, err := file.WriteString(pid); err != nil {
 		// Could not write to stale pidfile
 		return err
 	}
 	file.Close()
 	return nil
+}
+
+func readPidFile(pidFilePath string) (pid string, err error) {
+	if bytes, err := ioutil.ReadFile(pidFilePath); err != nil {
+		return "", err
+	} else {
+		// Remove any \n
+		return strings.Replace(string(bytes), "\n", "", -1), nil
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -156,17 +169,17 @@ func (s *MainTestSuite) TestStartStop(t *C) {
 	// Start service
 	cmd := exec.Command(s.initscript, "start")
 	output, err := cmd.Output()
-	// start exit code should be 0
+	// Start exit code should be 0
 	t.Check(err, IsNil)
-	// script should output a message
+	// Script should output a message
 	t.Assert(string(output), Equals, "Starting percona-agent...\nWaiting for percona-agent to start...\nOK\n")
 
 	// Check status
 	cmd = exec.Command(s.initscript, "status")
 	output, err = cmd.Output()
-	// status exit code should be 1
+	// Status exit code should be 0
 	t.Check(err, IsNil)
-	// script should output a message
+	// Extract PID from command output
 	rePID := regexp.MustCompile(`^percona-agent\ is\ running\ \((\d+)\)\.`)
 	found := rePID.FindStringSubmatch(string(output))
 	// Check if the command provided a PID
@@ -178,7 +191,7 @@ func (s *MainTestSuite) TestStartStop(t *C) {
 	}
 
 	pidbinary, err := os.Readlink(fmt.Sprintf("/proc/%v/exe", pid))
-	// Check that PID actually points to our fake percona-agent binary
+	// Check that PID actually points to our mocked percona-agent binary
 	t.Assert(pidbinary, Equals, s.bin)
 
 	// Now try to stop
@@ -196,7 +209,7 @@ func (s *MainTestSuite) TestDoubleStart(t *C) {
 	output, err := cmd.Output()
 	// start exit code should be 0
 	t.Check(err, IsNil)
-	// script should output a message
+	// Script should output a message
 	t.Assert(string(output), Equals, "Starting percona-agent...\nWaiting for percona-agent to start...\nOK\n")
 
 	// Start service again
@@ -210,6 +223,7 @@ func (s *MainTestSuite) TestDoubleStart(t *C) {
 
 func (s *MainTestSuite) TestWrongBin(t *C) {
 	pidFilePath := filepath.Join(s.basedir, "percona-agent.pid")
+	// Create pidfile with valid PID but not corresponding to a mocked percona-agent
 	if err := writePidFile(pidFilePath, string(os.Getpid())); err != nil {
 		t.Errorf("Could not create pidfile: %v", err)
 	}
@@ -219,12 +233,13 @@ func (s *MainTestSuite) TestWrongBin(t *C) {
 	output, err := cmd.Output()
 	// start exit code should be 0
 	t.Check(err, IsNil)
-	// script should output a message
+	// Script should output a message
 	t.Assert(string(output), Equals, fmt.Sprintf("Starting percona-agent...\nRemoved stale pid file: %v\nWaiting for "+
 		"percona-agent to start...\nOK\n", pidFilePath))
 }
 
 func (s *MainTestSuite) TestStalePIDFile(t *C) {
+	// Create pidfile with non valid PID
 	pidFilePath := filepath.Join(s.basedir, "percona-agent.pid")
 	if err := writePidFile(pidFilePath, string(rand.Uint32())); err != nil {
 		t.Errorf("Could not create pidfile: %v", err)
@@ -253,7 +268,7 @@ func (s *MainTestSuite) TestEnvVariables(t *C) {
 
 	// Set to percona-agent basedir to non existant directory
 	os.Setenv("PERCONA_AGENT_DIR", filepath.Join("/tmp", string(rand.Uint32())))
-	// Now start service
+	// Try to start service
 	cmd = exec.Command(s.initscript, "start")
 	output, err = cmd.Output()
 	// start exit code should be 1
@@ -263,8 +278,9 @@ func (s *MainTestSuite) TestEnvVariables(t *C) {
 }
 
 func (s *MainTestSuite) TestDelayedStart(t *C) {
-	// Set percona-agent start delay to 10 seconds
+	// Set init script timeout to 1 second
 	os.Setenv("PERCONA_AGENT_START_TIMEOUT", "1")
+	// Set percona-agent start delay to 2 seconds
 	os.Setenv("TEST_PERCONA_AGENT_START_DELAY", "2")
 	// Now try to start service
 	cmd := exec.Command(s.initscript, "start")
@@ -279,8 +295,9 @@ func (s *MainTestSuite) TestDelayedStart(t *C) {
 }
 
 func (s *MainTestSuite) TestDelayedStop(t *C) {
-	// Set percona-agent start delay to 10 seconds
+	// Set init script stop timeout to 1 second
 	os.Setenv("PERCONA_AGENT_STOP_TIMEOUT", "1")
+	// Set percona-agent stop delay to 2 seconds
 	os.Setenv("TEST_PERCONA_AGENT_STOP_DELAY", "2")
 	// Now try to start service
 	cmd := exec.Command(s.initscript, "start")
@@ -289,17 +306,18 @@ func (s *MainTestSuite) TestDelayedStop(t *C) {
 	t.Check(err, IsNil)
 
 	// Get the PID from the pidfile
-	bytes, err := ioutil.ReadFile(filepath.Join(s.basedir, "percona-agent.pid"))
-	pid := strings.Replace(string(bytes), "\n", "", -1)
-	// check if we could read the pidfile
+	pid, err := readPidFile(filepath.Join(s.basedir, "percona-agent.pid"))
+	// Check if we could read the pidfile
 	t.Check(err, IsNil)
+	// pid should be non empty
+	t.Check(pid, Not(Equals), "")
 
 	stop_cmd := exec.Command(s.initscript, "stop")
 	output, err = stop_cmd.Output()
-	// start exit code should be 1
+	// start exit code should be 0
 	t.Check(err, IsNil)
 
-	// script should output message
+	// Script should output message
 	t.Check(string(output), Equals, fmt.Sprintf("Stopping percona-agent...\nWaiting for percona-agent to exit...\n"+
 		"Time out waiting for percona-agent to exit.  Trying kill -9 %v...\nStopped percona-agent.\n", pid))
 	// Make sure the process was killed
