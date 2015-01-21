@@ -104,10 +104,6 @@ func (s *MainTestSuite) TearDownSuite(t *C) {
 	}
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// Helper functions
-///////////////////////////////////////////////////////////////////////////////
-
 func resetTestEnvVars(s *MainTestSuite) {
 	// Sadly no os.Unsetenv in Go 1.3.x
 	os.Setenv("TEST_PERCONA_AGENT_START_DELAY", "")
@@ -143,9 +139,7 @@ func readPidFile(pidFilePath string) (pid string, err error) {
 	}
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// Init script test suite
-///////////////////////////////////////////////////////////////////////////////
+//-----------------------------------------------------------------------------
 
 func (s *MainTestSuite) TestStatusNoAgent(t *C) {
 	cmd := exec.Command(s.initscript, "status")
