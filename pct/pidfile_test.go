@@ -66,10 +66,6 @@ func (s *TestSuite) SetUpTest(t *C) {
 	s.testPidFile = pct.NewPidFile()
 }
 
-func (s *TestSuite) TestGet(t *C) {
-	t.Assert(s.testPidFile.Get(), Equals, "")
-}
-
 func removeTmpFile(tmpFileName string, t *C) error {
 	if err := os.Remove(tmpFileName); err != nil {
 		t.Logf("Could not delete tmp file: %v", err)
@@ -86,26 +82,35 @@ func getTmpAbsFileName(tmpDir string) string {
 	return filepath.Join(tmpDir, getTmpFileName())
 }
 
+// ----------------------------------------------------------------------------
+
+func (s *TestSuite) TestGet(t *C) {
+	t.Assert(s.testPidFile.Get(), Equals, "")
+}
+
 func (s *TestSuite) TestSetEmpty(t *C) {
 	t.Assert(s.testPidFile.Set(""), Equals, nil)
 }
 
-func (s *TestSuite) TestSetExistsAbs(t *C) {
-	tmpFile, err := ioutil.TempFile(s.tmpDir, "")
-	if err != nil {
-		t.Errorf("Could not create a tmp file: %v", err)
-	}
-	t.Assert(s.testPidFile.Set(tmpFile.Name()), NotNil, Commentf("Set should have failed, pidfile exists"))
-}
-
 func (s *TestSuite) TestSetNotExistsAbs(t *C) {
 	randPidFileName := getTmpAbsFileName(s.tmpDir)
-	t.Assert(s.testPidFile.Set(randPidFileName), Equals, nil, Commentf("Set should not have failed, pidfile does not exist"))
+	// Set should fail, pidfile does not accept absolute paths outside basedir
+	t.Check(s.testPidFile.Set(randPidFileName), NotNil)
+
+	randPidFileName = filepath.Join(pct.Basedir.Path(), getTmpFileName())
+	// Set should succeed, pidfile absolute path directory is basedir
+	t.Check(s.testPidFile.Set(randPidFileName), IsNil)
+
+	// Try to set pidfile in one directory level higher than basedir
+	randPidFileName = filepath.Join(filepath.Dir(pct.Basedir.Path()), getTmpFileName())
+	// Set should fail, pidfile absolute path directory is below basedir
+	t.Check(s.testPidFile.Set(randPidFileName), NotNil)
 }
 
 func (s *TestSuite) TestSetNotExistsRel(t *C) {
 	randPidFileName := getTmpFileName()
-	t.Assert(s.testPidFile.Set(randPidFileName), Equals, nil, Commentf("Set should have failed, pidfile exists"))
+	// Set should fail, pidfile exists
+	t.Assert(s.testPidFile.Set(randPidFileName), Equals, nil)
 }
 
 func (s *TestSuite) TestSetExistsRel(t *C) {
@@ -113,27 +118,24 @@ func (s *TestSuite) TestSetExistsRel(t *C) {
 	if err != nil {
 		t.Errorf("Could not create a tmp file: %v", err)
 	}
-	t.Assert(s.testPidFile.Set(tmpFile.Name()), NotNil, Commentf("Set should have failed, pidfile exists"))
+	// Set should fail, pidfile exists
+	t.Assert(s.testPidFile.Set(tmpFile.Name()), NotNil)
 }
 
 func (s *TestSuite) TestRemoveEmpty(t *C) {
 	t.Check(s.testPidFile.Set(""), Equals, nil)
-	t.Assert(s.testPidFile.Remove(), Equals, nil, Commentf("Remove should have not failed, empty pidfile string provided"))
+	// Remove should succeed, empty pidfile string provided
+	t.Assert(s.testPidFile.Remove(), Equals, nil)
 }
 
 func (s *TestSuite) TestRemoveRel(t *C) {
 	tmpFileName := getTmpFileName()
 	t.Check(s.testPidFile.Set(tmpFileName), Equals, nil)
-	t.Assert(s.testPidFile.Remove(), Equals, nil, Commentf("Remove should have not failed, pidfile exists"))
+	// Remove should succeed, pidfile exists
+	t.Assert(s.testPidFile.Remove(), Equals, nil)
 	absFilePath := filepath.Join(pct.Basedir.Path(), tmpFileName)
-	t.Assert(pct.FileExists(absFilePath), Equals, false, Commentf("Remove should have deleted pidfile"))
-}
-
-func (s *TestSuite) TestRemoveAbs(t *C) {
-	absFilePath := getTmpAbsFileName(s.tmpDir)
-	t.Check(s.testPidFile.Set(absFilePath), Equals, nil)
-	t.Assert(s.testPidFile.Remove(), Equals, nil, Commentf("Remove should have not failed, pidfile exists"))
-	t.Assert(pct.FileExists(absFilePath), Equals, false, Commentf("Remove should have deleted pidfile"))
+	// Check if pidfile was deleted
+	t.Assert(pct.FileExists(absFilePath), Equals, false)
 }
 
 func (s *TestSuite) TestRemoveNotExistsRel(t *C) {
@@ -141,12 +143,6 @@ func (s *TestSuite) TestRemoveNotExistsRel(t *C) {
 	t.Check(s.testPidFile.Set(randPidFileName), Equals, nil)
 	absFilePath := filepath.Join(pct.Basedir.Path(), randPidFileName)
 	t.Check(removeTmpFile(absFilePath, t), Equals, nil)
-	t.Assert(s.testPidFile.Remove(), Equals, nil, Commentf("Remove should have succedeed even when pidfile is missing"))
-}
-
-func (s *TestSuite) TestRemoveNotExistsAbs(t *C) {
-	absFilePath := getTmpAbsFileName(s.tmpDir)
-	t.Check(s.testPidFile.Set(absFilePath), Equals, nil)
-	t.Check(removeTmpFile(absFilePath, t), Equals, nil)
-	t.Assert(s.testPidFile.Remove(), Equals, nil, Commentf("Remove should have succedeed even when pidfile is missing"))
+	// Remove should succed even when pidfile is missing
+	t.Assert(s.testPidFile.Remove(), Equals, nil)
 }

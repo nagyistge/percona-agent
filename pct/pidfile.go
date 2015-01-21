@@ -18,9 +18,11 @@
 package pct
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -62,6 +64,12 @@ func (p *PidFile) Set(pidFile string) error {
 
 	if !filepath.IsAbs(pidFile) {
 		pidFile = filepath.Join(Basedir.Path(), pidFile)
+	} else if relPath, err := filepath.Rel(Basedir.Path(), pidFile); err == nil {
+		if contains := strings.Contains(relPath, ".."); contains == true {
+			return errors.New("pidfile path should be relative to basedir")
+		}
+	} else {
+		return errors.New("could not determine if pidfile directory path is relative to basedir")
 	}
 
 	// Create new PID file, success only if it doesn't already exist.
