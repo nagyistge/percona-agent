@@ -108,18 +108,26 @@ func (s *TestSuite) TestSetNotExistsAbs(t *C) {
 }
 
 func (s *TestSuite) TestSetNotExistsRel(t *C) {
+	// Should fail, yileds a pidfile outside basedir
+	t.Check(s.testPidFile.Set("../percona-agent.pid"), NotNil)
+	// Should fail, yields a pidfile outside basedir
+	t.Check(s.testPidFile.Set("./bin/../../percona-agent.pid"), NotNil)
+	// Should pass, yields a pidfile right on basedir
+	t.Check(s.testPidFile.Set("bin/../percona-agent.pid"), IsNil)
+
 	randPidFileName := getTmpFileName()
-	// Set should fail, pidfile exists
+	// Set should pass, pidfile does not exist
 	t.Assert(s.testPidFile.Set(randPidFileName), Equals, nil)
 }
 
 func (s *TestSuite) TestSetExistsRel(t *C) {
+	// Create pidfile and try to Set it
 	tmpFile, err := ioutil.TempFile(pct.Basedir.Path(), "")
 	if err != nil {
 		t.Errorf("Could not create a tmp file: %v", err)
 	}
 	// Set should fail, pidfile exists
-	t.Assert(s.testPidFile.Set(tmpFile.Name()), NotNil)
+	t.Check(s.testPidFile.Set(tmpFile.Name()), NotNil)
 }
 
 func (s *TestSuite) TestRemoveEmpty(t *C) {

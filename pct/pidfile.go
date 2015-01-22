@@ -62,14 +62,23 @@ func (p *PidFile) Set(pidFile string) error {
 		return nil
 	}
 
+	// The following needs clarification
+	// Relative paths could contain '../' in any number of places, some may yield a valid
+	// path inside basedir, others not. Absolute paths can only be included in basedir.
+	// The approach is to transform everything to absolute paths, and check if it lands
+	// inside basedir by checking its path relativeness against basedir.
 	if !filepath.IsAbs(pidFile) {
+		// Path is relative to basedir, make an absolute path
 		pidFile = filepath.Join(Basedir.Path(), pidFile)
-	} else if relPath, err := filepath.Rel(Basedir.Path(), pidFile); err == nil {
-		if contains := strings.Contains(relPath, ".."); contains == true {
+	}
+	// Check that path lands inside basedir by calculating a relative path to basedir and
+	// looking for '../'s
+	if relPath, err := filepath.Rel(Basedir.Path(), pidFile); err == nil {
+		if contains := strings.Contains(relPath, "../"); contains == true {
 			return errors.New("pidfile path should be relative to basedir")
 		}
 	} else {
-		return errors.New("could not determine if pidfile directory path is relative to basedir")
+		return errors.New("Could not determine if pidfile is relative to basedir, please check your pidfile path")
 	}
 
 	// Create new PID file, success only if it doesn't already exist.
