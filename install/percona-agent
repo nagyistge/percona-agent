@@ -157,13 +157,19 @@ getpid() {
       fi
       pid=`cat $PIDFILE`
 	  # Verify that a process with this pid is still running percona-agent
-      if [ $USE_PROCFS == "yes" ]; then
+      if [ $USE_PROCFS = "yes" ]; then
           binforpid=`readlink -m "$PROCFSPATH/$pid/exe" | awk '{print $1}'`
           if [ ! "$binforpid" = "$CMD" ]; then
               pid=""
           fi
       else
-          pid=`ps -p $pid | grep $pid | grep -v grep | tail -1 | awk '{print $1}'`
+          psoutput=`ps -p $pid -o pid,comm | grep $pid | grep -v grep | tail -1` 
+          pid=`echo "$psoutput" | awk '{print $1}'`
+          # Make sure $SERVICE shows up in command name
+          match=`echo "$psoutput" | awk '{print $2}' | grep "$SERVICE"`
+          if [ -z "$match" ]; then
+              pid=""
+          fi
       fi
 
       if [ -z "$pid" ]; then
@@ -175,14 +181,20 @@ getpid() {
 }
 
 testpid() {
-    if [ $USE_PROCFS == "yes" ]; then
+    if [ $USE_PROCFS = "yes" ]; then
         binforpid=`readlink -m "/proc/$pid/exe" | awk '{print $1}'`
         if [ ! "$binforpid" = "$CMD" ]; then
-            # Process is gone so remove the pid file.
+            # Process is gone reset pid var
             pid=""
         fi
     else
-        pid=`ps -p $pid | grep $pid | grep -v grep | tail -1 | awk '{print $1}'`
+        psoutput=`ps -p $pid -o pid,comm | grep $pid | grep -v grep | tail -1` 
+        pid=`echo "$psoutput" | awk '{print $1}'`
+        # Make sure $SERVICE shows up in command name
+        match=`echo "$psoutput" | awk '{print $2}' | grep "$SERVICE"`
+        if [ -z "$match" ]; then
+           pid="" 
+        fi
     fi
 
     if [ -z "$pid" ]; then
