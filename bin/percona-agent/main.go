@@ -80,7 +80,7 @@ func init() {
 }
 
 func run() error {
-	version := fmt.Sprintf("percona-agent %s rev %s", agent.VERSION, agent.REVISION)
+	version := fmt.Sprintf("percona-agent %s%s rev %s", agent.VERSION, agent.REL, agent.REVISION)
 	if flagVersion {
 		fmt.Println(version)
 		return nil
