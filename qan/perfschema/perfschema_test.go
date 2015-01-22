@@ -127,6 +127,9 @@ func makeGetTextFunc(texts ...string) perfschema.GetDigestTextFunc {
 // --------------------------------------------------------------------------
 
 func (s *WorkerTestSuite) Test001(t *C) {
+	// This is the simplest input possible: 1 query in iter 1 and 2. The result
+	// is just the increase in its values.
+
 	rows, err := s.loadData("001")
 	t.Assert(err, IsNil)
 	getRows := makeGetRowsFunc(rows)
@@ -162,6 +165,53 @@ func (s *WorkerTestSuite) Test001(t *C) {
 	t.Assert(err, IsNil)
 	if same, diff := IsDeeply(res, expect); !same {
 		Dump(diff)
+		t.Error(diff)
+	}
+
+	err = w.Cleanup()
+	t.Assert(err, IsNil)
+}
+
+func (s *WorkerTestSuite) Test002(t *C) {
+	// This is the 2nd most simplest input after 001: two queries, same digest,
+	// but different schemas. The reuslt is the aggregate of their value diffs
+	// from iter 1 to 2.
+
+	rows, err := s.loadData("002")
+	t.Assert(err, IsNil)
+	getRows := makeGetRowsFunc(rows)
+	getText := makeGetTextFunc("select 1")
+	w := perfschema.NewWorker(s.logger, s.nullmysql, getRows, getText)
+
+	// First run doesn't produce a result because 2 snapshots are required.
+	i := &qan.Interval{
+		Number:    1,
+		StartTime: time.Now().UTC(),
+	}
+	err = w.Setup(i)
+	t.Assert(err, IsNil)
+
+	res, err := w.Run()
+	t.Assert(err, IsNil)
+	t.Check(res, IsNil)
+
+	err = w.Cleanup()
+	t.Assert(err, IsNil)
+
+	// The second run produces a result: the diff of 2nd - 1st.
+	i = &qan.Interval{
+		Number:    2,
+		StartTime: time.Now().UTC(),
+	}
+	err = w.Setup(i)
+	t.Assert(err, IsNil)
+
+	res, err = w.Run()
+	t.Assert(err, IsNil)
+	expect, err := s.loadResult("002/res01.json")
+	t.Assert(err, IsNil)
+	if same, diff := IsDeeply(res, expect); !same {
+		Dump(res)
 		t.Error(diff)
 	}
 

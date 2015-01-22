@@ -298,7 +298,7 @@ CLASS_LOOP:
 		// This class exists in prev, so create a class aggregate of the per-schema
 		// query value diffs, for rows that exist in both prev and curr.
 		d := DigestRow{MinTimerWait: 0xFFFFFFFF} // class aggregate, becomes class metrics
-		n := uint(0)                             // total queries in this class
+		n := uint(0)                             // number of query instances in prev and curr
 
 		// Each row is an instance of the query executed in the schema.
 	ROW_LOOP:
@@ -355,7 +355,12 @@ CLASS_LOOP:
 		}
 
 		// Divide the total averages to yield the average of the averages.
-		d.AvgTimerWait /= n // todo: d.CountStar instead of n?
+		// Dividing by n not d.CountStart here is correct because n is the
+		// number of query instances in prev and current, so it's also the
+		// number of averages we added together. d.CountStart is the total
+		// number of times all queries in this classes executed, which can
+		// be very high.
+		d.AvgTimerWait /= n
 
 		// Create standard metric stats from the class metrics just calculated.
 		stats := event.NewMetrics()
@@ -420,7 +425,7 @@ CLASS_LOOP:
 		// of checksum is historical: pt-query-digest does the same:
 		// my $checksum = uc substr(md5_hex($val), -16);
 		class := event.NewQueryClass(classId, class.DigestText, false)
-		class.TotalQueries = uint64(n) // todo: d.CountStar instead of n?
+		class.TotalQueries = uint64(d.CountStar)
 		class.Metrics = stats
 		classes = append(classes, class)
 
@@ -433,8 +438,6 @@ CLASS_LOOP:
 	if nClasses == 0 {
 		return nil, nil
 	}
-	global.TotalQueries = nClasses
-	global.UniqueQueries = nClasses
 
 	result := &qan.Result{
 		Global: global,
