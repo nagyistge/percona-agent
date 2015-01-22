@@ -22,17 +22,10 @@ SERVICE="percona-agent"
 
 # Agent needs to run as root to read MySQL slow log for Query Analytics (QAN).
 # If not running QAN, a normal user will work.
-# Environment variable config takes priority
-USERNAME="${PERCONA_AGENT_USER:-root}"
+USERNAME="${PCT_TEST_AGENT_USER:-root}"
 
 # Agent uses a single base directory for all its files and data.
-# Environment variable config takes priority
-if [ ! "x$PERCONA_AGENT_DIR" = "x" ] && [ -d "$PERCONA_AGENT_DIR" ] ; then
-    # Normalize path, removing trailing slashes, relative paths, etc
-    BASEDIR=$( cd "$PERCONA_AGENT_DIR" && pwd )
-else
-    BASEDIR="/usr/local/percona/$SERVICE"
-fi
+BASEDIR="${PCT_TEST_AGENT_DIR:-"/usr/local/percona/$SERVICE"}"
 
 if [ ! -d "$BASEDIR" ]; then
    mkdir -p "$BASEDIR" || exit 1
@@ -46,23 +39,9 @@ if [ ! -x "$CMD" ]; then
    exit 1
 fi
 
-DEFAULT_START_TIMEOUT="5"
-PERCONA_AGENT_START_TIMEOUT="${PERCONA_AGENT_START_TIMEOUT:-$DEFAULT_START_TIMEOUT}"
-# Validate
-echo "$PERCONA_AGENT_START_TIMEOUT" | grep -q '^[0-9]+$' >/dev/null 2>&1
-if [ $? -eq 0 ]; then
-     # Using default start timeout
-     PERCONA_AGENT_START_TIMEOUT=$DEFAULT_START_TIMEOUT
-fi
-
-DEFAULT_STOP_TIMEOUT="60"
-PERCONA_AGENT_STOP_TIMEOUT="${PERCONA_AGENT_STOP_TIMEOUT:-$DEFAULT_STOP_TIMEOUT}"
-# Validate
-echo "$PERCONA_AGENT_STOP_TIMEOUT" | grep -q '^[0-9]+$' >/dev/null 2>&1
-if [ $? -eq 0 ]; then
-     # Using default stop timeout
-     PERCONA_AGENT_STOP_TIMEOUT=$DEFAULT_STOP_TIMEOUT
-fi
+# Start and stop timeouts for the service
+START_TIMEOUT="${PCT_TEST_START_TIMEOUT:-5}"
+STOP_TIMEOUT="${PCT_TEST_STOP_TIMEOUT:-60}"
 
 # Agent may use a different log file, or no log file (online logging only),
 # but we should capture any output, e.g. in case it crashes.
@@ -184,7 +163,7 @@ start() {
    # as we are starting agent in background,
    # so let's give an agent some time to start
    echo "Waiting for $SERVICE to start..."
-   for x in $(_seq $PERCONA_AGENT_START_TIMEOUT); do
+   for x in $(_seq $START_TIMEOUT); do
        getpid
        if [ -n "$pid" ]; then
            break
@@ -220,7 +199,7 @@ stop() {
         #  Loop until it does.
         echo "Waiting for $SERVICE to exit..."
         savepid=$pid
-        for x in $(_seq $PERCONA_AGENT_STOP_TIMEOUT); do
+        for x in $(_seq $STOP_TIMEOUT); do
             testpid
             if [ -z "$pid" ]; then
                 break

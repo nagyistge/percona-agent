@@ -104,6 +104,7 @@ func (s *MainTestSuite) TearDownTest(t *C) {
 
 func (s *MainTestSuite) TearDownSuite(t *C) {
 	// Delete tmp
+	return
 	if err := os.RemoveAll(s.basedir); err != nil {
 		t.Error(err)
 	}
@@ -111,12 +112,12 @@ func (s *MainTestSuite) TearDownSuite(t *C) {
 
 func resetTestEnvVars(s *MainTestSuite) {
 	// Sadly no os.Unsetenv in Go 1.3.x
-	os.Setenv("TEST_PERCONA_AGENT_START_DELAY", "")
-	os.Setenv("TEST_PERCONA_AGENT_STOP_DELAY", "")
-	os.Setenv("PERCONA_AGENT_START_TIMEOUT", "")
-	os.Setenv("PERCONA_AGENT_STOP_TIMEOUT", "")
-	os.Setenv("PERCONA_AGENT_USER", s.username)
-	os.Setenv("PERCONA_AGENT_DIR", s.basedir)
+	os.Setenv("PCT_TEST_START_DELAY", "")
+	os.Setenv("PCT_TEST_STOP_DELAY", "")
+	os.Setenv("PCT_TEST_START_TIMEOUT", "")
+	os.Setenv("PCT_TEST_STOP_TIMEOUT", "")
+	os.Setenv("PCT_TEST_AGENT_USER", s.username)
+	os.Setenv("PCT_TEST_AGENT_DIR", s.basedir)
 }
 
 func writePidFile(filePath, pid string) error {
@@ -254,33 +255,11 @@ func (s *MainTestSuite) TestStalePIDFile(t *C) {
 		"percona-agent to start...\nOK\n", pidFilePath))
 }
 
-func (s *MainTestSuite) TestEnvVariables(t *C) {
-	// Set percona-agent user to run with nobody
-	os.Setenv("PERCONA_AGENT_USER", "nobody")
-	// Now start service
-	cmd := exec.Command(s.initscript, "start")
-	output, err := cmd.Output()
-	// start exit code should be 1
-	t.Check(err, NotNil)
-	// script should output no message TODO: check this
-	t.Check(string(output), Equals, "")
-
-	// Set to percona-agent basedir to non existant directory
-	os.Setenv("PERCONA_AGENT_DIR", filepath.Join(s.basedir, string(rand.Uint32())))
-	// Try to start service
-	cmd = exec.Command(s.initscript, "start")
-	output, err = cmd.Output()
-	// start exit code should be 1
-	t.Check(err, NotNil)
-	// script should output no message TODO: check this
-	t.Check(string(output), Equals, "")
-}
-
 func (s *MainTestSuite) TestDelayedStart(t *C) {
 	// Set init script timeout to 1 second
-	os.Setenv("PERCONA_AGENT_START_TIMEOUT", "1")
+	os.Setenv("PCT_TEST_START_TIMEOUT", "1")
 	// Set percona-agent start delay to 2 seconds
-	os.Setenv("TEST_PERCONA_AGENT_START_DELAY", "2")
+	os.Setenv("PCT_TEST_START_DELAY", "2")
 	// Now try to start service
 	cmd := exec.Command(s.initscript, "start")
 	output, err := cmd.Output()
@@ -295,9 +274,9 @@ func (s *MainTestSuite) TestDelayedStart(t *C) {
 
 func (s *MainTestSuite) TestDelayedStop(t *C) {
 	// Set init script stop timeout to 1 second
-	os.Setenv("PERCONA_AGENT_STOP_TIMEOUT", "1")
+	os.Setenv("PCT_TEST_STOP_TIMEOUT", "1")
 	// Set percona-agent stop delay to 2 seconds
-	os.Setenv("TEST_PERCONA_AGENT_STOP_DELAY", "2")
+	os.Setenv("PCT_TEST_STOP_DELAY", "2")
 	// Now try to start service
 	cmd := exec.Command(s.initscript, "start")
 	output, err := cmd.Output()

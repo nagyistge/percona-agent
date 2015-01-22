@@ -61,7 +61,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	startDelayEnv := os.Getenv("TEST_PERCONA_AGENT_START_DELAY")
+	startDelayEnv := os.Getenv("PCT_TEST_START_DELAY")
 	startDelay, err := strconv.ParseFloat(startDelayEnv, 32)
 	if err != nil {
 		startDelay = 0
@@ -96,7 +96,7 @@ func main() {
 		syscall.SIGQUIT)
 
 	_ = <-sigc
-	stopDelayEnv := os.Getenv("TEST_PERCONA_AGENT_STOP_DELAY")
+	stopDelayEnv := os.Getenv("PCT_TEST_STOP_DELAY")
 	stopDelay, err := strconv.ParseFloat(stopDelayEnv, 32)
 	if err != nil {
 		stopDelay = 0
