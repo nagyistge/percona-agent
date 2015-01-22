@@ -78,7 +78,7 @@ func (p *PidFile) Set(pidFile string) error {
 			return errors.New("pidfile path should be relative to basedir")
 		}
 	} else {
-		return errors.New("Could not determine if pidfile is relative to basedir, please check your pidfile path")
+		return errors.New("Could not determine if pidfile path is relative to basedir, please check your pidfile path")
 	}
 
 	// Create new PID file, success only if it doesn't already exist.

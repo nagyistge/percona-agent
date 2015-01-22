@@ -127,7 +127,7 @@ func (s *TestSuite) TestSetExistsRel(t *C) {
 		t.Errorf("Could not create a tmp file: %v", err)
 	}
 	// Set should fail, pidfile exists
-	t.Check(s.testPidFile.Set(tmpFile.Name()), NotNil)
+	t.Assert(s.testPidFile.Set(tmpFile.Name()), NotNil)
 }
 
 func (s *TestSuite) TestRemoveEmpty(t *C) {
