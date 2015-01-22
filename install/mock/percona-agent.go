@@ -61,13 +61,13 @@ func main() {
 		os.Exit(2)
 	}
 
-	sdelay := os.Getenv("TEST_PERCONA_AGENT_START_DELAY")
-	delay, err := strconv.ParseFloat(sdelay, 32)
+	startDelayEnv := os.Getenv("TEST_PERCONA_AGENT_START_DELAY")
+	startDelay, err := strconv.ParseFloat(startDelayEnv, 32)
 	if err != nil {
-		delay = 0
+		startDelay = 0
 	}
 
-	time.Sleep(time.Second * time.Duration(delay))
+	time.Sleep(time.Second * time.Duration(startDelay))
 
 	if !filepath.IsAbs(flagPidFile) {
 		flagPidFile = filepath.Join(flagBasedir, flagPidFile)
@@ -76,7 +76,6 @@ func main() {
 	// Create new PID file, success only if it doesn't already exist.
 	flags := os.O_CREATE | os.O_EXCL | os.O_WRONLY
 	file, err := os.OpenFile(flagPidFile, flags, 0644)
-
 	if err != nil {
 		os.Exit(3)
 	}
@@ -89,25 +88,20 @@ func main() {
 		os.Exit(5)
 	}
 
+	// Wait for term/kill signal
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc,
 		syscall.SIGINT,
 		syscall.SIGTERM,
 		syscall.SIGQUIT)
 
-	go func() {
-		_ = <-sigc
-		sdelay := os.Getenv("TEST_PERCONA_AGENT_STOP_DELAY")
-		delay, err := strconv.ParseFloat(sdelay, 32)
-		if err != nil {
-			delay = 0
-		}
-		time.Sleep(time.Second * time.Duration(delay))
-		os.Remove(flagPidFile)
-		os.Exit(0)
-	}()
-
-	for {
-		time.Sleep(time.Millisecond * 500)
+	_ = <-sigc
+	stopDelayEnv := os.Getenv("TEST_PERCONA_AGENT_STOP_DELAY")
+	stopDelay, err := strconv.ParseFloat(stopDelayEnv, 32)
+	if err != nil {
+		stopDelay = 0
 	}
+	time.Sleep(time.Second * time.Duration(stopDelay))
+	os.Remove(flagPidFile)
+	os.Exit(0)
 }
