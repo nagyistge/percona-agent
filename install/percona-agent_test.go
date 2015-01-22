@@ -44,7 +44,6 @@ type MainTestSuite struct {
 	anotherbin string
 	initscript string
 	username   string
-	origpath   string
 }
 
 const (
@@ -86,20 +85,6 @@ func (s *MainTestSuite) SetUpSuite(t *C) {
 	err = cmd.Run()
 	t.Assert(err, IsNil, Commentf("Failed to copy init script to tmp dir: %v", err))
 
-	// Store original PATH in test suite
-	s.origpath = os.Getenv("PATH")
-
-	// Create mock dir to store mocked mount command
-	err = os.Mkdir(filepath.Join(s.basedir, "mock"), 0777)
-	// Creates a fake mount sh command that will always fail
-	flags := os.O_CREATE | os.O_EXCL | os.O_WRONLY
-	file, errf := os.OpenFile(filepath.Join(s.basedir, "mock", "mount"), flags, 0777)
-	t.Assert(errf, IsNil, Commentf("Could not create mocked mount file: %v", err))
-	// Write empty shell script to make mount cmd always fail
-	_, errw := file.WriteString("#!/bin/sh\nexit 1")
-	t.Assert(errw, IsNil, Commentf("Could not write to mocked mount: %v", err))
-	file.Close()
-
 	// Set all env vars to default test values
 	resetTestEnvVars(s)
 }
@@ -126,7 +111,6 @@ func (s *MainTestSuite) TearDownSuite(t *C) {
 
 func resetTestEnvVars(s *MainTestSuite) {
 	// Sadly no os.Unsetenv in Go 1.3.x
-	os.Setenv("PATH", s.origpath)
 	os.Setenv("TEST_PERCONA_AGENT_START_DELAY", "")
 	os.Setenv("TEST_PERCONA_AGENT_STOP_DELAY", "")
 	os.Setenv("PERCONA_AGENT_START_TIMEOUT", "")
@@ -337,18 +321,4 @@ func (s *MainTestSuite) TestDelayedStop(t *C) {
 		"Time out waiting for percona-agent to exit.  Trying kill -9 %v...\nStopped percona-agent.\n", pid))
 	// Make sure the process was killed
 	t.Assert(pct.FileExists(fmt.Sprintf("/proc/%v/stat", pid)), Equals, false)
-}
-
-func (s *MainTestSuite) TestStartStopNoProcfs(t *C) {
-	// Lets set PATH so our mocked mount is found first
-	os.Setenv("PATH", filepath.Join(s.basedir, "mock")+":"+s.origpath)
-	// Lets run the same test as with procfs to see if everything still works
-	s.TestStartStop(t)
-}
-
-func (s *MainTestSuite) TestWrongBinNoProcfs(t *C) {
-	// Lets set PATH so our mocked mount is found first
-	os.Setenv("PATH", filepath.Join(s.basedir, "mock")+":"+s.origpath)
-	// Lets run same test as with procfs to see if everything still works
-	s.TestWrongBin(t)
 }
