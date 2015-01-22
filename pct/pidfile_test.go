@@ -108,15 +108,13 @@ func (s *TestSuite) TestSetNotExistsAbs(t *C) {
 }
 
 func (s *TestSuite) TestSetNotExistsRel(t *C) {
-	// Should fail, yileds a pidfile outside basedir
-	t.Check(s.testPidFile.Set("../percona-agent.pid"), NotNil)
 	// Should fail, yields a pidfile outside basedir
-	t.Check(s.testPidFile.Set("./bin/../../percona-agent.pid"), NotNil)
-	// Should pass, yields a pidfile right on basedir
-	t.Check(s.testPidFile.Set("bin/../percona-agent.pid"), IsNil)
+	t.Check(s.testPidFile.Set("../percona-agent.pid"), NotNil)
+	// Should pass, path resolves to "."
+	t.Check(s.testPidFile.Set("./bin/../percona-agent.pid"), IsNil)
 
 	randPidFileName := getTmpFileName()
-	// Set should pass, pidfile does not exist
+	// Set should pass, pidfile does not exist and has no path
 	t.Assert(s.testPidFile.Set(randPidFileName), Equals, nil)
 }
 
