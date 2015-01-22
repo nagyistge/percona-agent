@@ -261,7 +261,7 @@ func (s *MainTestSuite) TestEnvVariables(t *C) {
 	t.Check(string(output), Equals, "")
 
 	// Set to percona-agent basedir to non existant directory
-	os.Setenv("PERCONA_AGENT_DIR", filepath.Join("/tmp", string(rand.Uint32())))
+	os.Setenv("PERCONA_AGENT_DIR", filepath.Join(s.basedir, string(rand.Uint32())))
 	// Try to start service
 	cmd = exec.Command(s.initscript, "start")
 	output, err = cmd.Output()
