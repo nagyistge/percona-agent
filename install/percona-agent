@@ -23,16 +23,12 @@ SERVICE="percona-agent"
 # Agent needs to run as root to read MySQL slow log for Query Analytics (QAN).
 # If not running QAN, a normal user will work.
 # Environment variable config takes priority
-if [ ! "x$PERCONA_AGENT_USER" = "x" ]; then
-    USERNAME="$PERCONA_AGENT_USER"
-else
-    USERNAME='root'
-fi
+USERNAME="${PERCONA_AGENT_USER:-root}"
 
 # Agent uses a single base directory for all its files and data.
 # Environment variable config takes priority
 if [ ! "x$PERCONA_AGENT_DIR" = "x" ] && [ -d "$PERCONA_AGENT_DIR" ] ; then
-    # Remove trailing slash
+    # Normalize path, removing trailing slashes, relative paths, etc
     BASEDIR=$( cd "$PERCONA_AGENT_DIR" && pwd )
 else
     BASEDIR="/usr/local/percona/$SERVICE"
@@ -51,28 +47,20 @@ if [ ! -x "$CMD" ]; then
 fi
 
 DEFAULT_START_TIMEOUT="5"
-# Set default if env not set
-if [ "x$PERCONA_AGENT_START_TIMEOUT" = "x" ]; then
-    PERCONA_AGENT_START_TIMEOUT=$DEFAULT_START_TIMEOUT
-fi
-
-# validate
-echo "$PERCONA_AGENT_START_TIMEOUT" | grep -q '^[0-9]+$' &> /dev/null
-if [ $? -ne 0 ]; then
+PERCONA_AGENT_START_TIMEOUT="${PERCONA_AGENT_START_TIMEOUT:-$DEFAULT_START_TIMEOUT}"
+# Validate
+echo "$PERCONA_AGENT_START_TIMEOUT" | grep -q '^[0-9]+$' >/dev/null 2>&1
+if [ $? -eq 0 ]; then
      # Using default start timeout
      PERCONA_AGENT_START_TIMEOUT=$DEFAULT_START_TIMEOUT
 fi
 
 DEFAULT_STOP_TIMEOUT="60"
-# Set default if env not set
-if [ "x$PERCONA_AGENT_STOP_TIMEOUT" = "x" ]; then
-    PERCONA_AGENT_STOP_TIMEOUT=$DEFAULT_STOP_TIMEOUT
-fi
-
-# validate
-echo "$PERCONA_AGENT_STOP_TIMEOUT" | grep -q '^[0-9]+$' &> /dev/null
-if [ $? -ne 0 ]; then
-     # Using default start timeout
+PERCONA_AGENT_STOP_TIMEOUT="${PERCONA_AGENT_STOP_TIMEOUT:-$DEFAULT_STOP_TIMEOUT}"
+# Validate
+echo "$PERCONA_AGENT_STOP_TIMEOUT" | grep -q '^[0-9]+$' >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+     # Using default stop timeout
      PERCONA_AGENT_STOP_TIMEOUT=$DEFAULT_STOP_TIMEOUT
 fi
 
@@ -124,17 +112,27 @@ REALPATH=`echo $REALPATH | sed -e 's;:; ;g'`
 # Change the current directory to the location of the script
 cd "`dirname "$REALPATH"`"
 
-# Resolve the location of the 'readlink' command
-READLINK="/usr/bin/readlink"
-if [ ! -x $READLINK ]
-then
-    READLINK="/bin/readlink"
-    if [ ! -x $READLINK ]
-    then
-        echo "Unable to locate 'readlink'." >&2
-        echo "Please report this with the location on your system." >&2
-        exit 1
-    fi
+# Use procfs by default
+USE_PROCFS="yes"
+
+# Detect if we have procfs
+PROCFSPATH=`mount -l -t proc | tail | awk '{print $3}'`
+if [ -z "$PROCFSPATH" ]; then
+     USE_PROCFS="no" 
+fi
+
+# Check for readlink in path, disable procfs if not found
+readlink --version >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+     USE_PROCFS="no" 
+fi
+
+# Check for ps in path
+ps --version >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+     echo "Unable to locate 'ps'." >&2
+     echo "Please report this with the location on your system." >&2
+     exit 1
 fi
 
 # Build the nice clause
@@ -159,11 +157,17 @@ getpid() {
       fi
       pid=`cat $PIDFILE`
 	  # Verify that a process with this pid is still running percona-agent
-      binforpid=`$READLINK -m "/proc/$pid/exe" | awk '{print $1}'`
-      if [ ! "$binforpid" = "$CMD" ]
-      then
+      if [ $USE_PROCFS == "yes" ]; then
+          binforpid=`readlink -m "$PROCFSPATH/$pid/exe" | awk '{print $1}'`
+          if [ ! "$binforpid" = "$CMD" ]; then
+              pid=""
+          fi
+      else
+          pid=`ps -p $pid | grep $pid | grep -v grep | tail -1 | awk '{print $1}'`
+      fi
+
+      if [ -z "$pid" ]; then
          # This is a stale pid file.
-         pid=""
          rm -f $PIDFILE
          echo "Removed stale pid file: $PIDFILE"
       fi
@@ -171,12 +175,19 @@ getpid() {
 }
 
 testpid() {
-    binforpid=`$READLINK -m "/proc/$pid/exe" | awk '{print $1}'`
-    if [ ! "$binforpid" = "$CMD" ]
-    then
-        # Process is gone so remove the pid file.
-        pid=""
-        rm -f $PIDFILE
+    if [ $USE_PROCFS == "yes" ]; then
+        binforpid=`readlink -m "/proc/$pid/exe" | awk '{print $1}'`
+        if [ ! "$binforpid" = "$CMD" ]; then
+            # Process is gone so remove the pid file.
+            pid=""
+        fi
+    else
+        pid=`ps -p $pid | grep $pid | grep -v grep | tail -1 | awk '{print $1}'`
+    fi
+
+    if [ -z "$pid" ]; then
+         # This is a stale pid file.
+         rm -f $PIDFILE
     fi
 }
 
@@ -217,15 +228,13 @@ start() {
 stop() {
     echo "Stopping $SERVICE..."
     getpid
-    if [ "X$pid" = "X" ]
-    then
+    if [ "X$pid" = "X" ]; then
         echo "$SERVICE is not running."
         return 0
     else
          # Running so try to stop it.
-        kill $pid &> /dev/null
-        if [ $? -ne 0 ]
-        then
+        kill $pid >/dev/null 2>&1
+        if [ $? -ne 0 ]; then
             # An explanation for the failure should have been given
             echo "Unable to stop $SERVICE."
             return 1
@@ -244,16 +253,14 @@ stop() {
  
         pid=$savepid
         testpid
-        if [ "X$pid" != "X" ]
-        then
+        if [ "X$pid" != "X" ]; then
             echo "Time out waiting for $SERVICE to exit.  Trying kill -9 $pid..."
             kill -9 $pid
         fi
  
         pid=$savepid
         testpid
-        if [ "X$pid" != "X" ]
-        then
+        if [ "X$pid" != "X" ]; then
             echo "Failed to stop $SERVICE."
             return 1
         else
