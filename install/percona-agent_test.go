@@ -104,7 +104,6 @@ func (s *MainTestSuite) TearDownTest(t *C) {
 
 func (s *MainTestSuite) TearDownSuite(t *C) {
 	// Delete tmp
-	return
 	if err := os.RemoveAll(s.basedir); err != nil {
 		t.Error(err)
 	}

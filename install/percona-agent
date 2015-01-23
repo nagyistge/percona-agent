@@ -113,6 +113,24 @@ _seq() {
    awk "BEGIN { for(i=1; i<=$i; i++) print i; }"
 }
 
+testpid() {
+	# This function will check if the process under $pid runs $SERVICE
+    # if not, it will delete $PIDFILE and set $pid to empty string
+    psoutput=`ps -p "$pid" -o pid,comm | grep -w "$pid"` 
+    pid=`echo "$psoutput" | awk '{print $1}'`
+    # Make sure $SERVICE shows up in command name
+    match=`echo "$psoutput" | awk '{print $2}' | grep "$SERVICE"`
+    if [ -z "$match" ]; then
+       pid=""
+       # This is a stale pid file.
+       rm -f "$PIDFILE"
+       # Check if message to display was provided
+       if [ ! -z "$1" ]; then
+          echo "$1"
+       fi
+    fi
+}
+
 getpid() {
    if [ -f $PIDFILE ]; then
       if [ ! -r $PIDFILE ]; then
@@ -121,30 +139,8 @@ getpid() {
       fi
       pid=`cat $PIDFILE`
 	  # Verify that a process with this pid is still running percona-agent
-      psoutput=`ps -p "$pid" -o pid,comm | grep "$pid" | tail -1` 
-      pid=`echo "$psoutput" | awk '{print $1}'`
-      # Make sure $SERVICE shows up in command name
-      match=`echo "$psoutput" | awk '{print $2}' | grep "$SERVICE"`
-      if [ -z "$match" ]; then
-         pid=""
-         # This is a stale pid file.
-         rm -f "$PIDFILE"
-         echo "Removed stale pid file: $PIDFILE"
-      fi
+      testpid "Removed stale pid file: $PIDFILE"
    fi
-}
-
-testpid() {
-	# Verify that a process with this pid is still running percona-agent
-    psoutput=`ps -p "$pid" -o pid,comm | grep "$pid" | tail -1` 
-    pid=`echo "$psoutput" | awk '{print $1}'`
-    # Make sure $SERVICE shows up in command name
-    match=`echo "$psoutput" | awk '{print $2}' | grep "$SERVICE"`
-    if [ -z "$match" ]; then
-       pid=""
-       # This is a stale pid file.
-       rm -f "$PIDFILE"
-    fi
 }
 
 start() {
