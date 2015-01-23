@@ -303,3 +303,31 @@ func (s *WorkerTestSuite) TestRealWorker(t *C) {
 	err = w.Cleanup()
 	t.Assert(err, IsNil)
 }
+
+func (s *WorkerTestSuite) TestIter(t *C) {
+	tickChan := make(chan time.Time, 1)
+	i := perfschema.NewIter(pct.NewLogger(s.logChan, "iter"), tickChan)
+	t.Assert(i, NotNil)
+
+	iterChan := i.IntervalChan()
+	t.Assert(iterChan, NotNil)
+
+	i.Start()
+	defer i.Stop()
+
+	t1, _ := time.Parse("2006-01-02 15:04:05", "2015-01-01 00:01:00")
+	t2, _ := time.Parse("2006-01-02 15:04:05", "2015-01-01 00:02:00")
+	t3, _ := time.Parse("2006-01-02 15:04:05", "2015-01-01 00:03:00")
+
+	tickChan <- t1
+	got := <-iterChan
+	t.Check(got, DeepEquals, &qan.Interval{Number: 1, StartTime: time.Time{}, StopTime: t1})
+
+	tickChan <- t2
+	got = <-iterChan
+	t.Check(got, DeepEquals, &qan.Interval{Number: 2, StartTime: t1, StopTime: t2})
+
+	tickChan <- t3
+	got = <-iterChan
+	t.Check(got, DeepEquals, &qan.Interval{Number: 3, StartTime: t2, StopTime: t3})
+}

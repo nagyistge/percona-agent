@@ -71,14 +71,19 @@ func (i *Iter) run() {
 		i.sync.Done()
 	}()
 
-	cur := &qan.Interval{}
+	prev := time.Time{}
+	cur := &qan.Interval{
+		StartTime: prev,
+	}
 	for {
 		i.logger.Debug("run:wait")
 		select {
 		case now := <-i.tickChan:
 			i.logger.Debug("run:tick")
 			cur.Number++
-			cur.StartTime = now
+			cur.StartTime = prev
+			cur.StopTime = now
+			prev = now
 			select {
 			case i.intervalChan <- cur:
 			case <-time.After(1 * time.Second):
