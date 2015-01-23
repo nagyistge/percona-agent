@@ -201,7 +201,7 @@ func (s *ManagerTestSuite) TestStartWithConfig(t *C) {
 		} else {
 			t.Check(f.Args, HasLen, 1)
 			t.Check(f.Args[0].Config, DeepEquals, config)
-			t.Check(f.Args[0].Name, Equals, "qan")
+			t.Check(f.Args[0].Name, Equals, "qan-analyzer")
 		}
 
 		// qan.Stop() stops the analyzer and leaves qan.conf on disk.

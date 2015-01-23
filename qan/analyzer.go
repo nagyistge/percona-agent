@@ -103,7 +103,7 @@ func NewRealAnalyzer(logger *pct.Logger, config Config, iter IntervalIter, mysql
 }
 
 func (a *RealAnalyzer) String() string {
-	return a.logger.Service()
+	return a.name
 }
 
 func (a *RealAnalyzer) Start() error {
