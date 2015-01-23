@@ -18,6 +18,7 @@
 package pct
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -59,8 +60,18 @@ func (p *PidFile) Set(pidFile string) error {
 		}
 		return nil
 	}
-
-	if !filepath.IsAbs(pidFile) {
+	// Two kind of pidFile values are accepted.
+	// User provided an pidFile name with and absolute path that is equal to basedir.
+	// User provided relative path that has no path whatsoever.
+	// Any other case should return an error.
+	if filepath.IsAbs(pidFile) {
+		if filepath.Dir(pidFile) != Basedir.Path() {
+			return errors.New("absolute pidfile path should be equals to basedir")
+		}
+	} else {
+		if filepath.Dir(pidFile) != "." {
+			return errors.New("relative pidfile should not contain any paths")
+		}
 		pidFile = filepath.Join(Basedir.Path(), pidFile)
 	}
 

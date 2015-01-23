@@ -69,7 +69,7 @@ func init() {
 	flag.BoolVar(&flagPing, "ping", false, "Ping API")
 	flag.BoolVar(&flagStatus, "status", false, "Agent status")
 	flag.StringVar(&flagBasedir, "basedir", pct.DEFAULT_BASEDIR, "Agent basedir")
-	flag.StringVar(&flagPidFile, "pidfile", "", "PID file")
+	flag.StringVar(&flagPidFile, "pidfile", agent.DEFAULT_PIDFILE, "PID file")
 	flag.BoolVar(&flagVersion, "version", false, "Print version")
 	flag.Parse()
 
@@ -143,9 +143,13 @@ func run() error {
 	 * PID file
 	 */
 
+	pidFilePath := agentConfig.PidFile
 	if flagPidFile != "" {
+		pidFilePath = flagPidFile
+	}
+	if pidFilePath != "" {
 		pidFile := pct.NewPidFile()
-		if err := pidFile.Set(flagPidFile); err != nil {
+		if err := pidFile.Set(pidFilePath); err != nil {
 			golog.Fatalln(err)
 		}
 		defer pidFile.Remove()

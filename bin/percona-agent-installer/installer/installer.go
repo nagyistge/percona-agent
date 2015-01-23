@@ -56,6 +56,9 @@ func NewInstaller(terminal *term.Terminal, basedir string, api pct.APIConnector,
 	if agentConfig.ApiHostname == "" {
 		agentConfig.ApiHostname = agent.DEFAULT_API_HOSTNAME
 	}
+	if agentConfig.PidFile == "" {
+		agentConfig.PidFile = agent.DEFAULT_PIDFILE
+	}
 	hostname, _ := os.Hostname()
 	defaultDSN := mysql.DSN{
 		Username: flags.String["mysql-user"],
