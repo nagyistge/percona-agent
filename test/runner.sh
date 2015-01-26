@@ -30,7 +30,7 @@ if [ "$UPDATE_DEPENDENCIES" == "yes" ]; then
 
     VENDOR_DIR="$PWD/vendor"
     export GOPATH="$VENDOR_DIR:$GOPATH"
-    go get golang.org/x/tools/cmd/cover
+    go get code.google.com/p/go.tools/cmd/cover
 fi
 
 failures="/tmp/go-test-failures.$$"
