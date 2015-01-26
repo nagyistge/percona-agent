@@ -6,5 +6,6 @@ go:
   - release
   - tip
 install:
+  - echo "Skip install"
 script:
   - test/runner.sh -u
