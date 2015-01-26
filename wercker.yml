@@ -9,5 +9,4 @@ build:
     - script:
         name: run tests
         code: |
-          export GOPATH="$GOPATH:$WERCKER_SOURCE_DIR"
           test/runner.sh -u
