@@ -35,17 +35,21 @@ type InstallerTestSuite struct{}
 var _ = Suite(&InstallerTestSuite{})
 
 func (i *InstallerTestSuite) TestIsSupportedMySQLVersion(t *C) {
-	conn := mock.NewNullMySQL()
-	conn.SetGlobalVarString("version", "5.0") // Mockup MySQL version
-
 	agentConfig := &agent.Config{}
 	flags := installer.Flags{}
 
 	inst := installer.NewInstaller(term.NewTerminal(os.Stdin, false, true), "", pct.NewAPI(), agentConfig, flags)
+	conn := mock.NewNullMySQL()
 
+	conn.SetGlobalVarString("version", "5.0") // Mockup MySQL version
 	got, err := inst.IsVersionSupported(conn)
 	t.Assert(err, IsNil)
-	t.Assert(got, Equals, false) // Installer doesn't support MySQL 5.0
+	t.Assert(got, Equals, false) // Agent doesn't support MySQL 5.0
+
+	conn.SetGlobalVarString("version", "ubuntu-something") // Malformed version
+	got, err = inst.IsVersionSupported(conn)
+	t.Assert(err, NotNil)
+	t.Assert(got, Equals, false)
 
 	conn.SetGlobalVarString("version", "5.0.1-ubuntu-something")
 	got, err = inst.IsVersionSupported(conn)
@@ -53,6 +57,11 @@ func (i *InstallerTestSuite) TestIsSupportedMySQLVersion(t *C) {
 	t.Assert(got, Equals, false)
 
 	conn.SetGlobalVarString("version", "5.1.0-ubuntu-something")
+	got, err = inst.IsVersionSupported(conn)
+	t.Assert(err, IsNil)
+	t.Assert(got, Equals, true)
+
+	conn.SetGlobalVarString("version", "10.1.0-MariaDB")
 	got, err = inst.IsVersionSupported(conn)
 	t.Assert(err, IsNil)
 	t.Assert(got, Equals, true)
