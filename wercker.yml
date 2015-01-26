@@ -5,6 +5,7 @@ env:
   PCT_TEST_MYSQL_DSN: $$WERCKER_MYSQL_URL$$
 build:
   steps:
+    - setup-go-workspace
     - script:
         name: run tests
         code: |
