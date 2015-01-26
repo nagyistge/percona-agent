@@ -1,0 +1,8 @@
+box: wercker/golang
+services:
+    - wercker/mysql
+env:
+  PCT_TEST_MYSQL_DSN: $$WERCKER_MYSQL_URL$$
+build:
+  steps:
+    - test/runner.sh
