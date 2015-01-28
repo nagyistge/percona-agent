@@ -29,14 +29,16 @@ type NullMySQL struct {
 	explain     map[string]*proto.ExplainResult
 	uptime      int64
 	uptimeCount uint
+	stringVars  map[string]string
 	SetChan     chan bool
 }
 
 func NewNullMySQL() *NullMySQL {
 	n := &NullMySQL{
-		set:     []mysql.Query{},
-		explain: make(map[string]*proto.ExplainResult),
-		SetChan: make(chan bool),
+		set:        []mysql.Query{},
+		explain:    make(map[string]*proto.ExplainResult),
+		stringVars: make(map[string]string),
+		SetChan:    make(chan bool),
 	}
 	return n
 }
@@ -85,7 +87,15 @@ func (n *NullMySQL) Reset() {
 }
 
 func (n *NullMySQL) GetGlobalVarString(varName string) string {
+	value, ok := n.stringVars[varName]
+	if ok {
+		return value
+	}
 	return ""
+}
+
+func (n *NullMySQL) SetGlobalVarString(name, value string) {
+	n.stringVars[name] = value
 }
 
 func (n *NullMySQL) Uptime() (int64, error) {
