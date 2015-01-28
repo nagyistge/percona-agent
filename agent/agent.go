@@ -39,6 +39,7 @@ import (
 var REVISION string = "0"
 var VERSION string = "1.0.10"
 var REL string = ""
+var MIN_SUPPORTED_MYSQL_VERSION = "5.1.0"
 
 const (
 	CMD_QUEUE_SIZE    = 10
@@ -293,6 +294,9 @@ func LoadConfig() ([]byte, error) {
 	}
 	if config.Keepalive == 0 {
 		config.Keepalive = DEFAULT_KEEPALIVE
+	}
+	if config.PidFile == "" {
+		config.PidFile = DEFAULT_PIDFILE
 	}
 	if config.ApiKey == "" {
 		return nil, errors.New("Missing ApiKey")
