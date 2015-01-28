@@ -281,7 +281,8 @@ func (s *WorkerTestSuite) TestRealWorker(t *C) {
 	}
 	t.Check(res.Class, HasLen, 1)
 	class := res.Class[0]
-	t.Check(class.Id, Equals, "01C5BE6B5201254E")
+	// Digests on different versions or distros of MySQL don't match
+	//t.Check(class.Id, Equals, "01C5BE6B5201254E")
 	t.Check(class.Fingerprint, Equals, "SELECT ? FROM DUAL ")
 	queryTime := class.Metrics.TimeMetrics["Query_time"]
 	if queryTime.Min == 0 {
