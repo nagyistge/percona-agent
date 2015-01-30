@@ -133,6 +133,9 @@ func (w *Worker) Run() (*qan.Result, error) {
 	w.logger.Debug("Run:call")
 	defer w.logger.Debug("Run:return")
 
+	w.status.Update(w.name, "Starting job "+w.job.Id)
+	defer w.status.Update(w.name, "Idle")
+
 	stopped := false
 	w.running = true
 	defer func() {
@@ -142,12 +145,7 @@ func (w *Worker) Run() (*qan.Result, error) {
 		w.running = false
 	}()
 
-	w.status.Update(w.name, "Starting job "+w.job.Id)
-	result := &qan.Result{}
-
-	defer w.status.Update(w.name, "Idle")
-
-	// Open the slow log file.
+	// Open the slow log file. Be sure to close it else we'll leak fd.
 	file, err := os.Open(w.job.SlowLogFile)
 	if err != nil {
 		return nil, err
@@ -156,6 +154,7 @@ func (w *Worker) Run() (*qan.Result, error) {
 
 	// Create a slow log parser and run it.  It sends log.Event via its channel.
 	// Be sure to stop it when done, else we'll leak goroutines.
+	result := &qan.Result{}
 	opts := log.Options{
 		StartOffset: uint64(w.job.StartOffset),
 		FilterAdminCommand: map[string]bool{
@@ -164,7 +163,6 @@ func (w *Worker) Run() (*qan.Result, error) {
 		},
 	}
 	p := w.MakeLogParser(file, opts)
-	defer p.Stop()
 	go func() {
 		defer func() {
 			if err := recover(); err != nil {
@@ -178,6 +176,7 @@ func (w *Worker) Run() (*qan.Result, error) {
 			result.Error = err.Error()
 		}
 	}()
+	defer p.Stop()
 
 	// Make an event aggregate to do all the heavy lifting: fingerprint
 	// queries, group, and aggregate.
@@ -190,6 +189,10 @@ func (w *Worker) Run() (*qan.Result, error) {
 	rateType := ""
 	rateLimit := uint(0)
 
+	// Do fingerprinting in a separate Go routine so we can recover in case
+	// query.Fingerprint() crashes. We don't want one bad fingerprint to stop
+	// parsing the entire interval. Also, we want to log crashes and hopefully
+	// fix the fingerprinter.
 	go w.fingerprinter()
 	defer func() { w.doneChan <- true }()
 
@@ -218,13 +221,19 @@ EVENT_LOOP:
 			break EVENT_LOOP
 		}
 
-		// Stop if past file end offset.
+		// Stop if past file end offset. This happens often because we parse
+		// only a slice of the slow log, and it's growing (if MySQL is busy),
+		// so typical case is, for example, parsing from offset 100 to 5000
+		// but slow log is already 7000 bytes large and growing. So the first
+		// event with offset > 5000 marks the end (StopOffset) of this slice.
 		if int64(event.Offset) >= w.job.EndOffset {
 			result.StopOffset = int64(event.Offset)
 			break EVENT_LOOP
 		}
 
-		// Stop if rate limits are mixed.
+		// Stop if rate limits are mixed. This shouldn't happen. If it does,
+		// another program or person might have reconfigured the rate limit.
+		// We don't handle by design this because it's too much of an edge case.
 		if event.RateType != "" {
 			if rateType != "" {
 				if rateType != event.RateType || rateLimit != event.RateLimit {
@@ -240,7 +249,8 @@ EVENT_LOOP:
 			}
 		}
 
-		// Fingerprint the query and add it to the event aggregator.
+		// Fingerprint the query and add it to the event aggregator. If the
+		// fingerprinter crashes, start it again and skip this event.
 		var fingerprint string
 		w.queryChan <- event.Query
 		select {
@@ -253,6 +263,11 @@ EVENT_LOOP:
 		}
 	}
 
+	// If StopOffset isn't set above it means we reached the end of the slow log
+	// file. This happens if MySQL isn't busy so the slow log didn't grow any,
+	// or we rotated the slow log in Setup() so we're finishing the rotated slow
+	// log file. So the StopOffset is the end of the file which we're already
+	// at, so use SEEK_CUR.
 	if result.StopOffset == 0 {
 		result.StopOffset, _ = file.Seek(0, os.SEEK_CUR)
 	}
@@ -311,6 +326,8 @@ func (w *Worker) Status() map[string]string {
 }
 
 func (w *Worker) SetLogParser(p log.LogParser) {
+	// This is just for testing, so tests can inject a parser that does
+	// abnormal things like be slow, crash, etc.
 	w.logParser = p
 }
 
@@ -349,6 +366,7 @@ func (w *Worker) rotateSlowLog(interval *qan.Interval) error {
 	defer w.logger.Debug("rotateSlowLog:return")
 
 	w.status.Update(w.name, "Rotating slow log")
+	defer w.status.Update(w.name, "Idle")
 
 	if err := w.mysqlConn.Connect(2); err != nil {
 		return err
