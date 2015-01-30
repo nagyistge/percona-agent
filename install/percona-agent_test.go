@@ -41,7 +41,6 @@ type MainTestSuite struct {
 	cmd        *exec.Cmd
 	basedir    string
 	bin        string
-	anotherbin string
 	initscript string
 	username   string
 }
