@@ -170,11 +170,15 @@ type Worker struct {
 	getRows   GetDigestRowsFunc
 	getText   GetDigestTextFunc
 	// --
-	name   string
-	status *pct.Status
-	prev   Snapshot
-	curr   Snapshot
-	iter   *qan.Interval
+	name          string
+	status        *pct.Status
+	prev          Snapshot
+	curr          Snapshot
+	iter          *qan.Interval
+	lastErr       error
+	lastRowCnt    uint
+	lastFetchTime float64
+	lastPrepTime  float64
 }
 
 func NewWorker(logger *pct.Logger, mysqlConn mysql.Connector, getRows GetDigestRowsFunc, getText GetDigestTextFunc) *Worker {
@@ -186,7 +190,7 @@ func NewWorker(logger *pct.Logger, mysqlConn mysql.Connector, getRows GetDigestR
 		getText:   getText,
 		// --
 		name:   name,
-		status: pct.NewStatus([]string{name}),
+		status: pct.NewStatus([]string{name, name + "-last"}),
 		prev:   make(Snapshot),
 	}
 	return w
@@ -204,6 +208,9 @@ func (w *Worker) Setup(interval *qan.Interval) error {
 		}
 	}
 	w.iter = interval
+	w.lastRowCnt = 0
+	w.lastFetchTime = 0
+	w.lastPrepTime = 0
 	return nil
 }
 
@@ -216,23 +223,36 @@ func (w *Worker) Run() (*qan.Result, error) {
 	w.status.Update(w.name, "Connecting to MySQL")
 	if err := w.mysqlConn.Connect(1); err != nil {
 		w.logger.Warn("Cannot connect to MySQL:", err)
-		return nil, nil
+		w.lastErr = err
+		return nil, nil // not an error to caller
 	}
 	defer w.mysqlConn.Close()
 
 	var err error
 	w.curr, err = w.getSnapshot(w.prev)
 	if err != nil {
+		w.lastErr = err
 		return nil, err
 	}
 
-	return w.prepareResult(w.prev, w.curr)
+	res, err := w.prepareResult(w.prev, w.curr)
+	if err != nil {
+		w.lastErr = err
+		return nil, err
+	}
+
+	return res, nil
 }
 
 func (w *Worker) Cleanup() error {
 	w.logger.Debug("Cleanup:call:", w.iter.Number)
 	defer w.logger.Debug("Cleanup:return:", w.iter.Number)
 	w.prev = w.curr
+	last := fmt.Sprintf("rows: %d fetch: %.3fs prep: %.3fs", w.lastRowCnt, w.lastFetchTime, w.lastPrepTime)
+	if w.lastErr != nil {
+		last += fmt.Sprintf(" error: %s", w.lastErr)
+	}
+	w.status.Update(w.name+"-last", last)
 	return nil
 }
 
@@ -249,6 +269,10 @@ func (w *Worker) Status() map[string]string {
 func (w *Worker) reset() {
 	w.iter = nil
 	w.prev = make(Snapshot)
+	w.lastErr = nil
+	w.lastRowCnt = 0
+	w.lastFetchTime = 0
+	w.lastPrepTime = 0
 }
 
 func (w *Worker) getSnapshot(prev Snapshot) (Snapshot, error) {
@@ -257,6 +281,9 @@ func (w *Worker) getSnapshot(prev Snapshot) (Snapshot, error) {
 
 	w.status.Update(w.name, "Processing rows")
 	defer w.status.Update(w.name, "Idle")
+
+	t0 := time.Now()
+	defer func() { w.lastFetchTime = time.Now().Sub(t0).Seconds() }()
 
 	curr := make(Snapshot)
 	rowChan := make(chan *DigestRow)
@@ -272,6 +299,7 @@ ROW_LOOP:
 	for {
 		select {
 		case row := <-rowChan:
+			w.lastRowCnt++
 			classId := strings.ToUpper(row.Digest[16:32])
 			if class, haveClass := curr[classId]; haveClass {
 				if _, haveRow := class.Rows[row.Schema]; haveRow {
@@ -315,6 +343,9 @@ func (w *Worker) prepareResult(prev, curr Snapshot) (*qan.Result, error) {
 
 	w.status.Update(w.name, "Preparing result")
 	defer w.status.Update(w.name, "Idle")
+
+	t0 := time.Now()
+	defer func() { w.lastPrepTime = time.Now().Sub(t0).Seconds() }()
 
 	global := event.NewGlobalClass()
 	classes := []*event.QueryClass{}

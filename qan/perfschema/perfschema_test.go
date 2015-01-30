@@ -23,6 +23,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -172,6 +173,11 @@ func (s *WorkerTestSuite) Test001(t *C) {
 
 	err = w.Cleanup()
 	t.Assert(err, IsNil)
+
+	// Quick side test that Status() works and reports last stats.
+	status := w.Status()
+	t.Logf("%+v", status)
+	t.Check(strings.HasPrefix(status["qan-worker-last"], "rows: 1"), Equals, true)
 }
 
 func (s *WorkerTestSuite) Test002(t *C) {
