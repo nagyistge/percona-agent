@@ -97,14 +97,16 @@ func (s *WorkerTestSuite) loadResult(file string) (*qan.Result, error) {
 }
 
 func makeGetRowsFunc(iters [][]*perfschema.DigestRow) perfschema.GetDigestRowsFunc {
-	return func(c chan<- *perfschema.DigestRow) error {
+	return func(c chan<- *perfschema.DigestRow, done chan<- error) error {
 		if len(iters) == 0 {
 			return fmt.Errorf("No more iters")
 		}
 		rows := iters[0]
 		iters = iters[1:len(iters)]
 		go func() {
-			defer close(c)
+			defer func() {
+				done <- nil
+			}()
 			for _, row := range rows {
 				c <- row
 			}

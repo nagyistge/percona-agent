@@ -82,8 +82,8 @@ func NewRealWorkerFactory(logChan chan *proto.LogEntry) *RealWorkerFactory {
 }
 
 func (f *RealWorkerFactory) Make(name string, mysqlConn mysql.Connector) *Worker {
-	getRows := func(c chan<- *DigestRow) error {
-		return GetDigestRows(mysqlConn, c)
+	getRows := func(c chan<- *DigestRow, doneChan chan<- error) error {
+		return GetDigestRows(mysqlConn, c, doneChan)
 	}
 	getText := func(digest string) (string, error) {
 		return GetDigestText(mysqlConn, digest)
@@ -91,7 +91,7 @@ func (f *RealWorkerFactory) Make(name string, mysqlConn mysql.Connector) *Worker
 	return NewWorker(pct.NewLogger(f.logChan, name), mysqlConn, getRows, getText)
 }
 
-func GetDigestRows(mysqlConn mysql.Connector, c chan<- *DigestRow) error {
+func GetDigestRows(mysqlConn mysql.Connector, c chan<- *DigestRow, doneChan chan<- error) error {
 	rows, err := mysqlConn.DB().Query(
 		"SELECT " +
 			" COALESCE(SCHEMA_NAME, ''), COALESCE(DIGEST, ''), COUNT_STAR," +
@@ -103,14 +103,22 @@ func GetDigestRows(mysqlConn mysql.Connector, c chan<- *DigestRow) error {
 			" FIRST_SEEN, LAST_SEEN" +
 			" FROM performance_schema.events_statements_summary_by_digest")
 	if err != nil {
+		// This bubbles up to the analyzer which logs it as an error:
+		//   0. Analyer.Worker.Run()
+		//   1. Worker.Run().getSnapShot()
+		//   2. Worker.getSnapshot().getRows() (ptr to this func)
+		//   3. here
 		return err
 	}
 	go func() {
-		defer close(c)
-		defer rows.Close()
+		var err error
+		defer func() {
+			rows.Close()
+			doneChan <- err
+		}()
 		for rows.Next() {
 			row := &DigestRow{}
-			err := rows.Scan(
+			err = rows.Scan(
 				&row.Schema,
 				&row.Digest,
 				&row.CountStar,
@@ -131,13 +139,12 @@ func GetDigestRows(mysqlConn mysql.Connector, c chan<- *DigestRow) error {
 				&row.LastSeen,
 			)
 			if err != nil {
-				// todo
-				continue
+				return // This bubbles up too (see above).
 			}
 			c <- row
 		}
-		if err := rows.Err(); err != nil {
-			// todo
+		if err = rows.Err(); err != nil {
+			return // This bubbles up too (see above).
 		}
 	}()
 	return nil
@@ -154,7 +161,7 @@ func GetDigestText(mysqlConn mysql.Connector, digest string) (string, error) {
 
 // --------------------------------------------------------------------------
 
-type GetDigestRowsFunc func(c chan<- *DigestRow) error
+type GetDigestRowsFunc func(c chan<- *DigestRow, doneChan chan<- error) error
 type GetDigestTextFunc func(string) (string, error)
 
 type Worker struct {
@@ -234,45 +241,53 @@ func (w *Worker) getSnapshot(prev Snapshot) (Snapshot, error) {
 
 	curr := make(Snapshot)
 	rowChan := make(chan *DigestRow)
-	if err := w.getRows(rowChan); err != nil {
+	doneChan := make(chan error, 1)
+	if err := w.getRows(rowChan, doneChan); err != nil {
 		if err == sql.ErrNoRows {
 			return curr, nil
 		}
 		return nil, err
 	}
-	for row := range rowChan {
-		classId := strings.ToUpper(row.Digest[16:32])
-		if class, haveClass := curr[classId]; haveClass {
-			if _, haveRow := class.Rows[row.Schema]; haveRow {
-				w.logger.Error("Got class twice: ", row.Schema, row.Digest)
-				continue
-			}
-			class.Rows[row.Schema] = row
-		} else {
-			// Get class digext text (fingerprint).
-			var digestText string
-			if prevClass, havePrevClass := prev[classId]; havePrevClass {
-				// Class was in previous iter, so re-use its digest text.
-				digestText = prevClass.DigestText
-			} else {
-				// Have never seen class before, so get digext text from perf schema.
-				var err error
-				digestText, err = w.getText(row.Digest)
-				if err != nil {
-					w.logger.Error(err)
+	var err error // from getRows() on doneChan
+ROW_LOOP:
+	for {
+		select {
+		case row := <-rowChan:
+			classId := strings.ToUpper(row.Digest[16:32])
+			if class, haveClass := curr[classId]; haveClass {
+				if _, haveRow := class.Rows[row.Schema]; haveRow {
+					w.logger.Error("Got class twice: ", row.Schema, row.Digest)
 					continue
 				}
+				class.Rows[row.Schema] = row
+			} else {
+				// Get class digext text (fingerprint).
+				var digestText string
+				if prevClass, havePrevClass := prev[classId]; havePrevClass {
+					// Class was in previous iter, so re-use its digest text.
+					digestText = prevClass.DigestText
+				} else {
+					// Have never seen class before, so get digext text from perf schema.
+					var err error
+					digestText, err = w.getText(row.Digest)
+					if err != nil {
+						w.logger.Error(err)
+						continue
+					}
+				}
+				// Create the class and init with this schema and row.
+				curr[classId] = Class{
+					DigestText: digestText,
+					Rows: map[string]*DigestRow{
+						row.Schema: row,
+					},
+				}
 			}
-			// Create the class and init with this schema and row.
-			curr[classId] = Class{
-				DigestText: digestText,
-				Rows: map[string]*DigestRow{
-					row.Schema: row,
-				},
-			}
+		case err = <-doneChan:
+			break ROW_LOOP
 		}
 	}
-	return curr, nil
+	return curr, err
 }
 
 func (w *Worker) prepareResult(prev, curr Snapshot) (*qan.Result, error) {
