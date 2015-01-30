@@ -273,7 +273,7 @@ func (s *WorkerTestSuite) TestRealWorker(t *C) {
 	time.Sleep(1 * time.Second)
 
 	// Second interval and a result.
-	err = w.Setup(&qan.Interval{Number: 1, StartTime: time.Now().UTC()})
+	err = w.Setup(&qan.Interval{Number: 2, StartTime: time.Now().UTC()})
 	t.Assert(err, IsNil)
 
 	res, err = w.Run()
@@ -305,6 +305,154 @@ func (s *WorkerTestSuite) TestRealWorker(t *C) {
 
 	err = w.Cleanup()
 	t.Assert(err, IsNil)
+}
+
+func (s *WorkerTestSuite) TestIterOutOfSeq(t *C) {
+	if s.dsn == "" {
+		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
+	}
+	mysqlConn := mysql.NewConnection(s.dsn)
+	err := mysqlConn.Connect(1)
+	t.Assert(err, IsNil)
+	defer mysqlConn.Close()
+
+	f := perfschema.NewRealWorkerFactory(s.logChan)
+	w := f.Make("qan-worker", mysqlConn)
+
+	start := []mysql.Query{
+		mysql.Query{Verify: "performance_schema", Expect: "1"},
+		mysql.Query{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'YES' WHERE NAME = 'statements_digest'"},
+		mysql.Query{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'YES', TIMED = 'YES' WHERE NAME LIKE 'statement/sql/%'"},
+		mysql.Query{Set: "TRUNCATE performance_schema.events_statements_summary_by_digest"},
+	}
+	if err := mysqlConn.Set(start); err != nil {
+		t.Fatal(err)
+	}
+	stop := []mysql.Query{
+		mysql.Query{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'NO' WHERE NAME = 'statements_digest'"},
+		mysql.Query{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'NO', TIMED = 'NO' WHERE NAME LIKE 'statement/sql/%'"},
+	}
+	defer func() {
+		if err := mysqlConn.Set(stop); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// SCHEMA_NAME: NULL
+	//      DIGEST: fbe070dfb47e4a2401c5be6b5201254e
+	// DIGEST_TEXT: SELECT ? FROM DUAL
+	_, err = mysqlConn.DB().Exec("SELECT 'teapot' FROM DUAL")
+
+	// First interval.
+	err = w.Setup(&qan.Interval{Number: 1, StartTime: time.Now().UTC()})
+	t.Assert(err, IsNil)
+
+	res, err := w.Run()
+	t.Assert(err, IsNil)
+	t.Check(res, IsNil)
+
+	err = w.Cleanup()
+	t.Assert(err, IsNil)
+
+	// Some query activity between intervals.
+	_, err = mysqlConn.DB().Exec("SELECT 'teapot' FROM DUAL")
+	time.Sleep(1 * time.Second)
+
+	// Simulate the ticker being reset which results in it resetting
+	// its internal interval number, so instead of 2 here we have 1 again.
+	// Second interval and a result.
+	err = w.Setup(&qan.Interval{Number: 1, StartTime: time.Now().UTC()})
+	t.Assert(err, IsNil)
+
+	res, err = w.Run()
+	t.Assert(err, IsNil)
+	t.Check(res, IsNil) // no result due to out of sequence interval
+
+	err = w.Cleanup()
+	t.Assert(err, IsNil)
+
+	// Simulate normal operation resuming, i.e. interval 2.
+	err = w.Setup(&qan.Interval{Number: 2, StartTime: time.Now().UTC()})
+	t.Assert(err, IsNil)
+
+	// Now there should be a result.
+	res, err = w.Run()
+	t.Assert(res, NotNil)
+	if len(res.Class) == 0 {
+		t.Error("Expected len(res.Class) > 0")
+	}
+}
+
+func (s *WorkerTestSuite) TestIterClockReset(t *C) {
+	if s.dsn == "" {
+		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
+	}
+	mysqlConn := mysql.NewConnection(s.dsn)
+	err := mysqlConn.Connect(1)
+	t.Assert(err, IsNil)
+	defer mysqlConn.Close()
+
+	f := perfschema.NewRealWorkerFactory(s.logChan)
+	w := f.Make("qan-worker", mysqlConn)
+
+	start := []mysql.Query{
+		mysql.Query{Verify: "performance_schema", Expect: "1"},
+		mysql.Query{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'YES' WHERE NAME = 'statements_digest'"},
+		mysql.Query{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'YES', TIMED = 'YES' WHERE NAME LIKE 'statement/sql/%'"},
+		mysql.Query{Set: "TRUNCATE performance_schema.events_statements_summary_by_digest"},
+	}
+	if err := mysqlConn.Set(start); err != nil {
+		t.Fatal(err)
+	}
+	stop := []mysql.Query{
+		mysql.Query{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'NO' WHERE NAME = 'statements_digest'"},
+		mysql.Query{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'NO', TIMED = 'NO' WHERE NAME LIKE 'statement/sql/%'"},
+	}
+	defer func() {
+		if err := mysqlConn.Set(stop); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Generate some perf schema data.
+	_, err = mysqlConn.DB().Exec("SELECT 'teapot' FROM DUAL")
+
+	// First interval.
+	now := time.Now().UTC()
+	err = w.Setup(&qan.Interval{Number: 1, StartTime: now})
+	t.Assert(err, IsNil)
+
+	res, err := w.Run()
+	t.Assert(err, IsNil)
+	t.Check(res, IsNil)
+
+	err = w.Cleanup()
+	t.Assert(err, IsNil)
+
+	// Simulate the ticker sending a time that's earlier than the previous
+	// tick, which shouldn't happen.
+	now = now.Add(-1 * time.Minute)
+	err = w.Setup(&qan.Interval{Number: 2, StartTime: now})
+	t.Assert(err, IsNil)
+
+	res, err = w.Run()
+	t.Assert(err, IsNil)
+	t.Check(res, IsNil) // no result due to out of sequence interval
+
+	err = w.Cleanup()
+	t.Assert(err, IsNil)
+
+	// Simulate normal operation resuming.
+	now = now.Add(1 * time.Minute)
+	err = w.Setup(&qan.Interval{Number: 3, StartTime: now})
+	t.Assert(err, IsNil)
+
+	// Now there should be a result.
+	res, err = w.Run()
+	t.Assert(res, NotNil)
+	if len(res.Class) == 0 {
+		t.Error("Expected len(res.Class) > 0")
+	}
 }
 
 func (s *WorkerTestSuite) TestIter(t *C) {

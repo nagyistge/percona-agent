@@ -193,6 +193,16 @@ func NewWorker(logger *pct.Logger, mysqlConn mysql.Connector, getRows GetDigestR
 }
 
 func (w *Worker) Setup(interval *qan.Interval) error {
+	if w.iter != nil {
+		// Ensure intervals are in sequence, else reset.
+		if interval.Number != w.iter.Number+1 {
+			w.logger.Warn(fmt.Sprintf("Interval out of sequence: got %d, expected %d", interval.Number, w.iter.Number+1))
+			w.reset()
+		} else if interval.StartTime.Before(w.iter.StartTime) {
+			w.logger.Warn(fmt.Sprintf("Interval reset: previous at %s, now %s", interval.StartTime, w.iter.StartTime))
+			w.reset()
+		}
+	}
 	w.iter = interval
 	return nil
 }
@@ -201,23 +211,27 @@ func (w *Worker) Run() (*qan.Result, error) {
 	w.logger.Debug("Run:call:", w.iter.Number)
 	defer w.logger.Debug("Run:return:", w.iter.Number)
 
+	defer w.status.Update(w.name, "Idle")
+
+	w.status.Update(w.name, "Connecting to MySQL")
 	if err := w.mysqlConn.Connect(1); err != nil {
 		w.logger.Warn("Cannot connect to MySQL:", err)
 		return nil, nil
 	}
 	defer w.mysqlConn.Close()
+
 	var err error
 	w.curr, err = w.getSnapshot(w.prev)
 	if err != nil {
 		return nil, err
 	}
+
 	return w.prepareResult(w.prev, w.curr)
 }
 
 func (w *Worker) Cleanup() error {
 	w.logger.Debug("Cleanup:call:", w.iter.Number)
 	defer w.logger.Debug("Cleanup:return:", w.iter.Number)
-	w.status.Update(w.name, "Idle")
 	w.prev = w.curr
 	return nil
 }
@@ -231,6 +245,11 @@ func (w *Worker) Status() map[string]string {
 }
 
 // --------------------------------------------------------------------------
+
+func (w *Worker) reset() {
+	w.iter = nil
+	w.prev = make(Snapshot)
+}
 
 func (w *Worker) getSnapshot(prev Snapshot) (Snapshot, error) {
 	w.logger.Debug("getSnapshot:call:", w.iter.Number)
