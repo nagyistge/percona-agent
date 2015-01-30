@@ -248,9 +248,10 @@ func (w *Worker) Cleanup() error {
 	w.logger.Debug("Cleanup:call:", w.iter.Number)
 	defer w.logger.Debug("Cleanup:return:", w.iter.Number)
 	w.prev = w.curr
-	last := fmt.Sprintf("rows: %d fetch: %.3fs prep: %.3fs", w.lastRowCnt, w.lastFetchTime, w.lastPrepTime)
+	last := fmt.Sprintf("rows: %d, fetch: %s, prep: %s",
+		w.lastRowCnt, pct.Duration(w.lastFetchTime), pct.Duration(w.lastPrepTime))
 	if w.lastErr != nil {
-		last += fmt.Sprintf(" error: %s", w.lastErr)
+		last += fmt.Sprintf(", error: %s", w.lastErr)
 	}
 	w.status.Update(w.name+"-last", last)
 	return nil
