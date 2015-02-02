@@ -251,6 +251,8 @@ func (w *SlowLogWorker) fingerprinter() {
 			w.errChan <- err
 		}
 	}()
+	// By default replace numbers in words with ?
+	query.ReplaceNumbersInWords = true
 	for {
 		select {
 		case q := <-w.queryChan:
