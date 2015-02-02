@@ -87,6 +87,9 @@ type Worker struct {
 }
 
 func NewWorker(logger *pct.Logger, config qan.Config, mysqlConn mysql.Connector) *Worker {
+	// By default replace numbers in words with ?
+	query.ReplaceNumbersInWords = true
+
 	name := logger.Service()
 	w := &Worker{
 		logger:    logger,
