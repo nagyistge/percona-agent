@@ -196,8 +196,6 @@ stop() {
     get_pid_from_file
     if ! is_pid_running_agent; then
         remove_stale_pidfile "Removed stale pid file: $PIDFILE"
-    fi
-    if ! is_pid_running_agent; then
         echo "$SERVICE is not running."
         return 0
     else
