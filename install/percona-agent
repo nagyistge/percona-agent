@@ -131,11 +131,11 @@ remove_stale_pidfile() {
     # if succeeds echo optional $1 parameter
     # Note: rm will always exit with status 0
     found="no"
-    if [ -f "$PIDFILE" ]; then
+    if [ -f $PIDFILE ]; then
         found="yes"
     fi
     rm -f "$PIDFILE"
-    if [ $found = "yes" ] && [ ! -f "$PIDFILE" ] && [ -n "$1" ]; then
+    if [ $found = "yes" ] && [ ! -f $PIDFILE ] && [ -n "$1" ]; then
         # If file was actually deleted and a message to display was provided
         echo "$1"
     fi
