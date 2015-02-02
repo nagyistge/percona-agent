@@ -92,6 +92,9 @@ type SlowLogWorker struct {
 }
 
 func NewSlowLogWorker(logger *pct.Logger, name string) *SlowLogWorker {
+	// By default replace numbers in words with ?
+	query.ReplaceNumbersInWords = true
+
 	w := &SlowLogWorker{
 		logger: logger,
 		name:   name,
