@@ -156,7 +156,7 @@ func (a *RealAnalyzer) configureMySQL(config []mysql.Query, tryLimit int) {
 	}()
 
 	try := 0
-	for (tryLimit == 0) || (try <= tryLimit) {
+	for (tryLimit == 0) || (try < tryLimit) {
 		try++
 
 		select {
