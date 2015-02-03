@@ -72,23 +72,24 @@ func (i *Iter) run() {
 	}()
 
 	prev := time.Time{}
-	cur := &qan.Interval{
-		StartTime: prev,
-	}
+	n := 0
 	for {
 		i.logger.Debug("run:wait")
 		select {
 		case now := <-i.tickChan:
 			i.logger.Debug("run:tick")
-			cur.Number++
-			cur.StartTime = prev
-			cur.StopTime = now
-			prev = now
-			select {
-			case i.intervalChan <- cur:
-			case <-time.After(1 * time.Second):
-				i.logger.Warn("Lost interval: ", cur)
+			n++
+			iter := &qan.Interval{
+				Number:    n,
+				StartTime: prev,
+				StopTime:  now,
 			}
+			select {
+			case i.intervalChan <- iter:
+			case <-time.After(1 * time.Second):
+				i.logger.Warn("Lost interval: ", iter)
+			}
+			prev = now
 		case <-i.sync.StopChan:
 			i.logger.Debug("run:stop")
 			return
