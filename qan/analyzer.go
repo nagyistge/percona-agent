@@ -202,30 +202,29 @@ func (a *RealAnalyzer) run() {
 	go a.configureMySQL(a.config.Start, 0) // try forever
 
 	defer func() {
+		a.logger.Info("Stopping")
+
 		a.status.Update(a.name, "Stopping worker")
-		a.logger.Info("Stopping worker")
 		a.worker.Stop()
 
 		a.status.Update(a.name, "Stopping interval iter")
-		a.logger.Info("Stopping interval iter")
 		a.iter.Stop()
 
 		if !mysqlConfigured {
 			a.status.Update(a.name, "Stopping MySQL config")
-			a.logger.Info("Stopping MySQL config")
 			a.configureMySQLSync.Stop()
 			a.configureMySQLSync.Wait()
 		}
 
 		a.status.Update(a.name, "Stopping QAN on MySQL")
-		a.logger.Info("Stopping QAN on MySQL")
 		a.configureMySQL(a.config.Stop, 1) // try once
 
 		if err := recover(); err != nil {
-			a.logger.Error(a.name+" crashed: ", err)
+			a.logger.Error("QAN crashed: ", err)
 			a.status.Update(a.name, "Crashed")
 		} else {
 			a.status.Update(a.name, "Stopped")
+			a.logger.Info("Stopped")
 		}
 
 		a.runSync.Done()
