@@ -119,7 +119,7 @@ is_pid_running_agent() {
         # ps does not like empty string as pid
         return 1
     fi
-    match=`ps -p "$PID" -o comm | grep -o "$SERVICE"`
+    match=`ps -p "$PID" -o comm 2>/dev/null | grep -o "$SERVICE"`
     if [ -z "$match" ]; then
        return 1
     fi
