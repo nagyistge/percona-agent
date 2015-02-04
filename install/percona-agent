@@ -119,7 +119,7 @@ is_pid_running_agent() {
         # ps does not like empty string as pid
         return 1
     fi
-    match=`ps -p "$PID" -o comm | grep -o "$SERVICE"`
+    match=`ps -p "$PID" -o comm 2>/dev/null | grep -o "$SERVICE"`
     if [ -z "$match" ]; then
        return 1
     fi
@@ -131,11 +131,11 @@ remove_stale_pidfile() {
     # if succeeds echo optional $1 parameter
     # Note: rm will always exit with status 0
     found="no"
-    if [ -f $PIDFILE ]; then
+    if [ -f "$PIDFILE" ]; then
         found="yes"
     fi
     rm -f "$PIDFILE"
-    if [ $found = "yes" ] && [ ! -f $PIDFILE ] && [ -n "$1" ]; then
+    if [ $found = "yes" ] && [ ! -f "$PIDFILE" ] && [ -n "$1" ]; then
         # If file was actually deleted and a message to display was provided
         echo "$1"
     fi
@@ -143,16 +143,16 @@ remove_stale_pidfile() {
 
 get_pid_from_file() {
    PID=""
-   if [ ! -f $PIDFILE ]; then
+   if [ ! -f "$PIDFILE" ]; then
       return 1
    fi
 
-   if [ ! -r $PIDFILE ]; then
+   if [ ! -r "$PIDFILE" ]; then
       echo "Cannot read $PIDFILE." >&2
       exit 1
    fi
 
-   PID=`cat $PIDFILE`
+   PID=`cat "$PIDFILE"`
    return 0
 }
 
