@@ -43,6 +43,8 @@ type MainTestSuite struct {
 	bin        string
 	initscript string
 	username   string
+	builddir   string
+	buildbin   string
 }
 
 const (
@@ -53,25 +55,42 @@ var _ = Suite(&MainTestSuite{})
 
 func (s *MainTestSuite) SetUpSuite(t *C) {
 	var err error
-
-	// We can't/shouldn't use /usr/local/percona/ (the default basedir),
-	// so use a tmpdir instead with only a bin dir inside
-	s.basedir, err = ioutil.TempDir("/tmp", "percona-agent-init-test-")
-	t.Assert(err, IsNil)
-	err = os.Mkdir(filepath.Join(s.basedir, pct.BIN_DIR), 0777)
+	// Create tmp dir to store compiled mocked agent
+	s.builddir, err = ioutil.TempDir("/tmp", "percona-agent-init-test-build-")
 	t.Assert(err, IsNil)
 
-	// Lets compile and place the mocked percona-agent on the tmp basedir
-	s.bin = filepath.Join(s.basedir, pct.BIN_DIR, "percona-agent")
-	cmd := exec.Command("go", "build", "-o", s.bin, MOCKED_PERCONA_AGENT)
+	// Lets compile and place the mocked percona-agent on the tmp builddir
+	s.buildbin = filepath.Join(s.builddir, "percona-agent")
+	cmd := exec.Command("go", "build", "-o", s.buildbin, MOCKED_PERCONA_AGENT)
 	err = cmd.Run()
 	// Failed to compile mocked percona-agent
 	t.Assert(err, IsNil, Commentf("Failed to build mocked percona agent: %v", err))
 
-	// Get current username to set test env variable
+	// Get current username to set test env variables on each test setup
 	user, erruser := user.Current()
 	t.Assert(erruser, IsNil, Commentf("Failed to obtain current user: %v", err))
 	s.username = user.Username
+}
+
+func (s *MainTestSuite) SetUpTest(t *C) {
+	// Make a new mocked installation for test, copying the already compiled mocked agent.
+	// Using the same tmp basedir for all tests could lead to dissapearing of pid files at any given time. KILL/TERM of
+	// processes is async and mocked agent will remove the pid file while shutting down, making tests fail in the most
+	// unexpected ways.
+	var err error
+	// We can't/shouldn't use /usr/local/percona/ (the default basedir),
+	// so use a tmpdir instead with only a bin dir inside
+	s.basedir, err = ioutil.TempDir("/tmp", "percona-agent-init-test-")
+	t.Assert(err, IsNil)
+	binDir := filepath.Join(s.basedir, pct.BIN_DIR)
+	err = os.Mkdir(binDir, 0777)
+	t.Assert(err, IsNil)
+
+	// Lets copy mocked and already compiled percona-agent
+	s.bin = filepath.Join(binDir, "percona-agent")
+	cmd := exec.Command("cp", s.buildbin, s.bin)
+	err = cmd.Run()
+	t.Assert(err, IsNil, Commentf("Failed to copy mocked percona-agent to tmp dir: %v", err))
 
 	// Copy init script to tmp basedir/bin directory
 	initscript, err := filepath.Abs("./percona-agent")
@@ -91,19 +110,21 @@ func (s *MainTestSuite) SetUpSuite(t *C) {
 func (s *MainTestSuite) TearDownTest(t *C) {
 	// Delete any left pid file and set mocked agent start delay to 0
 	resetTestEnvVars(s)
-	// Kill any remaining process before deleting pidfile
+	// Kill any remaining process
 	if pid, err := readPidFile(filepath.Join(s.basedir, "percona-agent.pid")); pid != "" && err == nil {
 		if numPid, err := strconv.ParseInt(pid, 10, 0); err == nil {
-			syscall.Kill(int(numPid), syscall.SIGTERM)
+			syscall.Kill(int(numPid), syscall.SIGKILL)
 		}
 	}
-	// Delete if pidFile exists
-	os.Remove(filepath.Join(s.basedir, "percona-agent.pid"))
+	// Remove the complete tmp basedir
+	if err := os.RemoveAll(s.basedir); err != nil {
+		t.Error(err)
+	}
 }
 
 func (s *MainTestSuite) TearDownSuite(t *C) {
-	// Delete tmp
-	if err := os.RemoveAll(s.basedir); err != nil {
+	// Delete tmp buildir
+	if err := os.RemoveAll(s.builddir); err != nil {
 		t.Error(err)
 	}
 }
@@ -119,7 +140,7 @@ func resetTestEnvVars(s *MainTestSuite) {
 }
 
 func writePidFile(filePath, pid string) error {
-	flags := os.O_CREATE | os.O_EXCL | os.O_WRONLY
+	flags := os.O_CREATE | os.O_WRONLY | os.O_TRUNC
 	file, err := os.OpenFile(filePath, flags, 0644)
 	if err != nil {
 		//Could not create pidfile
@@ -130,8 +151,7 @@ func writePidFile(filePath, pid string) error {
 		// Could not write to stale pidfile
 		return err
 	}
-	file.Close()
-	return nil
+	return file.Close()
 }
 
 func readPidFile(pidFilePath string) (pid string, err error) {
@@ -239,10 +259,10 @@ func (s *MainTestSuite) TestWrongBin(t *C) {
 func (s *MainTestSuite) TestStalePIDFile(t *C) {
 	// Create pidfile with non valid PID
 	pidFilePath := filepath.Join(s.basedir, "percona-agent.pid")
-	if err := writePidFile(pidFilePath, string(rand.Uint32())); err != nil {
+	pidString := fmt.Sprintf("%d", rand.Uint32())
+	if err := writePidFile(pidFilePath, pidString); err != nil {
 		t.Errorf("Could not create pidfile: %v", err)
 	}
-
 	// Now start service
 	cmd := exec.Command(s.initscript, "start")
 	output, err := cmd.Output()
