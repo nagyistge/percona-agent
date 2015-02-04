@@ -38,7 +38,10 @@ func MakeGrant(dsn mysql.DSN, user string, pass string, mysqlMaxUserConns int64)
 	} else if dsn.Hostname == "127.0.0.1" {
 		host = "127.0.0.1"
 	}
+	// Creating/updating a user's password doesn't work correctly if old_passwords is active.
+	// Just in case, disable it for this session
 	grants := []string{
+		"SET SESSION old_passwords=0",
 		fmt.Sprintf("GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO '%s'@'%s' IDENTIFIED BY '%s' WITH MAX_USER_CONNECTIONS %d", user, host, pass, mysqlMaxUserConns),
 		fmt.Sprintf("GRANT UPDATE, DELETE, DROP ON performance_schema.* TO '%s'@'%s' IDENTIFIED BY '%s' WITH MAX_USER_CONNECTIONS %d", user, host, pass, mysqlMaxUserConns),
 	}
