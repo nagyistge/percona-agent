@@ -30,6 +30,7 @@ import (
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/qan"
+	"strconv"
 )
 
 type WorkerFactory interface {
@@ -164,6 +165,7 @@ func (w *Worker) Run() (*qan.Result, error) {
 			"Binlog Dump":      true,
 			"Binlog Dump GTID": true,
 		},
+		MaxQueryTime: w.getMaxQueryTime(),
 	}
 	p := w.MakeLogParser(file, opts)
 	go func() {
@@ -402,4 +404,32 @@ func (w *Worker) rotateSlowLog(interval *qan.Interval) error {
 	}
 
 	return nil
+}
+
+/*
+   This function tries to get the minimum non-zero value
+   between a list of vars.
+   Currently we check only for slow_query_log_always_write_time.
+   It returns 0 if all values are 0 or if there was an error
+   while connecting to MySQL.
+   This value is used by the slow log parser to skip queries
+   that have been logged because they exceeded the value set
+   in slow_query_log_always_write_time.
+   This function uses a list of variables because we may want
+   to skip queries having Query_time > some_other_var like
+   long_query_time too.
+*/
+
+func (w *Worker) getMaxQueryTime() float32 {
+	var minNonZero float32
+	varNames := []string{"slow_query_log_always_write_time"}
+
+	for _, varName := range varNames {
+		strVal := w.mysqlConn.GetGlobalVarString(varName)
+		floatVal, err := strconv.ParseFloat(strVal, 32)
+		if err != nil && floatVal > 0 && float32(floatVal) > minNonZero {
+			minNonZero = float32(floatVal)
+		}
+	}
+	return minNonZero
 }
