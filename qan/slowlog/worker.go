@@ -165,7 +165,7 @@ func (w *Worker) Run() (*qan.Result, error) {
 			"Binlog Dump":      true,
 			"Binlog Dump GTID": true,
 		},
-		MaxQueryTime: w.getMaxQueryTime(),
+		RateMaxQueryTime: w.getMaxQueryTime(),
 	}
 	p := w.MakeLogParser(file, opts)
 	go func() {
@@ -412,12 +412,12 @@ func (w *Worker) rotateSlowLog(interval *qan.Interval) error {
    Currently we check only for slow_query_log_always_write_time.
    It returns 0 if all values are 0 or if there was an error
    while connecting to MySQL.
-   This value is used by the slow log parser to skip queries
-   that have been logged because they exceeded the value set
-   in slow_query_log_always_write_time.
-   This function uses a list of variables because we may want
-   to skip queries having Query_time > some_other_var like
-   long_query_time too.
+   This value is used by the slow log parser to adjust the rateLimit
+   for queries. If a query took more than RateMaxQueryTime, the rate
+   limit shouldn't be applied (do not multiply by the rateLimit)
+   This function uses a list of variables because we may want to apply
+   the same principle to queries having Query_time > some_other_var
+   like long_query_time.
    Ref: http://www.percona.com/doc/percona-server/5.6/diagnostics/slow_extended.html#slow_query_log_always_write_time
 */
 
