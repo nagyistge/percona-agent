@@ -418,6 +418,7 @@ func (w *Worker) rotateSlowLog(interval *qan.Interval) error {
    This function uses a list of variables because we may want
    to skip queries having Query_time > some_other_var like
    long_query_time too.
+   Ref: http://www.percona.com/doc/percona-server/5.6/diagnostics/slow_extended.html#slow_query_log_always_write_time
 */
 
 func (w *Worker) getMaxQueryTime() float32 {
