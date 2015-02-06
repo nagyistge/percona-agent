@@ -21,7 +21,23 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 )
+
+type ErrValueLap struct {
+	Timestamps []int64
+	Numbers    []float64
+}
+
+func (e ErrValueLap) Error() string {
+	values := []string{}
+	a := []interface{}{}
+	for i := range e.Timestamps {
+		values = append(values, "ts=%d val=%.6f")
+		a = append(a, e.Timestamps[i], e.Numbers[i])
+	}
+	return fmt.Sprintf("Value lap: "+strings.Join(values, ", "), a...)
+}
 
 type Stats struct {
 	metricType string    `json:"-"` // ignore
@@ -77,12 +93,11 @@ func (s *Stats) Add(m *Metric, ts int64) error {
 					// @3 x > 100
 					// This means value reset then increased so quickly that it
 					// lapped the previous non-zero value, which shouldn't happen;
-					// or obvservation @2 was a blip and x should have been >100
+					// or observation @2 was a blip and x should have been >100
 					// && < @3. However, if the values are very small, it could
 					// happen and could be legitimate, so for now we just return
 					// an error to warn the caller.
-					err = fmt.Errorf("Value lap: ts=%d val=%.6f, ts=%d val=%.6f, ts=%d val=%.6f",
-						s.penuTs, s.penuVal, s.prevTs, s.prevVal, ts, m.Number)
+					err = ErrValueLap{[]int64{s.penuTs, s.prevTs, ts}, []float64{s.penuVal, s.prevVal, m.Number}}
 				}
 
 				// Per-second rate of value = increase / duration
