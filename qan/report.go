@@ -112,7 +112,6 @@ func addQuery(dst, src *event.QueryClass) {
 			m := *srcStats
 			dst.Metrics.TimeMetrics[srcMetric] = &m
 		} else {
-			dstStats.Cnt += srcStats.Cnt
 			dstStats.Sum += srcStats.Sum
 			dstStats.Avg = (dstStats.Avg + srcStats.Avg) / 2
 			if srcStats.Min < dstStats.Min {
