@@ -75,7 +75,11 @@ func init() {
 	flag.StringVar(&flagPidFile, "pidfile", agent.DEFAULT_PIDFILE, "PID file")
 	flag.BoolVar(&flagVersion, "version", false, "Print version")
 	flag.Parse()
-
+	// We don't accept any possitional arguments
+	if len(flag.Args()) != 0 {
+		flag.Usage()
+		os.Exit(1)
+	}
 	runtime.GOMAXPROCS(runtime.NumCPU())
 }
 
