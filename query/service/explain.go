@@ -33,6 +33,13 @@ const (
 	SERVICE_NAME = "explain"
 )
 
+var (
+	updateRe    = regexp.MustCompile(`(?i)^update\s+(?:low_priority|ignore)?\s*(.*?)\s+set\s+(.*?)(?:\s+where\s+(.*?))?(?:\s+limit\s*[0-9]+(?:\s*,\s*[0-9]+)?)?$`)
+	deleteRe    = regexp.MustCompile(`(?i)^delete\s+(.*?)\bfrom\s+(.*?)$`)
+	insertRe    = regexp.MustCompile(`(?i)^(?:insert(?:\s+ignore)?|replace)\s+.*?\binto\s+(.*?)\(([^\)]+)\)\s*values?\s*\((.*?)\)\s*(?:\slimit\s|on\s+duplicate\s+key.*)?\s*$`)
+	insertSetRe = regexp.MustCompile(`(?i)(?:insert(?:\s+ignore)?|replace)\s+(?:.*?\binto)\s+(.*?)\s*set\s+(.*?)\s*(?:\blimit\b|on\s+duplicate\s+key.*)?\s*$`)
+)
+
 type Explain struct {
 	logger      *pct.Logger
 	connFactory mysql.ConnectionFactory
@@ -79,12 +86,14 @@ func (e *Explain) Handle(cmd *proto.Cmd) *proto.Reply {
 	// Run explain
 	explain, err := conn.Explain(explainQuery.Query, explainQuery.Db)
 	if err != nil {
-		if e.isDMLQuery(explainQuery.Query) {
-			newQuery := e.DMLToSelect(explainQuery.Query)
-			if newQuery == "" {
-				return cmd.Reply(nil, fmt.Errorf("Cannot run EXPLAIN on selected query"))
+		if mysql.MySQLErrorCode(err) == mysql.ER_SYNTAX_ERROR {
+			if e.isDMLQuery(explainQuery.Query) {
+				newQuery := e.DMLToSelect(explainQuery.Query)
+				if newQuery == "" {
+					return cmd.Reply(nil, fmt.Errorf("Explain failed for %s: %s", name, err))
+				}
+				explain, err = conn.Explain(newQuery, explainQuery.Db)
 			}
-			explain, err = conn.Explain(e.DMLToSelect(explainQuery.Query), explainQuery.Db)
 		}
 		if err != nil {
 			return cmd.Reply(nil, fmt.Errorf("Explain failed for %s: %s", name, err))
@@ -152,10 +161,6 @@ func (e *Explain) isDMLQuery(query string) bool {
   it able to explain DML queries on older MySQL versions
 */
 func (e *Explain) DMLToSelect(query string) string {
-	var updateRe = regexp.MustCompile(`(?i)^update\s+(?:low_priority|ignore)?\s*(.*?)\s+set\s+(.*?)(?:\s+where\s+(.*?))?(?:\s+limit\s*[0-9]+(?:\s*,\s*[0-9]+)?)?$`)
-	var deleteRe = regexp.MustCompile(`(?i)^delete\s+(.*?)\bfrom\s+(.*?)$`)
-	var insertRe = regexp.MustCompile(`(?i)^(?:insert(?:\s+ignore)?|replace)\s+.*?\binto\s+(.*?)\(([^\)]+)\)\s*values?\s*\((.*?)\)\s*(?:\slimit\s|on\s+duplicate\s+key.*)?\s*$`)
-	var insertSetRe = regexp.MustCompile(`(?i)(?:insert(?:\s+ignore)?|replace)\s+(?:.*?\binto)\s+(.*?)\s*set\s+(.*?)\s*(?:\blimit\b|on\s+duplicate\s+key.*)?\s*$`)
 
 	m := updateRe.FindStringSubmatch(query)
 	// > 2 because we need at least a table name and a list of fields
