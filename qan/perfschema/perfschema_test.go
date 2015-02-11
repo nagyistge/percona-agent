@@ -66,6 +66,8 @@ func (s *WorkerTestSuite) SetUpTest(t *C) {
 	s.nullmysql.Reset()
 }
 
+// --------------------------------------------------------------------------
+
 func (s *WorkerTestSuite) loadData(dir string) ([][]*perfschema.DigestRow, error) {
 	files, err := filepath.Glob(filepath.Join(inputDir, dir, "/iter*.json"))
 	if err != nil {
@@ -129,14 +131,21 @@ func makeGetTextFunc(texts ...string) perfschema.GetDigestTextFunc {
 	}
 }
 
-// --------------------------------------------------------------------------
-
 type ByClassId []*event.QueryClass
 
 func (a ByClassId) Len() int      { return len(a) }
 func (a ByClassId) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a ByClassId) Less(i, j int) bool {
 	return a[i].Id < a[j].Id
+}
+
+func normalizeResult(res *qan.Result) {
+	sort.Sort(ByClassId(res.Class))
+	// Perf Schema never has example queries, so remove the empty
+	// event.Example struct the json creates.
+	for n := range res.Class {
+		res.Class[n].Example = nil
+	}
 }
 
 // --------------------------------------------------------------------------
@@ -176,6 +185,7 @@ func (s *WorkerTestSuite) Test001(t *C) {
 
 	res, err = w.Run()
 	t.Assert(err, IsNil)
+	normalizeResult(res)
 	expect, err := s.loadResult("001/res01.json")
 	t.Assert(err, IsNil)
 	if same, diff := IsDeeply(res, expect); !same {
@@ -228,6 +238,7 @@ func (s *WorkerTestSuite) Test002(t *C) {
 
 	res, err = w.Run()
 	t.Assert(err, IsNil)
+	normalizeResult(res)
 	expect, err := s.loadResult("002/res01.json")
 	t.Assert(err, IsNil)
 	if same, diff := IsDeeply(res, expect); !same {
@@ -544,7 +555,7 @@ func (s *WorkerTestSuite) Test003(t *C) {
 
 	res, err = w.Run()
 	t.Assert(err, IsNil)
-	sort.Sort(ByClassId(res.Class))
+	normalizeResult(res)
 	expect, err := s.loadResult("003/res02.json")
 	t.Assert(err, IsNil)
 	if same, diff := IsDeeply(res, expect); !same {
@@ -565,7 +576,7 @@ func (s *WorkerTestSuite) Test003(t *C) {
 
 	res, err = w.Run()
 	t.Assert(err, IsNil)
-	sort.Sort(ByClassId(res.Class))
+	normalizeResult(res)
 	expect, err = s.loadResult("003/res03.json")
 	t.Assert(err, IsNil)
 
@@ -594,7 +605,7 @@ func (s *WorkerTestSuite) Test003(t *C) {
 
 	res, err = w.Run()
 	t.Assert(err, IsNil)
-	sort.Sort(ByClassId(res.Class))
+	normalizeResult(res)
 	expect, err = s.loadResult("003/res04.json")
 	t.Assert(err, IsNil)
 	res.Global.Metrics.TimeMetrics["Query_time"].Avg = 0
