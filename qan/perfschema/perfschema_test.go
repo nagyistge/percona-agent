@@ -179,7 +179,7 @@ func (s *WorkerTestSuite) Test001(t *C) {
 	expect, err := s.loadResult("001/res01.json")
 	t.Assert(err, IsNil)
 	if same, diff := IsDeeply(res, expect); !same {
-		Dump(diff)
+		Dump(res)
 		t.Error(diff)
 	}
 
@@ -594,6 +594,7 @@ func (s *WorkerTestSuite) Test003(t *C) {
 
 	res, err = w.Run()
 	t.Assert(err, IsNil)
+	sort.Sort(ByClassId(res.Class))
 	expect, err = s.loadResult("003/res04.json")
 	t.Assert(err, IsNil)
 	res.Global.Metrics.TimeMetrics["Query_time"].Avg = 0

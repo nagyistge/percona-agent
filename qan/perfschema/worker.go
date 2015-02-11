@@ -35,22 +35,30 @@ import (
 type DigestRow struct {
 	Schema                  string
 	Digest                  string
-	CountStar               uint
-	SumTimerWait            uint
-	MinTimerWait            uint
-	AvgTimerWait            uint
-	MaxTimerWait            uint
-	SumLockTime             uint
+	CountStar               uint64
+	SumTimerWait            uint64
+	MinTimerWait            uint64
+	AvgTimerWait            uint64
+	MaxTimerWait            uint64
+	SumLockTime             uint64
+	SumErrors               uint64
+	SumWarnings             uint64
 	SumRowsAffected         uint64
 	SumRowsSent             uint64
 	SumRowsExamined         uint64
-	SumCreatedTmpDiskTables uint
-	SumCreatedTmpTables     uint
-	SumSelectFullJoin       uint
-	SumSelectScan           uint
+	SumCreatedTmpDiskTables uint // bool in slow log
+	SumCreatedTmpTables     uint // bool in slow log
+	SumSelectFullJoin       uint // bool in slow log
+	SumSelectFullRangeJoin  uint64
+	SumSelectRange          uint64
+	SumSelectRangeCheck     uint64
+	SumSelectScan           uint // bool in slow log
 	SumSortMergePasses      uint64
-	FirstSeen               time.Time
-	LastSeen                time.Time
+	SumSortRange            uint64
+	SumSortRows             uint64
+	SumSortScan             uint64
+	SumNoIndexUsed          uint64
+	SumNoGoodIndexUsed      uint64
 }
 
 // A Class represents a single query and its per-schema instances.
@@ -97,10 +105,12 @@ func GetDigestRows(mysqlConn mysql.Connector, c chan<- *DigestRow, doneChan chan
 			" COALESCE(SCHEMA_NAME, ''), COALESCE(DIGEST, ''), COUNT_STAR," +
 			" SUM_TIMER_WAIT, MIN_TIMER_WAIT, AVG_TIMER_WAIT, MAX_TIMER_WAIT," +
 			" SUM_LOCK_TIME," +
+			" SUM_ERRORS, SUM_WARNINGS," +
 			" SUM_ROWS_AFFECTED, SUM_ROWS_SENT, SUM_ROWS_EXAMINED," +
 			" SUM_CREATED_TMP_DISK_TABLES, SUM_CREATED_TMP_TABLES," +
-			" SUM_SELECT_FULL_JOIN, SUM_SELECT_SCAN, SUM_SORT_MERGE_PASSES," +
-			" FIRST_SEEN, LAST_SEEN" +
+			" SUM_SELECT_FULL_JOIN, SUM_SELECT_FULL_RANGE_JOIN, SUM_SELECT_RANGE, SUM_SELECT_RANGE_CHECK, SUM_SELECT_SCAN," +
+			" SUM_SORT_MERGE_PASSES, SUM_SORT_RANGE, SUM_SORT_ROWS, SUM_SORT_SCAN," +
+			" SUM_NO_INDEX_USED, SUM_NO_GOOD_INDEX_USED" +
 			" FROM performance_schema.events_statements_summary_by_digest")
 	if err != nil {
 		// This bubbles up to the analyzer which logs it as an error:
@@ -127,16 +137,24 @@ func GetDigestRows(mysqlConn mysql.Connector, c chan<- *DigestRow, doneChan chan
 				&row.AvgTimerWait,
 				&row.MaxTimerWait,
 				&row.SumLockTime,
+				&row.SumErrors,
+				&row.SumWarnings,
 				&row.SumRowsAffected,
 				&row.SumRowsSent,
 				&row.SumRowsExamined,
 				&row.SumCreatedTmpDiskTables,
 				&row.SumCreatedTmpTables,
 				&row.SumSelectFullJoin,
+				&row.SumSelectFullRangeJoin,
+				&row.SumSelectRange,
+				&row.SumSelectRangeCheck,
 				&row.SumSelectScan,
 				&row.SumSortMergePasses,
-				&row.FirstSeen,
-				&row.LastSeen,
+				&row.SumSortRange,
+				&row.SumSortRows,
+				&row.SumSortScan,
+				&row.SumNoIndexUsed,
+				&row.SumNoGoodIndexUsed,
 			)
 			if err != nil {
 				return // This bubbles up too (see above).
@@ -208,6 +226,7 @@ func (w *Worker) Setup(interval *qan.Interval) error {
 		}
 	}
 	w.iter = interval
+	// Reset -last status vals.
 	w.lastRowCnt = 0
 	w.lastFetchTime = 0
 	w.lastPrepTime = 0
@@ -370,7 +389,7 @@ CLASS_LOOP:
 		// This class exists in prev, so create a class aggregate of the per-schema
 		// query value diffs, for rows that exist in both prev and curr.
 		d := DigestRow{MinTimerWait: 0xFFFFFFFF} // class aggregate, becomes class metrics
-		n := uint(0)                             // number of query instances in prev and curr
+		n := uint64(0)                           // number of query instances in prev and curr
 
 		// Each row is an instance of the query executed in the schema.
 	ROW_LOOP:
@@ -391,14 +410,24 @@ CLASS_LOOP:
 				d.CountStar += row.CountStar - prevRow.CountStar
 				d.SumTimerWait += row.SumTimerWait - prevRow.SumTimerWait
 				d.SumLockTime += row.SumLockTime - prevRow.SumLockTime
+				d.SumErrors += row.SumErrors - prevRow.SumErrors
+				d.SumWarnings += row.SumWarnings - prevRow.SumWarnings
 				d.SumRowsAffected += row.SumRowsAffected - prevRow.SumRowsAffected
 				d.SumRowsSent += row.SumRowsSent - prevRow.SumRowsSent
 				d.SumRowsExamined += row.SumRowsExamined - prevRow.SumRowsExamined
 				d.SumCreatedTmpDiskTables += row.SumCreatedTmpDiskTables - prevRow.SumCreatedTmpDiskTables
 				d.SumCreatedTmpTables += row.SumCreatedTmpTables - prevRow.SumCreatedTmpTables
 				d.SumSelectFullJoin += row.SumSelectFullJoin - prevRow.SumSelectFullJoin
+				d.SumSelectFullRangeJoin += row.SumSelectFullRangeJoin - prevRow.SumSelectFullRangeJoin
+				d.SumSelectRange += row.SumSelectRange - prevRow.SumSelectRange
+				d.SumSelectRangeCheck += row.SumSelectRangeCheck - prevRow.SumSelectRangeCheck
 				d.SumSelectScan += row.SumSelectScan - prevRow.SumSelectScan
 				d.SumSortMergePasses += row.SumSortMergePasses - prevRow.SumSortMergePasses
+				d.SumSortRange += row.SumSortRange - prevRow.SumSortRange
+				d.SumSortRows += row.SumSortRows - prevRow.SumSortRows
+				d.SumSortScan += row.SumSortScan - prevRow.SumSortScan
+				d.SumNoIndexUsed += row.SumNoIndexUsed - prevRow.SumNoIndexUsed
+				d.SumNoGoodIndexUsed += row.SumNoGoodIndexUsed - prevRow.SumNoGoodIndexUsed
 
 				// Take the current min and max.
 				if row.MinTimerWait < d.MinTimerWait {
@@ -419,14 +448,24 @@ CLASS_LOOP:
 				d.AvgTimerWait = row.AvgTimerWait
 				d.MaxTimerWait = row.MaxTimerWait
 				d.SumLockTime = row.SumLockTime
+				d.SumErrors = row.SumErrors
+				d.SumWarnings = row.SumWarnings
 				d.SumRowsAffected = row.SumRowsAffected
 				d.SumRowsSent = row.SumRowsSent
 				d.SumRowsExamined = row.SumRowsExamined
 				d.SumCreatedTmpDiskTables = row.SumCreatedTmpDiskTables
 				d.SumCreatedTmpTables = row.SumCreatedTmpTables
 				d.SumSelectFullJoin = row.SumSelectFullJoin
+				d.SumSelectFullRangeJoin = row.SumSelectFullRangeJoin
+				d.SumSelectRange = row.SumSelectRange
+				d.SumSelectRangeCheck = row.SumSelectRangeCheck
 				d.SumSelectScan = row.SumSelectScan
 				d.SumSortMergePasses = row.SumSortMergePasses
+				d.SumSortRange = row.SumSortRange
+				d.SumSortRows = row.SumSortRows
+				d.SumSortScan = row.SumSortScan
+				d.SumNoIndexUsed = row.SumNoIndexUsed
+				d.SumNoGoodIndexUsed = row.SumNoGoodIndexUsed
 			}
 			n++
 		}
@@ -447,67 +486,42 @@ CLASS_LOOP:
 		// Create standard metric stats from the class metrics just calculated.
 		stats := event.NewMetrics()
 
-		// Time metircs, in picoseconds (x10^-12 to convert to seconds)
+		// Time metircs are in picoseconds, so multiply by 10^-12 to convert to seconds.
 		stats.TimeMetrics["Query_time"] = &event.TimeStats{
-			Cnt: d.CountStar,
 			Sum: float64(d.SumTimerWait) * math.Pow10(-12),
 			Min: float64(d.MinTimerWait) * math.Pow10(-12),
-			Max: float64(d.MaxTimerWait) * math.Pow10(-12),
 			Avg: float64(d.AvgTimerWait) * math.Pow10(-12),
+			Max: float64(d.MaxTimerWait) * math.Pow10(-12),
 		}
 
 		stats.TimeMetrics["Lock_time"] = &event.TimeStats{
-			Cnt: d.CountStar,
 			Sum: float64(d.SumLockTime) * math.Pow10(-12),
 		}
 
-		// Number metrics
-		stats.NumberMetrics["Rows_affected"] = &event.NumberStats{
-			Cnt: d.CountStar,
-			Sum: d.SumRowsAffected,
-		}
-
-		stats.NumberMetrics["Rows_sent"] = &event.NumberStats{
-			Cnt: d.CountStar,
-			Sum: d.SumRowsSent,
-		}
-
-		stats.NumberMetrics["Rows_examined"] = &event.NumberStats{
-			Cnt: d.CountStar,
-			Sum: d.SumRowsExamined,
-		}
-
-		stats.NumberMetrics["Merge_passes"] = &event.NumberStats{
-			Cnt: d.CountStar,
-			Sum: d.SumSortMergePasses,
-		}
-
-		// Bool metrics
-		stats.BoolMetrics["Tmp_table_on_disk"] = &event.BoolStats{
-			Cnt:  d.CountStar,
-			True: d.SumCreatedTmpDiskTables,
-		}
-
-		stats.BoolMetrics["Tmp_table"] = &event.BoolStats{
-			Cnt:  d.CountStar,
-			True: d.SumCreatedTmpTables,
-		}
-
-		stats.BoolMetrics["Full_join"] = &event.BoolStats{
-			Cnt:  d.CountStar,
-			True: d.SumSelectFullJoin,
-		}
-
-		stats.BoolMetrics["Full_scan"] = &event.BoolStats{
-			Cnt:  d.CountStar,
-			True: d.SumSelectScan,
-		}
+		stats.NumberMetrics["Errors"] = &event.NumberStats{Sum: d.SumErrors}
+		stats.NumberMetrics["Warnings"] = &event.NumberStats{Sum: d.SumWarnings}
+		stats.NumberMetrics["Rows_affected"] = &event.NumberStats{Sum: d.SumRowsAffected}
+		stats.NumberMetrics["Rows_sent"] = &event.NumberStats{Sum: d.SumRowsSent}
+		stats.NumberMetrics["Rows_examined"] = &event.NumberStats{Sum: d.SumRowsExamined}
+		stats.BoolMetrics["Tmp_table_on_disk"] = &event.BoolStats{True: d.SumCreatedTmpDiskTables}
+		stats.BoolMetrics["Tmp_table"] = &event.BoolStats{True: d.SumCreatedTmpTables}
+		stats.BoolMetrics["Full_join"] = &event.BoolStats{True: d.SumSelectFullJoin}
+		stats.NumberMetrics["Select_full_range_join"] = &event.NumberStats{Sum: d.SumSelectFullRangeJoin}
+		stats.NumberMetrics["Select_range"] = &event.NumberStats{Sum: d.SumSelectRange}
+		stats.NumberMetrics["Select_range_check"] = &event.NumberStats{Sum: d.SumSelectRangeCheck}
+		stats.BoolMetrics["Full_scan"] = &event.BoolStats{True: d.SumSelectScan}
+		stats.NumberMetrics["Merge_passes"] = &event.NumberStats{Sum: d.SumSortMergePasses}
+		stats.NumberMetrics["Sort_range"] = &event.NumberStats{Sum: d.SumSortRange}
+		stats.NumberMetrics["Sort_rows"] = &event.NumberStats{Sum: d.SumSortRows}
+		stats.NumberMetrics["Sort_scan"] = &event.NumberStats{Sum: d.SumSortScan}
+		stats.NumberMetrics["No_index_used"] = &event.NumberStats{Sum: d.SumNoIndexUsed}
+		stats.NumberMetrics["No_good_index_used"] = &event.NumberStats{Sum: d.SumNoGoodIndexUsed}
 
 		// Create and save the pre-aggregated class.  Using only last 16 digits
 		// of checksum is historical: pt-query-digest does the same:
 		// my $checksum = uc substr(md5_hex($val), -16);
 		class := event.NewQueryClass(classId, class.DigestText, false)
-		class.TotalQueries = uint64(d.CountStar)
+		class.TotalQueries = d.CountStar
 		class.Metrics = stats
 		classes = append(classes, class)
 

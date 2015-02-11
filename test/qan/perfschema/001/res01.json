@@ -6,48 +6,38 @@
             "Metrics": {
                 "BoolMetrics": {
                     "Full_join": {
-                        "Cnt": 1,
                         "True": 0
                     },
                     "Full_scan": {
-                        "Cnt": 1,
                         "True": 1
                     },
                     "Tmp_table": {
-                        "Cnt": 1,
                         "True": 1
                     },
                     "Tmp_table_on_disk": {
-                        "Cnt": 1,
                         "True": 0
                     }
                 },
                 "NumberMetrics": {
                     "Merge_passes": {
-                        "Cnt": 1,
                         "Sum": 0
                     },
                     "Rows_affected": {
-                        "Cnt": 1,
                         "Sum": 0
                     },
                     "Rows_examined": {
-                        "Cnt": 1,
                         "Sum": 10
                     },
                     "Rows_sent": {
-                        "Cnt": 1,
                         "Sum": 10
                     }
                 },
                 "TimeMetrics": {
                     "Lock_time": {
-                        "Cnt": 1,
                         "Sum": 0.000100
                     },
                     "Query_time": {
                         "Avg": 0.000743,
-                        "Cnt": 1,
                         "Max": 0.000855,
                         "Min": 0.000805,
                         "Sum": 0.000070
@@ -61,48 +51,38 @@
         "Metrics": {
             "BoolMetrics": {
                 "Full_join": {
-                    "Cnt": 1,
                     "True": 0
                 },
                 "Full_scan": {
-                    "Cnt": 1,
                     "True": 1
                 },
                 "Tmp_table": {
-                    "Cnt": 1,
                     "True": 1
                 },
                 "Tmp_table_on_disk": {
-                    "Cnt": 1,
                     "True": 0
                 }
             },
             "NumberMetrics": {
                 "Merge_passes": {
-                    "Cnt": 1,
                     "Sum": 0
                 },
                 "Rows_affected": {
-                    "Cnt": 1,
                     "Sum": 0
                 },
                 "Rows_examined": {
-                    "Cnt": 1,
                     "Sum": 10
                 },
                 "Rows_sent": {
-                    "Cnt": 1,
                     "Sum": 10
                 }
             },
             "TimeMetrics": {
                 "Lock_time": {
-                    "Cnt": 1,
                     "Sum": 0.000100
                 },
                 "Query_time": {
                     "Avg": 0.000743,
-                    "Cnt": 1,
                     "Max": 0.000855,
                     "Min": 0.000805,
                     "Sum": 0.000070
