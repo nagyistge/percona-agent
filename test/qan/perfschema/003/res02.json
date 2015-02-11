@@ -2,7 +2,53 @@
     "Class": [
         {
             "Fingerprint": "select 1",
-            "Id": "C40318BFC3888AED",
+            "Id": "1111111111111111",
+            "Metrics": {
+                "BoolMetrics": {
+                    "Full_join": {
+                        "True": 0
+                    },
+                    "Full_scan": {
+                        "True": 0
+                    },
+                    "Tmp_table": {
+                        "True": 0
+                    },
+                    "Tmp_table_on_disk": {
+                        "True": 0
+                    }
+                },
+                "NumberMetrics": {
+                    "Merge_passes": {
+                        "Sum": 0
+                    },
+                    "Rows_affected": {
+                        "Sum": 0
+                    },
+                    "Rows_examined": {
+                        "Sum": 1
+                    },
+                    "Rows_sent": {
+                        "Sum": 1
+                    }
+                },
+                "TimeMetrics": {
+                    "Lock_time": {
+                        "Sum": 1e-06
+                    },
+                    "Query_time": {
+                        "Avg": 0.00081111,
+                        "Max": 0.00082461,
+                        "Min": 0.00080461,
+                        "Sum": 4e-06
+                    }
+                }
+            },
+            "TotalQueries": 1
+        },
+        {
+            "Fingerprint": "select 2",
+            "Id": "2222222222222222",
             "Metrics": {
                 "BoolMetrics": {
                     "Full_join": {
@@ -26,25 +72,25 @@
                         "Sum": 0
                     },
                     "Rows_examined": {
-                        "Sum": 11
+                        "Sum": 10
                     },
                     "Rows_sent": {
-                        "Sum": 11
+                        "Sum": 10
                     }
                 },
                 "TimeMetrics": {
                     "Lock_time": {
-                    	"Sum": 0.000001
+                        "Sum": 2.1999999999999998e-07
                     },
                     "Query_time": {
-                        "Avg": 0.000501,
-                        "Max": 0.000825,
-                        "Min": 0.000101,
-                        "Sum": 0.000004
+                        "Avg": 0.00018998,
+                        "Max": 0.000202022,
+                        "Min": 0.00010063,
+                        "Sum": 4.8e-07
                     }
                 }
             },
-            "TotalQueries": 3
+            "TotalQueries": 1
         }
     ],
     "Global": {
@@ -79,17 +125,17 @@
             },
             "TimeMetrics": {
                 "Lock_time": {
-                    "Sum": 0.000001
+                    "Sum": 1.22e-06
                 },
                 "Query_time": {
-                    "Avg": 0.000501,
-                    "Max": 0.000825,
-                    "Min": 0.000101,
-                    "Sum": 0.000004
+                    "Avg": 0.000500545,
+                    "Max": 0.00082461,
+                    "Min": 0.00010063,
+                    "Sum": 4.4799999999999995e-06
                 }
             }
         },
-        "TotalQueries": 3,
-        "UniqueQueries": 1
+        "TotalQueries": 2,
+        "UniqueQueries": 2
     }
 }

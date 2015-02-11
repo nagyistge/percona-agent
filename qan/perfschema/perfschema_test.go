@@ -23,12 +23,14 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
 
 	. "github.com/go-test/test"
 	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/go-mysql/event"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/qan"
@@ -129,6 +131,16 @@ func makeGetTextFunc(texts ...string) perfschema.GetDigestTextFunc {
 
 // --------------------------------------------------------------------------
 
+type ByClassId []*event.QueryClass
+
+func (a ByClassId) Len() int      { return len(a) }
+func (a ByClassId) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a ByClassId) Less(i, j int) bool {
+	return a[i].Id < a[j].Id
+}
+
+// --------------------------------------------------------------------------
+
 func (s *WorkerTestSuite) Test001(t *C) {
 	// This is the simplest input possible: 1 query in iter 1 and 2. The result
 	// is just the increase in its values.
@@ -167,7 +179,7 @@ func (s *WorkerTestSuite) Test001(t *C) {
 	expect, err := s.loadResult("001/res01.json")
 	t.Assert(err, IsNil)
 	if same, diff := IsDeeply(res, expect); !same {
-		Dump(diff)
+		Dump(res)
 		t.Error(diff)
 	}
 
@@ -287,11 +299,17 @@ func (s *WorkerTestSuite) TestRealWorker(t *C) {
 	if len(res.Class) == 0 {
 		t.Fatal("Expected len(res.Class) > 0")
 	}
-	t.Check(res.Class, HasLen, 1)
-	class := res.Class[0]
+	var class *event.QueryClass
+	for _, c := range res.Class {
+		if c.Fingerprint == "SELECT ? FROM DUAL " {
+			class = c
+			break
+		}
+	}
+	t.Assert(class, NotNil)
 	// Digests on different versions or distros of MySQL don't match
 	//t.Check(class.Id, Equals, "01C5BE6B5201254E")
-	t.Check(class.Fingerprint, Equals, "SELECT ? FROM DUAL ")
+	//t.Check(class.Fingerprint, Equals, "SELECT ? FROM DUAL ")
 	queryTime := class.Metrics.TimeMetrics["Query_time"]
 	if queryTime.Min == 0 {
 		t.Error("Expected Query_time_min > 0")
@@ -487,4 +505,104 @@ func (s *WorkerTestSuite) TestIter(t *C) {
 	tickChan <- t3
 	got = <-iterChan
 	t.Check(got, DeepEquals, &qan.Interval{Number: 3, StartTime: t2, StopTime: t3})
+}
+
+func (s *WorkerTestSuite) Test003(t *C) {
+	// This test has 4 iters:
+	//   1: 2 queries
+	//   2: 2 queries (res02)
+	//   3: 4 queries (res03)
+	//   4: 4 queries but 4th has same COUNT_STAR (res04)
+	rows, err := s.loadData("003")
+	t.Assert(err, IsNil)
+	getRows := makeGetRowsFunc(rows)
+	getText := makeGetTextFunc("select 1", "select 2", "select 3", "select 4")
+	w := perfschema.NewWorker(s.logger, s.nullmysql, getRows, getText)
+
+	// First interval doesn't produce a result because 2 snapshots are required.
+	i := &qan.Interval{
+		Number:    1,
+		StartTime: time.Now().UTC(),
+	}
+	err = w.Setup(i)
+	t.Assert(err, IsNil)
+
+	res, err := w.Run()
+	t.Assert(err, IsNil)
+	t.Check(res, IsNil)
+
+	err = w.Cleanup()
+	t.Assert(err, IsNil)
+
+	// Second interval produces a result: the diff of 2nd - 1st.
+	i = &qan.Interval{
+		Number:    2,
+		StartTime: time.Now().UTC(),
+	}
+	err = w.Setup(i)
+	t.Assert(err, IsNil)
+
+	res, err = w.Run()
+	t.Assert(err, IsNil)
+	sort.Sort(ByClassId(res.Class))
+	expect, err := s.loadResult("003/res02.json")
+	t.Assert(err, IsNil)
+	if same, diff := IsDeeply(res, expect); !same {
+		Dump(res)
+		t.Error(diff)
+	}
+
+	err = w.Cleanup()
+	t.Assert(err, IsNil)
+
+	// Third interval...
+	i = &qan.Interval{
+		Number:    3,
+		StartTime: time.Now().UTC(),
+	}
+	err = w.Setup(i)
+	t.Assert(err, IsNil)
+
+	res, err = w.Run()
+	t.Assert(err, IsNil)
+	sort.Sort(ByClassId(res.Class))
+	expect, err = s.loadResult("003/res03.json")
+	t.Assert(err, IsNil)
+
+	// Hash order randomness combined with
+	//   globalStats.Avg = (globalStats.Avg + classStats.Avg) / 2
+	// in event.GlobalClass create a different average depending
+	// on the order of values. In real world the variation is small
+	// and acceptable, but it makes exact static tests impossible.
+	res.Global.Metrics.TimeMetrics["Query_time"].Avg = 0
+
+	if same, diff := IsDeeply(res, expect); !same {
+		Dump(res)
+		t.Error(diff)
+	}
+
+	err = w.Cleanup()
+	t.Assert(err, IsNil)
+
+	// Fourth interval...
+	i = &qan.Interval{
+		Number:    4,
+		StartTime: time.Now().UTC(),
+	}
+	err = w.Setup(i)
+	t.Assert(err, IsNil)
+
+	res, err = w.Run()
+	t.Assert(err, IsNil)
+	sort.Sort(ByClassId(res.Class))
+	expect, err = s.loadResult("003/res04.json")
+	t.Assert(err, IsNil)
+	res.Global.Metrics.TimeMetrics["Query_time"].Avg = 0
+	if same, diff := IsDeeply(res, expect); !same {
+		Dump(res)
+		t.Error(diff)
+	}
+
+	err = w.Cleanup()
+	t.Assert(err, IsNil)
 }
