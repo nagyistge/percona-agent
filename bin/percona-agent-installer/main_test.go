@@ -454,12 +454,20 @@ func (s *MainTestSuite) TestWithAgentMySQLUser(t *C) {
 	s.fakeApi.AppendAgents(s.agent)
 	s.fakeApi.AppendAgentsUuid(s.agent)
 
+	// Get MySQL user & pass from the DSN
+	testMySQLRootDSN := os.Getenv("PCT_TEST_MYSQL_ROOT_DSN")
+	dsnRe := regexp.MustCompile("^(.*?):(.*?)@.*$")
+	m := dsnRe.FindStringSubmatch(testMySQLRootDSN)
+	if len(m) < 3 {
+		t.Error("Cannot get user/pass from PCT_TEST_MYSQL_ROOT_DSN")
+	}
+
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+s.basedir,
 		"-api-host="+s.fakeApi.URL(),
-		"-agent-mysql-user=root",
-		"-agent-mysql-pass=root",
+		"-agent-mysql-user="+m[1],
+		"-agent-mysql-pass="+m[2],
 		"-interactive=false",
 		"-api-key="+s.apiKey,
 	)
