@@ -80,7 +80,10 @@ func MakeReport(config Config, interval *Interval, result *Result) *Report {
 		Class:           result.Class,
 	}
 	if interval != nil {
-		size, _ := pct.FileSize(interval.Filename)
+		size, err := pct.FileSize(interval.Filename)
+		if err != nil {
+			size = 0
+		}
 
 		// slow log data
 		report.SlowLogFile = interval.Filename
