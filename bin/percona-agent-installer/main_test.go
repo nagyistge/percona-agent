@@ -21,13 +21,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/percona-agent/pct"
-	"github.com/percona/percona-agent/test"
-	"github.com/percona/percona-agent/test/cmdtest"
-	"github.com/percona/percona-agent/test/fakeapi"
-	. "gopkg.in/check.v1"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -36,6 +29,14 @@ import (
 	"path"
 	"regexp"
 	"testing"
+
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/percona-agent/pct"
+	"github.com/percona/percona-agent/test"
+	"github.com/percona/percona-agent/test/cmdtest"
+	"github.com/percona/percona-agent/test/fakeapi"
+	. "gopkg.in/check.v1"
 )
 
 func Test(t *testing.T) { TestingT(t) }
@@ -434,6 +435,49 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
 	t.Check(cmdTest.ReadLine(), Equals, "Install successful\n")
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Assert(err, IsNil)
+}
+func (s *MainTestSuite) TestWithAgentMySQLUser(t *C) {
+
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	s.fakeApi.AppendInstancesServer(s.serverInstance)
+	s.fakeApi.AppendInstancesServerId(s.serverInstance)
+	s.fakeApi.AppendInstancesMysql(s.mysqlInstance)
+	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance)
+	s.fakeApi.AppendConfigsMmDefaultServer()
+	s.fakeApi.AppendConfigsQanDefault()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendAgents(s.agent)
+	s.fakeApi.AppendAgentsUuid(s.agent)
+
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+s.basedir,
+		"-api-host="+s.fakeApi.URL(),
+		"-agent-mysql-user=root",
+		"-agent-mysql-pass=root",
+		"-interactive=false",
+		"-api-key="+s.apiKey,
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, "Using provided user/pass for mysql-agent user. DSN: root:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n")
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", s.mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
+	t.Check(cmdTest.ReadLine(), Equals, "")
 
 	err := cmd.Wait()
 	t.Assert(err, IsNil)
