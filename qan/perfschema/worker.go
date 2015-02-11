@@ -235,6 +235,10 @@ func (w *Worker) Run() (*qan.Result, error) {
 		return nil, err
 	}
 
+	if len(w.prev) == 0 {
+		return nil, nil
+	}
+
 	res, err := w.prepareResult(w.prev, w.curr)
 	if err != nil {
 		w.lastErr = err
@@ -356,10 +360,12 @@ CLASS_LOOP:
 	for classId, class := range curr {
 
 		// If this class does not exist in prev, skip the entire class.
-		prevClass, ok := prev[classId]
-		if !ok {
-			continue CLASS_LOOP
-		}
+		prevClass, _ := prev[classId]
+		/*
+			if !ok {
+				continue CLASS_LOOP
+			}
+		*/
 
 		// This class exists in prev, so create a class aggregate of the per-schema
 		// query value diffs, for rows that exist in both prev and curr.
@@ -369,50 +375,60 @@ CLASS_LOOP:
 		// Each row is an instance of the query executed in the schema.
 	ROW_LOOP:
 		for schema, row := range class.Rows {
+			if prevRow, ok := prevClass.Rows[schema]; ok {
+				// We saw this row last time, so first check if it executed during
+				// the interval:
+				if row.CountStar == prevRow.CountStar {
+					continue ROW_LOOP // not executed during interval
+				}
 
-			// If the row does not exist in prev, skip it. This means this is
-			// the first time we've seen this query in this schema.
-			prevRow, ok := prevClass.Rows[schema]
-			if !ok {
-				continue ROW_LOOP
-			}
+				// This row executed during the interval, and we've seen it before,
+				// so athe diff of the totals to the class metric totals. For example,
+				// if query 1 in db1 has prev.CountStar=50 and curr.CountStar=100,
+				// and query 1 in db2 has prev.CountStar=100 and curr.CountStar=200,
+				// that's +50 and +100 executions respectively, so +150 executions for
+				// the class metrics.
+				d.CountStar += row.CountStar - prevRow.CountStar
+				d.SumTimerWait += row.SumTimerWait - prevRow.SumTimerWait
+				d.SumLockTime += row.SumLockTime - prevRow.SumLockTime
+				d.SumRowsAffected += row.SumRowsAffected - prevRow.SumRowsAffected
+				d.SumRowsSent += row.SumRowsSent - prevRow.SumRowsSent
+				d.SumRowsExamined += row.SumRowsExamined - prevRow.SumRowsExamined
+				d.SumCreatedTmpDiskTables += row.SumCreatedTmpDiskTables - prevRow.SumCreatedTmpDiskTables
+				d.SumCreatedTmpTables += row.SumCreatedTmpTables - prevRow.SumCreatedTmpTables
+				d.SumSelectFullJoin += row.SumSelectFullJoin - prevRow.SumSelectFullJoin
+				d.SumSelectScan += row.SumSelectScan - prevRow.SumSelectScan
+				d.SumSortMergePasses += row.SumSortMergePasses - prevRow.SumSortMergePasses
 
-			// If query count has not changed, skip it. This means the query was
-			// not executed between prev and curr interval.
-			if row.CountStar == prevRow.CountStar {
-				continue ROW_LOOP
-			}
-
-			// This per-schema query exists in both prev and curr, so add the diff
-			// of its values to the class aggregate.
-			n++
-
-			// Add the diff of the totals to the class metric totals. For example,
-			// if query 1 in db1 has prev.CountStar=50 and curr.CountStar=100,
-			// and query 1 in db2 has prev.CountStar=100 and curr.CountStar=200,
-			// that's +50 and +100 executions respectively, so +150 executions for
-			// the class metrics.
-			d.CountStar += row.CountStar - prevRow.CountStar
-			d.SumTimerWait += row.SumTimerWait - prevRow.SumTimerWait
-			d.SumLockTime += row.SumLockTime - prevRow.SumLockTime
-			d.SumRowsAffected += row.SumRowsAffected - prevRow.SumRowsAffected
-			d.SumRowsSent += row.SumRowsSent - prevRow.SumRowsSent
-			d.SumRowsExamined += row.SumRowsExamined - prevRow.SumRowsExamined
-			d.SumCreatedTmpDiskTables += row.SumCreatedTmpDiskTables - prevRow.SumCreatedTmpDiskTables
-			d.SumCreatedTmpTables += row.SumCreatedTmpTables - prevRow.SumCreatedTmpTables
-			d.SumSelectFullJoin += row.SumSelectFullJoin - prevRow.SumSelectFullJoin
-			d.SumSelectScan += row.SumSelectScan - prevRow.SumSelectScan
-			d.SumSortMergePasses += row.SumSortMergePasses - prevRow.SumSortMergePasses
-
-			// Take the current min and max.
-			if row.MinTimerWait < d.MinTimerWait {
+				// Take the current min and max.
+				if row.MinTimerWait < d.MinTimerWait {
+					d.MinTimerWait = row.MinTimerWait
+				}
+				if row.MaxTimerWait > d.MaxTimerWait {
+					d.MaxTimerWait = row.MaxTimerWait
+				}
+				// Add the averages, divide later.
+				d.AvgTimerWait += row.AvgTimerWait
+			} else {
+				// We didn't see this row last time, so the query executed some
+				// time during the interval. Since this is our first time seeing
+				// it, we don't diff the values, we use the current values.
+				d.CountStar = row.CountStar
+				d.SumTimerWait = row.SumTimerWait
 				d.MinTimerWait = row.MinTimerWait
-			}
-			if row.MaxTimerWait > d.MaxTimerWait {
+				d.AvgTimerWait = row.AvgTimerWait
 				d.MaxTimerWait = row.MaxTimerWait
+				d.SumLockTime = row.SumLockTime
+				d.SumRowsAffected = row.SumRowsAffected
+				d.SumRowsSent = row.SumRowsSent
+				d.SumRowsExamined = row.SumRowsExamined
+				d.SumCreatedTmpDiskTables = row.SumCreatedTmpDiskTables
+				d.SumCreatedTmpTables = row.SumCreatedTmpTables
+				d.SumSelectFullJoin = row.SumSelectFullJoin
+				d.SumSelectScan = row.SumSelectScan
+				d.SumSortMergePasses = row.SumSortMergePasses
 			}
-			// Add the averages, divide later.
-			d.AvgTimerWait += row.AvgTimerWait
+			n++
 		}
 
 		// Class was in prev, but no rows in prev were in curr, so skip the class.
@@ -421,9 +437,9 @@ CLASS_LOOP:
 		}
 
 		// Divide the total averages to yield the average of the averages.
-		// Dividing by n not d.CountStart here is correct because n is the
+		// Dividing by n not d.CountStar here is correct because n is the
 		// number of query instances in prev and current, so it's also the
-		// number of averages we added together. d.CountStart is the total
+		// number of averages we added together. d.CountStar is the total
 		// number of times all queries in this classes executed, which can
 		// be very high.
 		d.AvgTimerWait /= n

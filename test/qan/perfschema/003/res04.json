@@ -1,0 +1,229 @@
+{
+    "Class": [
+        {
+            "Fingerprint": "select 1",
+            "Id": "1111111111111111",
+            "Metrics": {
+                "BoolMetrics": {
+                    "Full_join": {
+                        "Cnt": 1,
+                        "True": 0
+                    },
+                    "Full_scan": {
+                        "Cnt": 1,
+                        "True": 0
+                    },
+                    "Tmp_table": {
+                        "Cnt": 1,
+                        "True": 0
+                    },
+                    "Tmp_table_on_disk": {
+                        "Cnt": 1,
+                        "True": 0
+                    }
+                },
+                "NumberMetrics": {
+                    "Merge_passes": {
+                        "Cnt": 1,
+                        "Sum": 0
+                    },
+                    "Rows_affected": {
+                        "Cnt": 1,
+                        "Sum": 0
+                    },
+                    "Rows_examined": {
+                        "Cnt": 1,
+                        "Sum": 0
+                    },
+                    "Rows_sent": {
+                        "Cnt": 1,
+                        "Sum": 0
+                    }
+                },
+                "TimeMetrics": {
+                    "Lock_time": {
+                        "Cnt": 1,
+                        "Sum": 0
+                    },
+                    "Query_time": {
+                        "Avg": 0.00081111,
+                        "Cnt": 1,
+                        "Max": 0.00082461,
+                        "Min": 0.00080461,
+                        "Sum": 0
+                    }
+                }
+            },
+            "TotalQueries": 1
+        },
+        {
+            "Fingerprint": "select 2",
+            "Id": "2222222222222222",
+            "Metrics": {
+                "BoolMetrics": {
+                    "Full_join": {
+                        "Cnt": 1,
+                        "True": 0
+                    },
+                    "Full_scan": {
+                        "Cnt": 1,
+                        "True": 0
+                    },
+                    "Tmp_table": {
+                        "Cnt": 1,
+                        "True": 0
+                    },
+                    "Tmp_table_on_disk": {
+                        "Cnt": 1,
+                        "True": 0
+                    }
+                },
+                "NumberMetrics": {
+                    "Merge_passes": {
+                        "Cnt": 1,
+                        "Sum": 0
+                    },
+                    "Rows_affected": {
+                        "Cnt": 1,
+                        "Sum": 0
+                    },
+                    "Rows_examined": {
+                        "Cnt": 1,
+                        "Sum": 0
+                    },
+                    "Rows_sent": {
+                        "Cnt": 1,
+                        "Sum": 0
+                    }
+                },
+                "TimeMetrics": {
+                    "Lock_time": {
+                        "Avg": 0,
+                        "Cnt": 1,
+                        "Sum": 2e-08
+                    },
+                    "Query_time": {
+                        "Avg": 0.00019998,
+                        "Cnt": 1,
+                        "Max": 0.000299922,
+                        "Min": 0.00019063,
+                        "Sum": 9.999999999999999e-05
+                    }
+                }
+            },
+            "TotalQueries": 1
+        },
+        {
+            "Fingerprint": "select 3",
+            "Id": "3333333333333333",
+            "Metrics": {
+                "BoolMetrics": {
+                    "Full_join": {
+                        "Cnt": 1,
+                        "True": 0
+                    },
+                    "Full_scan": {
+                        "Cnt": 1,
+                        "True": 0
+                    },
+                    "Tmp_table": {
+                        "Cnt": 1,
+                        "True": 0
+                    },
+                    "Tmp_table_on_disk": {
+                        "Cnt": 1,
+                        "True": 0
+                    }
+                },
+                "NumberMetrics": {
+                    "Merge_passes": {
+                        "Cnt": 1,
+                        "Sum": 11
+                    },
+                    "Rows_affected": {
+                        "Cnt": 1,
+                        "Sum": 0
+                    },
+                    "Rows_examined": {
+                        "Cnt": 1,
+                        "Sum": 0
+                    },
+                    "Rows_sent": {
+                        "Cnt": 1,
+                        "Sum": 0
+                    }
+                },
+                "TimeMetrics": {
+                    "Lock_time": {
+                        "Cnt": 1,
+                        "Pct95": 0,
+                        "Sum": 9.999999999999999e-05
+                    },
+                    "Query_time": {
+                        "Avg": 0.00019008,
+                        "Cnt": 1,
+                        "Max": 0.000252022,
+                        "Min": 0.00019083,
+                        "Sum": 9.999999999999999e-05
+                    }
+                }
+            },
+            "TotalQueries": 1
+        }
+    ],
+    "Global": {
+        "Metrics": {
+            "BoolMetrics": {
+                "Full_join": {
+                    "Cnt": 3,
+                    "True": 0
+                },
+                "Full_scan": {
+                    "Cnt": 3,
+                    "True": 0
+                },
+                "Tmp_table": {
+                    "Cnt": 3,
+                    "True": 0
+                },
+                "Tmp_table_on_disk": {
+                    "Cnt": 3,
+                    "True": 0
+                }
+            },
+            "NumberMetrics": {
+                "Merge_passes": {
+                    "Cnt": 3,
+                    "Sum": 11
+                },
+                "Rows_affected": {
+                    "Cnt": 3,
+                    "Sum": 0
+                },
+                "Rows_examined": {
+                    "Cnt": 3,
+                    "Sum": 0
+                },
+                "Rows_sent": {
+                    "Cnt": 3,
+                    "Sum": 0
+                }
+            },
+            "TimeMetrics": {
+                "Lock_time": {
+                    "Cnt": 3,
+                    "Sum": 0.00010002
+                },
+                "Query_time": {
+                    "Avg": 0,
+                    "Cnt": 3,
+                    "Max": 0.00082461,
+                    "Min": 0.00019063,
+                    "Sum": 0.00019999999999999998
+                }
+            }
+        },
+        "TotalQueries": 3,
+        "UniqueQueries": 3
+    }
+}
