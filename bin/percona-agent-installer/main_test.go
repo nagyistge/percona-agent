@@ -454,20 +454,23 @@ func (s *MainTestSuite) TestWithAgentMySQLUser(t *C) {
 	s.fakeApi.AppendAgents(s.agent)
 	s.fakeApi.AppendAgentsUuid(s.agent)
 
-	// Get MySQL user & pass from the DSN
-	testMySQLRootDSN := os.Getenv("PCT_TEST_MYSQL_ROOT_DSN")
-	dsnRe := regexp.MustCompile("^(.*?):(.*?)@.*$")
-	m := dsnRe.FindStringSubmatch(testMySQLRootDSN)
-	if len(m) < 3 {
-		t.Error("Cannot get user/pass from PCT_TEST_MYSQL_ROOT_DSN")
-	}
+	user := "some-user"
+	pass := "some-pass"
+	host := "localhost"
+	maxCons := 10
+
+	// Create a temporary user because on some installations the default user & pass
+	// are empty and for testing -agent-mysql-user & -agent-mysql-pass, we need non-empty
+	// user & pass parameters
+	grantQuery := fmt.Sprintf("GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO '%s'@'%s' IDENTIFIED BY '%s' WITH MAX_USER_CONNECTIONS %d", user, host, pass, maxCons)
+	s.rootConn.Exec(grantQuery)
 
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+s.basedir,
 		"-api-host="+s.fakeApi.URL(),
-		"-agent-mysql-user="+m[1],
-		"-agent-mysql-pass="+m[2],
+		"-agent-mysql-user="+user,
+		"-agent-mysql-pass="+pass,
 		"-interactive=false",
 		"-api-key="+s.apiKey,
 	)
@@ -482,13 +485,17 @@ func (s *MainTestSuite) TestWithAgentMySQLUser(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
-	t.Check(cmdTest.ReadLine(), Equals, "Using provided user/pass for mysql-agent user. DSN: root:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n")
+	// Use the s flag (?s) to let .* match \n
+	t.Assert(cmdTest.ReadLine(), Matches, fmt.Sprintf("(?s)Using provided user/pass for mysql-agent user. DSN: %s:<password-hidden>.*", user))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", s.mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
 	t.Check(cmdTest.ReadLine(), Equals, "")
 
 	err := cmd.Wait()
 	t.Assert(err, IsNil)
+
+	// Remove the user we just created for this test
+	s.rootConn.Exec(fmt.Sprintf("DROP USER '%s'@'%s'", user, host))
 }
 
 func (s *MainTestSuite) TestInstall(t *C) {
