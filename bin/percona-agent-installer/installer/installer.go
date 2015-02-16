@@ -139,9 +139,16 @@ func (i *Installer) Run() (err error) {
 	/**
 	 * Create agent with initial service configs.
 	 */
-	err = i.InstallerCreateAgentWithInitialServiceConfigs(configs)
-	if err != nil {
-		return err
+	if i.flags.Bool["create-agent"] {
+		agent, err := i.InstallerCreateAgentWithInitialServiceConfigs(configs)
+		if err != nil {
+			return err
+		}
+		if err := i.writeConfigs(agent, configs); err != nil {
+			return fmt.Errorf("Created agent but failed to write configs: %s", err)
+		}
+	} else {
+		fmt.Println("Not creating agent (-create-agent=false)")
 	}
 
 	return nil // success
@@ -371,25 +378,16 @@ func (i *Installer) InstallerGetDefaultConfigs(si *proto.ServerInstance, mi *pro
 	return configs, nil
 }
 
-func (i *Installer) InstallerCreateAgentWithInitialServiceConfigs(configs []proto.AgentConfig) (err error) {
-	if i.flags.Bool["create-agent"] {
-		agent := &proto.Agent{
-			Hostname: i.hostname,
-			Version:  agent.VERSION,
-			Configs:  configs,
-		}
-		agent, err = i.api.CreateAgent(agent)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("Created agent: uuid=%s\n", agent.Uuid)
-
-		if err := i.writeConfigs(agent, configs); err != nil {
-			return fmt.Errorf("Created agent but failed to write configs: %s", err)
-		}
-	} else {
-		fmt.Println("Not creating agent (-create-agent=false)")
+func (i *Installer) InstallerCreateAgentWithInitialServiceConfigs(configs []proto.AgentConfig) (protoAgent *proto.Agent, err error) {
+	protoAgent = &proto.Agent{
+		Hostname: i.hostname,
+		Version:  agent.VERSION,
+		Configs:  configs,
 	}
-
-	return nil
+	protoAgent, err = i.api.CreateAgent(protoAgent)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Printf("Created agent: uuid=%s\n", protoAgent.Uuid)
+	return protoAgent, nil
 }
