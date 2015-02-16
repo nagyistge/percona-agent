@@ -56,7 +56,6 @@ var (
 	flagMySQLHost               string
 	flagMySQLPort               string
 	flagMySQLSocket             string
-	flagIgnoreFailures          bool
 	flagMySQLMaxUserConnections int64
 )
 

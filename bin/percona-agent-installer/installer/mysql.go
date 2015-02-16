@@ -103,7 +103,7 @@ func (i *Installer) createNewMySQLUser() (dsn mysql.DSN, err error) {
 	}
 	fmt.Printf("MySQL root DSN: %s\n", superUserDSN)
 
-	// Try to connect as root automatically.  If this fails and interacive is true,
+	// Try to connect as root automatically.  If this fails and interactive is true,
 	// start prompting user to enter valid root MySQL connection info.
 	if err = i.verifyMySQLConnection(superUserDSN); err != nil {
 		fmt.Printf("Error connecting to MySQL %s: %s\n", superUserDSN, err)
