@@ -42,6 +42,7 @@ import (
 	"os/exec"
 	"regexp"
 	"testing"
+	"time"
 )
 
 func Test(t *testing.T) { TestingT(t) }
@@ -106,8 +107,8 @@ func (s *MainTestSuite) SetUpSuite(t *C) {
 	s.agentUuid = "0001"
 	s.agent = &proto.Agent{
 		Uuid:     s.agentUuid,
-		Hostname: "host1",
-		Version:  "1.0.0",
+		Hostname: hostname,
+		Version:  agent.VERSION,
 		Links: map[string]string{
 			"self": "http://localhost:8000/agents/" + s.agentUuid,
 			"cmd":  "ws://localhost:8000/agents/" + s.agentUuid + "/cmd",
@@ -504,7 +505,65 @@ func (s *MainTestSuite) TestInstall(t *C) {
 	s.fakeApi.AppendConfigsMmDefaultMysql()
 	s.fakeApi.AppendSysconfigDefaultMysql()
 	s.fakeApi.AppendConfigsQanDefault()
-	s.fakeApi.AppendAgents(s.agent)
+	s.fakeApi.Append("/agents", func(w http.ResponseWriter, r *http.Request) {
+		// Validate
+		expectedProtoAgent := proto.Agent{
+			Uuid:     "",
+			Hostname: s.agent.Hostname,
+			Version:  s.agent.Version,
+			Configs: []proto.AgentConfig{
+				proto.AgentConfig{
+					InternalService: "mm",
+					ExternalService: proto.ServiceInstance{
+						Service:    "server",
+						InstanceId: s.serverInstance.Id,
+					},
+					Config:  "{\"Service\":\"server\",\"InstanceId\":20,\"Collect\":1,\"Report\":60}",
+					Running: true,
+				},
+				proto.AgentConfig{
+					InternalService: "mm",
+					ExternalService: proto.ServiceInstance{
+						Service:    "mysql",
+						InstanceId: s.mysqlInstance.Id,
+					},
+					Config:  "{\"Service\":\"mysql\",\"InstanceId\":10,\"Collect\":1,\"Report\":60,\"Status\":null,\"InnoDB\":null,\"UserStats\":false,\"UserStatsIgnoreDb\":\"\"}",
+					Running: true,
+				},
+				proto.AgentConfig{
+					InternalService: "sysconfig",
+					ExternalService: proto.ServiceInstance{
+						Service:    "mysql",
+						InstanceId: s.mysqlInstance.Id,
+					},
+					Config:  "{\"Service\":\"mysql\",\"InstanceId\":10,\"Report\":3600}",
+					Running: true,
+				},
+				proto.AgentConfig{
+					InternalService: "qan",
+					ExternalService: proto.ServiceInstance{
+						Service:    "mysql",
+						InstanceId: s.mysqlInstance.Id,
+					},
+					Config:  "{\"Service\":\"mysql\",\"InstanceId\":10,\"CollectFrom\":\"\",\"Start\":null,\"Stop\":null,\"MaxWorkers\":0,\"Interval\":60,\"MaxSlowLogSize\":0,\"RemoveOldSlowLogs\":false,\"ExampleQueries\":false,\"WorkerRunTime\":0,\"ReportLimit\":0}",
+					Running: true,
+				},
+			},
+		}
+		protoAgent := proto.Agent{}
+		body, err := ioutil.ReadAll(r.Body)
+		t.Assert(err, IsNil)
+		err = json.Unmarshal(body, &protoAgent)
+		t.Assert(err, IsNil)
+		for i := range protoAgent.Configs {
+			protoAgent.Configs[i].Updated = time.Time{}
+		}
+		t.Assert(protoAgent, DeepEquals, expectedProtoAgent)
+
+		// Send response
+		w.Header().Set("Location", fmt.Sprintf("%s/agents/%s", s.fakeApi.URL(), s.agent.Uuid))
+		w.WriteHeader(http.StatusCreated)
+	})
 	s.fakeApi.AppendAgentsUuid(s.agent)
 
 	cmd := exec.Command(
