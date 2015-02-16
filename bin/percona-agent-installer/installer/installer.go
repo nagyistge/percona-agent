@@ -128,6 +128,12 @@ func (i *Installer) Run() (err error) {
 		return fmt.Errorf("Created agent but failed to write service instances: %s", err)
 	}
 
+	// Agent Config
+	agentConfig, err := i.getAgentConfig()
+	if err != nil {
+		return err
+	}
+
 	/**
 	 * Get default configs for all services.
 	 */
@@ -140,14 +146,22 @@ func (i *Installer) Run() (err error) {
 	 * Create agent with initial service configs.
 	 */
 	if i.flags.Bool["create-agent"] {
-		agent, err := i.InstallerCreateAgentWithInitialServiceConfigs(configs)
+		allConfigs := append(configs, *agentConfig)
+		protoAgent, err := i.InstallerCreateAgentWithInitialServiceConfigs(allConfigs)
 		if err != nil {
 			return err
 		}
-		if err := i.writeAgentConfigs(agent); err != nil {
-			return fmt.Errorf("Created agent but failed to write agent configs: %s", err)
+
+		// To save data we need agent config with uuid and links
+		i.agentConfig.AgentUuid = protoAgent.Uuid
+		i.agentConfig.Links = protoAgent.Links
+		agentConfig, err := i.getAgentConfig()
+		if err != nil {
+			return err
 		}
-		if err := i.writeConfigs(configs); err != nil {
+		allConfigs = append(configs, *agentConfig)
+
+		if err := i.writeConfigs(allConfigs); err != nil {
 			return fmt.Errorf("Created agent but failed to write configs: %s", err)
 		}
 	} else {
@@ -325,6 +339,19 @@ func (i *Installer) InstallerCreateMySQLInstance() (mi *proto.MySQLInstance, err
 }
 
 func (i *Installer) InstallerGetDefaultConfigs(si *proto.ServerInstance, mi *proto.MySQLInstance) (configs []proto.AgentConfig, err error) {
+	// Log Config
+	logConfig, err := i.getLogConfig()
+	if err != nil {
+		return nil, err
+	}
+	configs = append(configs, *logConfig)
+
+	// Data Config
+	dataConfig, err := i.getDataConfig()
+	if err != nil {
+		return nil, err
+	}
+	configs = append(configs, *dataConfig)
 
 	if i.flags.Bool["start-services"] {
 		// Server metrics monitor

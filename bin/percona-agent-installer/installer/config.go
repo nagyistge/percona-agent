@@ -50,44 +50,66 @@ func (i *Installer) writeInstances(si *proto.ServerInstance, mi *proto.MySQLInst
 	return nil
 }
 
-func (i *Installer) writeAgentConfigs(agentRes *proto.Agent) error {
-	// A little confusing but agent.Config != proto.Agent != proto.AgentConfig.
-	// agent.Config is what we need because this is the main config file.
-	i.agentConfig.AgentUuid = agentRes.Uuid
-	i.agentConfig.Links = agentRes.Links
-	if err := pct.Basedir.WriteConfig("agent", i.agentConfig); err != nil {
-		return err
-	}
-
-	logConfig := pctLog.Config{
-		File:  pctLog.DEFAULT_LOG_FILE,
-		Level: pctLog.DEFAULT_LOG_LEVEL,
-	}
-	if err := pct.Basedir.WriteConfig("log", logConfig); err != nil {
-		return err
-	}
-
-	dataConfig := data.Config{
-		Encoding:     data.DEFAULT_DATA_ENCODING,
-		SendInterval: data.DEFAULT_DATA_SEND_INTERVAL,
-	}
-	if err := pct.Basedir.WriteConfig("data", dataConfig); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (i *Installer) writeConfigs(configs []proto.AgentConfig) error {
 	for _, config := range configs {
 		name := config.InternalService
-		if name != "qan" {
+		switch name {
+		case "agent", "log", "data", "qan":
+		default:
 			name += fmt.Sprintf("-%s-%d", config.ExternalService.Service, config.ExternalService.InstanceId)
 		}
+
 		if err := pct.Basedir.WriteConfigString(name, config.Config); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (i *Installer) getLogConfig() (*proto.AgentConfig, error) {
+	config := pctLog.Config{
+		File:  pctLog.DEFAULT_LOG_FILE,
+		Level: pctLog.DEFAULT_LOG_LEVEL,
+	}
+	configJson, err := json.Marshal(&config)
+	if err != nil {
+		return nil, err
+	}
+	agentConfig := &proto.AgentConfig{
+		InternalService: "log",
+		Config:          string(configJson),
+	}
+
+	return agentConfig, nil
+}
+
+func (i *Installer) getDataConfig() (*proto.AgentConfig, error) {
+	config := data.Config{
+		Encoding:     data.DEFAULT_DATA_ENCODING,
+		SendInterval: data.DEFAULT_DATA_SEND_INTERVAL,
+	}
+	configJson, err := json.Marshal(&config)
+	if err != nil {
+		return nil, err
+	}
+	agentConfig := &proto.AgentConfig{
+		InternalService: "data",
+		Config:          string(configJson),
+	}
+
+	return agentConfig, nil
+}
+
+func (i *Installer) getAgentConfig() (*proto.AgentConfig, error) {
+	configJson, err := json.Marshal(i.agentConfig)
+	if err != nil {
+		return nil, err
+	}
+	agentConfig := &proto.AgentConfig{
+		InternalService: "agent",
+		Config:          string(configJson),
+	}
+
+	return agentConfig, nil
 }

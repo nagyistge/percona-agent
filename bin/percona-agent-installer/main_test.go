@@ -513,6 +513,14 @@ func (s *MainTestSuite) TestInstall(t *C) {
 			Version:  s.agent.Version,
 			Configs: []proto.AgentConfig{
 				proto.AgentConfig{
+					InternalService: "log",
+					Config:          "{\"Level\":\"info\",\"File\":\"\",\"Offline\":false}",
+				},
+				proto.AgentConfig{
+					InternalService: "data",
+					Config:          "{\"Encoding\":\"gzip\",\"SendInterval\":63,\"Blackhole\":false}",
+				},
+				proto.AgentConfig{
 					InternalService: "mm",
 					ExternalService: proto.ServiceInstance{
 						Service:    "server",
@@ -547,6 +555,10 @@ func (s *MainTestSuite) TestInstall(t *C) {
 					},
 					Config:  "{\"Service\":\"mysql\",\"InstanceId\":10,\"CollectFrom\":\"\",\"Start\":null,\"Stop\":null,\"MaxWorkers\":0,\"Interval\":60,\"MaxSlowLogSize\":0,\"RemoveOldSlowLogs\":false,\"ExampleQueries\":false,\"WorkerRunTime\":0,\"ReportLimit\":0}",
 					Running: true,
+				},
+				proto.AgentConfig{
+					InternalService: "agent",
+					Config:          "{\"AgentUuid\":\"\",\"ApiHostname\":\"" + s.fakeApi.URL() + "\",\"ApiKey\":\"00000000000000000000000000000001\",\"Keepalive\":0,\"PidFile\":\"percona-agent.pid\"}",
 				},
 			},
 		}
