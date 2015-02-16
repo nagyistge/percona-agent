@@ -511,56 +511,6 @@ func (s *MainTestSuite) TestInstall(t *C) {
 			Uuid:     "",
 			Hostname: s.agent.Hostname,
 			Version:  s.agent.Version,
-			Configs: []proto.AgentConfig{
-				proto.AgentConfig{
-					InternalService: "log",
-					Config:          "{\"Level\":\"info\",\"File\":\"\",\"Offline\":false}",
-				},
-				proto.AgentConfig{
-					InternalService: "data",
-					Config:          "{\"Encoding\":\"gzip\",\"SendInterval\":63,\"Blackhole\":false}",
-				},
-				proto.AgentConfig{
-					InternalService: "mm",
-					ExternalService: proto.ServiceInstance{
-						Service:    "server",
-						InstanceId: s.serverInstance.Id,
-					},
-					Config:  "{\"Service\":\"server\",\"InstanceId\":20,\"Collect\":1,\"Report\":60}",
-					Running: true,
-				},
-				proto.AgentConfig{
-					InternalService: "mm",
-					ExternalService: proto.ServiceInstance{
-						Service:    "mysql",
-						InstanceId: s.mysqlInstance.Id,
-					},
-					Config:  "{\"Service\":\"mysql\",\"InstanceId\":10,\"Collect\":1,\"Report\":60,\"Status\":null,\"InnoDB\":null,\"UserStats\":false,\"UserStatsIgnoreDb\":\"\"}",
-					Running: true,
-				},
-				proto.AgentConfig{
-					InternalService: "sysconfig",
-					ExternalService: proto.ServiceInstance{
-						Service:    "mysql",
-						InstanceId: s.mysqlInstance.Id,
-					},
-					Config:  "{\"Service\":\"mysql\",\"InstanceId\":10,\"Report\":3600}",
-					Running: true,
-				},
-				proto.AgentConfig{
-					InternalService: "qan",
-					ExternalService: proto.ServiceInstance{
-						Service:    "mysql",
-						InstanceId: s.mysqlInstance.Id,
-					},
-					Config:  "{\"Service\":\"mysql\",\"InstanceId\":10,\"CollectFrom\":\"\",\"Start\":null,\"Stop\":null,\"MaxWorkers\":0,\"Interval\":60,\"MaxSlowLogSize\":0,\"RemoveOldSlowLogs\":false,\"ExampleQueries\":false,\"WorkerRunTime\":0,\"ReportLimit\":0}",
-					Running: true,
-				},
-				proto.AgentConfig{
-					InternalService: "agent",
-					Config:          "{\"AgentUuid\":\"\",\"ApiHostname\":\"" + s.fakeApi.URL() + "\",\"ApiKey\":\"00000000000000000000000000000001\",\"Keepalive\":0,\"PidFile\":\"percona-agent.pid\"}",
-				},
-			},
 		}
 		protoAgent := proto.Agent{}
 		body, err := ioutil.ReadAll(r.Body)
@@ -1111,9 +1061,8 @@ func (s *MainTestSuite) TestInstallWithFlagMysqlFalse(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
-	t.Check(cmdTest.ReadLine(), Equals, "Not starting MySQL services (-start-mysql-services=false)\n")
-
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
+	t.Check(cmdTest.ReadLine(), Equals, "Not starting MySQL services (-start-mysql-services=false)\n")
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()

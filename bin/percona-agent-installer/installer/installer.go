@@ -132,11 +132,14 @@ func (i *Installer) Run() (err error) {
 	 * Create agent with initial service configs.
 	 */
 	if i.flags.Bool["create-agent"] {
-		// Agent Config
-		agentConfig, err := i.getAgentConfig()
+		protoAgent, err := i.InstallerCreateAgentWithInitialServiceConfigs()
 		if err != nil {
 			return err
 		}
+
+		// To save data we need agent config with uuid and links
+		i.agentConfig.AgentUuid = protoAgent.Uuid
+		i.agentConfig.Links = protoAgent.Links
 
 		/**
 		 * Get default configs for all services.
@@ -146,22 +149,8 @@ func (i *Installer) Run() (err error) {
 			return err
 		}
 
-		allConfigs := append(configs, *agentConfig)
-		protoAgent, err := i.InstallerCreateAgentWithInitialServiceConfigs(allConfigs)
-		if err != nil {
-			return err
-		}
-
-		// To save data we need agent config with uuid and links
-		i.agentConfig.AgentUuid = protoAgent.Uuid
-		i.agentConfig.Links = protoAgent.Links
-		agentConfig, err = i.getAgentConfig()
-		if err != nil {
-			return err
-		}
-		allConfigs = append(configs, *agentConfig)
-
-		if err := i.writeConfigs(allConfigs); err != nil {
+		// Save configs
+		if err := i.writeConfigs(configs); err != nil {
 			return fmt.Errorf("Created agent but failed to write configs: %s", err)
 		}
 	} else {
@@ -339,6 +328,12 @@ func (i *Installer) InstallerCreateMySQLInstance() (mi *proto.MySQLInstance, err
 }
 
 func (i *Installer) InstallerGetDefaultConfigs(si *proto.ServerInstance, mi *proto.MySQLInstance) (configs []proto.AgentConfig, err error) {
+	agentConfig, err := i.getAgentConfig()
+	if err != nil {
+		return nil, err
+	}
+	configs = append(configs, *agentConfig)
+
 	// Log Config
 	logConfig, err := i.getLogConfig()
 	if err != nil {
@@ -408,11 +403,10 @@ func (i *Installer) InstallerGetDefaultConfigs(si *proto.ServerInstance, mi *pro
 	return configs, nil
 }
 
-func (i *Installer) InstallerCreateAgentWithInitialServiceConfigs(configs []proto.AgentConfig) (protoAgent *proto.Agent, err error) {
+func (i *Installer) InstallerCreateAgentWithInitialServiceConfigs() (protoAgent *proto.Agent, err error) {
 	protoAgent = &proto.Agent{
 		Hostname: i.hostname,
 		Version:  agent.VERSION,
-		Configs:  configs,
 	}
 	protoAgent, err = i.api.CreateAgent(protoAgent)
 	if err != nil {
