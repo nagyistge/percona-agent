@@ -144,7 +144,10 @@ func (i *Installer) Run() (err error) {
 		if err != nil {
 			return err
 		}
-		if err := i.writeConfigs(agent, configs); err != nil {
+		if err := i.writeAgentConfigs(agent); err != nil {
+			return fmt.Errorf("Created agent but failed to write agent configs: %s", err)
+		}
+		if err := i.writeConfigs(configs); err != nil {
 			return fmt.Errorf("Created agent but failed to write configs: %s", err)
 		}
 	} else {

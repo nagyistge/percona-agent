@@ -50,7 +50,7 @@ func (i *Installer) writeInstances(si *proto.ServerInstance, mi *proto.MySQLInst
 	return nil
 }
 
-func (i *Installer) writeConfigs(agentRes *proto.Agent, configs []proto.AgentConfig) error {
+func (i *Installer) writeAgentConfigs(agentRes *proto.Agent) error {
 	// A little confusing but agent.Config != proto.Agent != proto.AgentConfig.
 	// agent.Config is what we need because this is the main config file.
 	i.agentConfig.AgentUuid = agentRes.Uuid
@@ -75,6 +75,10 @@ func (i *Installer) writeConfigs(agentRes *proto.Agent, configs []proto.AgentCon
 		return err
 	}
 
+	return nil
+}
+
+func (i *Installer) writeConfigs(configs []proto.AgentConfig) error {
 	for _, config := range configs {
 		name := config.InternalService
 		if name != "qan" {
