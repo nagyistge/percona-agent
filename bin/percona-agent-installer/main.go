@@ -20,10 +20,12 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/api"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/installer"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/term"
+	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/pct"
 	"log"
 	"os"
@@ -159,9 +161,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	api := api.New(pct.NewAPI(), flagDebug)
+	apiConnector := pct.NewAPI()
+	api := api.New(apiConnector, flagDebug)
+	logChan := make(chan *proto.LogEntry, 100)
+	logger := pct.NewLogger(logChan, "instance-repo")
+	instanceRepo := instance.NewRepo(logger, pct.Basedir.Dir("config"), apiConnector)
 	terminal := term.NewTerminal(os.Stdin, flagInteractive, flagDebug)
-	agentInstaller := installer.NewInstaller(terminal, flagBasedir, api, agentConfig, flags)
+	agentInstaller := installer.NewInstaller(terminal, flagBasedir, api, instanceRepo, agentConfig, flags)
 	fmt.Println("CTRL-C at any time to quit")
 	// todo: catch SIGINT and clean up
 	if err := agentInstaller.Run(); err != nil {

@@ -24,8 +24,8 @@ import (
 	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/api"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/term"
+	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/mysql"
-	"github.com/percona/percona-agent/pct"
 	"log"
 	"net"
 	"net/url"
@@ -43,17 +43,18 @@ type Flags struct {
 }
 
 type Installer struct {
-	term        *term.Terminal
-	basedir     string
-	api         *api.Api
-	agentConfig *agent.Config
-	flags       Flags
+	term         *term.Terminal
+	basedir      string
+	api          *api.Api
+	instanceRepo *instance.Repo
+	agentConfig  *agent.Config
+	flags        Flags
 	// --
 	hostname   string
 	defaultDSN mysql.DSN
 }
 
-func NewInstaller(terminal *term.Terminal, basedir string, api *api.Api, agentConfig *agent.Config, flags Flags) *Installer {
+func NewInstaller(terminal *term.Terminal, basedir string, api *api.Api, instanceRepo *instance.Repo, agentConfig *agent.Config, flags Flags) *Installer {
 	if agentConfig.ApiHostname == "" {
 		agentConfig.ApiHostname = agent.DEFAULT_API_HOSTNAME
 	}
@@ -69,11 +70,12 @@ func NewInstaller(terminal *term.Terminal, basedir string, api *api.Api, agentCo
 		Socket:   flags.String["mysql-socket"],
 	}
 	installer := &Installer{
-		term:        terminal,
-		basedir:     basedir,
-		api:         api,
-		agentConfig: agentConfig,
-		flags:       flags,
+		term:         terminal,
+		basedir:      basedir,
+		api:          api,
+		instanceRepo: instanceRepo,
+		agentConfig:  agentConfig,
+		flags:        flags,
 		// --
 		hostname:   hostname,
 		defaultDSN: defaultDSN,

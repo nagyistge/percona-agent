@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/data"
-	"github.com/percona/percona-agent/instance"
 	pctLog "github.com/percona/percona-agent/log"
 	"github.com/percona/percona-agent/pct"
 )
@@ -30,15 +29,12 @@ import (
 func (i *Installer) writeInstances(si *proto.ServerInstance, mi *proto.MySQLInstance) error {
 	// We could write the instance structs directly, but this is the job of an
 	// instance repo and it's easy enough to create one, so do the right thing.
-	logChan := make(chan *proto.LogEntry, 100)
-	logger := pct.NewLogger(logChan, "instance-repo")
-	repo := instance.NewRepo(logger, pct.Basedir.Dir("config"), i.apiConnector)
 	if si != nil {
 		bytes, err := json.Marshal(si)
 		if err != nil {
 			return err
 		}
-		if err := repo.Add("server", si.Id, bytes, true); err != nil {
+		if err := i.instanceRepo.Add("server", si.Id, bytes, true); err != nil {
 			return err
 		}
 	}
@@ -47,7 +43,7 @@ func (i *Installer) writeInstances(si *proto.ServerInstance, mi *proto.MySQLInst
 		if err != nil {
 			return err
 		}
-		if err := repo.Add("mysql", mi.Id, bytes, true); err != nil {
+		if err := i.instanceRepo.Add("mysql", mi.Id, bytes, true); err != nil {
 			return err
 		}
 	}
