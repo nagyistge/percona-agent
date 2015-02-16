@@ -39,10 +39,9 @@ func (i *InstallerTestSuite) TestIsSupportedMySQLVersion(t *C) {
 	agentConfig := &agent.Config{}
 	flags := installer.Flags{}
 
-	apiConnector := pct.NewAPI()
-	api := api.New(apiConnector, false)
+	api := api.New(pct.NewAPI(), false)
 	terminal := term.NewTerminal(os.Stdin, false, true)
-	inst := installer.NewInstaller(terminal, "", api, apiConnector, agentConfig, flags)
+	inst := installer.NewInstaller(terminal, "", api, agentConfig, flags)
 	conn := mock.NewNullMySQL()
 
 	conn.SetGlobalVarString("version", "5.0") // Mockup MySQL version

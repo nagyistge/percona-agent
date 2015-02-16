@@ -43,6 +43,10 @@ func New(apiConnector pct.APIConnector, debug bool) *Api {
 	}
 }
 
+func (self *Api) Init(hostname, apiKey string, headers map[string]string) (code int, err error) {
+	return self.apiConnector.Init(hostname, apiKey, headers)
+}
+
 func (self *Api) CreateServerInstance(si *proto.ServerInstance) (*proto.ServerInstance, error) {
 	// POST <api>/instances/server
 	data, err := json.Marshal(si)

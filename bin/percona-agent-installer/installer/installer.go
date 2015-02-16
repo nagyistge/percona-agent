@@ -43,18 +43,17 @@ type Flags struct {
 }
 
 type Installer struct {
-	term         *term.Terminal
-	basedir      string
-	api          *api.Api
-	apiConnector pct.APIConnector
-	agentConfig  *agent.Config
-	flags        Flags
+	term        *term.Terminal
+	basedir     string
+	api         *api.Api
+	agentConfig *agent.Config
+	flags       Flags
 	// --
 	hostname   string
 	defaultDSN mysql.DSN
 }
 
-func NewInstaller(terminal *term.Terminal, basedir string, api *api.Api, apiConnector pct.APIConnector, agentConfig *agent.Config, flags Flags) *Installer {
+func NewInstaller(terminal *term.Terminal, basedir string, api *api.Api, agentConfig *agent.Config, flags Flags) *Installer {
 	if agentConfig.ApiHostname == "" {
 		agentConfig.ApiHostname = agent.DEFAULT_API_HOSTNAME
 	}
@@ -70,12 +69,11 @@ func NewInstaller(terminal *term.Terminal, basedir string, api *api.Api, apiConn
 		Socket:   flags.String["mysql-socket"],
 	}
 	installer := &Installer{
-		term:         terminal,
-		basedir:      basedir,
-		api:          api,
-		apiConnector: apiConnector,
-		agentConfig:  agentConfig,
-		flags:        flags,
+		term:        terminal,
+		basedir:     basedir,
+		api:         api,
+		agentConfig: agentConfig,
+		flags:       flags,
 		// --
 		hostname:   hostname,
 		defaultDSN: defaultDSN,
@@ -187,7 +185,7 @@ VERIFY_API_KEY:
 		headers := map[string]string{
 			"X-Percona-Agent-Version": agent.VERSION,
 		}
-		code, err := i.apiConnector.Init(i.agentConfig.ApiHostname, i.agentConfig.ApiKey, headers)
+		code, err := i.api.Init(i.agentConfig.ApiHostname, i.agentConfig.ApiKey, headers)
 		elapsedTime := time.Since(startTime)
 		elapsedTimeInSeconds := elapsedTime / time.Second
 

@@ -159,10 +159,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	apiConnector := pct.NewAPI()
-	api := api.New(apiConnector, flagDebug)
+	api := api.New(pct.NewAPI(), flagDebug)
 	terminal := term.NewTerminal(os.Stdin, flagInteractive, flagDebug)
-	agentInstaller := installer.NewInstaller(terminal, flagBasedir, api, apiConnector, agentConfig, flags)
+	agentInstaller := installer.NewInstaller(terminal, flagBasedir, api, agentConfig, flags)
 	fmt.Println("CTRL-C at any time to quit")
 	// todo: catch SIGINT and clean up
 	if err := agentInstaller.Run(); err != nil {
