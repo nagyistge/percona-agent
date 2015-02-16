@@ -295,6 +295,7 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(
 		"-basedir="+pct.Basedir.Path(),
 		"-api-host="+s.fakeApi.URL(),
 		"-interactive=false",
+		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-wrong_user",
 		"-mysql-user="+s.username,
 		"-mysql-socket=/var/run/mysqld/mysqld.sock",
 		"-api-key="+s.apiKey, // Required because of non-interactive mode
