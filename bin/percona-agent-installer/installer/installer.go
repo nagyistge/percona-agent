@@ -22,6 +22,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/agent"
+	"github.com/percona/percona-agent/bin/percona-agent-installer/api"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/term"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
@@ -42,17 +43,18 @@ type Flags struct {
 }
 
 type Installer struct {
-	term        *term.Terminal
-	basedir     string
-	api         pct.APIConnector
-	agentConfig *agent.Config
-	flags       Flags
+	term         *term.Terminal
+	basedir      string
+	api          *api.Api
+	apiConnector pct.APIConnector
+	agentConfig  *agent.Config
+	flags        Flags
 	// --
 	hostname   string
 	defaultDSN mysql.DSN
 }
 
-func NewInstaller(terminal *term.Terminal, basedir string, api pct.APIConnector, agentConfig *agent.Config, flags Flags) *Installer {
+func NewInstaller(terminal *term.Terminal, basedir string, api *api.Api, apiConnector pct.APIConnector, agentConfig *agent.Config, flags Flags) *Installer {
 	if agentConfig.ApiHostname == "" {
 		agentConfig.ApiHostname = agent.DEFAULT_API_HOSTNAME
 	}
@@ -68,11 +70,12 @@ func NewInstaller(terminal *term.Terminal, basedir string, api pct.APIConnector,
 		Socket:   flags.String["mysql-socket"],
 	}
 	installer := &Installer{
-		term:        terminal,
-		basedir:     basedir,
-		api:         api,
-		agentConfig: agentConfig,
-		flags:       flags,
+		term:         terminal,
+		basedir:      basedir,
+		api:          api,
+		apiConnector: apiConnector,
+		agentConfig:  agentConfig,
+		flags:        flags,
 		// --
 		hostname:   hostname,
 		defaultDSN: defaultDSN,
@@ -96,6 +99,11 @@ func (i *Installer) Run() (err error) {
 	if err != nil {
 		return err
 	}
+
+	/**
+	 * Initialize apiConnector
+	 */
+	i.apiConnector.Init(i.agentConfig.ApiHostname, i.agentConfig.ApiKey)
 
 	/**
 	 * Create new service instances.
@@ -266,7 +274,11 @@ VERIFY_API_KEY:
 
 func (i *Installer) InstallerCreateServerInstance() (si *proto.ServerInstance, err error) {
 	if i.flags.Bool["create-server-instance"] {
-		si, err = i.createServerInstance()
+		// POST <api>/instances/server
+		si = &proto.ServerInstance{
+			Hostname: i.hostname,
+		}
+		si, err = i.api.CreateServerInstance(si)
 		if err != nil {
 			return nil, err
 		}
@@ -288,8 +300,14 @@ func (i *Installer) InstallerCreateMySQLInstance() (mi *proto.MySQLInstance, err
 		if err != nil {
 			return nil, err
 		}
+
 		// Create MySQL instance in API.
-		mi, err = i.createMySQLInstance(agentDSN)
+		dsnString, _ := agentDSN.DSN()
+		mi = &proto.MySQLInstance{
+			Hostname: i.hostname,
+			DSN:      dsnString,
+		}
+		mi, err = i.api.CreateMySQLInstance(mi)
 		if err != nil {
 			return nil, err
 		}
@@ -305,7 +323,7 @@ func (i *Installer) InstallerGetDefaultConfigs(si *proto.ServerInstance, mi *pro
 
 	if i.flags.Bool["start-services"] {
 		// Server metrics monitor
-		config, err := i.getMmServerConfig(si)
+		config, err := i.api.GetMmServerConfig(si)
 		if err != nil {
 			fmt.Println(err)
 			fmt.Println("WARNING: cannot start server metrics monitor")
@@ -316,7 +334,7 @@ func (i *Installer) InstallerGetDefaultConfigs(si *proto.ServerInstance, mi *pro
 		if i.flags.Bool["start-mysql-services"] {
 			if mi != nil {
 				// MySQL metrics tracker
-				config, err = i.getMmMySQLConfig(mi)
+				config, err = i.api.GetMmMySQLConfig(mi)
 				if err != nil {
 					fmt.Println(err)
 					fmt.Println("WARNING: cannot start MySQL metrics monitor")
@@ -325,7 +343,7 @@ func (i *Installer) InstallerGetDefaultConfigs(si *proto.ServerInstance, mi *pro
 				}
 
 				// MySQL config tracker
-				config, err = i.getSysconfigMySQLConfig(mi)
+				config, err = i.api.GetSysconfigMySQLConfig(mi)
 				if err != nil {
 					fmt.Println(err)
 					fmt.Println("WARNING: cannot start MySQL configuration monitor")
@@ -339,7 +357,7 @@ func (i *Installer) InstallerGetDefaultConfigs(si *proto.ServerInstance, mi *pro
 					if i.flags.Bool["debug"] {
 						log.Printf("MySQL is local")
 					}
-					config, err := i.getQanConfig(mi)
+					config, err := i.api.GetQanConfig(mi)
 					if err != nil {
 						fmt.Println(err)
 						fmt.Println("WARNING: cannot start Query Analytics")
@@ -360,7 +378,12 @@ func (i *Installer) InstallerGetDefaultConfigs(si *proto.ServerInstance, mi *pro
 
 func (i *Installer) InstallerCreateAgentWithInitialServiceConfigs(configs []proto.AgentConfig) (err error) {
 	if i.flags.Bool["create-agent"] {
-		agent, err := i.createAgent(configs)
+		agent := &proto.Agent{
+			Hostname: i.hostname,
+			Version:  agent.VERSION,
+			Configs:  configs,
+		}
+		agent, err = i.api.CreateAgent(agent)
 		if err != nil {
 			return err
 		}

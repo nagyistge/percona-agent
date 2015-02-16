@@ -19,6 +19,7 @@ package installer_test
 
 import (
 	"github.com/percona/percona-agent/agent"
+	"github.com/percona/percona-agent/bin/percona-agent-installer/api"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/installer"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/term"
 	"github.com/percona/percona-agent/pct"
@@ -38,7 +39,10 @@ func (i *InstallerTestSuite) TestIsSupportedMySQLVersion(t *C) {
 	agentConfig := &agent.Config{}
 	flags := installer.Flags{}
 
-	inst := installer.NewInstaller(term.NewTerminal(os.Stdin, false, true), "", pct.NewAPI(), agentConfig, flags)
+	apiConnector := pct.NewAPI()
+	api := api.New(apiConnector, false)
+	terminal := term.NewTerminal(os.Stdin, false, true)
+	inst := installer.NewInstaller(terminal, "", api, apiConnector, agentConfig, flags)
 	conn := mock.NewNullMySQL()
 
 	conn.SetGlobalVarString("version", "5.0") // Mockup MySQL version

@@ -21,6 +21,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/percona/percona-agent/agent"
+	"github.com/percona/percona-agent/bin/percona-agent-installer/api"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/installer"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/term"
 	"github.com/percona/percona-agent/pct"
@@ -158,7 +159,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	agentInstaller := installer.NewInstaller(term.NewTerminal(os.Stdin, flagInteractive, flagDebug), flagBasedir, pct.NewAPI(), agentConfig, flags)
+	apiConnector := pct.NewAPI()
+	api := api.New(apiConnector, flagDebug)
+	terminal := term.NewTerminal(os.Stdin, flagInteractive, flagDebug)
+	agentInstaller := installer.NewInstaller(terminal, flagBasedir, api, apiConnector, agentConfig, flags)
 	fmt.Println("CTRL-C at any time to quit")
 	// todo: catch SIGINT and clean up
 	if err := agentInstaller.Run(); err != nil {

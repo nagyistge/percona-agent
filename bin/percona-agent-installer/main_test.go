@@ -239,6 +239,44 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
 	t.Assert(err, IsNil)

@@ -43,6 +43,7 @@ var timeoutClientConfig = &TimeoutClientConfig{
 
 type APIConnector interface {
 	Connect(hostname, apiKey, agentUuid string) error
+	Init(hostname, apiKey string)
 	Get(apiKey, url string) (int, []byte, error)
 	Post(apiKey, url string, data []byte) (*http.Response, []byte, error)
 	Put(apiKey, url string, data []byte) (*http.Response, []byte, error)
@@ -52,6 +53,7 @@ type APIConnector interface {
 	Hostname() string
 	ApiKey() string
 	AgentUuid() string
+	URL(paths ...string) string
 }
 
 type API struct {
@@ -168,6 +170,13 @@ func (a *API) Connect(hostname, apiKey, agentUuid string) error {
 	return nil
 }
 
+func (a *API) Init(hostname string, apiKey string) {
+	a.mux.Lock()
+	defer a.mux.Unlock()
+	a.hostname = hostname
+	a.apiKey = apiKey
+}
+
 func (a *API) checkLinks(links map[string]string, req ...string) error {
 	for _, link := range req {
 		logLink, exist := links[link]
@@ -253,6 +262,10 @@ func (a *API) Hostname() string {
 	a.mux.RLock()
 	defer a.mux.RUnlock()
 	return a.hostname
+}
+
+func (a *API) URL(paths ...string) string {
+	return URL(a.Hostname(), paths...)
 }
 
 func (a *API) ApiKey() string {
