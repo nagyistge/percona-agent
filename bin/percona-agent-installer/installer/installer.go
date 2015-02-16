@@ -128,24 +128,24 @@ func (i *Installer) Run() (err error) {
 		return fmt.Errorf("Created agent but failed to write service instances: %s", err)
 	}
 
-	// Agent Config
-	agentConfig, err := i.getAgentConfig()
-	if err != nil {
-		return err
-	}
-
-	/**
-	 * Get default configs for all services.
-	 */
-	configs, err := i.InstallerGetDefaultConfigs(si, mi)
-	if err != nil {
-		return err
-	}
-
 	/**
 	 * Create agent with initial service configs.
 	 */
 	if i.flags.Bool["create-agent"] {
+		// Agent Config
+		agentConfig, err := i.getAgentConfig()
+		if err != nil {
+			return err
+		}
+
+		/**
+		 * Get default configs for all services.
+		 */
+		configs, err := i.InstallerGetDefaultConfigs(si, mi)
+		if err != nil {
+			return err
+		}
+
 		allConfigs := append(configs, *agentConfig)
 		protoAgent, err := i.InstallerCreateAgentWithInitialServiceConfigs(allConfigs)
 		if err != nil {
@@ -155,7 +155,7 @@ func (i *Installer) Run() (err error) {
 		// To save data we need agent config with uuid and links
 		i.agentConfig.AgentUuid = protoAgent.Uuid
 		i.agentConfig.Links = protoAgent.Links
-		agentConfig, err := i.getAgentConfig()
+		agentConfig, err = i.getAgentConfig()
 		if err != nil {
 			return err
 		}
