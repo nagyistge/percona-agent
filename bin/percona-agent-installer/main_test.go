@@ -232,51 +232,14 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -347,13 +310,14 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(
 	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -452,12 +416,13 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t 
 	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Check(cmdTest.ReadLine(), Equals, "Skip creating MySQL user (-create-mysql-user=false)\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -550,13 +515,14 @@ func (s *MainTestSuite) TestInstall(t *C) {
 	cmdTest.Write(s.apiKey + "\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -591,6 +557,50 @@ func (s *MainTestSuite) TestInstall(t *C) {
 	s.expectMysqlUserExists(t)
 }
 
+func (s *MainTestSuite) TestInstallFailsOnAgentsLimit(t *C) {
+	agentLimit := 5
+
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	s.fakeApi.Append("/agents", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Percona-Agents-Limit", fmt.Sprintf("%d", agentLimit))
+		// Send response
+		w.WriteHeader(http.StatusForbidden)
+	})
+
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+pct.Basedir.Path(),
+		"-api-host="+s.fakeApi.URL(),
+		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
+	cmdTest.Write(s.apiKey + "\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Maximum number of %d agents exceeded.\n", agentLimit))
+	t.Check(cmdTest.ReadLine(), Equals, "Go to https://cloud.percona.com/agents and remove unused agents or contact Percona to increase limit.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Check(err, ErrorMatches, "exit status 1")
+
+	s.expectConfigs([]string{}, t)
+	s.expectMysqlUserNotExists(t)
+}
 func (s *MainTestSuite) TestInstallWorksWithExistingMySQLInstanceAndInstanceIsUpdated(t *C) {
 	// Register required api handlers
 	s.fakeApi.AppendPing()
@@ -652,13 +662,14 @@ func (s *MainTestSuite) TestInstallWorksWithExistingMySQLInstanceAndInstanceIsUp
 	cmdTest.Write(s.apiKey + "\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -739,6 +750,8 @@ func (s *MainTestSuite) TestInstallFailsOnUpdatingMySQLInstance(t *C) {
 	cmdTest.Write(s.apiKey + "\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
@@ -909,6 +922,8 @@ func (s *MainTestSuite) TestInstallWithFlagOldPasswordsTrue(t *C) {
 	cmdTest.Write(s.apiKey + "\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
@@ -916,7 +931,6 @@ func (s *MainTestSuite) TestInstallWithFlagOldPasswordsTrue(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true&allowOldPasswords=true\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -984,13 +998,14 @@ func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -1059,9 +1074,10 @@ func (s *MainTestSuite) TestInstallWithFlagMysqlFalse(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
+
 	t.Check(cmdTest.ReadLine(), Equals, "Not starting MySQL services (-start-mysql-services=false)\n")
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 

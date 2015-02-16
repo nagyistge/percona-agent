@@ -100,6 +100,17 @@ func (i *Installer) Run() (err error) {
 		return err
 	}
 
+	if i.flags.Bool["create-agent"] {
+		protoAgent, err := i.InstallerCreateAgentWithInitialServiceConfigs()
+		if err != nil {
+			return err
+		}
+
+		// To save data we need agent config with uuid and links
+		i.agentConfig.AgentUuid = protoAgent.Uuid
+		i.agentConfig.Links = protoAgent.Links
+	}
+
 	/**
 	 * Create new service instances.
 	 */
@@ -132,15 +143,6 @@ func (i *Installer) Run() (err error) {
 	 * Create agent with initial service configs.
 	 */
 	if i.flags.Bool["create-agent"] {
-		protoAgent, err := i.InstallerCreateAgentWithInitialServiceConfigs()
-		if err != nil {
-			return err
-		}
-
-		// To save data we need agent config with uuid and links
-		i.agentConfig.AgentUuid = protoAgent.Uuid
-		i.agentConfig.Links = protoAgent.Links
-
 		/**
 		 * Get default configs for all services.
 		 */
