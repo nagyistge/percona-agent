@@ -101,11 +101,6 @@ func (i *Installer) Run() (err error) {
 	}
 
 	/**
-	 * Initialize apiConnector
-	 */
-	i.apiConnector.Init(i.agentConfig.ApiHostname, i.agentConfig.ApiKey)
-
-	/**
 	 * Create new service instances.
 	 */
 
@@ -192,7 +187,7 @@ VERIFY_API_KEY:
 		headers := map[string]string{
 			"X-Percona-Agent-Version": agent.VERSION,
 		}
-		code, err := pct.Ping(i.agentConfig.ApiHostname, i.agentConfig.ApiKey, headers)
+		code, err := i.apiConnector.Init(i.agentConfig.ApiHostname, i.agentConfig.ApiKey, headers)
 		elapsedTime := time.Since(startTime)
 		elapsedTimeInSeconds := elapsedTime / time.Second
 
