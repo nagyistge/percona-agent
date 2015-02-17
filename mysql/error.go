@@ -2,8 +2,9 @@ package mysql
 
 import (
 	"fmt"
-	"github.com/go-sql-driver/mysql"
 	"net"
+
+	"github.com/go-sql-driver/mysql"
 )
 
 func MySQLErrorCode(err error) uint16 {
@@ -28,4 +29,5 @@ func FormatError(err error) string {
 // MySQL error codes
 const (
 	ER_SPECIFIC_ACCESS_DENIED_ERROR = 1227
+	ER_SYNTAX_ERROR                 = 1064
 )
