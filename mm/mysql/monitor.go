@@ -80,7 +80,6 @@ func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Conn
 
 // @goroutine[0]
 func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collection) error {
-	var err error
 	m.logger.Debug("Start:call")
 	defer m.logger.Debug("Start:return")
 
@@ -91,10 +90,6 @@ func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collect
 	m.tickChan = tickChan
 	m.collectionChan = collectionChan
 
-	m.restartChan, err = m.mrm.Add(m.conn.DSN())
-	if err != nil {
-		return err
-	}
 	go m.run()
 	m.running = true
 	m.logger.Info("Started")
@@ -176,6 +171,13 @@ func (m *Monitor) connect(err error) {
 		// Tell run() goroutine that it can try to collect metrics.
 		// If connection is lost, it will call us again.
 		m.connectedChan <- true
+		// Add the instance only when we have a connection. Otherwise, mrm.Add will fail
+		if m.restartChan == nil {
+			m.restartChan, err = m.mrm.Add(m.conn.DSN())
+			if err != nil {
+				m.logger.Warn(fmt.Sprintf("Cannot add instance to the restart monitor: %v", err))
+			}
+		}
 		return
 	}
 }

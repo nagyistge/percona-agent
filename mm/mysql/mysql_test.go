@@ -19,10 +19,11 @@ package mysql_test
 
 import (
 	"database/sql"
-	_ "github.com/go-sql-driver/mysql"
 	"os"
 	"testing"
 	"time"
+
+	_ "github.com/go-sql-driver/mysql"
 
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mm"
@@ -499,4 +500,34 @@ func (s *TestSuite) TestSlowResponse(t *C) {
 	// If it took more than 10% of config.Collect, the monitor must
 	// discard those metrics -> len(got) == 0
 	t.Check(got, HasLen, 0)
+}
+
+// Even having a wrong user/pass, the monitor should be able to start
+// It won't be able to connect to the DB, but it should start without
+// blocking.
+// This test if for cases where the agent starts but MySQL is down
+func (s *TestSuite) TestStartWithInvalidDSN(t *C) {
+	config := &mysql.Config{
+		Config: mm.Config{
+			ServiceInstance: proto.ServiceInstance{
+				Service:    "mysql",
+				InstanceId: 1,
+			},
+			Collect: 1,
+			Report:  60,
+		},
+		Status: map[string]string{
+			"threads_connected": "gauge",
+			"threads_running":   "gauge",
+		},
+	}
+
+	failDsn := "user:pass@tcp(127.0.0.2:3309)/"
+	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(failDsn), s.mrm)
+	if m == nil {
+		t.Fatal("Make new mysql.Monitor")
+	}
+
+	err := m.Start(s.tickChan, s.collectionChan)
+	t.Assert(err, IsNil)
 }
