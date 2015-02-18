@@ -18,76 +18,79 @@
 package mock
 
 import (
-	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/qan"
 )
 
-type QanWorkerFactory struct {
-	workers  []*QanWorker
-	workerNo int
-}
-
-func NewQanWorkerFactory(workers []*QanWorker) qan.WorkerFactory {
-	f := &QanWorkerFactory{
-		workers: workers,
-	}
-	return f
-}
-
-func (f *QanWorkerFactory) Make(collectFrom, name string, mysqlConn mysql.Connector) qan.Worker {
-	if f.workerNo > len(f.workers) {
-		return f.workers[f.workerNo-1]
-	}
-	nextWorker := f.workers[f.workerNo]
-	f.workerNo++
-	return nextWorker
-}
-
 type QanWorker struct {
-	name     string
-	stopChan chan bool
-	result   *qan.Result
-	err      error
-	crash    bool
-	// --
-	runningChan chan bool
-	Job         *qan.Job
+	SetupChan        chan bool
+	RunChan          chan bool
+	StopChan         chan bool
+	CleanupChan      chan bool
+	ErrorChan        chan error
+	SetupCrashChan   chan bool
+	RunCrashChan     chan bool
+	CleanupCrashChan chan bool
+	Interval         *qan.Interval
+	Result           *qan.Result
 }
 
-func NewQanWorker(name string, stopChan chan bool, result *qan.Result, err error, crash bool) *QanWorker {
+func NewQanWorker() *QanWorker {
 	w := &QanWorker{
-		name:        name,
-		stopChan:    stopChan,
-		result:      result,
-		err:         err,
-		crash:       crash,
-		runningChan: make(chan bool, 1),
+		SetupChan:        make(chan bool, 1),
+		RunChan:          make(chan bool, 1),
+		StopChan:         make(chan bool, 1),
+		CleanupChan:      make(chan bool, 1),
+		ErrorChan:        make(chan error, 1),
+		SetupCrashChan:   make(chan bool, 1),
+		RunCrashChan:     make(chan bool, 1),
+		CleanupCrashChan: make(chan bool, 1),
 	}
 	return w
 }
 
-func (w *QanWorker) Name() string {
-	return w.name
+func (w *QanWorker) Setup(interval *qan.Interval) error {
+	w.Interval = interval
+	w.SetupChan <- true
+	return w.crashOrError()
 }
 
-func (w *QanWorker) Status() string {
-	return "ok"
+func (w *QanWorker) Run() (*qan.Result, error) {
+	w.RunChan <- true
+	return w.Result, w.crashOrError()
 }
 
-func (w *QanWorker) Run(job *qan.Job) (*qan.Result, error) {
-	w.Job = job
-	w.runningChan <- true
+func (w *QanWorker) Stop() error {
+	w.StopChan <- true
+	return w.crashOrError()
+}
 
-	if w.crash {
-		panic(w.name)
+func (w *QanWorker) Cleanup() error {
+	w.CleanupChan <- true
+	return w.crashOrError()
+}
+
+func (w *QanWorker) Status() map[string]string {
+	return map[string]string{
+		"qan-worker": "ok",
 	}
-
-	// Pretend like we're running until test says to stop.
-	<-w.stopChan
-
-	return w.result, w.err
 }
 
-func (w *QanWorker) Running() chan bool {
-	return w.runningChan
+// --------------------------------------------------------------------------
+
+func (w *QanWorker) crashOrError() error {
+	select {
+	case <-w.SetupCrashChan:
+		panic("mock.QanWorker setup crash")
+	case <-w.RunCrashChan:
+		panic("mock.QanWorker run crash")
+	case <-w.CleanupCrashChan:
+		panic("mock.QanWorker cleanup crash")
+	default:
+	}
+	select {
+	case err := <-w.ErrorChan:
+		return err
+	default:
+	}
+	return nil
 }

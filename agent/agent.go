@@ -38,6 +38,7 @@ import (
 // go build -ldflags "-X github.com/percona/percon-agent/agnet.REVISION $REV"
 var REVISION string = "0"
 var VERSION string = "1.0.10"
+var REL string = ""
 var MIN_SUPPORTED_MYSQL_VERSION = "5.1.0"
 
 const (
@@ -610,7 +611,7 @@ func (agent *Agent) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 
 func (agent *Agent) handleVersion(cmd *proto.Cmd) (interface{}, []error) {
 	v := &proto.Version{
-		Running:  VERSION,
+		Running:  VERSION + REL,
 		Revision: REVISION,
 	}
 	bin, err := filepath.Abs(os.Args[0])

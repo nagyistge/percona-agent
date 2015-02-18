@@ -15,66 +15,42 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package mock
+package perfschema
 
 import (
+	"time"
+
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/qan"
-	"github.com/percona/percona-agent/qan/slowlog"
-	"time"
 )
 
-type IntervalIterFactory struct {
-	Iters     []qan.IntervalIter
-	iterNo    int
-	TickChans map[qan.IntervalIter]chan time.Time
-}
-
-func (tf *IntervalIterFactory) Make(collectFrom string, filename slowlog.FilenameFunc, tickChan chan time.Time) qan.IntervalIter {
-	if tf.iterNo >= len(tf.Iters) {
-		return tf.Iters[tf.iterNo-1]
-	}
-	nextIter := tf.Iters[tf.iterNo]
-	tf.TickChans[nextIter] = tickChan
-	tf.iterNo++
-	return nextIter
-}
-
-func (tf *IntervalIterFactory) Reset() {
-	tf.iterNo = 0
-}
-
-// --------------------------------------------------------------------------
-
 type Iter struct {
-	testIntervalChan chan *qan.Interval
-	intervalChan     chan *qan.Interval
-	sync             *pct.SyncChan
-	tickChan         chan time.Time
-	calls            []string
+	logger   *pct.Logger
+	tickChan chan time.Time
+	// --
+	intervalChan chan *qan.Interval
+	sync         *pct.SyncChan
 }
 
-func NewIter(intervalChan chan *qan.Interval) *Iter {
+func NewIter(logger *pct.Logger, tickChan chan time.Time) *Iter {
 	iter := &Iter{
-		testIntervalChan: intervalChan,
+		logger:   logger,
+		tickChan: tickChan,
 		// --
 		intervalChan: make(chan *qan.Interval, 1),
 		sync:         pct.NewSyncChan(),
-		tickChan:     make(chan time.Time),
-		calls:        []string{},
 	}
 	return iter
 }
 
 func (i *Iter) Start() {
-	i.calls = append(i.calls, "Start")
 	go i.run()
 }
 
 func (i *Iter) Stop() {
-	i.calls = append(i.calls, "Stop")
 	i.sync.Stop()
 	i.sync.Wait()
+	return
 }
 
 func (i *Iter) IntervalChan() chan *qan.Interval {
@@ -85,24 +61,38 @@ func (i *Iter) TickChan() chan time.Time {
 	return i.tickChan
 }
 
+// --------------------------------------------------------------------------
+
 func (i *Iter) run() {
 	defer func() {
+		if err := recover(); err != nil {
+			i.logger.Error("QAN performance schema iterator crashed: ", err)
+		}
 		i.sync.Done()
 	}()
+
+	prev := time.Time{}
+	n := 0
 	for {
+		i.logger.Debug("run:wait")
 		select {
+		case now := <-i.tickChan:
+			i.logger.Debug("run:tick")
+			n++
+			iter := &qan.Interval{
+				Number:    n,
+				StartTime: prev,
+				StopTime:  now,
+			}
+			select {
+			case i.intervalChan <- iter:
+			case <-time.After(1 * time.Second):
+				i.logger.Warn("Lost interval: ", iter)
+			}
+			prev = now
 		case <-i.sync.StopChan:
+			i.logger.Debug("run:stop")
 			return
-		case interval := <-i.testIntervalChan:
-			i.intervalChan <- interval
 		}
 	}
-}
-
-func (i *Iter) Calls() []string {
-	return i.calls
-}
-
-func (i *Iter) Reset() {
-	i.calls = []string{}
 }

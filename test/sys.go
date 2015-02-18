@@ -15,18 +15,23 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package qan_test
+package test
 
 import (
-	"testing"
-
-	. "github.com/go-test/test"
-	gomysql "github.com/percona/go-mysql/test"
-	. "gopkg.in/check.v1"
+	"os"
+	"path/filepath"
 )
 
-// Hook up gocheck into the "go test" runner.
-func Test(t *testing.T) { TestingT(t) }
-
-var inputDir = gomysql.RootDir + "/test/slow-logs/"
-var outputDir = RootDir() + "/test/qan/"
+func ClearDir(path ...string) error {
+	dir := filepath.Join(path...)
+	files, err := filepath.Glob(dir)
+	if err != nil {
+		return err
+	}
+	for _, file := range files {
+		if err := os.Remove(file); err != nil {
+			return err
+		}
+	}
+	return nil
+}
