@@ -123,15 +123,13 @@ func (s *MainTestSuite) SetUpTest(t *C) {
 	s.fakeApi = fakeapi.NewFakeApi()
 
 	_, err := s.rootConn.Exec("DELETE FROM mysql.user WHERE user='percona-agent'")
-	t.Assert(err, IsNil)
+	t.Check(err, IsNil)
 	s.rootConn.Exec("FLUSH PRIVILEGES")
-	t.Assert(err, IsNil)
+	t.Check(err, IsNil)
 
 	// Remove config dir between tests.
 	err = os.RemoveAll(pct.Basedir.Path())
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Check(err, IsNil)
 }
 
 func (s *MainTestSuite) TearDownTest(t *C) {
@@ -141,12 +139,10 @@ func (s *MainTestSuite) TearDownTest(t *C) {
 
 func (s *MainTestSuite) TearDownSuite(t *C) {
 	s.rootConn.Close()
-	if err := os.RemoveAll(pct.Basedir.Path()); err != nil {
-		t.Error(err)
-	}
-	if err := os.RemoveAll(s.bindir); err != nil {
-		t.Error(err)
-	}
+	err := os.RemoveAll(pct.Basedir.Path())
+	t.Check(err, IsNil)
+	err = os.RemoveAll(s.bindir)
+	t.Check(err, IsNil)
 }
 
 var grantPasswordRe = regexp.MustCompile(` IDENTIFIED BY PASSWORD.+$`)
