@@ -18,11 +18,12 @@
 package installer_test
 
 import (
+	"io/ioutil"
+
 	i "github.com/percona/percona-agent/bin/percona-agent-installer/installer"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/test"
 	. "gopkg.in/check.v1"
-	"io/ioutil"
 )
 
 type MySQLTestSuite struct {
@@ -46,6 +47,7 @@ func (s *MySQLTestSuite) TestMakeGrant(t *C) {
 	maxOpenConnections := int64(1)
 	got := i.MakeGrant(dsn, user, pass, maxOpenConnections)
 	expect := []string{
+		"SET SESSION old_passwords=0",
 		"GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'new-user'@'localhost' IDENTIFIED BY 'some pass' WITH MAX_USER_CONNECTIONS 1",
 		"GRANT UPDATE, DELETE, DROP ON performance_schema.* TO 'new-user'@'localhost' IDENTIFIED BY 'some pass' WITH MAX_USER_CONNECTIONS 1",
 	}
@@ -54,6 +56,7 @@ func (s *MySQLTestSuite) TestMakeGrant(t *C) {
 	dsn.Hostname = "127.0.0.1"
 	got = i.MakeGrant(dsn, user, pass, maxOpenConnections)
 	expect = []string{
+		"SET SESSION old_passwords=0",
 		"GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'new-user'@'127.0.0.1' IDENTIFIED BY 'some pass' WITH MAX_USER_CONNECTIONS 1",
 		"GRANT UPDATE, DELETE, DROP ON performance_schema.* TO 'new-user'@'127.0.0.1' IDENTIFIED BY 'some pass' WITH MAX_USER_CONNECTIONS 1",
 	}
@@ -62,6 +65,7 @@ func (s *MySQLTestSuite) TestMakeGrant(t *C) {
 	dsn.Hostname = "10.1.1.1"
 	got = i.MakeGrant(dsn, user, pass, maxOpenConnections)
 	expect = []string{
+		"SET SESSION old_passwords=0",
 		"GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'new-user'@'%' IDENTIFIED BY 'some pass' WITH MAX_USER_CONNECTIONS 1",
 		"GRANT UPDATE, DELETE, DROP ON performance_schema.* TO 'new-user'@'%' IDENTIFIED BY 'some pass' WITH MAX_USER_CONNECTIONS 1",
 	}
@@ -71,6 +75,7 @@ func (s *MySQLTestSuite) TestMakeGrant(t *C) {
 	dsn.Socket = "/var/lib/mysql.sock"
 	got = i.MakeGrant(dsn, user, pass, maxOpenConnections)
 	expect = []string{
+		"SET SESSION old_passwords=0",
 		"GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO 'new-user'@'localhost' IDENTIFIED BY 'some pass' WITH MAX_USER_CONNECTIONS 1",
 		"GRANT UPDATE, DELETE, DROP ON performance_schema.* TO 'new-user'@'localhost' IDENTIFIED BY 'some pass' WITH MAX_USER_CONNECTIONS 1",
 	}

@@ -1,5 +1,5 @@
 /*
-   Copyright (c) 2014-2015, Percona LLC and/or its affiliates. All rights reserved.
+   Copyright (c) 2015, Percona LLC and/or its affiliates. All rights reserved.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU Affero General Public License as published by
@@ -15,18 +15,36 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-package qan_test
+package mock
 
 import (
-	"testing"
-
-	. "github.com/go-test/test"
-	gomysql "github.com/percona/go-mysql/test"
-	. "gopkg.in/check.v1"
+	"github.com/percona/go-mysql/log"
 )
 
-// Hook up gocheck into the "go test" runner.
-func Test(t *testing.T) { TestingT(t) }
+type LogParser struct {
+	eventChan chan *log.Event
+}
 
-var inputDir = gomysql.RootDir + "/test/slow-logs/"
-var outputDir = RootDir() + "/test/qan/"
+func NewLogParser() *LogParser {
+	p := &LogParser{
+		eventChan: make(chan *log.Event),
+	}
+	return p
+}
+
+func (p *LogParser) Start() error {
+	return nil
+}
+
+func (p *LogParser) Stop() {
+	close(p.eventChan)
+	return
+}
+
+func (p *LogParser) EventChan() <-chan *log.Event {
+	return p.eventChan
+}
+
+func (p *LogParser) Send(e *log.Event) {
+	p.eventChan <- e
+}

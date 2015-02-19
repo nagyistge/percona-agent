@@ -26,7 +26,7 @@ type ServiceIsRunningError struct {
 }
 
 func (e ServiceIsRunningError) Error() string {
-	return e.Service + "service is running"
+	return e.Service + " service is running"
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -36,7 +36,7 @@ type ServiceIsNotRunningError struct {
 }
 
 func (e ServiceIsNotRunningError) Error() string {
-	return e.Service + "service is not running"
+	return e.Service + " service is not running"
 }
 
 /////////////////////////////////////////////////////////////////////////////

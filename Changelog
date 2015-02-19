@@ -1,5 +1,22 @@
 percona-agent Changelog
 
+v1.0.11
+
+  * Rewrite QAN for Performance Schema
+  * Collect all Performance Schema metrics
+  * PCT-540: Agent does not support old password authentication
+  * PCT-786: Do not truncate Performance Schema tables
+  * PCT-805: Init script should verify that PID is MySQL process
+  * PCT-1025: PID file doesn't prevent second instance of agent
+  * PCT-1033: Log MM value lap as info instead of error
+  * PCT-1054: User can EXPLAIN non-SELECT queries
+  * PCT-1161: QAN slow log parser crashes if key missing value
+  * PCT-1211: Add message when installing that MySQL 5.0 isn't supported
+  * PCT-1255: Query fingerprint no longer replace numbers in words
+  * PCT-1270: Query is abbreviated as "USE..." but in fact is a SELECT query
+  * PCT-1306: MM doesn't detect MySQL restart if MySQL starts after agent
+  * PCT-1325: Don't start if there are unrecognized command line options
+
 v1.0.10 released 2015-01-06
 
   * PCT-562: MySQL info is not updated after restart

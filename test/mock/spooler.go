@@ -83,3 +83,8 @@ func (s *Spooler) Reject(file string) error {
 	s.RejectedFiles = append(s.RejectedFiles, file)
 	return s.Remove(file)
 }
+
+func (s *Spooler) Reset() {
+	s.DataIn = []interface{}{}
+	s.RejectedFiles = []string{}
+}
