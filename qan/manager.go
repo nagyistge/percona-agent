@@ -238,7 +238,7 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 	return configs, nil
 }
 
-func ValidateConfig(config Config) error {
+func ValidateConfig(config *Config) error {
 	if config.CollectFrom == "" {
 		// Before perf schema, CollectFrom didn't exist, so existing default QAN configs
 		// don't have it.  To be backwards-compatible, no CollectFrom == slowlog.
@@ -286,8 +286,8 @@ func (m *Manager) startAnalyzer(config Config) error {
 	m.logger.Debug("startAnalyzer:call")
 	defer m.logger.Debug("startAnalyzer:return")
 
-	// Validate the config.
-	if err := ValidateConfig(config); err != nil {
+	// Validate the config. This func may modify the config.
+	if err := ValidateConfig(&config); err != nil {
 		return err
 	}
 
