@@ -118,7 +118,15 @@ func (b *basedir) ConfigFile(service string) string {
 
 func (b *basedir) ReadConfig(service string, v interface{}) error {
 	configFile := filepath.Join(b.configDir, service+CONFIG_FILE_SUFFIX)
-	return ReadConfig(configFile, v)
+	data, err := ioutil.ReadFile(configFile)
+	if err != nil && !os.IsNotExist(err) {
+		// There's an error and it's not "file not found".
+		return err
+	}
+	if len(data) > 0 {
+		err = json.Unmarshal(data, &v)
+	}
+	return err
 }
 
 func (b *basedir) WriteConfig(service string, config interface{}) error {
@@ -150,16 +158,4 @@ func (b *basedir) File(file string) string {
 		log.Panicf("Unknown basedir file: %s", file)
 	}
 	return filepath.Join(b.Path(), file)
-}
-
-func ReadConfig(configFile string, v interface{}) error {
-	data, err := ioutil.ReadFile(configFile)
-	if err != nil && !os.IsNotExist(err) {
-		// There's an error and it's not "file not found".
-		return err
-	}
-	if len(data) > 0 {
-		err = json.Unmarshal(data, &v)
-	}
-	return err
 }

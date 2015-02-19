@@ -1123,7 +1123,7 @@ func (s *MainTestSuite) expectDefaultAgentConfig(t *C) {
 	}
 
 	gotConfig := agent.Config{}
-	if err := pct.ReadConfig(pct.Basedir.ConfigFile("agent"), &gotConfig); err != nil {
+	if err := pct.Basedir.ReadConfig("agent", &gotConfig); err != nil {
 		t.Errorf("Read agent config: %s", err)
 	}
 
@@ -1138,7 +1138,7 @@ func (s *MainTestSuite) expectDefaultDataConfig(t *C) {
 	}
 
 	gotConfig := data.Config{}
-	if err := pct.ReadConfig(pct.Basedir.ConfigFile("data"), &gotConfig); err != nil {
+	if err := pct.Basedir.ReadConfig("data", &gotConfig); err != nil {
 		t.Errorf("Read agent config: %s", err)
 	}
 
@@ -1153,7 +1153,7 @@ func (s *MainTestSuite) expectDefaultLogConfig(t *C) {
 	}
 
 	gotConfig := agentLog.Config{}
-	if err := pct.ReadConfig(pct.Basedir.ConfigFile("log"), &gotConfig); err != nil {
+	if err := pct.Basedir.ReadConfig("log", &gotConfig); err != nil {
 		t.Errorf("Read agent config: %s", err)
 	}
 
@@ -1170,7 +1170,7 @@ func (s *MainTestSuite) expectDefaultMmMysqlConfig(t *C) {
 	}
 
 	gotConfig := mmMysql.Config{}
-	if err := pct.ReadConfig(pct.Basedir.ConfigFile(fmt.Sprintf("mm-%s-%d", service, instanceId)), &gotConfig); err != nil {
+	if err := pct.Basedir.ReadConfig(fmt.Sprintf("mm-%s-%d", service, instanceId), &gotConfig); err != nil {
 		t.Errorf("Read mm-%s-%d config: %s", service, instanceId, err)
 	}
 
@@ -1187,7 +1187,7 @@ func (s *MainTestSuite) expectDefaultMmServerConfig(t *C) {
 	}
 
 	gotConfig := mmSystem.Config{}
-	if err := pct.ReadConfig(pct.Basedir.ConfigFile(fmt.Sprintf("mm-%s-%d", service, instanceId)), &gotConfig); err != nil {
+	if err := pct.Basedir.ReadConfig(fmt.Sprintf("mm-%s-%d", service, instanceId), &gotConfig); err != nil {
 		t.Errorf("Read mm-%s-%d config: %s", service, instanceId, err)
 	}
 
@@ -1198,7 +1198,7 @@ func (s *MainTestSuite) expectMysqlConfig(expectedConfig proto.MySQLInstance, t 
 	service := "mysql"
 	instanceId := expectedConfig.Id
 	gotConfig := proto.MySQLInstance{}
-	if err := pct.ReadConfig(pct.Basedir.ConfigFile(fmt.Sprintf("%s-%d", service, instanceId)), &gotConfig); err != nil {
+	if err := pct.Basedir.ReadConfig(fmt.Sprintf("%s-%d", service, instanceId), &gotConfig); err != nil {
 		t.Errorf("Read %s-%d config: %s", service, instanceId, err)
 	}
 
@@ -1222,7 +1222,7 @@ func (s *MainTestSuite) expectDefaultQanConfig(t *C) {
 	}
 
 	gotConfig := qan.Config{}
-	if err := pct.ReadConfig(pct.Basedir.ConfigFile("qan"), &gotConfig); err != nil {
+	if err := pct.Basedir.ReadConfig("qan", &gotConfig); err != nil {
 		t.Errorf("Read qan config: %s", err)
 	}
 
@@ -1233,7 +1233,7 @@ func (s *MainTestSuite) expectServerConfig(expectedConfig proto.ServerInstance, 
 	service := "server"
 	instanceId := expectedConfig.Id
 	gotConfig := proto.ServerInstance{}
-	if err := pct.ReadConfig(pct.Basedir.ConfigFile(fmt.Sprintf("%s-%d", service, instanceId)), &gotConfig); err != nil {
+	if err := pct.Basedir.ReadConfig(fmt.Sprintf("%s-%d", service, instanceId), &gotConfig); err != nil {
 		t.Errorf("Read %s-%d config: %s", service, instanceId, err)
 	}
 
@@ -1250,7 +1250,7 @@ func (s *MainTestSuite) expectDefaultSysconfigMysqlConfig(t *C) {
 	}
 
 	gotConfig := sysconfigMysql.Config{}
-	if err := pct.ReadConfig(pct.Basedir.ConfigFile(fmt.Sprintf("sysconfig-%s-%d", service, instanceId)), &gotConfig); err != nil {
+	if err := pct.Basedir.ReadConfig(fmt.Sprintf("sysconfig-%s-%d", service, instanceId), &gotConfig); err != nil {
 		t.Errorf("Read sysconfig-%s-%d config: %s", service, instanceId, err)
 	}
 
