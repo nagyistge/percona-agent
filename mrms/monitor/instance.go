@@ -36,15 +36,19 @@ type MysqlInstance struct {
 }
 
 func NewMysqlInstance(logger *pct.Logger, mysqlConn mysql.Connector, subscribers *Subscribers) (mi *MysqlInstance, err error) {
-	if err := mysqlConn.Connect(2); err != nil {
-		logger.Warn("Unable to connect to MySQL:", err)
+	if err := mysqlConn.Connect(1); err != nil {
+		// 0. caller
+		// 1. monitor.Add()
+		// 2. monitor.createMysqlInstance()
+		// 3. here
 		return nil, err
 	}
 	defer mysqlConn.Close()
 
 	// Get current MySQL uptime - this is later used to detect if MySQL was restarted
 	lastUptime, err := mysqlConn.Uptime()
-	if err != nil { // This shouldn't happen because we just opened the connection
+	if err != nil {
+		// This shouldn't happen because we just opened the connection.
 		return nil, err
 	}
 	lastUptimeCheck := time.Now()
