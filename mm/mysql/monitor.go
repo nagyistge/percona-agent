@@ -237,9 +237,9 @@ func (m *Monitor) run() {
 	for {
 		t := time.Unix(lastTs, 0)
 		if lastError == "" {
-			m.status.Update(m.name, fmt.Sprintf("Idle (last collected at %s)", t))
+			m.status.Update(m.name, fmt.Sprintf("Idle (last collected at %s)", pct.TimeString(t)))
 		} else {
-			m.status.Update(m.name, fmt.Sprintf("Idle (last collected at %s, error: %s)", t, lastError))
+			m.status.Update(m.name, fmt.Sprintf("Idle (last collected at %s, error: %s)", pct.TimeString(t), lastError))
 		}
 
 		select {
