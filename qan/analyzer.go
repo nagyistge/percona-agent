@@ -178,7 +178,7 @@ func (a *RealAnalyzer) configureMySQL(config []mysql.Query, tryLimit int) {
 		a.logger.Debug("configureMySQL:configuring")
 		if err := a.mysqlConn.Set(config); err != nil {
 			a.mysqlConn.Close()
-			a.logger.Warn("Failed to configure MySQL:", err)
+			a.logger.Warn("Cannot configure MySQL:", err)
 			continue
 		}
 
