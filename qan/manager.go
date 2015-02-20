@@ -124,8 +124,8 @@ func (m *Manager) Start() error {
 	//       fails to connect to MySQL in mrms/monitor/instance.NewMysqlInstance();
 	//       it should succeed and retry until MySQL is online.
 	if err := m.startAnalyzer(config); err != nil {
-		m.logger.Error("Cannot start Query Analytics: %s. Verify that MySQL is running, " +
-			"then try again.")
+		m.logger.Error("Cannot start Query Analytics: %s. Verify that MySQL is running, "+
+			"then try again.", err)
 		return nil
 	}
 
