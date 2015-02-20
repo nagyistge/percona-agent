@@ -172,7 +172,11 @@ func (c *Connection) Set(queries []Query) error {
 		if query.Verify != "" {
 			got := c.GetGlobalVarString(query.Verify)
 			if got != query.Expect {
-				return fmt.Errorf("@@GLOBAL.%s = '%s', expected '%s'", got, query.Expect)
+				return fmt.Errorf(
+					"Global variable '%s' is set to '%s' but needs to be '%s'. "+
+						"Consult the MySQL manual, or contact Percona Support, "+
+						"for help configuring this variable, then try again.",
+					query.Verify, got, query.Expect)
 			}
 		}
 	}
