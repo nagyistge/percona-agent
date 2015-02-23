@@ -96,7 +96,7 @@ func (m *Manager) Start() error {
 		return pct.ServiceIsRunningError{Service: "qan"}
 	}
 
-	// Mangaer ("qan" in status) runs indepdent from qan-parser.
+	// Manager ("qan" in status) runs independent from qan-parser.
 	m.status.Update("qan", "Starting")
 	defer func() {
 		m.running = true
