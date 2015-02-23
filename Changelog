@@ -13,6 +13,8 @@ v1.0.11
   * PCT-1161: QAN slow log parser crashes if key missing value
   * PCT-1211: Add message when installing that MySQL 5.0 isn't supported
   * PCT-1255: Query fingerprint no longer replace numbers in words
+  * PCT-1270: Query is abbreviated as "USE..." but in fact is a SELECT query
+  * PCT-1282: Agent doesn't log error starting QAN for Performance Schema
   * PCT-1306: MM doesn't detect MySQL restart if MySQL starts after agent
   * PCT-1325: Don't start if there are unrecognized command line options
 
