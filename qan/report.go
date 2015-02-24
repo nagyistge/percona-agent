@@ -18,10 +18,12 @@
 package qan
 
 import (
-	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/go-mysql/event"
 	"sort"
 	"time"
+
+	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/go-mysql/event"
+	"github.com/percona/percona-agent/pct"
 )
 
 // slowlog|perf schema --> Result --> Report --> data.Spooler
@@ -47,10 +49,11 @@ type Report struct {
 	Global                *event.GlobalClass  // metrics for all data
 	Class                 []*event.QueryClass // per-class metrics
 	// slow log:
-	SlowLogFile string `json:",omitempty"` // not slow_query_log_file if rotated
-	StartOffset int64  `json:",omitempty"` // parsing starts
-	EndOffset   int64  `json:",omitempty"` // parsing stops, but...
-	StopOffset  int64  `json:",omitempty"` // ...parsing didn't complete if stop < end
+	SlowLogFile     string `json:",omitempty"` // not slow_query_log_file if rotated
+	SlowLogFileSize int64  `json:",omitempty"`
+	StartOffset     int64  `json:",omitempty"` // parsing starts
+	EndOffset       int64  `json:",omitempty"` // parsing stops, but...
+	StopOffset      int64  `json:",omitempty"` // ...parsing didn't complete if stop < end
 }
 
 type ByQueryTime []*event.QueryClass
@@ -77,8 +80,14 @@ func MakeReport(config Config, interval *Interval, result *Result) *Report {
 		Class:           result.Class,
 	}
 	if interval != nil {
+		size, err := pct.FileSize(interval.Filename)
+		if err != nil {
+			size = 0
+		}
+
 		// slow log data
 		report.SlowLogFile = interval.Filename
+		report.SlowLogFileSize = size
 		report.StartOffset = interval.StartOffset
 		report.EndOffset = interval.EndOffset
 		report.StopOffset = result.StopOffset
@@ -112,7 +121,6 @@ func addQuery(dst, src *event.QueryClass) {
 			m := *srcStats
 			dst.Metrics.TimeMetrics[srcMetric] = &m
 		} else {
-			dstStats.Cnt += srcStats.Cnt
 			dstStats.Sum += srcStats.Sum
 			dstStats.Avg = (dstStats.Avg + srcStats.Avg) / 2
 			if srcStats.Min < dstStats.Min {

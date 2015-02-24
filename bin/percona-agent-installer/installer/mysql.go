@@ -19,7 +19,9 @@ package installer
 
 import (
 	"fmt"
+	"github.com/hashicorp/go-version"
 	"github.com/mewpkg/gopass"
+	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/mysql"
 	"log"
 	"os/exec"
@@ -36,7 +38,10 @@ func MakeGrant(dsn mysql.DSN, user string, pass string, mysqlMaxUserConns int64)
 	} else if dsn.Hostname == "127.0.0.1" {
 		host = "127.0.0.1"
 	}
+	// Creating/updating a user's password doesn't work correctly if old_passwords is active.
+	// Just in case, disable it for this session
 	grants := []string{
+		"SET SESSION old_passwords=0",
 		fmt.Sprintf("GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO '%s'@'%s' IDENTIFIED BY '%s' WITH MAX_USER_CONNECTIONS %d", user, host, pass, mysqlMaxUserConns),
 		fmt.Sprintf("GRANT UPDATE, DELETE, DROP ON performance_schema.* TO '%s'@'%s' IDENTIFIED BY '%s' WITH MAX_USER_CONNECTIONS %d", user, host, pass, mysqlMaxUserConns),
 	}
@@ -121,13 +126,23 @@ func (i *Installer) createNewMySQLUser() (dsn mysql.DSN, err error) {
 		}
 	}
 
-	dsn, err = i.createMySQLUser(superUserDSN)
+	// Check MySQL Version
+	dsnString, err := superUserDSN.DSN()
+	if err != nil {
+		return dsn, err
+	}
+	tmpConn := mysql.NewConnection(dsnString)
+	isVersionSupported, err := i.IsVersionSupported(tmpConn)
 	if err != nil {
 		return dsn, err
 	}
 
-	// Verify new DSN
-	if err := i.verifyMySQLConnection(dsn); err != nil {
+	if !isVersionSupported {
+		return dsn, fmt.Errorf("MySQL version not supported. It should be > %s", agent.MIN_SUPPORTED_MYSQL_VERSION)
+	}
+
+	dsn, err = i.createMySQLUser(superUserDSN)
+	if err != nil {
 		return dsn, err
 	}
 
@@ -167,8 +182,23 @@ func (i *Installer) useExistingMySQLUser() (mysql.DSN, error) {
 				return userDSN, err
 			}
 		}
-		return userDSN, nil // success
+		break
 	}
+
+	// Check MySQL Version
+	dsnString, err := userDSN.DSN()
+	if err != nil {
+		return userDSN, err
+	}
+	tmpConn := mysql.NewConnection(dsnString)
+	isVersionSupported, err := i.IsVersionSupported(tmpConn)
+	if err != nil {
+		return userDSN, err
+	}
+	if !isVersionSupported {
+		return userDSN, fmt.Errorf("MySQL version not supported. It should be > %s", agent.MIN_SUPPORTED_MYSQL_VERSION)
+	}
+	return userDSN, nil // success
 }
 
 func (i *Installer) getDSNFromUser(dsn *mysql.DSN) error {
@@ -328,4 +358,27 @@ func (i *Installer) verifyMySQLConnection(dsn mysql.DSN) (err error) {
 	}
 	conn.Close()
 	return nil
+}
+
+func (i *Installer) IsVersionSupported(conn mysql.Connector) (bool, error) {
+	if err := conn.Connect(1); err != nil {
+		return false, err
+	}
+	defer conn.Close()
+	mysqlVersion := conn.GetGlobalVarString("version") // Version in the form m.n.o-ubuntu
+	re := regexp.MustCompile("-.*$")
+	mysqlVersion = re.ReplaceAllString(mysqlVersion, "") // Strip everything after the first dash
+
+	v, err := version.NewVersion(mysqlVersion)
+	if err != nil {
+		return false, err
+	}
+	constraints, err := version.NewConstraint(">= " + agent.MIN_SUPPORTED_MYSQL_VERSION)
+	if err != nil {
+		return false, err
+	}
+	if constraints.Check(v) {
+		return true, nil
+	}
+	return false, nil
 }

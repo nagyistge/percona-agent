@@ -44,6 +44,9 @@ import (
 	"github.com/percona/percona-agent/pct"
 	pctCmd "github.com/percona/percona-agent/pct/cmd"
 	"github.com/percona/percona-agent/qan"
+	qanFactory "github.com/percona/percona-agent/qan/factory"
+	"github.com/percona/percona-agent/qan/perfschema"
+	"github.com/percona/percona-agent/qan/slowlog"
 	"github.com/percona/percona-agent/query"
 	queryService "github.com/percona/percona-agent/query/service"
 	"github.com/percona/percona-agent/sysconfig"
@@ -69,15 +72,19 @@ func init() {
 	flag.BoolVar(&flagPing, "ping", false, "Ping API")
 	flag.BoolVar(&flagStatus, "status", false, "Agent status")
 	flag.StringVar(&flagBasedir, "basedir", pct.DEFAULT_BASEDIR, "Agent basedir")
-	flag.StringVar(&flagPidFile, "pidfile", "", "PID file")
+	flag.StringVar(&flagPidFile, "pidfile", agent.DEFAULT_PIDFILE, "PID file")
 	flag.BoolVar(&flagVersion, "version", false, "Print version")
 	flag.Parse()
-
+	// We don't accept any possitional arguments
+	if len(flag.Args()) != 0 {
+		flag.Usage()
+		os.Exit(1)
+	}
 	runtime.GOMAXPROCS(runtime.NumCPU())
 }
 
 func run() error {
-	version := fmt.Sprintf("percona-agent %s rev %s", agent.VERSION, agent.REVISION)
+	version := fmt.Sprintf("percona-agent %s%s rev %s", agent.VERSION, agent.REL, agent.REVISION)
 	if flagVersion {
 		fmt.Println(version)
 		return nil
@@ -143,9 +150,13 @@ func run() error {
 	 * PID file
 	 */
 
+	pidFilePath := agentConfig.PidFile
 	if flagPidFile != "" {
+		pidFilePath = flagPidFile
+	}
+	if pidFilePath != "" {
 		pidFile := pct.NewPidFile()
-		if err := pidFile.Set(flagPidFile); err != nil {
+		if err := pidFile.Set(pidFilePath); err != nil {
 			golog.Fatalln(err)
 		}
 		defer pidFile.Remove()
@@ -310,14 +321,20 @@ func run() error {
 
 	qanManager := qan.NewManager(
 		pct.NewLogger(logChan, "qan"),
-		connFactory,
 		clock,
-		qan.NewRealIntervalIterFactory(logChan),
-		qan.NewRealWorkerFactory(logChan),
-		dataManager.Spooler(),
 		itManager.Repo(),
 		mrm,
+		connFactory,
+		qanFactory.NewRealAnalyzerFactory(
+			logChan,
+			qanFactory.NewRealIntervalIterFactory(logChan),
+			slowlog.NewRealWorkerFactory(logChan),
+			perfschema.NewRealWorkerFactory(logChan),
+			dataManager.Spooler(),
+			clock,
+		),
 	)
+
 	if err := qanManager.Start(); err != nil {
 		return fmt.Errorf("Error starting qan manager: %s\n", err)
 	}

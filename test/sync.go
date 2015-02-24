@@ -80,7 +80,7 @@ func WaitData(recvDataChan chan interface{}) []interface{} {
 		select {
 		case data := <-recvDataChan:
 			buf = append(buf, data)
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(500 * time.Millisecond):
 			haveData = false
 		}
 	}
@@ -316,7 +316,7 @@ func WaitState(c chan bool) bool {
 	select {
 	case state := <-c:
 		return state
-	case <-time.After(100 * time.Millisecond):
+	case <-time.After(1 * time.Second):
 		return false
 	}
 }

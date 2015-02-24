@@ -321,3 +321,44 @@ func (s *ManagerTestSuite) TestExplainWithDb(t *C) {
 	t.Assert(err, IsNil)
 	t.Assert(gotExplainResult, DeepEquals, expectedExplainResult)
 }
+
+func (s *ManagerTestSuite) TestDMLToSelect(t *C) {
+
+	e := service.NewExplain(s.logger, &mysql.RealConnectionFactory{}, s.rir)
+
+	selQuery := e.DMLToSelect(`update ignore tabla set nombre = "carlos" where id = 0 limit 2`)
+	t.Assert(selQuery, Equals, `SELECT nombre = "carlos" FROM tabla WHERE id = 0`)
+
+	selQuery = e.DMLToSelect(`update ignore tabla set nombre = "carlos" where id = 0`)
+	t.Assert(selQuery, Equals, `SELECT nombre = "carlos" FROM tabla WHERE id = 0`)
+
+	selQuery = e.DMLToSelect(`update ignore tabla set nombre = "carlos" limit 1`)
+	t.Assert(selQuery, Equals, `SELECT nombre = "carlos" FROM tabla`)
+
+	selQuery = e.DMLToSelect(`update tabla set nombre = "carlos" where id = 0 limit 2`)
+	t.Assert(selQuery, Equals, `SELECT nombre = "carlos" FROM tabla WHERE id = 0`)
+
+	selQuery = e.DMLToSelect(`update tabla set nombre = "carlos" where id = 0`)
+	t.Assert(selQuery, Equals, `SELECT nombre = "carlos" FROM tabla WHERE id = 0`)
+
+	selQuery = e.DMLToSelect(`update tabla set nombre = "carlos" limit 1`)
+	t.Assert(selQuery, Equals, `SELECT nombre = "carlos" FROM tabla`)
+
+	selQuery = e.DMLToSelect(`delete from tabla`)
+	t.Assert(selQuery, Equals, `SELECT * FROM tabla`)
+
+	selQuery = e.DMLToSelect(`delete from tabla join tabla2 on tabla.id = tabla2.tabla2_id`)
+	t.Assert(selQuery, Equals, `SELECT 1 FROM tabla join tabla2 on tabla.id = tabla2.tabla2_id`)
+
+	selQuery = e.DMLToSelect(`insert into tabla (f1, f2, f3) values (1,2,3)`)
+	t.Assert(selQuery, Equals, `SELECT * FROM tabla  WHERE f1="1" and f2="2" and f3="3"`)
+
+	selQuery = e.DMLToSelect(`insert into tabla (f1, f2, f3) values (1,2)`)
+	t.Assert(selQuery, Equals, `SELECT * FROM tabla  LIMIT 1`)
+
+	selQuery = e.DMLToSelect(`insert into tabla set f1="A1", f2="A2"`)
+	t.Assert(selQuery, Equals, `SELECT * FROM tabla WHERE f1="A1" AND  f2="A2"`)
+
+	selQuery = e.DMLToSelect(`replace into tabla set f1="A1", f2="A2"`)
+	t.Assert(selQuery, Equals, `SELECT * FROM tabla WHERE f1="A1" AND  f2="A2"`)
+}

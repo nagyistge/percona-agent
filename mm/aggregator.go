@@ -147,8 +147,13 @@ func (a *Aggregator) run() {
 					is.Stats[metric.Name] = stats
 				}
 				if err := stats.Add(&metric, collection.Ts); err != nil {
-					a.logger.Error(
-						fmt.Sprintf("stats.Add(%+v, %d): %s", metric, collection.Ts, err))
+					f := a.logger.Error
+					switch err.(type) {
+					case ErrValueLap:
+						// Treat this error as info
+						f = a.logger.Info
+					}
+					f(fmt.Sprintf("stats.Add(%+v, %d): %s", metric, collection.Ts, err))
 				}
 			}
 		case <-a.sync.StopChan:

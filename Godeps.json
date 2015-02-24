@@ -20,7 +20,7 @@
 		},
 		{
 			"Pkg": "github.com/percona/go-mysql",
-			"Rev": "1346a81058f6b6a7b74a84b214c3ce65c0e4de29"
+			"Rev": "bbb5030e6dbe065b0c34a924e024f4329c8ba750"
 		},
 		{
 			"Pkg": "github.com/petar/GoLLRB",
@@ -37,6 +37,10 @@
 		{
 			"Pkg": "github.com/go-test/test",
 			"Rev": "65f3771e91669a6e4251fafcc6d93ffe5e2ff03f"
-		}
+		},
+        {
+            "Pkg": "github.com/hashicorp/go-version",
+            "Rev": "bb92dddfa9792e738a631f04ada52858a139bcf7"
+        }
 	]
 }
