@@ -170,6 +170,8 @@ func (a *RealAnalyzer) TakeOverPSRotation() error {
 		return err
 	}
 	maxLogSize = int64(psMaxLogSize)
+	// Slowlog rotation will only be activated if max_slowlog_size >= 4096. PS doc is not very clear, testing confirmed this.
+	// http://www.percona.com/doc/percona-server/5.6/flexibility/slowlog_rotation.html
 	if maxLogSize >= MIN_SLOWLOG_ROTATION_SIZE {
 		a.logger.Info("Taking over Percona Server slowlog rotation, max_slowlog_size:", maxLogSize)
 		a.config.MaxSlowLogSize = maxLogSize
