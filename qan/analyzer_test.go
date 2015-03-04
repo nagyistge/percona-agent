@@ -268,6 +268,29 @@ func (s *AnalyzerTestSuite) TestMySQLRestart(t *C) {
 	// Analyzer stops and re-starts its iter on MySQL restart.
 	t.Check(s.iter.Calls(), DeepEquals, []string{"Stop", "Start"})
 
+	// Enable slowlog DB rotation by setting max_slowlog_size to a value > 4096 and simulate MySQL restart
+	s.nullmysql.SetGlobalVarString("max_slowlog_size", "100000")
+	s.nullmysql.Reset()
+	s.restartChan <- true
+	if !test.WaitState(s.nullmysql.SetChan) {
+		t.Error("Timeout waiting for <-s.nullmysql.SetChan")
+	}
+	test.WaitStatus(1, a, "qan-analyzer", "Idle")
+	expectedQueries := []mysql.Query{
+		mysql.Query{
+			Set:    "SET GLOBAL max_slowlog_size = 0",
+			Verify: "",
+			Expect: "",
+		},
+		mysql.Query{
+			Set:    "-- start",
+			Verify: "",
+			Expect: "",
+		},
+	}
+
+	t.Check(s.nullmysql.GetSet(), DeepEquals, expectedQueries)
+	t.Check(a.GetConfig().MaxSlowLogSize, Equals, int64(100000))
 	err = a.Stop()
 	t.Assert(err, IsNil)
 }
@@ -404,8 +427,8 @@ func (s *AnalyzerTestSuite) TestRecoverWorkerPanic(t *C) {
 	t.Check(a.String(), Equals, "qan-analyzer")
 }
 
-// Test slowlog PS rotation take-over
-func (s *AnalyzerTestSuite) TestSlowLogRotationPS(t *C) {
+// Test slowlog PS rotation take-over function
+func (s *AnalyzerTestSuite) TestSlowLogTakeOver(t *C) {
 
 	/*
 		PS can be configured to rotate slow log, making qan break.
@@ -428,40 +451,34 @@ func (s *AnalyzerTestSuite) TestSlowLogRotationPS(t *C) {
 	t.Assert(err, IsNil)
 	test.WaitStatus(1, a, "qan-analyzer", "Idle")
 
-	// This will cause the worker to panic when it's ran by the analyzer.
-	//s.worker.SetupCrashChan <- true
-
 	// The highest possible value max_slowlog_size can be set to (from PS documentation)
 	const MAX_SLOW_LOG_SIZE int64 = 1073741824
+	a.GetConfig().MaxSlowLogSize = MAX_SLOW_LOG_SIZE
 	// Disable DB rotation by setting max_slowlog_size to a value < 4096
 	s.nullmysql.SetGlobalVarString("max_slowlog_size", "1000")
 	// Trigger our PS slowlog rotation take-over, everything should stay the same since max_slowlog_size is < 4096
 	a.TakeOverPSRotation()
-	// By default analizer MaxSlowLogSize config = MAX_SLOW_LOG_SIZE
 	t.Check(a.GetConfig().MaxSlowLogSize, Equals, MAX_SLOW_LOG_SIZE)
 	// Now increase our max_slowlog_size in mocked DB
 	s.nullmysql.SetGlobalVarString("max_slowlog_size", "5000")
 	// Trigger slowlog rotation take over again, this time takeover should succeed
+	s.nullmysql.Reset()
 	a.TakeOverPSRotation()
-
+	// We are manually calling takeover function, start queries come before our manual takeover invocation
 	expectedQueries := []mysql.Query{
-		mysql.Query{
-			Set:    "-- start",
-			Verify: "",
-			Expect: "",
-		},
 		mysql.Query{
 			Set:    "SET GLOBAL max_slowlog_size = 0",
 			Verify: "",
 			Expect: "",
 		},
 	}
+
 	t.Check(s.nullmysql.GetSet(), DeepEquals, expectedQueries)
 	// Config should now have the configured PS slowlog file size for rotation
 	t.Check(a.GetConfig().MaxSlowLogSize, Equals, int64(5000))
+
 	err = a.Stop()
 	t.Assert(err, IsNil)
 	test.WaitStatus(1, a, "qan-analyzer", "Stopped")
-
 	t.Check(a.String(), Equals, "qan-analyzer")
 }
