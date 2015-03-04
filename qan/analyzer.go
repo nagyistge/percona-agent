@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"log"
 	"runtime/debug"
+	"strconv"
 	"sync"
 	"time"
 
@@ -28,6 +29,11 @@ import (
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/ticker"
+)
+
+const (
+	MIN_SLOWLOG_ROTATION_SIZE = 4096
+	MAX_SLOWLOG_ROTATION_SIZE = 1073741824
 )
 
 // A Worker gets queries, aggregates them, and returns a Result. Workers are ran
@@ -146,6 +152,36 @@ func (a *RealAnalyzer) Status() map[string]string {
 
 // --------------------------------------------------------------------------
 
+// Returns a pointer to the config in use by this analizer, useful for testing purposes
+func (a *RealAnalyzer) GetConfig() *Config {
+	return &a.config
+}
+
+// Will try to detect if DB has slowlog rotation enabled and takeover the task
+func (a *RealAnalyzer) TakeOverPSRotation() error {
+	// Take over slowlog rotation if its set (in Percona Server)
+	var maxLogSize int64 = 0
+	psMaxLogSize, err := strconv.ParseUint(a.mysqlConn.GetGlobalVarString("max_slowlog_size"), 10, 32)
+	if err != nil {
+		return err
+	}
+	maxLogSize = int64(psMaxLogSize)
+	if maxLogSize >= MIN_SLOWLOG_ROTATION_SIZE {
+		a.logger.Info("Taking over Percona Server slowlog rotation, max_slowlog_size:", maxLogSize)
+		a.config.MaxSlowLogSize = maxLogSize
+
+		// Using Set makes testing easier
+		disablePSrotation := []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL max_slowlog_size = 0"},
+		}
+
+		if err := a.mysqlConn.Set(disablePSrotation); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (a *RealAnalyzer) configureMySQL(config []mysql.Query, tryLimit int) {
 	a.logger.Debug("configureMySQL:call")
 	defer func() {
@@ -176,6 +212,10 @@ func (a *RealAnalyzer) configureMySQL(config []mysql.Query, tryLimit int) {
 		defer a.mysqlConn.Close()
 
 		a.logger.Debug("configureMySQL:configuring")
+		// Try to take over PS slowlog rotation
+		if err := a.TakeOverPSRotation(); err != nil {
+			a.logger.Warn("Cannot takeover slowlog rotation from Percona Server:", err)
+		}
 		if err := a.mysqlConn.Set(config); err != nil {
 			a.mysqlConn.Close()
 			a.logger.Warn("Cannot configure MySQL:", err)
