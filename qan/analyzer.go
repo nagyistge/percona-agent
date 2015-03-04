@@ -157,11 +157,15 @@ func (a *RealAnalyzer) GetConfig() *Config {
 	return &a.config
 }
 
-// Will try to detect if DB has slowlog rotation enabled and takeover the task
+// Will try to detect if DB has slowlog rotation enabled and takeover the task (normally only Percona Server)
 func (a *RealAnalyzer) TakeOverPSRotation() error {
-	// Take over slowlog rotation if its set (in Percona Server)
 	var maxLogSize int64 = 0
-	psMaxLogSize, err := strconv.ParseUint(a.mysqlConn.GetGlobalVarString("max_slowlog_size"), 10, 32)
+
+	maxSlowlogSize := a.mysqlConn.GetGlobalVarString("max_slowlog_size")
+	if maxSlowlogSize == "" {
+		return nil
+	}
+	psMaxLogSize, err := strconv.ParseUint(maxSlowlogSize, 10, 64)
 	if err != nil {
 		return err
 	}
@@ -215,6 +219,7 @@ func (a *RealAnalyzer) configureMySQL(config []mysql.Query, tryLimit int) {
 		// Try to take over PS slowlog rotation
 		if err := a.TakeOverPSRotation(); err != nil {
 			a.logger.Warn("Cannot takeover slowlog rotation from Percona Server:", err)
+			continue
 		}
 		if err := a.mysqlConn.Set(config); err != nil {
 			a.mysqlConn.Close()
