@@ -31,10 +31,7 @@ import (
 	"github.com/percona/percona-agent/ticker"
 )
 
-const (
-	MIN_SLOWLOG_ROTATION_SIZE = 4096
-	MAX_SLOWLOG_ROTATION_SIZE = 1073741824
-)
+const MIN_SLOWLOG_ROTATION_SIZE = 4096
 
 // A Worker gets queries, aggregates them, and returns a Result. Workers are ran
 // by Analyzers. When ran, MySQL is presumed to be configured and ready.
