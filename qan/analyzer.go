@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"log"
 	"runtime/debug"
-	"strconv"
 	"sync"
 	"time"
 
@@ -154,24 +153,18 @@ func (a *RealAnalyzer) GetConfig() *Config {
 	return &a.config
 }
 
-// Will try to detect if DB has slowlog rotation enabled and takeover the task (normally only Percona Server)
-func (a *RealAnalyzer) TakeOverPSRotation() error {
-	var maxLogSize int64 = 0
-
-	maxSlowlogSize := a.mysqlConn.GetGlobalVarString("max_slowlog_size")
-	if maxSlowlogSize == "" {
+// Disable Percona Server slow log rotation and handle internally using the max_slowlog_size value.
+// The slow log worker must rotate slow logs by itself to ensure full and proper parsing across rotations.
+func (a *RealAnalyzer) TakeOverPerconaServerRotation() error {
+	maxSlowLogSize := int64(a.mysqlConn.GetGlobalVarNumber("max_slowlog_size"))
+	if maxSlowLogSize == 0 {
 		return nil
 	}
-	psMaxLogSize, err := strconv.ParseUint(maxSlowlogSize, 10, 64)
-	if err != nil {
-		return err
-	}
-	maxLogSize = int64(psMaxLogSize)
 	// Slowlog rotation will only be activated if max_slowlog_size >= 4096. PS doc is not very clear, testing confirmed this.
 	// http://www.percona.com/doc/percona-server/5.6/flexibility/slowlog_rotation.html
-	if maxLogSize >= MIN_SLOWLOG_ROTATION_SIZE {
-		a.logger.Info("Taking over Percona Server slowlog rotation, max_slowlog_size:", maxLogSize)
-		a.config.MaxSlowLogSize = maxLogSize
+	if maxSlowLogSize >= MIN_SLOWLOG_ROTATION_SIZE {
+		a.logger.Info("Taking over Percona Server slow log rotation, max_slowlog_size:", maxSlowLogSize)
+		a.config.MaxSlowLogSize = maxSlowLogSize
 
 		// Using Set makes testing easier
 		disablePSrotation := []mysql.Query{
@@ -215,8 +208,8 @@ func (a *RealAnalyzer) configureMySQL(config []mysql.Query, tryLimit int) {
 		defer a.mysqlConn.Close()
 
 		a.logger.Debug("configureMySQL:configuring")
-		// Try to take over PS slowlog rotation
-		if err := a.TakeOverPSRotation(); err != nil {
+		// Try to take over Percona Server slow log rotation
+		if err := a.TakeOverPerconaServerRotation(); err != nil {
 			a.logger.Warn("Cannot takeover slowlog rotation from Percona Server:", err)
 			continue
 		}
