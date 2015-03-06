@@ -113,7 +113,7 @@ func (a *Api) CreateMySQLInstance(mi *proto.MySQLInstance) (*proto.MySQLInstance
 		// API returns URI of existing resource in Location header
 		uri := resp.Header.Get("Location")
 		if uri == "" {
-			return nil, fmt.Errorf("API did not return location of exisiting MySQL instance")
+			return nil, fmt.Errorf("API did not return location of existing MySQL instance")
 		}
 
 		resp, _, err := a.apiConnector.Put(a.apiConnector.ApiKey(), uri, data)
