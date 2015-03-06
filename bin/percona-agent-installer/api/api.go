@@ -43,19 +43,19 @@ func New(apiConnector pct.APIConnector, debug bool) *Api {
 	}
 }
 
-func (self *Api) Init(hostname, apiKey string, headers map[string]string) (code int, err error) {
-	return self.apiConnector.Init(hostname, apiKey, headers)
+func (a *Api) Init(hostname, apiKey string, headers map[string]string) (code int, err error) {
+	return a.apiConnector.Init(hostname, apiKey, headers)
 }
 
-func (self *Api) CreateServerInstance(si *proto.ServerInstance) (*proto.ServerInstance, error) {
+func (a *Api) CreateServerInstance(si *proto.ServerInstance) (*proto.ServerInstance, error) {
 	// POST <api>/instances/server
 	data, err := json.Marshal(si)
 	if err != nil {
 		return nil, err
 	}
-	url := self.apiConnector.URL("instances", "server")
-	resp, _, err := self.apiConnector.Post(self.apiConnector.ApiKey(), url, data)
-	if self.debug {
+	url := a.apiConnector.URL("instances", "server")
+	resp, _, err := a.apiConnector.Post(a.apiConnector.ApiKey(), url, data)
+	if a.debug {
 		log.Printf("resp=%#v\n", resp)
 		log.Printf("err=%s\n", err)
 	}
@@ -75,8 +75,8 @@ func (self *Api) CreateServerInstance(si *proto.ServerInstance) (*proto.ServerIn
 	}
 
 	// GET <api>/instances/server/id (URI)
-	code, data, err := self.apiConnector.Get(self.apiConnector.ApiKey(), uri)
-	if self.debug {
+	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), uri)
+	if a.debug {
 		log.Printf("code=%d\n", code)
 		log.Printf("err=%s\n", err)
 	}
@@ -92,15 +92,15 @@ func (self *Api) CreateServerInstance(si *proto.ServerInstance) (*proto.ServerIn
 	return si, nil
 }
 
-func (self *Api) CreateMySQLInstance(mi *proto.MySQLInstance) (*proto.MySQLInstance, error) {
+func (a *Api) CreateMySQLInstance(mi *proto.MySQLInstance) (*proto.MySQLInstance, error) {
 	// POST <api>/instances/mysql
 	data, err := json.Marshal(mi)
 	if err != nil {
 		return nil, err
 	}
-	url := self.apiConnector.URL("instances", "mysql")
-	resp, _, err := self.apiConnector.Post(self.apiConnector.ApiKey(), url, data)
-	if self.debug {
+	url := a.apiConnector.URL("instances", "mysql")
+	resp, _, err := a.apiConnector.Post(a.apiConnector.ApiKey(), url, data)
+	if a.debug {
 		log.Printf("resp=%#v\n", resp)
 		log.Printf("err=%s\n", err)
 	}
@@ -116,8 +116,8 @@ func (self *Api) CreateMySQLInstance(mi *proto.MySQLInstance) (*proto.MySQLInsta
 			return nil, fmt.Errorf("API did not return location of exisiting MySQL instance")
 		}
 
-		resp, _, err := self.apiConnector.Put(self.apiConnector.ApiKey(), uri, data)
-		if self.debug {
+		resp, _, err := a.apiConnector.Put(a.apiConnector.ApiKey(), uri, data)
+		if a.debug {
 			log.Printf("resp=%#v\n", resp)
 			log.Printf("err=%s\n", err)
 		}
@@ -138,8 +138,8 @@ func (self *Api) CreateMySQLInstance(mi *proto.MySQLInstance) (*proto.MySQLInsta
 	}
 
 	// GET <api>/instances/mysql/id (URI)
-	code, data, err := self.apiConnector.Get(self.apiConnector.ApiKey(), uri)
-	if self.debug {
+	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), uri)
+	if a.debug {
 		log.Printf("code=%d\n", code)
 		log.Printf("err=%s\n", err)
 	}
@@ -155,14 +155,14 @@ func (self *Api) CreateMySQLInstance(mi *proto.MySQLInstance) (*proto.MySQLInsta
 	return mi, nil
 }
 
-func (self *Api) CreateAgent(agent *proto.Agent) (*proto.Agent, error) {
+func (a *Api) CreateAgent(agent *proto.Agent) (*proto.Agent, error) {
 	data, err := json.Marshal(agent)
 	if err != nil {
 		return nil, err
 	}
-	url := self.apiConnector.URL("agents")
-	resp, _, err := self.apiConnector.Post(self.apiConnector.ApiKey(), url, data)
-	if self.debug {
+	url := a.apiConnector.URL("agents")
+	resp, _, err := a.apiConnector.Post(a.apiConnector.ApiKey(), url, data)
+	if a.debug {
 		log.Printf("resp=%#v\n", resp)
 		log.Printf("err=%s\n", err)
 	}
@@ -189,8 +189,8 @@ func (self *Api) CreateAgent(agent *proto.Agent) (*proto.Agent, error) {
 	}
 
 	// GET <api>/agents/:uuid
-	code, data, err := self.apiConnector.Get(self.apiConnector.ApiKey(), uri)
-	if self.debug {
+	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), uri)
+	if a.debug {
 		log.Printf("code=%d\n", code)
 		log.Printf("err=%s\n", err)
 	}
@@ -206,14 +206,14 @@ func (self *Api) CreateAgent(agent *proto.Agent) (*proto.Agent, error) {
 	return agent, nil
 }
 
-func (self *Api) UpdateAgent(agent *proto.Agent, uuid string) (*proto.Agent, error) {
+func (a *Api) UpdateAgent(agent *proto.Agent, uuid string) (*proto.Agent, error) {
 	data, err := json.Marshal(agent)
 	if err != nil {
 		return nil, err
 	}
-	url := self.apiConnector.URL("agents", uuid)
-	resp, _, err := self.apiConnector.Put(self.apiConnector.ApiKey(), url, data)
-	if self.debug {
+	url := a.apiConnector.URL("agents", uuid)
+	resp, _, err := a.apiConnector.Put(a.apiConnector.ApiKey(), url, data)
+	if a.debug {
 		log.Printf("resp=%#v\n", resp)
 		log.Printf("err=%s\n", err)
 	}
@@ -227,10 +227,10 @@ func (self *Api) UpdateAgent(agent *proto.Agent, uuid string) (*proto.Agent, err
 	return agent, nil
 }
 
-func (self *Api) GetMmServerConfig(si *proto.ServerInstance) (*proto.AgentConfig, error) {
-	url := self.apiConnector.URL("/configs/mm/default-server")
-	code, data, err := self.apiConnector.Get(self.apiConnector.ApiKey(), url)
-	if self.debug {
+func (a *Api) GetMmServerConfig(si *proto.ServerInstance) (*proto.AgentConfig, error) {
+	url := a.apiConnector.URL("/configs/mm/default-server")
+	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), url)
+	if a.debug {
 		log.Printf("code=%d\n", code)
 		log.Printf("err=%s\n", err)
 	}
@@ -263,10 +263,10 @@ func (self *Api) GetMmServerConfig(si *proto.ServerInstance) (*proto.AgentConfig
 	return agentConfig, nil
 }
 
-func (self *Api) GetMmMySQLConfig(mi *proto.MySQLInstance) (*proto.AgentConfig, error) {
-	url := self.apiConnector.URL("/configs/mm/default-mysql")
-	code, data, err := self.apiConnector.Get(self.apiConnector.ApiKey(), url)
-	if self.debug {
+func (a *Api) GetMmMySQLConfig(mi *proto.MySQLInstance) (*proto.AgentConfig, error) {
+	url := a.apiConnector.URL("/configs/mm/default-mysql")
+	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), url)
+	if a.debug {
 		log.Printf("code=%d\n", code)
 		log.Printf("err=%s\n", err)
 	}
@@ -299,10 +299,10 @@ func (self *Api) GetMmMySQLConfig(mi *proto.MySQLInstance) (*proto.AgentConfig, 
 	return agentConfig, nil
 }
 
-func (self *Api) GetSysconfigMySQLConfig(mi *proto.MySQLInstance) (*proto.AgentConfig, error) {
-	url := self.apiConnector.URL("/configs/sysconfig/default-mysql")
-	code, data, err := self.apiConnector.Get(self.apiConnector.ApiKey(), url)
-	if self.debug {
+func (a *Api) GetSysconfigMySQLConfig(mi *proto.MySQLInstance) (*proto.AgentConfig, error) {
+	url := a.apiConnector.URL("/configs/sysconfig/default-mysql")
+	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), url)
+	if a.debug {
 		log.Printf("code=%d\n", code)
 		log.Printf("err=%s\n", err)
 	}
@@ -335,10 +335,10 @@ func (self *Api) GetSysconfigMySQLConfig(mi *proto.MySQLInstance) (*proto.AgentC
 	return agentConfig, nil
 }
 
-func (self *Api) GetQanConfig(mi *proto.MySQLInstance) (*proto.AgentConfig, error) {
-	url := self.apiConnector.URL("/configs/qan/default")
-	code, data, err := self.apiConnector.Get(self.apiConnector.ApiKey(), url)
-	if self.debug {
+func (a *Api) GetQanConfig(mi *proto.MySQLInstance) (*proto.AgentConfig, error) {
+	url := a.apiConnector.URL("/configs/qan/default")
+	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), url)
+	if a.debug {
 		log.Printf("code=%d\n", code)
 		log.Printf("err=%s\n", err)
 	}
