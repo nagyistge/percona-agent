@@ -45,6 +45,10 @@ import (
 	"time"
 )
 
+const (
+	ER_NONEXISTING_GRANT = 1141
+)
+
 func Test(t *testing.T) { TestingT(t) }
 
 type MainTestSuite struct {
@@ -150,7 +154,7 @@ var grantPasswordRe = regexp.MustCompile(` IDENTIFIED BY PASSWORD.+$`)
 func (s *MainTestSuite) GetGrants() []string {
 	grants := []string{}
 	rowsLocalhost, err := s.rootConn.Query("SHOW GRANTS FOR 'percona-agent'@'localhost'")
-	if val, ok := err.(*mysql.MySQLError); ok && val.Number == 1141 {
+	if val, ok := err.(*mysql.MySQLError); ok && val.Number == ER_NONEXISTING_GRANT {
 		// Error: 1141 SQLSTATE: 42000 (ER_NONEXISTING_GRANT)
 		return grants
 	} else if err != nil {
@@ -170,7 +174,7 @@ func (s *MainTestSuite) GetGrants() []string {
 	}
 
 	rows127001, err := s.rootConn.Query("SHOW GRANTS FOR 'percona-agent'@'127.0.0.1'")
-	if val, ok := err.(*mysql.MySQLError); ok && val.Number == 1141 {
+	if val, ok := err.(*mysql.MySQLError); ok && val.Number == ER_NONEXISTING_GRANT {
 		// Error: 1141 SQLSTATE: 42000 (ER_NONEXISTING_GRANT)
 		return grants
 	} else if err != nil {
