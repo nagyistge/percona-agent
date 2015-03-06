@@ -107,7 +107,7 @@ func (s *Subscribers) notifyGlobalSubscribers() {
 	for globalChan, dsn := range s.globalSubscribers {
 		select {
 		case globalChan <- dsn:
-			fmt.Println(dsn)
+
 		case <-time.After(1 * time.Second):
 			s.logger.Warn("Unable to notify global subscriber")
 		}

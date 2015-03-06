@@ -120,8 +120,12 @@ func (m *Manager) Start() error {
 	// the qan manager itself (i.e. don't fail this func) because user can fix
 	// or reconfigure this analyzer instannce later and have qan manager try
 	// again to start it.
+	// todo: this fails if agent starts before MySQL is running because MRMS
+	//       fails to connect to MySQL in mrms/monitor/instance.NewMysqlInstance();
+	//       it should succeed and retry until MySQL is online.
 	if err := m.startAnalyzer(config); err != nil {
-		m.logger.Error(fmt.Sprintf("Failed to start %s: %s", config, err))
+		m.logger.Error(fmt.Sprintf("Cannot start Query Analytics: %s. Verify that MySQL is running, "+
+			"then try again.", err))
 		return nil
 	}
 
@@ -238,7 +242,7 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 	return configs, nil
 }
 
-func ValidateConfig(config Config) error {
+func ValidateConfig(config *Config) error {
 	if config.CollectFrom == "" {
 		// Before perf schema, CollectFrom didn't exist, so existing default QAN configs
 		// don't have it.  To be backwards-compatible, no CollectFrom == slowlog.
@@ -286,9 +290,9 @@ func (m *Manager) startAnalyzer(config Config) error {
 	m.logger.Debug("startAnalyzer:call")
 	defer m.logger.Debug("startAnalyzer:return")
 
-	// Validate the config.
-	if err := ValidateConfig(config); err != nil {
-		return err
+	// Validate the config. This func may modify the config.
+	if err := ValidateConfig(&config); err != nil {
+		return fmt.Errorf("Invalid qan.Config: %s", err)
 	}
 
 	// Check if an analyzer for this MySQL instance already exists.
@@ -300,7 +304,7 @@ func (m *Manager) startAnalyzer(config Config) error {
 	// Get the MySQL DSN and create a MySQL connection.
 	mysqlInstance := proto.MySQLInstance{}
 	if err := m.im.Get(config.Service, config.InstanceId, &mysqlInstance); err != nil {
-		return err
+		return fmt.Errorf("Cannot get MySQL instance from repo: %s", err)
 	}
 	mysqlConn := m.mysqlFactory.Make(mysqlInstance.DSN)
 
@@ -308,7 +312,7 @@ func (m *Manager) startAnalyzer(config Config) error {
 	// the analyzer will stop its worker and re-configure MySQL.
 	restartChan, err := m.mrm.Add(mysqlConn.DSN())
 	if err != nil {
-		return err
+		return fmt.Errorf("Cannot add MySQL instance to restart monitor: %s", err)
 	}
 
 	// Make a chan on which the clock will tick at even intervals:
@@ -327,7 +331,7 @@ func (m *Manager) startAnalyzer(config Config) error {
 		tickChan,
 	)
 	if err := analyzer.Start(); err != nil {
-		return err
+		return fmt.Errorf("Cannot start analyzer: %s", err)
 	}
 
 	// Save the new analyzer and its associated parts.

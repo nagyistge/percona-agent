@@ -300,7 +300,7 @@ func (s *ManagerTestSuite) TestValidateConfig(t *C) {
 		WorkerRunTime:     600, // 10 min
 		CollectFrom:       "slowlog",
 	}
-	err := qan.ValidateConfig(config)
+	err := qan.ValidateConfig(&config)
 	t.Check(err, IsNil)
 
 	config = qan.Config{
@@ -322,8 +322,29 @@ func (s *ManagerTestSuite) TestValidateConfig(t *C) {
 		WorkerRunTime:     600, // 10 min
 		CollectFrom:       "slowlog",
 	}
-	err = qan.ValidateConfig(config)
+	err = qan.ValidateConfig(&config)
 	t.Check(err, NotNil)
+
+	// CollectFrom is empty in old versions; it should default to "slowlog".
+	config = qan.Config{
+		ServiceInstance: proto.ServiceInstance{Service: "mysql", InstanceId: 1},
+		Start: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+		},
+		Stop: []mysql.Query{
+			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+		},
+		Interval:          300,        // 5 min
+		MaxSlowLogSize:    1073741824, // 1 GiB
+		RemoveOldSlowLogs: true,
+		ExampleQueries:    true,
+		MaxWorkers:        0,
+		WorkerRunTime:     600, // 10 min
+		CollectFrom:       "",
+	}
+	err = qan.ValidateConfig(&config)
+	t.Check(err, NotNil)
+	t.Check(config.CollectFrom, Equals, "slowlog")
 }
 
 /*

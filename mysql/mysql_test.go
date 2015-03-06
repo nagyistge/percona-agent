@@ -85,7 +85,7 @@ func (s *MysqlTestSuite) TestMissingSocketError(t *C) {
 	t.Assert(
 		fmt.Sprintf("%s", err),
 		Equals,
-		"Failed to connect to MySQL percona:<password-hidden>@unix(/foo/bar/my.sock)/: no such file or directory: /foo/bar/my.sock",
+		"Cannot connect to MySQL percona:<password-hidden>@unix(/foo/bar/my.sock)/: no such file or directory: /foo/bar/my.sock",
 	)
 }
 
