@@ -78,7 +78,7 @@ func (s *MainTestSuite) SetUpSuite(t *C) {
 	// a tmpdir instead with roughly the same structure.
 	basedir, err := ioutil.TempDir("/tmp", "agent-installer-test-basedir-")
 	t.Assert(err, IsNil)
-	pct.Basedir.InitExisting(basedir)
+	pct.Basedir.Init(basedir)
 
 	s.bindir, err = ioutil.TempDir("/tmp", "agent-installer-test-bin-")
 	t.Assert(err, IsNil)

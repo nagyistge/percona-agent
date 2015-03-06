@@ -84,14 +84,6 @@ func (b *basedir) Init(path string) error {
 	return nil
 }
 
-func (b *basedir) InitExisting(path string) {
-	b.path = path
-	b.configDir = filepath.Join(b.path, CONFIG_DIR)
-	b.dataDir = filepath.Join(b.path, DATA_DIR)
-	b.binDir = filepath.Join(b.path, BIN_DIR)
-	b.trashDir = filepath.Join(b.path, TRASH_DIR)
-}
-
 func (b *basedir) Path() string {
 	return b.path
 }
