@@ -52,6 +52,8 @@ type Analyzer interface {
 	Stop() error
 	Status() map[string]string
 	String() string
+	Config() Config
+	SetConfig(Config)
 }
 
 // An AnalyzerFactory makes an Analyzer, real or mock.
@@ -146,12 +148,15 @@ func (a *RealAnalyzer) Status() map[string]string {
 	return a.status.Merge(a.worker.Status())
 }
 
-// --------------------------------------------------------------------------
-
-// Returns a pointer to the config in use by this analizer, useful for testing purposes
-func (a *RealAnalyzer) GetConfig() *Config {
-	return &a.config
+func (a *RealAnalyzer) Config() Config {
+	return a.config
 }
+
+func (a *RealAnalyzer) SetConfig(config Config) {
+	a.config = config
+}
+
+// --------------------------------------------------------------------------
 
 // Disable Percona Server slow log rotation and handle internally using the max_slowlog_size value.
 // The slow log worker must rotate slow logs by itself to ensure full and proper parsing across rotations.

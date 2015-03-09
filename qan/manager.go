@@ -36,7 +36,6 @@ import (
 // An AnalyzerInstnace is an Analyzer ran by a Manager, one per MySQL instance
 // as configured.
 type AnalyzerInstance struct {
-	config      Config
 	mysqlConn   mysql.Connector
 	restartChan <-chan bool
 	tickChan    chan time.Time
@@ -118,7 +117,7 @@ func (m *Manager) Start() error {
 
 	// Start the slow log or perf schema analyzer. If it fails that's ok for
 	// the qan manager itself (i.e. don't fail this func) because user can fix
-	// or reconfigure this analyzer instannce later and have qan manager try
+	// or reconfigure this analyzer instance later and have qan manager try
 	// again to start it.
 	// todo: this fails if agent starts before MySQL is running because MRMS
 	//       fails to connect to MySQL in mrms/monitor/instance.NewMysqlInstance();
@@ -227,7 +226,7 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 	// Configs are always returned as array of AgentConfig resources.
 	configs := []proto.AgentConfig{}
 	for _, a := range m.analyzers {
-		bytes, err := json.Marshal(a.config)
+		bytes, err := json.Marshal(a.analyzer.Config())
 		if err != nil {
 			m.logger.Warn(err)
 			continue
@@ -336,7 +335,6 @@ func (m *Manager) startAnalyzer(config Config) error {
 
 	// Save the new analyzer and its associated parts.
 	m.analyzers[config.InstanceId] = AnalyzerInstance{
-		config:      config,
 		mysqlConn:   mysqlConn,
 		restartChan: restartChan,
 		tickChan:    tickChan,

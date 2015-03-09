@@ -56,6 +56,9 @@ type AnalyzerTestSuite struct {
 
 var _ = Suite(&AnalyzerTestSuite{})
 
+// The highest possible value max_slowlog_size can be set to (from Percona Server documentation)
+const MAX_SLOW_LOG_SIZE int64 = 1073741824
+
 func (s *AnalyzerTestSuite) SetUpSuite(t *C) {
 	s.nullmysql = mock.NewNullMySQL()
 
@@ -95,19 +98,6 @@ func (s *AnalyzerTestSuite) SetUpSuite(t *C) {
 	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
 
 	s.restartChan = make(chan bool, 1)
-	s.config = qan.Config{
-		ServiceInstance: s.mysqlInstance,
-		CollectFrom:     "slowlog",
-		Interval:        60,
-		WorkerRunTime:   60,
-		MaxSlowLogSize:  1024 * 1024 * 1024,
-		Start: []mysql.Query{
-			mysql.Query{Set: "-- start"},
-		},
-		Stop: []mysql.Query{
-			mysql.Query{Set: "-- stop"},
-		},
-	}
 }
 
 func (s *AnalyzerTestSuite) SetUpTest(t *C) {
@@ -119,6 +109,20 @@ func (s *AnalyzerTestSuite) SetUpTest(t *C) {
 		t.Fatal(err)
 	}
 	s.worker = mock.NewQanWorker()
+	// Config needs to be recreated on every test since it can be modified by the test analyzers
+	s.config = qan.Config{
+		ServiceInstance: s.mysqlInstance,
+		CollectFrom:     "slowlog",
+		Interval:        60,
+		WorkerRunTime:   60,
+		MaxSlowLogSize:  MAX_SLOW_LOG_SIZE,
+		Start: []mysql.Query{
+			mysql.Query{Set: "-- start"},
+		},
+		Stop: []mysql.Query{
+			mysql.Query{Set: "-- stop"},
+		},
+	}
 }
 
 func (s *AnalyzerTestSuite) TearDownSuite(t *C) {
@@ -268,9 +272,9 @@ func (s *AnalyzerTestSuite) TestMySQLRestart(t *C) {
 	// Analyzer stops and re-starts its iter on MySQL restart.
 	t.Check(s.iter.Calls(), DeepEquals, []string{"Stop", "Start"})
 
+	s.nullmysql.Reset()
 	// Enable slowlog DB rotation by setting max_slowlog_size to a value > 4096 and simulate MySQL restart
 	s.nullmysql.SetGlobalVarNumber("max_slowlog_size", 100000)
-	s.nullmysql.Reset()
 	s.restartChan <- true
 	if !test.WaitState(s.nullmysql.SetChan) {
 		t.Error("Timeout waiting for <-s.nullmysql.SetChan")
@@ -290,7 +294,7 @@ func (s *AnalyzerTestSuite) TestMySQLRestart(t *C) {
 	}
 
 	t.Check(s.nullmysql.GetSet(), DeepEquals, expectedQueries)
-	t.Check(a.GetConfig().MaxSlowLogSize, Equals, int64(100000))
+	t.Check(a.Config().MaxSlowLogSize, Equals, int64(100000))
 	err = a.Stop()
 	t.Assert(err, IsNil)
 }
@@ -427,15 +431,14 @@ func (s *AnalyzerTestSuite) TestRecoverWorkerPanic(t *C) {
 	t.Check(a.String(), Equals, "qan-analyzer")
 }
 
-// Test slowlog PS rotation take-over function
-func (s *AnalyzerTestSuite) TestSlowLogTakeOver(t *C) {
+// Test that a disabled slow log rotation in Percona Server (or MySQL) does not change analizer config
+func (s *AnalyzerTestSuite) TestNoSlowLogTakeOver(t *C) {
 
 	/*
 		PS can be configured to rotate slow log, making qan break.
 		Since qan cannot handle the situation where a slow log is rotated by a third party we take over Percona Server
 		rotation and disable it on DB.
 	*/
-
 	a := qan.NewRealAnalyzer(
 		pct.NewLogger(s.logChan, "qan-analyzer"),
 		s.config,
@@ -451,20 +454,39 @@ func (s *AnalyzerTestSuite) TestSlowLogTakeOver(t *C) {
 	t.Assert(err, IsNil)
 	test.WaitStatus(1, a, "qan-analyzer", "Idle")
 
-	// The highest possible value max_slowlog_size can be set to (from PS documentation)
-	const MAX_SLOW_LOG_SIZE int64 = 1073741824
-	a.GetConfig().MaxSlowLogSize = MAX_SLOW_LOG_SIZE
 	// Disable DB rotation by setting max_slowlog_size to a value < 4096
 	s.nullmysql.SetGlobalVarNumber("max_slowlog_size", 1000)
-	// Trigger our PS slowlog rotation take-over, everything should stay the same since max_slowlog_size is < 4096
+	// Trigger our PS slow log rotation take-over, everything should stay the same since max_slowlog_size is < 4096
 	a.TakeOverPerconaServerRotation()
-	t.Check(a.GetConfig().MaxSlowLogSize, Equals, MAX_SLOW_LOG_SIZE)
-	// Now increase our max_slowlog_size in mocked DB
-	s.nullmysql.SetGlobalVarNumber("max_slowlog_size", 5000)
-	// Trigger slowlog rotation take over again, this time takeover should succeed
+	t.Check(a.Config().MaxSlowLogSize, Equals, MAX_SLOW_LOG_SIZE)
+	err = a.Stop()
+	t.Assert(err, IsNil)
+	test.WaitStatus(1, a, "qan-analyzer", "Stopped")
+	t.Check(a.String(), Equals, "qan-analyzer")
+}
+
+// Test slow log rotation take over from Percona Server
+func (s *AnalyzerTestSuite) TestSlowLogTakeOver(t *C) {
+	a := qan.NewRealAnalyzer(
+		pct.NewLogger(s.logChan, "qan-analyzer"),
+		s.config,
+		s.iter,
+		s.nullmysql,
+		s.restartChan,
+		s.worker,
+		s.clock,
+		s.spool,
+	)
+
+	err := a.Start()
+	t.Assert(err, IsNil)
+	test.WaitStatus(1, a, "qan-analyzer", "Idle")
+
 	s.nullmysql.Reset()
+	// Increase our max_slowlog_size in mocked DB
+	s.nullmysql.SetGlobalVarNumber("max_slowlog_size", 5000)
+	// Trigger slowlog rotation, takeover should succeed since max_slowlog_size >= 4096
 	a.TakeOverPerconaServerRotation()
-	// We are manually calling takeover function, start queries come before our manual takeover invocation
 	expectedQueries := []mysql.Query{
 		mysql.Query{
 			Set:    "SET GLOBAL max_slowlog_size = 0",
@@ -474,8 +496,8 @@ func (s *AnalyzerTestSuite) TestSlowLogTakeOver(t *C) {
 	}
 
 	t.Check(s.nullmysql.GetSet(), DeepEquals, expectedQueries)
-	// Config should now have the configured Percona Server slowlog file size for rotation
-	t.Check(a.GetConfig().MaxSlowLogSize, Equals, int64(5000))
+	// Config should now have the configured Percona Server slow log rotation file size
+	t.Check(a.Config().MaxSlowLogSize, Equals, int64(5000))
 
 	err = a.Stop()
 	t.Assert(err, IsNil)

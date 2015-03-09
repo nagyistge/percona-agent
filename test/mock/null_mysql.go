@@ -86,6 +86,8 @@ func (n *NullMySQL) GetSet() []mysql.Query {
 
 func (n *NullMySQL) Reset() {
 	n.set = nil
+	n.stringVars = make(map[string]string)
+	n.numberVars = make(map[string]float64)
 }
 
 func (n *NullMySQL) GetGlobalVarString(varName string) string {
