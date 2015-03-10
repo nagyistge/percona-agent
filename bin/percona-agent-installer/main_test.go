@@ -21,6 +21,15 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"os"
+	"os/exec"
+	"regexp"
+	"testing"
+	"time"
+
 	"github.com/go-sql-driver/mysql"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/agent"
@@ -35,14 +44,6 @@ import (
 	"github.com/percona/percona-agent/test/cmdtest"
 	"github.com/percona/percona-agent/test/fakeapi"
 	. "gopkg.in/check.v1"
-	"io/ioutil"
-	"log"
-	"net/http"
-	"os"
-	"os/exec"
-	"regexp"
-	"testing"
-	"time"
 )
 
 const (
@@ -215,6 +216,7 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 	s.fakeApi.AppendAgents(s.agent)
 	s.fakeApi.AppendAgentsUuid(s.agent)
 
+	fmt.Println("-mysql-defaults-file=" + test.RootDir + "/installer/my.cnf-root_user")
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+pct.Basedir.Path(),
@@ -456,6 +458,65 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t 
 
 	// -create-mysql-user=false
 	s.expectMysqlUserNotExists(t)
+}
+func (s *MainTestSuite) TestWithAgentMySQLUser(t *C) {
+
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	s.fakeApi.AppendInstancesServer(1, s.serverInstance)
+	s.fakeApi.AppendInstancesServerId(1, s.serverInstance)
+	s.fakeApi.AppendInstancesMysql(1, s.mysqlInstance)
+	s.fakeApi.AppendInstancesMysqlId(1, s.mysqlInstance)
+	s.fakeApi.AppendConfigsMmDefaultServer()
+	s.fakeApi.AppendConfigsQanDefault()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendAgents(s.agent)
+	s.fakeApi.AppendAgentsUuid(s.agent)
+
+	user := "some-user"
+	pass := "some-pass"
+	host := "localhost"
+	maxCons := 10
+
+	// Create a temporary user because on some installations the default user & pass
+	// are empty and for testing -agent-mysql-user & -agent-mysql-pass, we need non-empty
+	// user & pass parameters
+	grantQuery := fmt.Sprintf("GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO '%s'@'%s' IDENTIFIED BY '%s' WITH MAX_USER_CONNECTIONS %d", user, host, pass, maxCons)
+	s.rootConn.Exec(grantQuery)
+
+	basedir, err := ioutil.TempDir("/tmp", "agent-installer-test-basedir-")
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+basedir,
+		"-api-host="+s.fakeApi.URL(),
+		"-agent-mysql-user="+user,
+		"-agent-mysql-pass="+pass,
+		"-interactive=false",
+		"-api-key="+s.apiKey,
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Created agent: uuid=0001\n")
+	// Use the s flag (?s) to let .* match \n
+	t.Assert(cmdTest.ReadLine(), Matches, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, "Using provided user/pass for mysql-agent user. DSN: some-user:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n")
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", s.mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, "")
+
+	err = cmd.Wait()
+	t.Assert(err, IsNil)
+
+	// Remove the user we just created for this test
+	s.rootConn.Exec(fmt.Sprintf("DROP USER '%s'@'%s'", user, host))
 }
 
 func (s *MainTestSuite) TestInstall(t *C) {
