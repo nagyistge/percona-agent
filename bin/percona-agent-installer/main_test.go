@@ -216,7 +216,6 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 	s.fakeApi.AppendAgents(s.agent)
 	s.fakeApi.AppendAgentsUuid(s.agent)
 
-	fmt.Println("-mysql-defaults-file=" + test.RootDir + "/installer/my.cnf-root_user")
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+pct.Basedir.Path(),
