@@ -504,7 +504,7 @@ func (s *MainTestSuite) TestWithAgentMySQLUser(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, "Created agent: uuid=0001\n")
 	// Use the s flag (?s) to let .* match \n
 	t.Assert(cmdTest.ReadLine(), Matches, fmt.Sprintf("(?s)Using provided user/pass for mysql-agent user. DSN: %s:<password-hidden>.*", user))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", s.mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
