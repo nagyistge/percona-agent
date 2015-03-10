@@ -20,6 +20,7 @@ package mock
 import (
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/qan"
+	"github.com/percona/percona-agent/qan/slowlog"
 	"time"
 )
 
@@ -29,7 +30,7 @@ type IntervalIterFactory struct {
 	TickChans map[qan.IntervalIter]chan time.Time
 }
 
-func (tf *IntervalIterFactory) Make(collectFrom string, filename qan.FilenameFunc, tickChan chan time.Time) qan.IntervalIter {
+func (tf *IntervalIterFactory) Make(collectFrom string, filename slowlog.FilenameFunc, tickChan chan time.Time) qan.IntervalIter {
 	if tf.iterNo >= len(tf.Iters) {
 		return tf.Iters[tf.iterNo-1]
 	}
@@ -45,36 +46,46 @@ func (tf *IntervalIterFactory) Reset() {
 
 // --------------------------------------------------------------------------
 
-type MockIntervalIter struct {
+type Iter struct {
 	testIntervalChan chan *qan.Interval
 	intervalChan     chan *qan.Interval
 	sync             *pct.SyncChan
+	tickChan         chan time.Time
+	calls            []string
 }
 
-func NewMockIntervalIter(intervalChan chan *qan.Interval) *MockIntervalIter {
-	iter := &MockIntervalIter{
-		intervalChan:     make(chan *qan.Interval),
+func NewIter(intervalChan chan *qan.Interval) *Iter {
+	iter := &Iter{
 		testIntervalChan: intervalChan,
-		sync:             pct.NewSyncChan(),
+		// --
+		intervalChan: make(chan *qan.Interval, 1),
+		sync:         pct.NewSyncChan(),
+		tickChan:     make(chan time.Time),
+		calls:        []string{},
 	}
 	return iter
 }
 
-func (i *MockIntervalIter) Start() {
+func (i *Iter) Start() {
+	i.calls = append(i.calls, "Start")
 	go i.run()
-	return
 }
 
-func (i *MockIntervalIter) Stop() {
+func (i *Iter) Stop() {
+	i.calls = append(i.calls, "Stop")
 	i.sync.Stop()
 	i.sync.Wait()
 }
 
-func (i *MockIntervalIter) IntervalChan() chan *qan.Interval {
+func (i *Iter) IntervalChan() chan *qan.Interval {
 	return i.intervalChan
 }
 
-func (i *MockIntervalIter) run() {
+func (i *Iter) TickChan() chan time.Time {
+	return i.tickChan
+}
+
+func (i *Iter) run() {
 	defer func() {
 		i.sync.Done()
 	}()
@@ -86,4 +97,12 @@ func (i *MockIntervalIter) run() {
 			i.intervalChan <- interval
 		}
 	}
+}
+
+func (i *Iter) Calls() []string {
+	return i.calls
+}
+
+func (i *Iter) Reset() {
+	i.calls = []string{}
 }

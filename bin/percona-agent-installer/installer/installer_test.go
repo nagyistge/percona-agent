@@ -18,9 +18,12 @@
 package installer_test
 
 import (
+	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/agent"
+	"github.com/percona/percona-agent/bin/percona-agent-installer/api"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/installer"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/term"
+	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
@@ -38,7 +41,13 @@ func (i *InstallerTestSuite) TestIsSupportedMySQLVersion(t *C) {
 	agentConfig := &agent.Config{}
 	flags := installer.Flags{}
 
-	inst := installer.NewInstaller(term.NewTerminal(os.Stdin, false, true), "", pct.NewAPI(), agentConfig, flags)
+	apiConnector := pct.NewAPI()
+	api := api.New(apiConnector, false)
+	logChan := make(chan *proto.LogEntry, 100)
+	logger := pct.NewLogger(logChan, "instance-repo")
+	instanceRepo := instance.NewRepo(logger, pct.Basedir.Dir("config"), apiConnector)
+	terminal := term.NewTerminal(os.Stdin, false, true)
+	inst := installer.NewInstaller(terminal, "", api, instanceRepo, agentConfig, flags)
 	conn := mock.NewNullMySQL()
 
 	conn.SetGlobalVarString("version", "5.0") // Mockup MySQL version

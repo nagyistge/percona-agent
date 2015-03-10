@@ -44,6 +44,9 @@ import (
 	"github.com/percona/percona-agent/pct"
 	pctCmd "github.com/percona/percona-agent/pct/cmd"
 	"github.com/percona/percona-agent/qan"
+	qanFactory "github.com/percona/percona-agent/qan/factory"
+	"github.com/percona/percona-agent/qan/perfschema"
+	"github.com/percona/percona-agent/qan/slowlog"
 	"github.com/percona/percona-agent/query"
 	queryService "github.com/percona/percona-agent/query/service"
 	"github.com/percona/percona-agent/sysconfig"
@@ -72,12 +75,20 @@ func init() {
 	flag.StringVar(&flagPidFile, "pidfile", agent.DEFAULT_PIDFILE, "PID file")
 	flag.BoolVar(&flagVersion, "version", false, "Print version")
 	flag.Parse()
-
-	runtime.GOMAXPROCS(runtime.NumCPU())
+	// We don't accept any possitional arguments
+	if len(flag.Args()) != 0 {
+		flag.Usage()
+		os.Exit(1)
+	}
+	// Below condition should allow people to use higher number of threads if they want to
+	if os.Getenv("GOMAXPROCS") == "" {
+		// "1" is currently default in golang but this may change in the future, so let's lock this
+		runtime.GOMAXPROCS(1)
+	}
 }
 
 func run() error {
-	version := fmt.Sprintf("percona-agent %s rev %s", agent.VERSION, agent.REVISION)
+	version := fmt.Sprintf("percona-agent %s%s rev %s", agent.VERSION, agent.REL, agent.REVISION)
 	if flagVersion {
 		fmt.Println(version)
 		return nil
@@ -314,14 +325,20 @@ func run() error {
 
 	qanManager := qan.NewManager(
 		pct.NewLogger(logChan, "qan"),
-		connFactory,
 		clock,
-		qan.NewRealIntervalIterFactory(logChan),
-		qan.NewRealWorkerFactory(logChan),
-		dataManager.Spooler(),
 		itManager.Repo(),
 		mrm,
+		connFactory,
+		qanFactory.NewRealAnalyzerFactory(
+			logChan,
+			qanFactory.NewRealIntervalIterFactory(logChan),
+			slowlog.NewRealWorkerFactory(logChan),
+			perfschema.NewRealWorkerFactory(logChan),
+			dataManager.Spooler(),
+			clock,
+		),
 	)
+
 	if err := qanManager.Start(); err != nil {
 		return fmt.Errorf("Error starting qan manager: %s\n", err)
 	}

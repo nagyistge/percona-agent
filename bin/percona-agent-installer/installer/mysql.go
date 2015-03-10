@@ -24,6 +24,7 @@ import (
 	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/mysql"
 	"log"
+	"math/rand"
 	"os/exec"
 	"os/user"
 	"path/filepath"
@@ -38,7 +39,10 @@ func MakeGrant(dsn mysql.DSN, user string, pass string, mysqlMaxUserConns int64)
 	} else if dsn.Hostname == "127.0.0.1" {
 		host = "127.0.0.1"
 	}
+	// Creating/updating a user's password doesn't work correctly if old_passwords is active.
+	// Just in case, disable it for this session
 	grants := []string{
+		"SET SESSION old_passwords=0",
 		fmt.Sprintf("GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO '%s'@'%s' IDENTIFIED BY '%s' WITH MAX_USER_CONNECTIONS %d", user, host, pass, mysqlMaxUserConns),
 		fmt.Sprintf("GRANT UPDATE, DELETE, DROP ON performance_schema.* TO '%s'@'%s' IDENTIFIED BY '%s' WITH MAX_USER_CONNECTIONS %d", user, host, pass, mysqlMaxUserConns),
 	}
@@ -103,7 +107,7 @@ func (i *Installer) createNewMySQLUser() (dsn mysql.DSN, err error) {
 	}
 	fmt.Printf("MySQL root DSN: %s\n", superUserDSN)
 
-	// Try to connect as root automatically.  If this fails and interacive is true,
+	// Try to connect as root automatically.  If this fails and interactive is true,
 	// start prompting user to enter valid root MySQL connection info.
 	if err = i.verifyMySQLConnection(superUserDSN); err != nil {
 		fmt.Printf("Error connecting to MySQL %s: %s\n", superUserDSN, err)
@@ -144,6 +148,51 @@ func (i *Installer) createNewMySQLUser() (dsn mysql.DSN, err error) {
 	}
 
 	return dsn, nil
+}
+
+func (i *Installer) createMySQLUser(dsn mysql.DSN) (mysql.DSN, error) {
+	// Same host:port or socket, but different user and pass.
+	userDSN := dsn
+	userDSN.Username = "percona-agent"
+	userDSN.Password = fmt.Sprintf("%p%d", &dsn, rand.Uint32())
+	userDSN.OldPasswords = i.flags.Bool["old-passwords"]
+
+	dsnString, _ := dsn.DSN()
+	conn := mysql.NewConnection(dsnString)
+	if err := conn.Connect(1); err != nil {
+		return userDSN, err
+	}
+	defer conn.Close()
+	grants := MakeGrant(dsn, userDSN.Username, userDSN.Password, i.flags.Int64["mysql-max-user-connections"])
+	for _, grant := range grants {
+		if i.flags.Bool["debug"] {
+			log.Println(grant)
+		}
+		_, err := conn.DB().Exec(grant)
+		if err != nil {
+			return userDSN, fmt.Errorf("Error executing %s: %s", grant, err)
+		}
+	}
+
+	// Go MySQL driver resolves localhost to 127.0.0.1 but localhost is a special
+	// value for MySQL, so 127.0.0.1 may not work with a grant @localhost, so we
+	// add a 2nd grant @127.0.0.1 to be sure.
+	if dsn.Hostname == "localhost" {
+		dsn2 := dsn
+		dsn2.Hostname = "127.0.0.1"
+		grants := MakeGrant(dsn2, userDSN.Username, userDSN.Password, i.flags.Int64["mysql-max-user-connections"])
+		for _, grant := range grants {
+			if i.flags.Bool["debug"] {
+				log.Println(grant)
+			}
+			_, err := conn.DB().Exec(grant)
+			if err != nil {
+				return userDSN, fmt.Errorf("Error executing %s: %s", grant, err)
+			}
+		}
+	}
+
+	return userDSN, nil
 }
 
 func (i *Installer) useExistingMySQLUser() (mysql.DSN, error) {
