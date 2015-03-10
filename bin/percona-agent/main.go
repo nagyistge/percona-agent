@@ -80,7 +80,11 @@ func init() {
 		flag.Usage()
 		os.Exit(1)
 	}
-	runtime.GOMAXPROCS(runtime.NumCPU())
+	// Below condition should allow people to use higher number of threads if they want to
+	if os.Getenv("GOMAXPROCS") == "" {
+		// "1" is currently default in golang but this may change in the future, so let's lock this
+		runtime.GOMAXPROCS(1)
+	}
 }
 
 func run() error {
