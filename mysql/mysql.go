@@ -43,6 +43,7 @@ type Connector interface {
 	Explain(q string, db string) (explain *proto.ExplainResult, err error)
 	Set([]Query) error
 	GetGlobalVarString(varName string) string
+	GetGlobalVarNumber(varName string) float64
 	Uptime() (uptime int64, err error)
 }
 
