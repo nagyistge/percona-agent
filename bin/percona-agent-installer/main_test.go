@@ -216,6 +216,7 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 	s.fakeApi.AppendAgents(s.agent)
 	s.fakeApi.AppendAgentsUuid(s.agent)
 
+	fmt.Println("-mysql-defaults-file=" + test.RootDir + "/installer/my.cnf-root_user")
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+pct.Basedir.Path(),
@@ -296,7 +297,7 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(
 		"-basedir="+pct.Basedir.Path(),
 		"-api-host="+s.fakeApi.URL(),
 		"-interactive=false",
-		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-wrong_user",
+		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
 		"-mysql-user="+s.username,
 		"-mysql-socket=/var/run/mysqld/mysqld.sock",
 		"-api-key="+s.apiKey, // Required because of non-interactive mode
@@ -506,9 +507,9 @@ func (s *MainTestSuite) TestWithAgentMySQLUser(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Created agent: uuid=0001\n")
 	// Use the s flag (?s) to let .* match \n
-	t.Assert(cmdTest.ReadLine(), Matches, fmt.Sprintf("(?s)Using provided user/pass for mysql-agent user. DSN: %s:<password-hidden>.*", user))
+	t.Assert(cmdTest.ReadLine(), Matches, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, "Using provided user/pass for mysql-agent user. DSN: some-user:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n")
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", s.mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
 	t.Check(cmdTest.ReadLine(), Equals, "")
 
 	err = cmd.Wait()
