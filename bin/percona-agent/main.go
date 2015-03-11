@@ -450,7 +450,8 @@ func run() error {
 	for agentRunning {
 		select {
 		case stopErr = <-stopChan: // agent or signal
-			agentLogger.Info("Agent stopped, shutting down...")
+			agentLogger.Info("Agent stopped")
+			golog.Println("Agent stopped, shutting down...")
 			agentRunning = false
 		case <-statusSigChan:
 			status := agent.AllStatus()
