@@ -77,7 +77,6 @@ func (e *Explain) Handle(cmd *proto.Cmd) *proto.Reply {
 		return cmd.Reply(nil, fmt.Errorf("Unable to create connector for %s: %s", name, err))
 	}
 	defer conn.Close()
-
 	// Connect to MySQL instance
 	if err := conn.Connect(2); err != nil {
 		return cmd.Reply(nil, fmt.Errorf("Unable to connect to %s: %s", name, err))
@@ -86,7 +85,12 @@ func (e *Explain) Handle(cmd *proto.Cmd) *proto.Reply {
 	// Run explain
 	explain, err := conn.Explain(explainQuery.Query, explainQuery.Db)
 	if err != nil {
-		if mysql.MySQLErrorCode(err) == mysql.ER_SYNTAX_ERROR {
+		// MySQL 5.5 will return Syntax error because it doesn't support
+		// explains on DML queries
+		// MySQL 5.6.3+ supports explains on DML queries, but it requieres
+		// additional privileges
+		if mysql.MySQLErrorCode(err) == mysql.ER_SYNTAX_ERROR ||
+			mysql.MySQLErrorCode(err) == mysql.ER_USER_DENIED {
 			if e.isDMLQuery(explainQuery.Query) {
 				newQuery := e.DMLToSelect(explainQuery.Query)
 				if newQuery == "" {
