@@ -119,6 +119,10 @@ func (n *NullMySQL) Uptime() (int64, error) {
 	return n.uptime, nil
 }
 
+func (n *NullMySQL) AtLeastVersion(v string) (bool, error) {
+	return true, nil
+}
+
 func (n *NullMySQL) GetUptimeCount() uint {
 	return n.uptimeCount
 }

@@ -74,8 +74,7 @@ func (s *MysqlTestSuite) TestDSNString(t *C) {
 		Username: "root",
 	}
 	got := fmt.Sprintf("%s", dsn)
-	t.Log(got) // only printed if teset fails:
-	t.Check(strings.HasPrefix(got, "root:<password-hidden>@unix"), Equals, true)
+	t.Check(strings.HasPrefix(got, "root:<password-hidden>@unix"), Equals, true, Commentf("Obtained DSN: %s", got))
 }
 
 func (s *MysqlTestSuite) TestMissingSocketError(t *C) {
