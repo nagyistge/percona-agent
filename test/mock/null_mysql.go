@@ -25,13 +25,16 @@ import (
 )
 
 type NullMySQL struct {
-	set         []mysql.Query
-	explain     map[string]*proto.ExplainResult
-	uptime      int64
-	uptimeCount uint
-	stringVars  map[string]string
-	numberVars  map[string]float64
-	SetChan     chan bool
+	set               []mysql.Query
+	explain           map[string]*proto.ExplainResult
+	uptime            int64
+	uptimeCount       uint
+	stringVars        map[string]string
+	numberVars        map[string]float64
+	SetChan           chan bool
+	atLeastVersion    bool
+	atLeastVersionErr error
+	Version           string
 }
 
 func NewNullMySQL() *NullMySQL {
@@ -117,6 +120,16 @@ func (n *NullMySQL) SetGlobalVarString(name, value string) {
 func (n *NullMySQL) Uptime() (int64, error) {
 	n.uptimeCount++
 	return n.uptime, nil
+}
+
+func (n *NullMySQL) AtLeastVersion(v string) (bool, error) {
+	n.Version = v
+	return n.atLeastVersion, n.atLeastVersionErr
+}
+
+func (n *NullMySQL) SetAtLeastVersion(atLeastVersion bool, err error) {
+	n.atLeastVersion = atLeastVersion
+	n.atLeastVersionErr = err
 }
 
 func (n *NullMySQL) GetUptimeCount() uint {
