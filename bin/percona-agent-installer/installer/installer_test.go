@@ -18,6 +18,7 @@
 package installer_test
 
 import (
+	"fmt"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/api"
@@ -38,6 +39,9 @@ type InstallerTestSuite struct{}
 var _ = Suite(&InstallerTestSuite{})
 
 func (i *InstallerTestSuite) TestIsSupportedMySQLVersion(t *C) {
+	var got bool
+	var err error
+
 	agentConfig := &agent.Config{}
 	flags := installer.Flags{}
 
@@ -49,29 +53,17 @@ func (i *InstallerTestSuite) TestIsSupportedMySQLVersion(t *C) {
 	terminal := term.NewTerminal(os.Stdin, false, true)
 	inst := installer.NewInstaller(terminal, "", api, instanceRepo, agentConfig, flags)
 	conn := mock.NewNullMySQL()
+	errSomethingWentWrong := fmt.Errorf("Something went wrong")
 
-	conn.SetGlobalVarString("version", "5.0") // Mockup MySQL version
-	got, err := inst.IsVersionSupported(conn)
-	t.Assert(err, IsNil)
-	t.Assert(got, Equals, false) // Agent doesn't support MySQL 5.0
-
-	conn.SetGlobalVarString("version", "ubuntu-something") // Malformed version
+	conn.SetAtLeastVersion(false, errSomethingWentWrong)
 	got, err = inst.IsVersionSupported(conn)
-	t.Assert(err, NotNil)
+	t.Assert(conn.Version, Equals, agent.MIN_SUPPORTED_MYSQL_VERSION)
+	t.Assert(err, Equals, errSomethingWentWrong)
 	t.Assert(got, Equals, false)
 
-	conn.SetGlobalVarString("version", "5.0.1-ubuntu-something")
+	conn.SetAtLeastVersion(true, nil)
 	got, err = inst.IsVersionSupported(conn)
-	t.Assert(err, IsNil)
-	t.Assert(got, Equals, false)
-
-	conn.SetGlobalVarString("version", "5.1.0-ubuntu-something")
-	got, err = inst.IsVersionSupported(conn)
-	t.Assert(err, IsNil)
-	t.Assert(got, Equals, true)
-
-	conn.SetGlobalVarString("version", "10.1.0-MariaDB")
-	got, err = inst.IsVersionSupported(conn)
+	t.Assert(conn.Version, Equals, agent.MIN_SUPPORTED_MYSQL_VERSION)
 	t.Assert(err, IsNil)
 	t.Assert(got, Equals, true)
 

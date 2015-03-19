@@ -207,18 +207,24 @@ func (c *Connection) GetGlobalVarNumber(varName string) float64 {
 
 func (c *Connection) AtLeastVersion(v string) (bool, error) {
 	mysqlVersion := c.GetGlobalVarString("version") // Version in the form m.n.o-ubuntu
-	re := regexp.MustCompile("-.*$")
-	mysqlVersion = re.ReplaceAllString(mysqlVersion, "") // Strip everything after the first dash
+	return AtLeastVersion(mysqlVersion, v)
+}
 
-	instanceVersion, err := version.NewVersion(mysqlVersion)
+// Check if version v2 is equal or higher than v1 (v2 >= v1)
+// v2 can be in form m.n.o-ubuntu
+func AtLeastVersion(v1, v2 string) (bool, error) {
+	re := regexp.MustCompile("-.*$")
+	v1 = re.ReplaceAllString(v1, "") // Strip everything after the first dash
+
+	v, err := version.NewVersion(v1)
 	if err != nil {
 		return false, err
 	}
-	constraints, err := version.NewConstraint(">= " + v)
+	constraints, err := version.NewConstraint(">= " + v2)
 	if err != nil {
 		return false, err
 	}
-	if constraints.Check(instanceVersion) {
+	if constraints.Check(v) {
 		return true, nil
 	}
 	return false, nil
