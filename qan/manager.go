@@ -301,11 +301,15 @@ func (m *Manager) startAnalyzer(config Config) error {
 	}
 
 	// Get the MySQL DSN and create a MySQL connection.
-	mysqlInstance := proto.MySQLInstance{}
-	if err := m.im.Get(config.Service, config.InstanceId, &mysqlInstance); err != nil {
+	// TODO: FIX THIS THIS WAS CHANGED FOR INSTANCE REFACTOR
+	//mysqlInstance, err := m.im.Get(config.InstanceId)
+	_, err := m.im.Get(string(config.InstanceId))
+	if err != nil {
 		return fmt.Errorf("Cannot get MySQL instance from repo: %s", err)
 	}
-	mysqlConn := m.mysqlFactory.Make(mysqlInstance.DSN)
+	// This should use properties
+	//mysqlConn := m.mysqlFactory.Make(mysqlInstance.DSN)
+	mysqlConn := m.mysqlFactory.Make("whatever")
 
 	// Add the MySQL DSN to the MySQL restart monitor. If MySQL restarts,
 	// the analyzer will stop its worker and re-configure MySQL.

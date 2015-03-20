@@ -20,14 +20,15 @@ package fakeapi
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mm"
 	"github.com/percona/percona-agent/mm/mysql"
 	"github.com/percona/percona-agent/mm/system"
 	"github.com/percona/percona-agent/sysconfig"
 	sysconfigMysql "github.com/percona/percona-agent/sysconfig/mysql"
-	"io/ioutil"
-	"net/http"
 )
 
 var (
@@ -143,6 +144,14 @@ func (f *FakeApi) AppendAgentsUuid(agent *proto.Agent) {
 	f.Append(fmt.Sprintf("/agents/%s", agent.Uuid), func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		data, _ := json.Marshal(&agent)
+		w.Write(data)
+	})
+}
+
+func (f *FakeApi) AppendNInsts(instances []proto.Instance) {
+	f.Append("/insts", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		data, _ := json.Marshal(instances)
 		w.Write(data)
 	})
 }
