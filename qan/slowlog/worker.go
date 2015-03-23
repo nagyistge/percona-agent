@@ -84,6 +84,8 @@ type Worker struct {
 	sync            *pct.SyncChan
 	running         bool
 	logParser       log.LogParser
+	// Diff against mysql tz and UTC. Used to calculate first_seen and last_seen
+	tzDiffUTC time.Duration
 }
 
 func NewWorker(logger *pct.Logger, config qan.Config, mysqlConn mysql.Connector) *Worker {
@@ -104,6 +106,22 @@ func NewWorker(logger *pct.Logger, config qan.Config, mysqlConn mysql.Connector)
 		doneChan:        make(chan bool, 1),
 		oldSlowLogs:     make(map[int]string),
 		sync:            pct.NewSyncChan(),
+	}
+
+	if mysqlConn.DB() != nil {
+		var mysqlNow time.Time
+		err := mysqlConn.Connect(1)
+		if err != nil {
+			logger.Debug("Cannot get time diff against UTC")
+			return w
+		}
+		defer mysqlConn.Close()
+		err = mysqlConn.DB().QueryRow("SELECT NOW()").Scan(&mysqlNow)
+		if err != nil {
+			logger.Debug("Cannot get time diff against UTC")
+			return w
+		}
+		w.tzDiffUTC = time.Now().UTC().Truncate(time.Hour).Sub(mysqlNow.Truncate(time.Hour))
 	}
 	return w
 }
@@ -129,6 +147,7 @@ func (w *Worker) Setup(interval *qan.Interval) error {
 		ExampleQueries: w.config.ExampleQueries,
 	}
 	w.logger.Debug("Setup:", w.job)
+
 	return nil
 }
 
@@ -183,7 +202,7 @@ func (w *Worker) Run() (*qan.Result, error) {
 
 	// Make an event aggregate to do all the heavy lifting: fingerprint
 	// queries, group, and aggregate.
-	a := event.NewEventAggregator(w.job.ExampleQueries)
+	a := event.NewEventAggregator(w.job.ExampleQueries, w.tzDiffUTC)
 
 	// Misc runtime meta data.
 	jobSize := w.job.EndOffset - w.job.StartOffset
@@ -402,4 +421,9 @@ func (w *Worker) rotateSlowLog(interval *qan.Interval) error {
 	}
 
 	return nil
+}
+
+// This function is to make tests easier
+func (w *Worker) GetTzDiffUTC() time.Duration {
+	return w.tzDiffUTC
 }

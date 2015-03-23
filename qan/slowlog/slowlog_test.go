@@ -69,11 +69,13 @@ type WorkerTestSuite struct {
 	mysqlConn     mysql.Connector
 	worker        *slowlog.Worker
 	nullmysql     *mock.NullMySQL
+	dsn           string
 }
 
 var _ = Suite(&WorkerTestSuite{})
 
 func (s *WorkerTestSuite) SetUpSuite(t *C) {
+	s.dsn = os.Getenv("PCT_TEST_MYSQL_DSN")
 	s.logChan = make(chan *proto.LogEntry, 100)
 	s.logger = pct.NewLogger(s.logChan, "qan-worker")
 	s.now = time.Now()
@@ -114,6 +116,42 @@ func (s *WorkerTestSuite) RunWorker(config qan.Config, mysqlConn mysql.Connector
 
 // -------------------------------------------------------------------------
 
+func (s *WorkerTestSuite) TestWorkerWithAnotherTZ(t *C) {
+	if s.dsn == "" {
+		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
+	}
+	mysqlConn := mysql.NewConnection(s.dsn)
+	err := mysqlConn.Connect(1)
+	t.Assert(err, IsNil)
+	defer mysqlConn.Close()
+	mysqlConn.DB().Exec(`SET time_zone="-1:00"`)
+
+	i := &qan.Interval{
+		Number:      1,
+		StartTime:   s.now,
+		StopTime:    s.now.Add(1 * time.Minute),
+		Filename:    inputDir + "slow001.log",
+		StartOffset: 0,
+		EndOffset:   524,
+	}
+	got, err := s.RunWorker(s.config, mysqlConn, i)
+	t.Check(err, IsNil)
+	expect := &qan.Result{}
+	test.LoadMmReport(outputDir+"slow001.json", expect)
+
+	// I'm going to use the same results for TestWorkerSlow001
+	// But simulating tz = UTC -1
+
+	expect.Class[0].Example.Ts = "2007-10-15 22:45:10"
+	expect.Class[1].Example.Ts = "2007-10-15 22:43:52"
+
+	sort.Sort(ByQueryId(got.Class))
+	sort.Sort(ByQueryId(expect.Class))
+	if ok, diff := IsDeeply(got, expect); !ok {
+		Dump(got)
+		t.Error(diff)
+	}
+}
 func (s *WorkerTestSuite) TestWorkerSlow001(t *C) {
 	i := &qan.Interval{
 		Number:      1,
@@ -132,6 +170,9 @@ func (s *WorkerTestSuite) TestWorkerSlow001(t *C) {
 	if ok, diff := IsDeeply(got, expect); !ok {
 		Dump(got)
 		t.Error(diff)
+	}
+	for _, c := range got.Class {
+		fmt.Printf("Got: %+v\n", c.Example)
 	}
 }
 
