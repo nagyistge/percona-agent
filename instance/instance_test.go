@@ -28,6 +28,7 @@ import (
 
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/instance"
+	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
@@ -302,159 +303,194 @@ func (s *RepoTestSuite) TestUpdateTree(t *C) {
 //// Manager test suite
 ///////////////////////////////////////////////////////////////////////////////
 
-//type ManagerTestSuite struct {
-//	tmpDir    string
-//	logChan   chan *proto.LogEntry
-//	logger    *pct.Logger
-//	configDir string
-//	api       *mock.API
-//}
+type ManagerTestSuite struct {
+	tmpDir        string
+	logChan       chan *proto.LogEntry
+	logger        *pct.Logger
+	configDir     string
+	instancesFile string
+	api           *mock.API
+}
 
-//var _ = Suite(&ManagerTestSuite{})
+var _ = Suite(&ManagerTestSuite{})
 
-//func (s *ManagerTestSuite) SetUpSuite(t *C) {
-//	var err error
-//	s.tmpDir, err = ioutil.TempDir("/tmp", "agent-test")
-//	t.Assert(err, IsNil)
+func (s *ManagerTestSuite) SetUpSuite(t *C) {
+	var err error
+	s.tmpDir, err = ioutil.TempDir("/tmp", "agent-test")
+	t.Assert(err, IsNil)
 
-//	if err := pct.Basedir.Init(s.tmpDir); err != nil {
-//		t.Fatal(err)
-//	}
-//	s.configDir = pct.Basedir.Dir("config")
+	if err := pct.Basedir.Init(s.tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	s.configDir = pct.Basedir.Dir("config")
 
-//	s.logChan = make(chan *proto.LogEntry, 10)
-//	s.logger = pct.NewLogger(s.logChan, "pct-it-test")
+	s.logChan = make(chan *proto.LogEntry, 10)
+	s.logger = pct.NewLogger(s.logChan, "pct-it-test")
 
-//	links := map[string]string{
-//		"agent":     "http://localhost/agent",
-//		"instances": "http://localhost/instances",
-//	}
-//	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
-//}
+	links := map[string]string{
+		"agent": "http://localhost/agent",
+		"insts": "http://localhost/insts",
+	}
+	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
+}
 
-//func (s *ManagerTestSuite) SetUpTest(t *C) {
-//	files, _ := filepath.Glob(s.configDir + "/*")
-//	for _, file := range files {
-//		if err := os.Remove(file); err != nil {
-//			t.Error(err)
-//		}
-//	}
-//}
+func (s *ManagerTestSuite) SetUpTest(t *C) {
+	files, _ := filepath.Glob(s.configDir + "/*")
+	for _, file := range files {
+		if err := os.Remove(file); err != nil {
+			t.Error(err)
+		}
+	}
+	s.instancesFile = filepath.Join(s.configDir, "instances.conf")
+	err := test.CopyFile(test.RootDir+"/instance/instances-1.conf", s.instancesFile)
+	t.Assert(err, IsNil)
 
-//func (s *ManagerTestSuite) TearDownSuite(t *C) {
-//	if err := os.RemoveAll(s.tmpDir); err != nil {
-//		t.Error(err)
-//	}
-//}
+}
 
-//var dsn = os.Getenv("PCT_TEST_MYSQL_DSN")
+func (s *ManagerTestSuite) TearDownSuite(t *C) {
+	if err := os.RemoveAll(s.tmpDir); err != nil {
+		t.Error(err)
+	}
+}
+
+var dsn = os.Getenv("PCT_TEST_MYSQL_DSN")
 
 //// --------------------------------------------------------------------------
 
-//func (s *ManagerTestSuite) TestHandleGetInfoMySQL(t *C) {
-//	if dsn == "" {
-//		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
-//	}
+func (s *ManagerTestSuite) TestHandleGetInfoMySQL(t *C) {
+	bin, err := ioutil.ReadFile(s.instancesFile)
+	t.Assert(err, IsNil)
+	s.api.GetData = [][]byte{bin}
+	s.api.GetCode = []int{http.StatusOK}
 
-//	/**
-//	 * First get MySQL info manually.  This is what GetInfo should do, too.
-//	 */
+	if dsn == "" {
+		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
+	}
 
-//	conn := mysql.NewConnection(dsn)
-//	if err := conn.Connect(1); err != nil {
-//		t.Fatal(err)
-//	}
-//	var hostname, distro, version string
-//	sql := "SELECT" +
-//		" CONCAT_WS('.', @@hostname, IF(@@port='3306',NULL,@@port)) AS Hostname," +
-//		" @@version_comment AS Distro," +
-//		" @@version AS Version"
-//	if err := conn.DB().QueryRow(sql).Scan(&hostname, &distro, &version); err != nil {
-//		t.Fatal(err)
-//	}
+	/**
+	 * First get MySQL info manually.  This is what GetInfo should do, too.
+	 */
 
-//	/**
-//	 * Now use the instance manager and GetInfo to get MySQL info like API would.
-//	 */
+	conn := mysql.NewConnection(dsn)
+	if err := conn.Connect(1); err != nil {
+		t.Fatal(err)
+	}
+	var hostname, distro, version string
+	sql := "SELECT" +
+		" CONCAT_WS('.', @@hostname, IF(@@port='3306',NULL,@@port)) AS Hostname," +
+		" @@version_comment AS Distro," +
+		" @@version AS Version"
+	if err := conn.DB().QueryRow(sql).Scan(&hostname, &distro, &version); err != nil {
+		t.Fatal(err)
+	}
 
-//	// Create an instance manager.
-//	mrm := mock.NewMrmsMonitor()
-//	m := instance.NewManager(s.logger, s.configDir, s.api, mrm)
-//	t.Assert(m, NotNil)
+	/**
+	 * Now use the instance manager and GetInfo to get MySQL info like API would.
+	 */
 
-//	err := m.Start()
-//	t.Assert(err, IsNil)
+	// Create an instance manager.
+	mrm := mock.NewMrmsMonitor()
+	m := instance.NewManager(s.logger, s.configDir, s.api, mrm)
+	t.Assert(m, NotNil)
 
-//	// API sends Cmd[Service:"instance", Cmd:"GetInfo",
-//	//               Data:proto.ServiceInstance[Service:"mysql",
-//	//                                          Data:proto.MySQLInstance[]]]
-//	// Only DSN is needed.  We set Id just to test that it's not changed.
-//	mysqlIt := &proto.MySQLInstance{
-//		Id:  9,
-//		DSN: dsn,
-//	}
-//	mysqlData, err := json.Marshal(mysqlIt)
-//	t.Assert(err, IsNil)
+	err = m.Start()
+	t.Assert(err, IsNil)
 
-//	serviceIt := &proto.ServiceInstance{
-//		Service:  "mysql",
-//		Instance: mysqlData,
-//	}
-//	serviceData, err := json.Marshal(serviceIt)
-//	t.Assert(err, IsNil)
+	// API sends Cmd[Service:"instance", Cmd:"GetInfo",
+	//               Data:proto.ServiceInstance[Service:"mysql",
+	//                                          Data:proto.MySQLInstance[]]]
+	// Only DSN is needed.  We set Id just to test that it's not changed.
+	mysqlIt := &proto.Instance{}
+	mysqlIt.Type = "MySQL"
+	mysqlIt.Prefix = "mysql"
+	mysqlIt.UUID = "c540346a644b404a9d2ae006122fc5a2"
+	mysqlIt.Name = "mysql-bm-cloud-0001"
+	mysqlIt.Properties = map[string]string{"dsn": dsn}
+	mysqlData, err := json.Marshal(mysqlIt)
+	t.Assert(err, IsNil)
 
-//	cmd := &proto.Cmd{
-//		Cmd:     "GetInfo",
-//		Service: "instance",
-//		Data:    serviceData,
-//	}
+	cmd := &proto.Cmd{
+		Cmd:     "GetInfo",
+		Service: "instance",
+		Data:    mysqlData,
+	}
 
-//	reply := m.Handle(cmd)
+	reply := m.Handle(cmd)
 
-//	got := &proto.MySQLInstance{}
-//	err = json.Unmarshal(reply.Data, got)
-//	t.Assert(err, IsNil)
+	var got *proto.Instance
+	err = json.Unmarshal(reply.Data, &got)
+	t.Assert(err, IsNil)
 
-//	t.Check(got.Id, Equals, uint(9))        // not changed
-//	t.Check(got.DSN, Equals, mysqlIt.DSN)   // not changed
-//	t.Check(got.Hostname, Equals, hostname) // new
-//	t.Check(got.Distro, Equals, distro)     // new
-//	t.Check(got.Version, Equals, version)   // new
-//}
+	t.Check(got.Type, Equals, mysqlIt.Type)               // not changed
+	t.Check(got.Prefix, Equals, mysqlIt.Prefix)           // not changed
+	t.Check(got.UUID, Equals, mysqlIt.UUID)               // not changed
+	t.Check(got.Properties["dsn"], Equals, dsn)           // not changed
+	t.Check(got.Properties["hostname"], Equals, hostname) // new
+	t.Check(got.Properties["distro"], Equals, distro)     // new
+	t.Check(got.Properties["version"], Equals, version)   // new
+}
 
-//func (s *ManagerTestSuite) TestHandleAdd(t *C) {
-//	// Create an instance manager.
-//	mrm := mock.NewMrmsMonitor()
-//	m := instance.NewManager(s.logger, s.configDir, s.api, mrm)
-//	t.Assert(m, NotNil)
+func (s *ManagerTestSuite) TestHandleUpdate(t *C) {
+	// Create an instance manager.
+	mrm := mock.NewMrmsMonitor()
+	m := instance.NewManager(s.logger, s.configDir, s.api, mrm)
+	t.Assert(m, NotNil)
 
-//	mysqlIt := &proto.MySQLInstance{
-//		Id:  9,
-//		DSN: dsn,
-//	}
-//	mysqlData, err := json.Marshal(mysqlIt)
-//	t.Assert(err, IsNil)
+	osIt := &proto.Instance{}
+	osIt.Type = "OS"
+	osIt.Prefix = "os"
+	osIt.UUID = "916f4c31aaa35d6b867dae9a7f54270d"
+	osIt.Name = "os-bm-cloud-0001"
+	mysqlIt := &proto.Instance{}
+	mysqlIt.Type = "MySQL"
+	mysqlIt.Prefix = "mysql"
+	mysqlIt.UUID = "c540346a644b404a9d2ae006122fc5a2"
+	mysqlIt.Name = "mysql-bm-cloud-0001"
+	mysqlIt.Properties = map[string]string{"dsn": dsn}
+	osIt.Subsystems = append(osIt.Subsystems, *mysqlIt)
 
-//	serviceIt := &proto.ServiceInstance{
-//		Service:    "mysql",
-//		Instance:   mysqlData,
-//		InstanceId: 2,
-//	}
-//	serviceData, err := json.Marshal(serviceIt)
-//	t.Assert(err, IsNil)
+	osData, err := json.Marshal(osIt)
+	t.Assert(err, IsNil)
 
-//	cmd := &proto.Cmd{
-//		Cmd:     "Add",
-//		Service: "mysql",
-//		Data:    serviceData,
-//	}
+	cmd := &proto.Cmd{
+		Cmd:     "Update",
+		Service: "instance",
+		Data:    osData,
+	}
 
-//	reply := m.Handle(cmd)
-//	t.Assert(reply.Error, Equals, "")
+	reply := m.Handle(cmd)
+	t.Assert(reply.Error, Equals, "")
 
-//	// Test GetMySQLInstances here beacause we already have a Repo with instances
-//	is := m.GetMySQLInstances()
-//	t.Assert(is, NotNil)
-//	t.Assert(len(is), Equals, 1)
-//	t.Assert(is[0].Id, Equals, uint(9))
-//}
+	// Test GetMySQLInstances here because we already have a Repo with instances
+	is := m.GetMySQLInstances()
+	t.Assert(is, NotNil)
+	t.Assert(len(is), Equals, 1)
+
+	t.Assert(is[0].UUID, Equals, "c540346a644b404a9d2ae006122fc5a2")
+}
+
+func (s *ManagerTestSuite) TestHandleUpdateNoOS(t *C) {
+	// Create an instance manager.
+	mrm := mock.NewMrmsMonitor()
+	m := instance.NewManager(s.logger, s.configDir, s.api, mrm)
+	t.Assert(m, NotNil)
+
+	mysqlIt := &proto.Instance{}
+	mysqlIt.Type = "MySQL"
+	mysqlIt.Prefix = "mysql"
+	mysqlIt.UUID = "c540346a644b404a9d2ae006122fc5a2"
+	mysqlIt.Name = "mysql-bm-cloud-0001"
+	mysqlIt.Properties = map[string]string{"dsn": dsn}
+	mysqlData, err := json.Marshal(mysqlIt)
+	t.Assert(err, IsNil)
+
+	cmd := &proto.Cmd{
+		Cmd:     "Update",
+		Service: "instance",
+		Data:    mysqlData,
+	}
+
+	reply := m.Handle(cmd)
+	t.Assert(reply.Error, Equals, "Tree instance root is not of OS type")
+
+}

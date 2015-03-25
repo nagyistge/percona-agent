@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"sync"
 
 	"github.com/percona/cloud-protocol/proto"
@@ -47,6 +48,9 @@ const (
 	INSTANCES_FILE     = "instances.conf"
 	INSTANCES_FILEMODE = 0660
 )
+
+// Cannot be defined as const
+var UUID_RE, _ = regexp.Compile("^[0-9A-Fa-f]{32}$")
 
 func NewRepo(logger *pct.Logger, configDir string, api pct.APIConnector) *Repo {
 	m := &Repo{
@@ -280,7 +284,7 @@ func (r *Repo) updateTree(tree proto.Instance, added *[]proto.Instance, deleted 
 
 	if !isOSInstance(tree) {
 		// tree instance root is not an OS instance
-		return errors.New("tree instance root is not of OS type")
+		return errors.New("Tree instance root is not of OS type")
 	}
 
 	oldIt := r.it
@@ -356,11 +360,7 @@ func (r *Repo) get(uuid string) (proto.Instance, error) {
 }
 
 func (r *Repo) valid(uuid string) bool {
-
-	if _, ok := r.it[uuid]; !ok {
-		return false
-	}
-	return true
+	return UUID_RE.MatchString(uuid)
 }
 
 func (r *Repo) List() []proto.Instance {

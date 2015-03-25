@@ -89,7 +89,7 @@ func (m *Manager) Start() error {
 		}
 		safeDSN := mysql.HideDSNPassword(instance.Properties["dsn"])
 		m.status.Update("instance", "Getting info "+safeDSN)
-		if err := GetMySQLInfo(&instance); err != nil {
+		if err := GetMySQLInfo(instance); err != nil {
 			m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
 			continue
 		}
@@ -119,10 +119,10 @@ func onlyMySQLInsts(slice *[]proto.Instance) *[]proto.Instance {
 }
 
 // Adds a MySQL instance to MRM
-func (m *Manager) mrmMySQL(inst *proto.Instance) error {
+func (m *Manager) mrmMySQL(inst proto.Instance) error {
 	itDSN, ok := inst.Properties["dns"]
 	if !ok {
-		return errors.New("Missing DSN in added MySQL instance " + inst.UUID)
+		return errors.New("Missing DSN in MySQL instance " + inst.UUID)
 	}
 	ch, err := m.mrm.Add(itDSN)
 	if err != nil {
@@ -136,7 +136,7 @@ func (m *Manager) mrmMySQL(inst *proto.Instance) error {
 		m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
 	}
 	m.status.Update("instance", "Updating info "+safeDSN)
-	err = m.pushInstanceInfo(*inst)
+	err = m.pushInstanceInfo(inst)
 	if err != nil {
 		return err
 	}
@@ -147,7 +147,7 @@ func (m *Manager) mrmMySQL(inst *proto.Instance) error {
 func (m *Manager) mrmAddedMySQL(added *[]proto.Instance) {
 	// Process added instances
 	for _, addIt := range *added {
-		if err := m.mrmMySQL(&addIt); err != nil {
+		if err := m.mrmMySQL(addIt); err != nil {
 			m.logger.Error(err)
 		}
 	}
@@ -179,7 +179,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	defer m.status.Update("instance", "Running")
 
 	var it *proto.Instance = nil
-	if err := json.Unmarshal(cmd.Data, it); err != nil {
+	if err := json.Unmarshal(cmd.Data, &it); err != nil {
 		return cmd.Reply(nil, err)
 	}
 
@@ -253,7 +253,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		//		err := m.repo.Remove(it.Service, it.InstanceId)
 		//		return cmd.Reply(nil, err)
 	case "GetInfo":
-		err := m.handleGetInfo(it)
+		err := m.handleGetInfo(*it)
 		return cmd.Reply(it, err)
 	default:
 		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
@@ -282,14 +282,14 @@ func (m *Manager) Repo() *Repo {
 // Implementation
 /////////////////////////////////////////////////////////////////////////////
 
-func (m *Manager) handleGetInfo(it *proto.Instance) error {
-	if !isMySQLInst(*it) {
+func (m *Manager) handleGetInfo(it proto.Instance) error {
+	if !isMySQLInst(it) {
 		return fmt.Errorf("Don't know how to get info for %s instance", it.UUID)
 	}
 	return GetMySQLInfo(it)
 }
 
-func GetMySQLInfo(it *proto.Instance) error {
+func GetMySQLInfo(it proto.Instance) error {
 	conn := mysql.NewConnection(it.Properties["dsn"])
 	if err := conn.Connect(1); err != nil {
 		return err
@@ -299,14 +299,19 @@ func GetMySQLInfo(it *proto.Instance) error {
 		" CONCAT_WS('.', @@hostname, IF(@@port='3306',NULL,@@port)) AS Hostname," +
 		" @@version_comment AS Distro," +
 		" @@version AS Version"
+	// Need auxiliary vars because can't get map attribute addresses
+	var hostname, distro, version string
 	err := conn.DB().QueryRow(sql).Scan(
-		it.Properties["hostname"],
-		it.Properties["distro"],
-		it.Properties["version"],
+		&hostname,
+		&distro,
+		&version,
 	)
 	if err != nil {
 		return err
 	}
+	it.Properties["hostname"] = hostname
+	it.Properties["distro"] = distro
+	it.Properties["version"] = version
 	return nil
 }
 
@@ -370,7 +375,7 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 					continue
 				}
 				m.status.Update("instance-mrms", "Getting info "+safeDSN)
-				if err := GetMySQLInfo(&instance); err != nil {
+				if err := GetMySQLInfo(instance); err != nil {
 					m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
 					break
 				}
@@ -385,11 +390,11 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 	}
 }
 
-func (m *Manager) pushInstanceInfo(instance proto.Instance) error {
+func (m *Manager) pushInstanceInfo(inst proto.Instance) error {
 	// We need to be REST-friendly, subsystems should be left out of the PUT
-	instance.Subsystems = make([]proto.Instance, 0)
-	uri := fmt.Sprintf("%s/%s", m.api.EntryLink("insts"), instance.UUID)
-	data, err := json.Marshal(&instance)
+	inst.Subsystems = make([]proto.Instance, 0)
+	uri := fmt.Sprintf("%s/%s", m.api.EntryLink("insts"), inst.UUID)
+	data, err := json.Marshal(&inst)
 	if err != nil {
 		m.logger.Error(err)
 		return err
