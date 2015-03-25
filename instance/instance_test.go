@@ -119,13 +119,23 @@ func (s *RepoTestSuite) TestInit(t *C) {
 	t.Assert(len(s.im.List()), Equals, 6)
 }
 
+func printIt(slice *[]*proto.Instance) {
+	fmt.Print("Printing slice: ")
+	fmt.Print(slice)
+	//	fmt.Print("Printing slice: ")
+	//	for _, it := range *slice {
+	//		fmt.Print(it.UUID + " ")
+	//	}
+	fmt.Println(" ")
+}
+
 func (s *RepoTestSuite) TestInitDownload(t *C) {
 	bin, err := ioutil.ReadFile(s.instancesFile)
 	t.Assert(err, IsNil)
 	s.api.GetData = [][]byte{bin}
 	s.api.GetCode = []int{http.StatusOK}
 
-	// Remove our local test config file, so Init will download it can place it there
+	// Remove our local test config file, so Init will download it and place it there
 	err = os.Remove(s.instancesFile)
 	t.Assert(err, IsNil)
 
@@ -135,14 +145,16 @@ func (s *RepoTestSuite) TestInitDownload(t *C) {
 	t.Assert(pct.FileExists(s.instancesFile), Equals, true)
 	downloadedFile, err := ioutil.ReadFile(s.instancesFile)
 	t.Assert(err, IsNil)
-	if same, _ := test.IsDeeply(downloadedFile, bin); !same {
-		t.Error("Downloaded instances file is not the same as the original test config file")
-	}
 
-	tree := s.im.Instances()
-	if same, diff := test.IsDeeply(tree, s.instances); !same {
-		test.Dump(tree)
-		test.Dump(s.instances)
+	var original, saved *proto.Instance
+	err = json.Unmarshal(bin, &original)
+	t.Assert(err, IsNil)
+	err = json.Unmarshal(downloadedFile, &saved)
+	t.Assert(err, IsNil)
+
+	if same, diff := test.IsDeeply(original, saved); !same {
+		test.Dump(original)
+		test.Dump(saved)
 		t.Error(diff)
 	}
 }

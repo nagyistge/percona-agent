@@ -53,7 +53,7 @@ type Manager struct {
 	// --
 	mux       *sync.RWMutex
 	running   bool
-	analyzers map[uint]AnalyzerInstance
+	analyzers map[string]AnalyzerInstance
 	status    *pct.Status
 }
 
@@ -74,7 +74,7 @@ func NewManager(
 		analyzerFactory: analyzerFactory,
 		// --
 		mux:       &sync.RWMutex{},
-		analyzers: make(map[uint]AnalyzerInstance),
+		analyzers: make(map[string]AnalyzerInstance),
 		status:    pct.NewStatus([]string{"qan"}),
 	}
 	return m
@@ -348,7 +348,7 @@ func (m *Manager) startAnalyzer(config Config) error {
 	return nil // success
 }
 
-func (m *Manager) stopAnalyzer(instanceId uint) error {
+func (m *Manager) stopAnalyzer(instanceId string) error {
 	/*
 		XXX Assume caller has locked m.mux.
 	*/

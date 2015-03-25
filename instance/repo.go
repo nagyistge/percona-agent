@@ -45,7 +45,7 @@ type Repo struct {
 
 const (
 	INSTANCES_FILE     = "instances.conf"
-	INSTANCES_FILEMODE = 0664
+	INSTANCES_FILEMODE = 0660
 )
 
 func NewRepo(logger *pct.Logger, configDir string, api pct.APIConnector) *Repo {
@@ -61,61 +61,52 @@ func NewRepo(logger *pct.Logger, configDir string, api pct.APIConnector) *Repo {
 	return m
 }
 
-func (r *Repo) downloadInstances(file string) error {
+func (r *Repo) downloadInstances() (data []byte, err error) {
 	// Get instances tree info from API.
 	errors.New(fmt.Sprintf("Downloading instance config file from API"))
 	url := r.api.EntryLink("insts")
+	data = make([]byte, 0)
 	if url == "" {
 		errMsg := "No 'insts' API link registered"
 		r.logger.Warn(errMsg)
-		return errors.New(errMsg)
+		return data, errors.New(errMsg)
 	}
 	r.logger.Info("GET", url)
 	code, data, err := r.api.Get(r.api.ApiKey(), url)
 	if err != nil {
-		return err
+		return data, err
 	}
 	if code != http.StatusOK {
-		return errors.New(fmt.Sprintf("Failed to get instance config, API returned HTTP status code %d", code))
+		return data, errors.New(fmt.Sprintf("Failed to get instance config, API returned HTTP status code %d", code))
 	}
 	if data == nil {
-		return errors.New("API returned an empty instance config data")
+		return data, errors.New("API returned an empty instance config data")
 	}
-	return ioutil.WriteFile(file, data, INSTANCES_FILEMODE)
+	return data, nil
 }
 
-//func printIt(slice *[]*proto.Instance) {
-//	fmt.Print("Printing slice: ")
-//	fmt.Print(slice)
-//	//	fmt.Print("Printing slice: ")
-//	//	for _, it := range *slice {
-//	//		fmt.Print(it.UUID + " ")
-//	//	}
-//	fmt.Println(" ")
-//}
-
-func (r *Repo) updateInstanceIndex() {
+func (r *Repo) updateInstanceIndex() error {
 	if r.tree != nil {
 		// Lets forget about our former index, parse the current tree
 		r.it = make(map[string]*proto.Instance)
 	}
-	// A recursive method is beautiful but unforgiving without tail recursion
-	// optimization. Lets do this iterating, we don't want to overflow the stack
-	// because of a rogue config tree is deep enough; also, I don't want to limit
+	// A recursive method is beautiful but unforgiving without limits or tail recursion
+	// optimization. Lets do this iterating, we don't want to eat all the memory
+	// because of a rogue config tree is deep enough; also, we don't want to limit
 	// depth now.
 	tovisit := []*proto.Instance{r.tree}
 	for {
 		count := len(tovisit)
 		switch {
 		case count == 0:
-			return
+			return nil
 		case count > 0:
 			// Pop element
 			var inst *proto.Instance = nil
 			inst, tovisit = tovisit[len(tovisit)-1], tovisit[:len(tovisit)-1]
 			if _, ok := r.it[inst.UUID]; ok {
 				// Should this be a Fatal error?
-				r.logger.Error("Cycle in instances tree detected")
+				return fmt.Errorf("Cycle in instances tree detected with UUID %s", inst.UUID)
 				// Avoid cycles
 				continue
 			} else {
@@ -128,6 +119,7 @@ func (r *Repo) updateInstanceIndex() {
 			}
 		}
 	}
+	return nil
 }
 
 // Determine if two instances are "equal".
@@ -158,17 +150,13 @@ func equalInstances(inst1, inst2 *proto.Instance) bool {
 	return true
 }
 
-func (r *Repo) loadConfig(file string) error {
-	// Caller should lock r.mux
-	data, err := ioutil.ReadFile(file)
-	if err != nil {
-		return errors.New(fmt.Sprintf("%s: %v", file, err))
-	}
-	if err := json.Unmarshal(data, &r.tree); err != nil {
+func (r *Repo) loadConfig(data []byte) error {
+	var newTree *proto.Instance
+	if err := json.Unmarshal(data, &newTree); err != nil {
 		return errors.New("instance.Repo:json.Unmarshal:" + err.Error())
 	}
-	r.updateInstanceIndex()
-	return nil
+	r.tree = newTree
+	return r.updateInstanceIndex()
 }
 
 func (r *Repo) getCfgFilePath() string {
@@ -180,17 +168,32 @@ func (r *Repo) Init() error {
 	r.mux.Lock()
 	defer r.mux.Unlock()
 	file := r.getCfgFilePath()
+	var data []byte
+	var err error
 	if !pct.FileExists(file) {
 		r.logger.Info(fmt.Sprintf("Instance config file does not exist %s, downloading", file))
-		if err := r.downloadInstances(file); err != nil {
+		data, err = r.downloadInstances()
+		if err != nil {
 			r.logger.Error(err)
+			return err
+		}
+	} else {
+		r.logger.Debug("Reading " + file)
+		data, err = ioutil.ReadFile(file)
+		if err != nil {
+			r.logger.Error(fmt.Sprintf("Could not read instance config file: ", file))
 			return err
 		}
 	}
 
-	r.logger.Debug("Reading " + file)
-	if err := r.loadConfig(file); err != nil {
+	r.logger.Debug("Loading instance config data")
+	if err := r.loadConfig(data); err != nil {
 		r.logger.Error(fmt.Sprintf("Error loading instances config file: %v", err))
+		return err
+	}
+	r.logger.Debug("Saving instance config data to file")
+	if err := r.treeToDisk(file); err != nil {
+		r.logger.Error(fmt.Sprintf("Error saving instance config tree to file: %v", err))
 		return err
 	}
 	r.logger.Info("Loaded " + file)
@@ -211,7 +214,8 @@ func (r *Repo) Instances() proto.Instance {
 func cloneTree(source, target interface{}) error {
 	// This will basically binary serialize the data from source and deserialize
 	// in target variable creating a fresh copy. This will NOT work with circular
-	// data but that is not a problem with proto.Instances
+	// data but that is not a problem with proto.Instances as they don't hold
+	// circular references.
 	// Pulled from: https://groups.google.com/forum/#!topic/golang-nuts/vK6P0dmQI84
 	// TODO: write a specific clone function for proto.Instance?
 	buff := new(bytes.Buffer)
@@ -227,7 +231,7 @@ func cloneTree(source, target interface{}) error {
 }
 
 // Saves instances tree to disk
-func (r *Repo) treeToDisk() error {
+func (r *Repo) treeToDisk(filepath string) error {
 	if r.tree == nil {
 		// Nothing to save to disk, return inmediatly
 		return nil
@@ -237,7 +241,7 @@ func (r *Repo) treeToDisk() error {
 		r.logger.Error(fmt.Sprintf("Error JSON-marshalling instance's tree: %v", err))
 		return err
 	}
-	return ioutil.WriteFile(r.getCfgFilePath(), data, INSTANCES_FILEMODE)
+	return ioutil.WriteFile(filepath, data, INSTANCES_FILEMODE)
 }
 
 // Substitute local repo instances with provided tree parameter.
@@ -305,7 +309,7 @@ func (r *Repo) updateTree(tree proto.Instance, added *[]proto.Instance, deleted 
 			// We use custom compare method instead of using DeepEquals
 			// on the instances as they include references to child instances;
 			// a change in a child instance means DeepEquals will detect that
-			// a parent as modified.
+			// a parent was also modified.
 			if !equalInstances(oldIt[uuid], r.it[uuid]) {
 				*updated = append(*updated, *(r.it[uuid]))
 			}
@@ -315,7 +319,7 @@ func (r *Repo) updateTree(tree proto.Instance, added *[]proto.Instance, deleted 
 	}
 
 	if writeToDisk {
-		return r.treeToDisk()
+		return r.treeToDisk(r.getCfgFilePath())
 	}
 	return nil
 }
@@ -334,11 +338,14 @@ func (r *Repo) get(uuid string) (proto.Instance, error) {
 	if !r.valid(uuid) {
 		// We do full tree config file downloads, if we can't find an
 		// instance UUID download everything and query again
-		file := filepath.Join(r.configDir, INSTANCES_FILE)
-		if err := r.downloadInstances(file); err != nil {
+		data, err := r.downloadInstances()
+		if err != nil {
 			return proto.Instance{}, err
 		}
-		if err := r.loadConfig(file); err != nil {
+		if err := r.loadConfig(data); err != nil {
+			return proto.Instance{}, err
+		}
+		if err := r.treeToDisk(r.getCfgFilePath()); err != nil {
 			return proto.Instance{}, err
 		}
 		if !r.valid(uuid) {
@@ -349,19 +356,11 @@ func (r *Repo) get(uuid string) (proto.Instance, error) {
 }
 
 func (r *Repo) valid(uuid string) bool {
+
 	if _, ok := r.it[uuid]; !ok {
 		return false
 	}
 	return true
-}
-
-func (r *Repo) Name(uuid string) string {
-	r.mux.Lock()
-	defer r.mux.Unlock()
-	if instance, ok := r.it[uuid]; ok {
-		return instance.Name
-	}
-	return ""
 }
 
 func (r *Repo) List() []proto.Instance {

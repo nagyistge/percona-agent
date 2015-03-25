@@ -94,7 +94,7 @@ func (m *Manager) Start() error {
 			continue
 		}
 		m.status.Update("instance", "Updating info "+safeDSN)
-		m.pushInstanceInfo(&instance)
+		m.pushInstanceInfo(instance)
 		// Store the channel to be able to remove it from mrms
 		m.mrmChans[instance.Properties["dsn"]] = ch
 	}
@@ -136,7 +136,7 @@ func (m *Manager) mrmMySQL(inst *proto.Instance) error {
 		m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
 	}
 	m.status.Update("instance", "Updating info "+safeDSN)
-	err = m.pushInstanceInfo(inst)
+	err = m.pushInstanceInfo(*inst)
 	if err != nil {
 		return err
 	}
@@ -375,7 +375,7 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 					break
 				}
 				m.status.Update("instance-mrms", "Updating info "+safeDSN)
-				err := m.pushInstanceInfo(&instance)
+				err := m.pushInstanceInfo(instance)
 				if err != nil {
 					m.logger.Warn(err)
 				}
@@ -385,10 +385,11 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 	}
 }
 
-func (m *Manager) pushInstanceInfo(instance *proto.Instance) error {
-
+func (m *Manager) pushInstanceInfo(instance proto.Instance) error {
+	// We need to be REST-friendly, subsystems should be left out of the PUT
+	instance.Subsystems = make([]proto.Instance, 0)
 	uri := fmt.Sprintf("%s/%s", m.api.EntryLink("insts"), instance.UUID)
-	data, err := json.Marshal(instance)
+	data, err := json.Marshal(&instance)
 	if err != nil {
 		m.logger.Error(err)
 		return err
