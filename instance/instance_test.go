@@ -491,6 +491,5 @@ func (s *ManagerTestSuite) TestHandleUpdateNoOS(t *C) {
 	}
 
 	reply := m.Handle(cmd)
-	t.Assert(reply.Error, Equals, "Tree instance root is not of OS type")
-
+	t.Assert(reply.Error, Equals, "Tree instance root is not of 'OS' type and 'os' prefix")
 }

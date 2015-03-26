@@ -193,65 +193,12 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 			return cmd.Reply(nil, err)
 		}
 		// For the following block we only care about MySQL instances
-		// From former code logic, we don't actually care about if there was an error removing
-		// the MRM for the DSN. TODO: really?
+		// From former code logic, we don't actually care about if there was an error
+		// while updating MRM. TODO: really?
 		m.mrmAddedMySQL(onlyMySQLInsts(&added))
 		m.mrmDeletedMySQL(onlyMySQLInsts(&deleted))
 		m.mrmUpdatedMySQL(onlyMySQLInsts(&updated))
 		return cmd.Reply(nil, nil)
-		//	case "Add":
-		//		err := m.repo.Add(it.Service, it.InstanceId, it.Instance, true) // true = write to disk
-		//		if err != nil {
-		//			return cmd.Reply(nil, err)
-		//		}
-		//		if it.Service == "mysql" {
-		//			// Get the instance as type proto.MySQLInstance instead of proto.ServiceInstance
-		//			// because we need the dsn field
-		//			// We only return errors for repo.Add, not for mrm so all returns within this block
-		//			// will return nil, nil
-		//			iit := &proto.MySQLInstance{}
-		//			err := m.repo.Get(it.Service, it.InstanceId, iit)
-		//			if err != nil {
-		//				m.logger.Error(err)
-		//				return cmd.Reply(nil, nil)
-		//			}
-		//			ch, err := m.mrm.Add(iit.DSN)
-		//			if err != nil {
-		//				m.logger.Error(err)
-		//				return cmd.Reply(nil, nil)
-		//			}
-		//			m.mrmChans[iit.DSN] = ch
-
-		//			safeDSN := mysql.HideDSNPassword(iit.DSN)
-		//			m.status.Update("instance", "Getting info "+safeDSN)
-		//			if err := GetMySQLInfo(iit); err != nil {
-		//				m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
-		//				return cmd.Reply(nil, nil)
-		//			}
-
-		//			m.status.Update("instance", "Updating info "+safeDSN)
-		//			err = m.pushInstanceInfo(iit)
-		//			if err != nil {
-		//				m.logger.Error(err)
-		//				return cmd.Reply(nil, nil)
-		//			}
-		//		}
-		//		return cmd.Reply(nil, nil)
-		//	case "Remove":
-		//		if it.Service == "mysql" {
-		//			// Get the instance as type proto.MySQLInstance instead of proto.ServiceInstance
-		//			// because we need the dsn field
-		//			iit := &proto.MySQLInstance{}
-		//			err := m.repo.Get(it.Service, it.InstanceId, iit)
-		//			// Don't return an error. This is just a remove from mrms
-		//			if err != nil {
-		//				m.logger.Error(err)
-		//			} else {
-		//				m.mrm.Remove(iit.DSN, m.mrmChans[iit.DSN])
-		//			}
-		//		}
-		//		err := m.repo.Remove(it.Service, it.InstanceId)
-		//		return cmd.Reply(nil, err)
 	case "GetInfo":
 		err := m.handleGetInfo(*it)
 		return cmd.Reply(it, err)
@@ -320,26 +267,6 @@ func (m *Manager) GetMySQLInstances() []proto.Instance {
 	defer m.logger.Debug("getMySQLInstances:return")
 	list := m.Repo().List()
 	return *onlyMySQLInsts(&list)
-	//		parts := strings.Split(name, "-") // mysql-1 or server-12
-	//		if len(parts) != 2 {
-	//			m.logger.Error("Invalid instance name: %s: expected 2 parts, got %d", name, len(parts))
-	//			continue
-	//		}
-	//		if parts[0] == "mysql" {
-	//			id, err := strconv.ParseInt(parts[1], 10, 64)
-	//			if err != nil {
-	//				m.logger.Error("Invalid instance ID: %s: %s", name, err)
-	//				continue
-	//			}
-	//			it := &proto.MySQLInstance{}
-	//			if err := m.Repo().Get(parts[0], uint(id), it); err != nil {
-	//				m.logger.Error("Failed to get instance %s: %s", name, err)
-	//				continue
-	//			}
-	//			instances = append(instances, it)
-	//		}
-	//	}
-	//return instances
 }
 
 func (m *Manager) monitorInstancesRestart(ch chan string) {

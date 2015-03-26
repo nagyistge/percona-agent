@@ -45,11 +45,17 @@ type Repo struct {
 }
 
 const (
-	INSTANCES_FILE     = "instances.conf"
+	INSTANCES_FILE     = "instances.conf" // relative to Repo.configDir
 	INSTANCES_FILEMODE = 0660
+
+	// Type and prefix of proto.Instances that we need to validate
+	// TODO: important, validate the complete tree
+	MYSQL_TYPE   = "MySQL"
+	MYSQL_PREFIX = "mysql"
+	OS_TYPE      = "OS"
+	OS_PREFIX    = "os"
 )
 
-// Cannot be defined as const
 var UUID_RE, _ = regexp.Compile("^[0-9A-Fa-f]{32}$")
 
 func NewRepo(logger *pct.Logger, configDir string, api pct.APIConnector) *Repo {
@@ -63,67 +69,6 @@ func NewRepo(logger *pct.Logger, configDir string, api pct.APIConnector) *Repo {
 		mux:  &sync.RWMutex{},
 	}
 	return m
-}
-
-func (r *Repo) downloadInstances() (data []byte, err error) {
-	// Get instances tree info from API.
-	errors.New(fmt.Sprintf("Downloading instance config file from API"))
-	url := r.api.EntryLink("insts")
-	data = make([]byte, 0)
-	if url == "" {
-		errMsg := "No 'insts' API link registered"
-		r.logger.Warn(errMsg)
-		return data, errors.New(errMsg)
-	}
-	r.logger.Info("GET", url)
-	code, data, err := r.api.Get(r.api.ApiKey(), url)
-	if err != nil {
-		return data, err
-	}
-	if code != http.StatusOK {
-		return data, errors.New(fmt.Sprintf("Failed to get instance config, API returned HTTP status code %d", code))
-	}
-	if data == nil {
-		return data, errors.New("API returned an empty instance config data")
-	}
-	return data, nil
-}
-
-func (r *Repo) updateInstanceIndex() error {
-	if r.tree != nil {
-		// Lets forget about our former index, parse the current tree
-		r.it = make(map[string]*proto.Instance)
-	}
-	// A recursive method is beautiful but unforgiving without limits or tail recursion
-	// optimization. Lets do this iterating, we don't want to eat all the memory
-	// because of a rogue config tree is deep enough; also, we don't want to limit
-	// depth now.
-	tovisit := []*proto.Instance{r.tree}
-	for {
-		count := len(tovisit)
-		switch {
-		case count == 0:
-			return nil
-		case count > 0:
-			// Pop element
-			var inst *proto.Instance = nil
-			inst, tovisit = tovisit[len(tovisit)-1], tovisit[:len(tovisit)-1]
-			if _, ok := r.it[inst.UUID]; ok {
-				// Should this be a Fatal error?
-				return fmt.Errorf("Cycle in instances tree detected with UUID %s", inst.UUID)
-				// Avoid cycles
-				continue
-			} else {
-				// Index our instance with its UUID
-				r.it[inst.UUID] = inst
-			}
-			// Queue all our subsystem instances
-			for i, _ := range inst.Subsystems {
-				tovisit = append(tovisit, &inst.Subsystems[i])
-			}
-		}
-	}
-	return nil
 }
 
 // Determine if two instances are "equal".
@@ -154,6 +99,26 @@ func equalInstances(inst1, inst2 *proto.Instance) bool {
 	return true
 }
 
+// Checks if it instance has Type == itType and Prefix == itPrefix
+func hasTypePrefix(it proto.Instance, itType string, itPrefix string) bool {
+	if it.Type == itType && it.Prefix == itPrefix {
+		return true
+	}
+	return false
+}
+
+func isOSInstance(it proto.Instance) bool {
+	return hasTypePrefix(it, OS_TYPE, OS_PREFIX)
+}
+
+func isMySQLInst(it proto.Instance) bool {
+	return hasTypePrefix(it, MYSQL_TYPE, MYSQL_PREFIX)
+}
+
+func (r *Repo) getCfgFilePath() string {
+	return filepath.Join(r.configDir, INSTANCES_FILE)
+}
+
 func (r *Repo) loadConfig(data []byte) error {
 	var newTree *proto.Instance
 	if err := json.Unmarshal(data, &newTree); err != nil {
@@ -163,8 +128,66 @@ func (r *Repo) loadConfig(data []byte) error {
 	return r.updateInstanceIndex()
 }
 
-func (r *Repo) getCfgFilePath() string {
-	return filepath.Join(r.configDir, INSTANCES_FILE)
+// Downloads and returns the instances tree data from API.
+func (r *Repo) downloadInstances() (data []byte, err error) {
+	errors.New(fmt.Sprintf("Downloading instance config file from API"))
+	url := r.api.EntryLink("insts")
+	data = make([]byte, 0)
+	if url == "" {
+		errMsg := "No 'insts' API link registered"
+		r.logger.Warn(errMsg)
+		return data, errors.New(errMsg)
+	}
+	r.logger.Info("GET", url)
+	code, data, err := r.api.Get(r.api.ApiKey(), url)
+	if err != nil {
+		return data, err
+	}
+	if code != http.StatusOK {
+		return data, errors.New(fmt.Sprintf("Failed to get instance config, API returned HTTP status code %d", code))
+	}
+	if data == nil {
+		return data, errors.New("API returned an empty instance config data")
+	}
+	return data, nil
+}
+
+// Updates the local instance UUID index
+func (r *Repo) updateInstanceIndex() error {
+	if r.tree != nil {
+		// Lets forget about our former index, parse the current tree
+		r.it = make(map[string]*proto.Instance)
+	}
+	// A recursive method is beautiful but unforgiving without limits or tail recursion
+	// optimization. Lets do this iterating, we don't want to eat all the memory
+	// because of a rogue config tree is too deep; also, we don't want to limit
+	// depth now.
+	tovisit := []*proto.Instance{r.tree}
+	for {
+		count := len(tovisit)
+		switch {
+		case count == 0:
+			return nil
+		case count > 0:
+			// Pop element
+			var inst *proto.Instance = nil
+			inst, tovisit = tovisit[len(tovisit)-1], tovisit[:len(tovisit)-1]
+			if _, ok := r.it[inst.UUID]; ok {
+				// Should this be a Fatal error?
+				return fmt.Errorf("Cycle in instances tree detected with UUID %s", inst.UUID)
+				// Avoid cycles
+				// continue
+			} else {
+				// Index our instance with its UUID
+				r.it[inst.UUID] = inst
+			}
+			// Queue all our subsystem instances
+			for i, _ := range inst.Subsystems {
+				tovisit = append(tovisit, &inst.Subsystems[i])
+			}
+		}
+	}
+	return nil
 }
 
 // Initializes the instance repository reading instances tree from local file and pulling it from API
@@ -175,7 +198,7 @@ func (r *Repo) Init() error {
 	var data []byte
 	var err error
 	if !pct.FileExists(file) {
-		r.logger.Info(fmt.Sprintf("Instance config file does not exist %s, downloading", file))
+		r.logger.Info(fmt.Sprintf("Instance config file (%s) does not exist, downloading", file))
 		data, err = r.downloadInstances()
 		if err != nil {
 			r.logger.Error(err)
@@ -204,16 +227,6 @@ func (r *Repo) Init() error {
 	return nil
 }
 
-// Returns a copy of the instances tree
-func (r *Repo) Instances() proto.Instance {
-	r.mux.Lock()
-	defer r.mux.Unlock()
-
-	var newTree *proto.Instance = nil
-	cloneTree(r.tree, &newTree)
-	return *newTree
-}
-
 // Deep clone data using gob.
 func cloneTree(source, target interface{}) error {
 	// This will basically binary serialize the data from source and deserialize
@@ -234,6 +247,16 @@ func cloneTree(source, target interface{}) error {
 	return nil
 }
 
+// Returns a copy of the instances tree
+func (r *Repo) Instances() proto.Instance {
+	r.mux.Lock()
+	defer r.mux.Unlock()
+
+	var newTree *proto.Instance = nil
+	cloneTree(r.tree, &newTree)
+	return *newTree
+}
+
 // Saves instances tree to disk
 func (r *Repo) treeToDisk(filepath string) error {
 	if r.tree == nil {
@@ -249,9 +272,9 @@ func (r *Repo) treeToDisk(filepath string) error {
 }
 
 // Substitute local repo instances with provided tree parameter.
-// The method will popullate the provided proto.Instance slices with added,
+// The method will populate the provided proto.Instance slices with added,
 // deleted or updated instances. If writeToDisk = true the tree will be
-// dumped to disk as the instance config.
+// dumped to disk if update is successfull.
 func (r *Repo) UpdateTree(tree proto.Instance, added *[]proto.Instance, deleted *[]proto.Instance, updated *[]proto.Instance, writeToDisk bool) error {
 	r.logger.Debug("Update:call")
 	defer r.logger.Debug("Update:return")
@@ -262,29 +285,13 @@ func (r *Repo) UpdateTree(tree proto.Instance, added *[]proto.Instance, deleted 
 	return r.updateTree(tree, added, deleted, updated, writeToDisk)
 }
 
-func isOSInstance(it proto.Instance) bool {
-	// TODO: cloud-protocol should present this string literals as consts
-	if it.Type == "OS" && it.Prefix == "os" {
-		return true
-	}
-	return false
-}
-
-func isMySQLInst(it proto.Instance) bool {
-	// TODO: cloud-protocol should present this string literals as consts
-	if it.Type == "MySQL" && it.Prefix == "mysql" {
-		return true
-	}
-	return false
-}
-
 func (r *Repo) updateTree(tree proto.Instance, added *[]proto.Instance, deleted *[]proto.Instance, updated *[]proto.Instance, writeToDisk bool) error {
 	r.logger.Debug("update:call")
 	defer r.logger.Debug("update:return")
 
 	if !isOSInstance(tree) {
 		// tree instance root is not an OS instance
-		return errors.New("Tree instance root is not of OS type")
+		return errors.New("Tree instance root is not of 'OS' type and 'os' prefix")
 	}
 
 	oldIt := r.it
@@ -293,7 +300,7 @@ func (r *Repo) updateTree(tree proto.Instance, added *[]proto.Instance, deleted 
 	// can modify them without our knowledge
 	var newTree *proto.Instance
 	if err := cloneTree(&tree, &newTree); err != nil {
-		return fmt.Errorf("Couldnt clone provided tree: %v", err)
+		return fmt.Errorf("Couldn't clone provided tree: %v", err)
 	}
 	r.tree = newTree
 	r.updateInstanceIndex()
@@ -339,9 +346,16 @@ func (r *Repo) Get(uuid string) (proto.Instance, error) {
 func (r *Repo) get(uuid string) (proto.Instance, error) {
 	r.logger.Debug("get:call")
 	defer r.logger.Debug("get:return")
+
 	if !r.valid(uuid) {
-		// We do full tree config file downloads, if we can't find an
-		// instance UUID download everything and query again
+		return proto.Instance{}, pct.InvalidInstanceError{Id: uuid}
+	}
+
+	// We do full tree syncs, if we can't find an instance UUID download
+	// everything and query again.
+	// TODO: implement instances (tree branches) checksums to avoid downloading
+	// unmodified trees
+	if _, ok := r.it[uuid]; !ok {
 		data, err := r.downloadInstances()
 		if err != nil {
 			return proto.Instance{}, err
@@ -351,9 +365,6 @@ func (r *Repo) get(uuid string) (proto.Instance, error) {
 		}
 		if err := r.treeToDisk(r.getCfgFilePath()); err != nil {
 			return proto.Instance{}, err
-		}
-		if !r.valid(uuid) {
-			return proto.Instance{}, pct.InvalidInstanceError{Id: uuid}
 		}
 	}
 	return *r.it[uuid], nil
