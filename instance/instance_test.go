@@ -19,7 +19,6 @@ package instance
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -63,14 +62,6 @@ func (s *RepoTestSuite) SetUpSuite(t *C) {
 
 	s.logChan = make(chan *proto.LogEntry, 0)
 	s.logger = pct.NewLogger(s.logChan, "pct-repo-test")
-
-	// TODO: Remove this only for devel purposes
-	go func() {
-		select {
-		case log := <-s.logChan:
-			fmt.Println(log)
-		}
-	}()
 }
 
 func (s *RepoTestSuite) SetUpTest(t *C) {
@@ -117,17 +108,7 @@ func (s *RepoTestSuite) TestInit(t *C) {
 		test.Dump(s.instances)
 		t.Error(diff)
 	}
-	t.Assert(len(s.im.List()), Equals, 6)
-}
-
-func printIt(slice *[]*proto.Instance) {
-	fmt.Print("Printing slice: ")
-	fmt.Print(slice)
-	//	fmt.Print("Printing slice: ")
-	//	for _, it := range *slice {
-	//		fmt.Print(it.UUID + " ")
-	//	}
-	fmt.Println(" ")
+	t.Assert(len(s.im.List()), Equals, 7)
 }
 
 func (s *RepoTestSuite) TestInitDownload(t *C) {
@@ -207,6 +188,16 @@ func (s *RepoTestSuite) TestUpdateTree(t *C) {
 	// Lets modify one instance in our test tree copy
 	// index 1 corresponds to instance c540346a644b404a9d2ae006122fc5a2
 	tree.Subsystems[1].Properties["dsn"] = "other DSN"
+	// Remove last element
+	_, tree.Subsystems = tree.Subsystems[len(tree.Subsystems)-1], tree.Subsystems[:len(tree.Subsystems)-1]
+	// Add new instance
+	mysqlIt := &proto.Instance{}
+	mysqlIt.Type = "MySQL"
+	mysqlIt.Prefix = "mysql"
+	mysqlIt.UUID = "27aec282f0e7b25bc4bffdbe4a432a66"
+	mysqlIt.Name = "test-mysql"
+	mysqlIt.Properties = map[string]string{"dsn": "test/"}
+	tree.Subsystems = append(tree.Subsystems, *mysqlIt)
 
 	added := make([]proto.Instance, 0)
 	deleted := make([]proto.Instance, 0)
@@ -214,13 +205,19 @@ func (s *RepoTestSuite) TestUpdateTree(t *C) {
 	err = s.im.UpdateTree(tree, &added, &deleted, &updated, true)
 	t.Assert(err, IsNil)
 
-	// Only 1 instance was updated
-	t.Assert(len(added), Equals, 0)
-	t.Assert(len(deleted), Equals, 0)
-	t.Assert(len(updated), Equals, 1)
-	// Verify updated instance is the correct one
-	t.Assert(updated[0].UUID, Equals, "c540346a644b404a9d2ae006122fc5a2")
-	t.Assert(updated[0].Properties["dsn"], Equals, "other DSN")
+	t.Assert(len(added), Equals, 1)
+	t.Assert(len(deleted), Equals, 1)
+	t.Assert(len(updated), Equals, 2)
+
+	// The new instance
+	t.Assert(added[0].UUID, Equals, "27aec282f0e7b25bc4bffdbe4a432a66")
+	// The deleted MySQL instance leaf
+	t.Assert(deleted[0].UUID, Equals, "67b6ac9eaace265d3dad87663235eba8")
+	// The root lost a subsystem
+	t.Assert(updated[0].UUID, Equals, "31dd3b7b602849f8871fd3e7acc8c2e3")
+	//The updated MySQL instance
+	t.Assert(updated[1].UUID, Equals, "c540346a644b404a9d2ae006122fc5a2")
+	t.Assert(updated[1].Properties["dsn"], Equals, "other DSN")
 
 	// Check if saved file has the same modified tree structure
 	savedTree, err := ioutil.ReadFile(s.instancesFile)
