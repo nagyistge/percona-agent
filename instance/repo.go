@@ -160,7 +160,7 @@ func (r *Repo) updateInstanceIndex() error {
 	}
 	// A recursive method is beautiful but unforgiving without limits or tail recursion
 	// optimization. Lets do this iterating, we don't want to eat all the memory
-	// because of a rogue config tree is too deep; also, we don't want to limit
+	// because a bogus config tree is too deep; also, we don't want to limit
 	// depth now.
 	tovisit := []*proto.Instance{r.tree}
 	for {
