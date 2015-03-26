@@ -208,7 +208,7 @@ func (r *Repo) Init() error {
 		r.logger.Debug("Reading " + file)
 		data, err = ioutil.ReadFile(file)
 		if err != nil {
-			r.logger.Error(fmt.Sprintf("Could not read instance config file: ", file))
+			r.logger.Error("Could not read instance config file: " + file)
 			return err
 		}
 	}
