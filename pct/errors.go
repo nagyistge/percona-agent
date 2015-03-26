@@ -126,3 +126,14 @@ type DuplicateServiceInstanceError struct {
 func (e DuplicateServiceInstanceError) Error() string {
 	return fmt.Sprintf("Duplicate %s instance: %d", e.Service, e.Id)
 }
+
+// Refactor New
+////////////////////////////////////////////////////////////////////////////
+
+type InvalidInstanceError struct {
+	Id string
+}
+
+func (e InvalidInstanceError) Error() string {
+	return fmt.Sprintf("Ivalid instance: %s", e.Id)
+}
