@@ -284,7 +284,6 @@ func (s *WorkerTestSuite) TestRealWorker(t *C) {
 	// SCHEMA_NAME: NULL
 	//      DIGEST: fbe070dfb47e4a2401c5be6b5201254e
 	// DIGEST_TEXT: SELECT ? FROM DUAL
-	mysqlConn.DB().Exec(`SET time_zone="-1:00"`)
 	_, err = mysqlConn.DB().Exec("SELECT 'teapot' FROM DUAL")
 
 	// First interval.

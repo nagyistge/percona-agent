@@ -422,8 +422,3 @@ func (w *Worker) rotateSlowLog(interval *qan.Interval) error {
 
 	return nil
 }
-
-// This function is to make tests easier
-func (w *Worker) GetTzDiffUTC() time.Duration {
-	return w.tzDiffUTC
-}

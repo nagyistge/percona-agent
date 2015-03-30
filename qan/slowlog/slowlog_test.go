@@ -171,9 +171,6 @@ func (s *WorkerTestSuite) TestWorkerSlow001(t *C) {
 		Dump(got)
 		t.Error(diff)
 	}
-	for _, c := range got.Class {
-		fmt.Printf("Got: %+v\n", c.Example)
-	}
 }
 
 func (s *WorkerTestSuite) TestWorkerSlow001NoExamples(t *C) {
