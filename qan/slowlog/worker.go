@@ -107,22 +107,6 @@ func NewWorker(logger *pct.Logger, config qan.Config, mysqlConn mysql.Connector)
 		oldSlowLogs:     make(map[int]string),
 		sync:            pct.NewSyncChan(),
 	}
-
-	if mysqlConn.DB() != nil {
-		var mysqlNow time.Time
-		err := mysqlConn.Connect(1)
-		if err != nil {
-			logger.Debug("Cannot get time diff against UTC")
-			return w
-		}
-		defer mysqlConn.Close()
-		err = mysqlConn.DB().QueryRow("SELECT NOW()").Scan(&mysqlNow)
-		if err != nil {
-			logger.Debug("Cannot get time diff against UTC")
-			return w
-		}
-		w.tzDiffUTC = time.Now().UTC().Truncate(time.Hour).Sub(mysqlNow.Truncate(time.Hour))
-	}
 	return w
 }
 
@@ -174,6 +158,10 @@ func (w *Worker) Run() (*qan.Result, error) {
 	}
 	defer file.Close()
 
+	w.tzDiffUTC, err = w.GetTZDiffUTC()
+	if err != nil {
+		w.logger.Warn(err.Error())
+	}
 	// Create a slow log parser and run it.  It sends log.Event via its channel.
 	// Be sure to stop it when done, else we'll leak goroutines.
 	result := &qan.Result{}
@@ -421,4 +409,28 @@ func (w *Worker) rotateSlowLog(interval *qan.Interval) error {
 	}
 
 	return nil
+}
+
+func (w *Worker) GetTZDiffUTC() (time.Duration, error) {
+	var mysqlNow time.Time
+	var tzDiffUTC time.Duration
+	if w.mysqlConn == nil {
+		return 0, fmt.Errorf("cannot get time diff against UTC. MySQL conn is nil")
+	}
+	if w.mysqlConn.DB() == nil {
+		err := w.mysqlConn.Connect(1)
+		if err != nil {
+			return 0, err
+		}
+		defer w.mysqlConn.Close()
+	}
+	// Can still be nil in tests with a mocked DB (NulllMysql)
+	if w.mysqlConn.DB() != nil {
+		err := w.mysqlConn.DB().QueryRow("SELECT NOW()").Scan(&mysqlNow)
+		if err != nil {
+			return 0, err
+		}
+		tzDiffUTC = time.Now().UTC().Truncate(time.Hour).Sub(mysqlNow.Truncate(time.Hour))
+	}
+	return tzDiffUTC, nil
 }
