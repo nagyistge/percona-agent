@@ -96,7 +96,7 @@ func NewWorker(logger *pct.Logger, config qan.Config, mysqlConn mysql.Connector)
 	if err != nil {
 		logger.Warn(err.Error())
 	}
-	fmt.Println("here tz", tzDiffUTC)
+
 	name := logger.Service()
 	w := &Worker{
 		logger:    logger,
@@ -111,6 +111,7 @@ func NewWorker(logger *pct.Logger, config qan.Config, mysqlConn mysql.Connector)
 		doneChan:        make(chan bool, 1),
 		oldSlowLogs:     make(map[int]string),
 		sync:            pct.NewSyncChan(),
+		tzDiffUTC:       tzDiffUTC,
 	}
 	return w
 }
@@ -416,32 +417,21 @@ func GetTZDiffUTC(mysqlConn mysql.Connector) (time.Duration, error) {
 	var tzDiffUTC time.Duration
 	var mysqlNow time.Time
 	if mysqlConn == nil {
-		return 0, fmt.Errorf("cannot get time diff against UTC. No MySQL connection")
+		return 0, fmt.Errorf("cannot get time diff against UTC. No MySQL connector")
 	}
-	// FIXME
 	if mysqlConn.DB() == nil {
-		fmt.Println("here 0")
 		err := mysqlConn.Connect(1)
 		if err != nil {
-			fmt.Println("err ", err)
 			return 0, err
 		}
-		//defer mysqlConn.Close()
+		defer mysqlConn.Close()
 	}
 	// Can still be nil in tests with a mocked DB (NulllMysql)
 	if mysqlConn.DB() != nil {
-		// FIXME
-		fmt.Println("here 1")
 		err := mysqlConn.DB().QueryRow("SELECT NOW()").Scan(&mysqlNow)
 		if err != nil {
 			return 0, err
 		}
-		err = mysqlConn.DB().Close()
-		if err != nil {
-			fmt.Printf("error closing %v\n", err)
-		}
-		//FIXME
-		mysqlNow = time.Now().UTC()
 		tzDiffUTC = time.Now().UTC().Truncate(time.Hour).Sub(mysqlNow.Truncate(time.Hour))
 	}
 	return tzDiffUTC, nil

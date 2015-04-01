@@ -308,8 +308,8 @@ func (s *AnalyzerTestSuite) TestRealSlowLogWorker(t *C) {
 	if err := realmysql.Connect(1); err != nil {
 		t.Fatal(err)
 	}
-	realmysql.Close()
-
+	// Don't release all resources immediately because the worker needs the connection
+	defer realmysql.Close()
 	defer test.DrainRecvData(s.dataChan)
 
 	config := s.config
