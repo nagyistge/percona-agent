@@ -92,6 +92,11 @@ func NewWorker(logger *pct.Logger, config qan.Config, mysqlConn mysql.Connector)
 	// By default replace numbers in words with ?
 	query.ReplaceNumbersInWords = true
 
+	tzDiffUTC, err := GetTZDiffUTC(mysqlConn)
+	if err != nil {
+		logger.Warn(err.Error())
+	}
+	fmt.Println("here tz", tzDiffUTC)
 	name := logger.Service()
 	w := &Worker{
 		logger:    logger,
@@ -158,10 +163,6 @@ func (w *Worker) Run() (*qan.Result, error) {
 	}
 	defer file.Close()
 
-	w.tzDiffUTC, err = w.GetTZDiffUTC()
-	if err != nil {
-		w.logger.Warn(err.Error())
-	}
 	// Create a slow log parser and run it.  It sends log.Event via its channel.
 	// Be sure to stop it when done, else we'll leak goroutines.
 	result := &qan.Result{}
@@ -411,25 +412,36 @@ func (w *Worker) rotateSlowLog(interval *qan.Interval) error {
 	return nil
 }
 
-func (w *Worker) GetTZDiffUTC() (time.Duration, error) {
-	var mysqlNow time.Time
+func GetTZDiffUTC(mysqlConn mysql.Connector) (time.Duration, error) {
 	var tzDiffUTC time.Duration
-	if w.mysqlConn == nil {
-		return 0, fmt.Errorf("cannot get time diff against UTC. MySQL conn is nil")
+	var mysqlNow time.Time
+	if mysqlConn == nil {
+		return 0, fmt.Errorf("cannot get time diff against UTC. No MySQL connection")
 	}
-	if w.mysqlConn.DB() == nil {
-		err := w.mysqlConn.Connect(1)
+	// FIXME
+	if mysqlConn.DB() == nil {
+		fmt.Println("here 0")
+		err := mysqlConn.Connect(1)
 		if err != nil {
+			fmt.Println("err ", err)
 			return 0, err
 		}
-		defer w.mysqlConn.Close()
+		//defer mysqlConn.Close()
 	}
 	// Can still be nil in tests with a mocked DB (NulllMysql)
-	if w.mysqlConn.DB() != nil {
-		err := w.mysqlConn.DB().QueryRow("SELECT NOW()").Scan(&mysqlNow)
+	if mysqlConn.DB() != nil {
+		// FIXME
+		fmt.Println("here 1")
+		err := mysqlConn.DB().QueryRow("SELECT NOW()").Scan(&mysqlNow)
 		if err != nil {
 			return 0, err
 		}
+		err = mysqlConn.DB().Close()
+		if err != nil {
+			fmt.Printf("error closing %v\n", err)
+		}
+		//FIXME
+		mysqlNow = time.Now().UTC()
 		tzDiffUTC = time.Now().UTC().Truncate(time.Hour).Sub(mysqlNow.Truncate(time.Hour))
 	}
 	return tzDiffUTC, nil

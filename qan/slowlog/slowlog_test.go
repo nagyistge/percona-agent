@@ -151,6 +151,8 @@ func (s *WorkerTestSuite) TestWorkerWithAnotherTZ(t *C) {
 		Dump(got)
 		t.Error(diff)
 	}
+	// Reset the timezone or other tests could fail
+	mysqlConn.DB().Exec(`SET time_zone="+00:00"`)
 }
 func (s *WorkerTestSuite) TestWorkerSlow001(t *C) {
 	i := &qan.Interval{
