@@ -21,7 +21,6 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mysql"
 )
 
@@ -53,10 +52,6 @@ func (s *SlowMySQL) Connect(tries uint) error {
 
 func (s *SlowMySQL) Close() {
 	s.realConnection.Close()
-}
-
-func (s *SlowMySQL) Explain(query string, db string) (explain *proto.ExplainResult, err error) {
-	return s.realConnection.Explain(query, db)
 }
 
 func (s *SlowMySQL) Set(queries []mysql.Query) error {
