@@ -114,3 +114,21 @@ func insertToSelect(matches []string) string {
 func insertWithSetToSelect(matches []string) string {
 	return fmt.Sprintf("SELECT * FROM %s WHERE %s", matches[1], strings.Replace(matches[2], ",", " AND ", -1))
 }
+
+func Ident(db, table string) string {
+	// Wrap the idents in ` to handle space and weird chars.
+	if db != "" {
+		db = "`" + db + "`"
+	}
+	if table != "" {
+		table = "`" + table + "`"
+	}
+	// Join the idents if there's two, else return whichever was given.
+	if db != "" && table != "" {
+		return db + "." + table
+	} else if table != "" {
+		return table
+	} else {
+		return db
+	}
+}

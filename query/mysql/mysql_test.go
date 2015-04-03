@@ -20,6 +20,7 @@ package mysql_test
 import (
 	"database/sql"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/percona/cloud-protocol/proto"
@@ -80,12 +81,6 @@ func (s *TestSuite) TestExplainWithoutDb(t *C) {
 					},
 				},
 				Table: proto.NullString{
-					NullString: sql.NullString{
-						String: "",
-						Valid:  false,
-					},
-				},
-				CreateTable: proto.NullString{
 					NullString: sql.NullString{
 						String: "",
 						Valid:  false,
@@ -166,12 +161,6 @@ func (s *TestSuite) TestExplainWithDb(t *C) {
 					NullString: sql.NullString{
 						String: "tables",
 						Valid:  true,
-					},
-				},
-				CreateTable: proto.NullString{
-					NullString: sql.NullString{
-						String: "",
-						Valid:  false,
 					},
 				},
 				Type: proto.NullString{
@@ -262,4 +251,27 @@ func (s *TestSuite) TestDMLToSelect(t *C) {
 
 	q = mysqlExec.DMLToSelect(`replace into tabla set f1="A1", f2="A2"`)
 	t.Check(q, Equals, `SELECT * FROM tabla WHERE f1="A1" AND  f2="A2"`)
+}
+
+func (s *TestSuite) TestFullTableInfo(t *C) {
+	db := "mysql"
+	table := "user"
+	tables := &proto.TableInfoQuery{
+		Create: []proto.Table{proto.Table{db, table}},
+		Index:  []proto.Table{proto.Table{db, table}},
+		Status: []proto.Table{proto.Table{db, table}},
+	}
+
+	got, err := s.e.TableInfo(tables)
+	t.Check(err, IsNil)
+
+	tableInfo, ok := got[db+"."+table]
+	t.Assert(ok, Equals, true)
+
+	t.Log(tableInfo.Create)
+	t.Check(strings.HasPrefix(tableInfo.Create, "CREATE TABLE `user` ("), Equals, true)
+
+	t.Check(tableInfo.Index, Not(HasLen), 0)
+
+	t.Check(tableInfo.Status.Name, Equals, table)
 }

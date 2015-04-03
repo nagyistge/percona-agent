@@ -20,6 +20,7 @@ package mysql
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mysql"
@@ -55,16 +56,75 @@ func (e *QueryExecutor) Explain(db, query string) (*proto.ExplainResult, error) 
 	return explain, nil
 }
 
-func (e *QueryExecutor) ShowCreateTable(db, table string) (string, error) {
-	return "", nil
-}
+func (e *QueryExecutor) TableInfo(tables *proto.TableInfoQuery) (proto.TableInfoResult, error) {
+	res := make(proto.TableInfoResult)
 
-func (e *QueryExecutor) ShowIndexes(db, table string) (string, error) {
-	return "", nil
-}
+	if len(tables.Create) > 0 {
+		for _, t := range tables.Create {
+			dbTable := t.Db + "." + t.Table
+			tableInfo, ok := res[dbTable]
+			if !ok {
+				res[dbTable] = &proto.TableInfo{}
+				tableInfo = res[dbTable]
+			}
 
-func (e *QueryExecutor) ShowTableStatus(db, table string) (string, error) {
-	return "", nil
+			def, err := e.showCreate(Ident(t.Db, t.Table))
+			if err != nil {
+				if tableInfo.Errors == nil {
+					tableInfo.Errors = []string{}
+				}
+				tableInfo.Errors = append(tableInfo.Errors, fmt.Sprintf("SHOW CREATE TABLE %s: %s", t.Table, err))
+				continue
+			}
+			tableInfo.Create = def
+		}
+	}
+
+	if len(tables.Index) > 0 {
+		for _, t := range tables.Index {
+			dbTable := t.Db + "." + t.Table
+			tableInfo, ok := res[dbTable]
+			if !ok {
+				res[dbTable] = &proto.TableInfo{}
+				tableInfo = res[dbTable]
+			}
+
+			indexes, err := e.showIndex(Ident(t.Db, t.Table))
+			if err != nil {
+				if tableInfo.Errors == nil {
+					tableInfo.Errors = []string{}
+				}
+				tableInfo.Errors = append(tableInfo.Errors, fmt.Sprintf("SHOW INDEX FROM %s: %s", t.Table, err))
+				continue
+			}
+			tableInfo.Index = indexes
+		}
+	}
+
+	if len(tables.Status) > 0 {
+		for _, t := range tables.Status {
+			dbTable := t.Db + "." + t.Table
+			tableInfo, ok := res[dbTable]
+			if !ok {
+				res[dbTable] = &proto.TableInfo{}
+				tableInfo = res[dbTable]
+			}
+
+			// SHOW TABLE STATUS does not accept db.tbl so pass them separately,
+			// and tbl is used in LIKE so it's not an ident.
+			status, err := e.showStatus(Ident(t.Db, ""), t.Table)
+			if err != nil {
+				if tableInfo.Errors == nil {
+					tableInfo.Errors = []string{}
+				}
+				tableInfo.Errors = append(tableInfo.Errors, fmt.Sprintf("SHOW TABLE STATUS FROM %s LIKE %s: %s", t.Db, t.Table, err))
+				continue
+			}
+			tableInfo.Status = status
+		}
+	}
+
+	return res, nil
 }
 
 // --------------------------------------------------------------------------
@@ -181,4 +241,101 @@ func (e *QueryExecutor) jsonExplain(tx *sql.Tx, query string) (string, error) {
 	}
 
 	return explain, nil
+}
+
+func (e *QueryExecutor) showCreate(dbTable string) (string, error) {
+	// Result from SHOW CREATE TABLE includes two columns, "Table" and
+	// "Create Table", we ignore the first one as we need only "Create Table".
+	var tableName string
+	var tableDef string
+	err := e.conn.DB().QueryRow("SHOW CREATE TABLE "+dbTable).Scan(&tableName, &tableDef)
+	return tableDef, err
+}
+
+func (e *QueryExecutor) showIndex(dbTable string) ([]proto.ShowIndexRow, error) {
+	rows, err := e.conn.DB().Query("SHOW INDEX FROM " + dbTable)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+	hasIndexComment := len(columns) == 13 // added in MySQL 5.5
+
+	indexes := []proto.ShowIndexRow{}
+	for rows.Next() {
+		indexRow := proto.ShowIndexRow{}
+		if hasIndexComment {
+			err = rows.Scan(
+				&indexRow.Table,
+				&indexRow.NonUnique,
+				&indexRow.KeyName,
+				&indexRow.SeqInIndex,
+				&indexRow.ColumnName,
+				&indexRow.Collation,
+				&indexRow.Cardinality,
+				&indexRow.SubPart,
+				&indexRow.Packed,
+				&indexRow.Null,
+				&indexRow.IndexType,
+				&indexRow.Comment,
+				&indexRow.IndexComment,
+			)
+		} else {
+			err = rows.Scan(
+				&indexRow.Table,
+				&indexRow.NonUnique,
+				&indexRow.KeyName,
+				&indexRow.SeqInIndex,
+				&indexRow.ColumnName,
+				&indexRow.Collation,
+				&indexRow.Cardinality,
+				&indexRow.SubPart,
+				&indexRow.Packed,
+				&indexRow.Null,
+				&indexRow.IndexType,
+				&indexRow.Comment,
+			)
+		}
+		if err != nil {
+			return nil, err
+		}
+		indexes = append(indexes, indexRow)
+	}
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return indexes, nil
+}
+
+func (e *QueryExecutor) showStatus(db, table string) (proto.ShowTableStatus, error) {
+	// Escape _ in the table name because it's a wildcard in LIKE.
+	table = strings.Replace(table, "_", "\\_", -1)
+	status := proto.ShowTableStatus{}
+	err := e.conn.DB().QueryRow(fmt.Sprintf("SHOW TABLE STATUS FROM %s LIKE '%s'", db, table)).Scan(
+		&status.Name,
+		&status.Engine,
+		&status.Version,
+		&status.RowFormat,
+		&status.Rows,
+		&status.AvgRowLength,
+		&status.DataLength,
+		&status.MaxDataLength,
+		&status.IndexLength,
+		&status.DataFree,
+		&status.AutoIncrement,
+		&status.CreateTime,
+		&status.UpdateTime,
+		&status.CheckTime,
+		&status.Collation,
+		&status.Checksum,
+		&status.CreateOptions,
+		&status.Comment,
+	)
+	return status, err
 }

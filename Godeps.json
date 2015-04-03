@@ -16,7 +16,7 @@
 		},
 		{
 			"Pkg": "github.com/percona/cloud-protocol",
-			"Rev": "d729c25e20ee8fec56179358066028f48131468b"
+			"Rev": "0731a019bcd86288856e87f9c4887d0455fc46ef"
 		},
 		{
 			"Pkg": "github.com/percona/go-mysql",

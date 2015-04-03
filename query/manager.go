@@ -132,6 +132,9 @@ func (m *Manager) handleMySQLQuery(cmd *proto.Cmd, si *proto.ServiceInstance) *p
 	}
 	defer conn.Close()
 
+	// Create a MySQL query executor to do the actual work.
+	e := mysqlExec.NewQueryExecutor(conn)
+
 	// Get the instance name, e.g. mysql-db01, to make status human-readable.
 	instanceName := m.instanceRepo.Name(si.Service, si.InstanceId)
 
@@ -143,10 +146,20 @@ func (m *Manager) handleMySQLQuery(cmd *proto.Cmd, si *proto.ServiceInstance) *p
 		if err := json.Unmarshal(cmd.Data, q); err != nil {
 			return cmd.Reply(nil, err)
 		}
-		e := mysqlExec.NewQueryExecutor(conn)
 		res, err := e.Explain(q.Db, q.Query)
 		if err != nil {
 			return cmd.Reply(nil, fmt.Errorf("EXPLAIN failed: %s", err))
+		}
+		return cmd.Reply(res, nil)
+	case "TableInfo":
+		m.status.Update(SERVICE_NAME, "Table Info queries on "+instanceName)
+		tableInfo := &proto.TableInfoQuery{}
+		if err := json.Unmarshal(cmd.Data, tableInfo); err != nil {
+			return cmd.Reply(nil, err)
+		}
+		res, err := e.TableInfo(tableInfo)
+		if err != nil {
+			return cmd.Reply(nil, fmt.Errorf("Table Info failed: %s", err))
 		}
 		return cmd.Reply(res, nil)
 	default:
