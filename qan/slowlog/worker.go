@@ -202,7 +202,7 @@ func (w *Worker) Run() (*qan.Result, error) {
 
 	// Make an event aggregate to do all the heavy lifting: fingerprint
 	// queries, group, and aggregate.
-	a := event.NewEventAggregator(w.job.ExampleQueries) // todo: fixme: , w.tzDiffUTC)
+	a := event.NewEventAggregator(w.job.ExampleQueries, w.tzDiffUTC)
 
 	// Misc runtime meta data.
 	jobSize := w.job.EndOffset - w.job.StartOffset
