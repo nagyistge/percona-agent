@@ -124,7 +124,11 @@ func (s *WorkerTestSuite) TestWorkerWithAnotherTZ(t *C) {
 	err := mysqlConn.Connect(1)
 	t.Assert(err, IsNil)
 	defer mysqlConn.Close()
+	mysqlConn.DB().Exec(`SET @@global.time_zone="-1:00"`)
 	mysqlConn.DB().Exec(`SET time_zone="-1:00"`)
+	// Reset the timezone or other tests could fail
+	mysqlConn.DB().Exec(`SET @@global.time_zone="+00:00"`)
+	defer mysqlConn.DB().Exec(`SET time_zone="+00:00"`)
 
 	i := &qan.Interval{
 		Number:      1,
@@ -152,6 +156,7 @@ func (s *WorkerTestSuite) TestWorkerWithAnotherTZ(t *C) {
 		t.Error(diff)
 	}
 }
+
 func (s *WorkerTestSuite) TestWorkerSlow001(t *C) {
 	i := &qan.Interval{
 		Number:      1,

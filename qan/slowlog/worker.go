@@ -85,12 +85,17 @@ type Worker struct {
 	running         bool
 	logParser       log.LogParser
 	// Diff against mysql tz and UTC. Used to calculate first_seen and last_seen
-	tzDiffUTC time.Duration
+	utcOffset time.Duration
 }
 
 func NewWorker(logger *pct.Logger, config qan.Config, mysqlConn mysql.Connector) *Worker {
 	// By default replace numbers in words with ?
 	query.ReplaceNumbersInWords = true
+
+	utcOffset, err := GetutcOffset(mysqlConn)
+	if err != nil {
+		logger.Warn(err.Error())
+	}
 
 	name := logger.Service()
 	w := &Worker{
@@ -106,22 +111,7 @@ func NewWorker(logger *pct.Logger, config qan.Config, mysqlConn mysql.Connector)
 		doneChan:        make(chan bool, 1),
 		oldSlowLogs:     make(map[int]string),
 		sync:            pct.NewSyncChan(),
-	}
-
-	if mysqlConn.DB() != nil {
-		var mysqlNow time.Time
-		err := mysqlConn.Connect(1)
-		if err != nil {
-			logger.Debug("Cannot get time diff against UTC")
-			return w
-		}
-		defer mysqlConn.Close()
-		err = mysqlConn.DB().QueryRow("SELECT NOW()").Scan(&mysqlNow)
-		if err != nil {
-			logger.Debug("Cannot get time diff against UTC")
-			return w
-		}
-		w.tzDiffUTC = time.Now().UTC().Truncate(time.Hour).Sub(mysqlNow.Truncate(time.Hour))
+		utcOffset:       utcOffset,
 	}
 	return w
 }
@@ -202,7 +192,7 @@ func (w *Worker) Run() (*qan.Result, error) {
 
 	// Make an event aggregate to do all the heavy lifting: fingerprint
 	// queries, group, and aggregate.
-	a := event.NewEventAggregator(w.job.ExampleQueries, w.tzDiffUTC)
+	a := event.NewEventAggregator(w.job.ExampleQueries, w.utcOffset)
 
 	// Misc runtime meta data.
 	jobSize := w.job.EndOffset - w.job.StartOffset
@@ -421,4 +411,26 @@ func (w *Worker) rotateSlowLog(interval *qan.Interval) error {
 	}
 
 	return nil
+}
+
+func GetutcOffset(mysqlConn mysql.Connector) (time.Duration, error) {
+	var hours int64
+	if mysqlConn == nil {
+		return 0, fmt.Errorf("cannot get time diff against UTC. No MySQL connector")
+	}
+	if mysqlConn.DB() == nil {
+		err := mysqlConn.Connect(1)
+		if err != nil {
+			return 0, err
+		}
+		defer mysqlConn.Close()
+	}
+	// Can still be nil in tests with a mocked DB (NulllMysql)
+	if mysqlConn.DB() != nil {
+		err := mysqlConn.DB().QueryRow("SELECT TIMESTAMPDIFF(HOUR, NOW(), UTC_TIMESTAMP())").Scan(&hours)
+		if err != nil {
+			return 0, err
+		}
+	}
+	return time.Duration(hours) * time.Hour, nil
 }
