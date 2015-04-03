@@ -241,7 +241,7 @@ func (s *TestSuite) TestDMLToSelect(t *C) {
 	t.Check(q, Equals, `SELECT 1 FROM tabla join tabla2 on tabla.id = tabla2.tabla2_id`)
 
 	q = mysqlExec.DMLToSelect(`insert into tabla (f1, f2, f3) values (1,2,3)`)
-	t.Check(q, Equals, `SELECT * FROM tabla  WHERE f1="1" and f2="2" and f3="3"`)
+	t.Check(q, Equals, `SELECT * FROM tabla  WHERE f1=1 and f2=2 and f3=3`)
 
 	q = mysqlExec.DMLToSelect(`insert into tabla (f1, f2, f3) values (1,2)`)
 	t.Check(q, Equals, `SELECT * FROM tabla  LIMIT 1`)

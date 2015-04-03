@@ -40,7 +40,12 @@ func NewQueryExecutor(conn mysql.Connector) *QueryExecutor {
 func (e *QueryExecutor) Explain(db, query string) (*proto.ExplainResult, error) {
 	explain, err := e.explain(db, query)
 	if err != nil {
-		if mysql.MySQLErrorCode(err) == mysql.ER_SYNTAX_ERROR {
+		// MySQL 5.5 will return Syntax error because it doesn't support
+		// explains on DML queries
+		// MySQL 5.6.3+ supports explains on DML queries, but it requieres
+		// additional privileges
+		if mysql.MySQLErrorCode(err) == mysql.ER_SYNTAX_ERROR ||
+			mysql.MySQLErrorCode(err) == mysql.ER_USER_DENIED {
 			if IsDMLQuery(query) {
 				query = DMLToSelect(query)
 				if query == "" {
