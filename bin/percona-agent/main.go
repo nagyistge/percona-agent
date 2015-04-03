@@ -48,7 +48,6 @@ import (
 	"github.com/percona/percona-agent/qan/perfschema"
 	"github.com/percona/percona-agent/qan/slowlog"
 	"github.com/percona/percona-agent/query"
-	queryService "github.com/percona/percona-agent/query/service"
 	"github.com/percona/percona-agent/sysconfig"
 	sysconfigMonitor "github.com/percona/percona-agent/sysconfig/monitor"
 	"github.com/percona/percona-agent/sysinfo"
@@ -304,16 +303,13 @@ func run() error {
 	}
 
 	/**
-	 * Query service
+	 * Query service (real-time EXPLAIN, SHOW CREATE TABLE, etc.)
 	 */
-	explainService := queryService.NewExplain(
-		pct.NewLogger(logChan, "query-explain"),
-		&mysql.RealConnectionFactory{},
-		itManager.Repo(),
-	)
+
 	queryManager := query.NewManager(
 		pct.NewLogger(logChan, "query"),
-		explainService,
+		itManager.Repo(),
+		&mysql.RealConnectionFactory{},
 	)
 	if err := queryManager.Start(); err != nil {
 		return fmt.Errorf("Error starting query manager: %s\n", err)

@@ -521,7 +521,7 @@ CLASS_LOOP:
 		// of checksum is historical: pt-query-digest does the same:
 		// my $checksum = uc substr(md5_hex($val), -16);
 		// 0 as tzDiff (last param) because we are not saving examples
-		class := event.NewQueryClass(classId, class.DigestText, false, 0)
+		class := event.NewQueryClass(classId, class.DigestText, false) // todo: fixme: , 0)
 		class.TotalQueries = d.CountStar
 		class.Metrics = stats
 		classes = append(classes, class)
