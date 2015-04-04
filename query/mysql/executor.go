@@ -257,7 +257,7 @@ func (e *QueryExecutor) showCreate(dbTable string) (string, error) {
 	return tableDef, err
 }
 
-func (e *QueryExecutor) showIndex(dbTable string) ([]proto.ShowIndexRow, error) {
+func (e *QueryExecutor) showIndex(dbTable string) (map[string][]proto.ShowIndexRow, error) {
 	rows, err := e.conn.DB().Query("SHOW INDEX FROM " + dbTable)
 	if err != nil {
 		return nil, err
@@ -270,7 +270,8 @@ func (e *QueryExecutor) showIndex(dbTable string) ([]proto.ShowIndexRow, error) 
 	}
 	hasIndexComment := len(columns) == 13 // added in MySQL 5.5
 
-	indexes := []proto.ShowIndexRow{}
+	indexes := map[string][]proto.ShowIndexRow{} // keyed on KeyName
+	prevKeyName := ""
 	for rows.Next() {
 		indexRow := proto.ShowIndexRow{}
 		if hasIndexComment {
@@ -308,7 +309,11 @@ func (e *QueryExecutor) showIndex(dbTable string) ([]proto.ShowIndexRow, error) 
 		if err != nil {
 			return nil, err
 		}
-		indexes = append(indexes, indexRow)
+		if indexRow.KeyName != prevKeyName {
+			indexes[indexRow.KeyName] = []proto.ShowIndexRow{}
+			prevKeyName = indexRow.KeyName
+		}
+		indexes[indexRow.KeyName] = append(indexes[indexRow.KeyName], indexRow)
 	}
 	err = rows.Err()
 	if err != nil {

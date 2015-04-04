@@ -271,7 +271,14 @@ func (s *TestSuite) TestFullTableInfo(t *C) {
 	t.Log(tableInfo.Create)
 	t.Check(strings.HasPrefix(tableInfo.Create, "CREATE TABLE `user` ("), Equals, true)
 
-	t.Check(tableInfo.Index, Not(HasLen), 0)
-
 	t.Check(tableInfo.Status.Name, Equals, table)
+
+	// Indexes are grouped by name (KeyName), so all the index parts of the
+	// PRIMARY key should be together.
+	t.Assert(tableInfo.Index, Not(HasLen), 0)
+	index, ok := tableInfo.Index["PRIMARY"]
+	t.Assert(ok, Equals, true)
+	t.Check(index, HasLen, 2)
+	t.Check(index[0].ColumnName, Equals, "Host")
+	t.Check(index[1].ColumnName, Equals, "User")
 }
