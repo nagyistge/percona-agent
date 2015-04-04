@@ -121,6 +121,9 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 // --------------------------------------------------------------------------
 
 func (m *Manager) handleMySQLQuery(cmd *proto.Cmd, si *proto.ServiceInstance) *proto.Reply {
+	m.logger.Debug("handleMySQLQuery:call")
+	defer m.logger.Debug("handleMySQLQuery:return")
+
 	// Connect to MySQL.
 	mysqlIt := &proto.MySQLInstance{}
 	if err := m.instanceRepo.Get(si.Service, si.InstanceId, mysqlIt); err != nil {
@@ -139,6 +142,7 @@ func (m *Manager) handleMySQLQuery(cmd *proto.Cmd, si *proto.ServiceInstance) *p
 	instanceName := m.instanceRepo.Name(si.Service, si.InstanceId)
 
 	// Execute the query.
+	m.logger.Debug(cmd.Cmd + ":" + instanceName)
 	switch cmd.Cmd {
 	case "Explain":
 		m.status.Update(SERVICE_NAME, "EXPLAIN query on "+instanceName)

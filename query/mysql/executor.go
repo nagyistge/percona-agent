@@ -323,10 +323,10 @@ func (e *QueryExecutor) showIndex(dbTable string) (map[string][]proto.ShowIndexR
 	return indexes, nil
 }
 
-func (e *QueryExecutor) showStatus(db, table string) (proto.ShowTableStatus, error) {
+func (e *QueryExecutor) showStatus(db, table string) (*proto.ShowTableStatus, error) {
 	// Escape _ in the table name because it's a wildcard in LIKE.
 	table = strings.Replace(table, "_", "\\_", -1)
-	status := proto.ShowTableStatus{}
+	status := &proto.ShowTableStatus{}
 	err := e.conn.DB().QueryRow(fmt.Sprintf("SHOW TABLE STATUS FROM %s LIKE '%s'", db, table)).Scan(
 		&status.Name,
 		&status.Engine,
