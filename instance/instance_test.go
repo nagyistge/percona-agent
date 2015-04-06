@@ -261,7 +261,6 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.logger = pct.NewLogger(s.logChan, "pct-it-test")
 
 	links := map[string]string{
-		"agent": "http://localhost/agent",
 		"insts": "http://localhost/insts",
 	}
 	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
@@ -395,11 +394,11 @@ func (s *ManagerTestSuite) TestHandleUpdate(t *C) {
 	t.Assert(reply.Error, Equals, "")
 
 	// Test GetMySQLInstances here because we already have a Repo with instances
-	is := m.GetMySQLInstances()
-	t.Assert(is, NotNil)
-	t.Assert(len(is), Equals, 1)
+	mySQLinsts := m.GetMySQLInstances()
+	t.Assert(mySQLinsts, NotNil)
+	t.Assert(len(mySQLinsts), Equals, 1)
 
-	t.Assert(is[0].UUID, Equals, "c540346a644b404a9d2ae006122fc5a2")
+	t.Assert(mySQLinsts[0].UUID, Equals, "c540346a644b404a9d2ae006122fc5a2")
 }
 
 func (s *ManagerTestSuite) TestHandleUpdateNoOS(t *C) {

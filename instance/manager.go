@@ -108,15 +108,9 @@ func (m *Manager) Stop() error {
 	return nil
 }
 
-func onlyMySQLInsts(slice *[]proto.Instance) *[]proto.Instance {
-	justMySQL := make([]proto.Instance, 0)
-	for _, it := range *slice {
-		if isMySQLInst(it) {
-			justMySQL = append(justMySQL, it)
-		}
-	}
-	return &justMySQL
-}
+/////////////////////////////////////////////////////////////////////////////
+// Implementation
+/////////////////////////////////////////////////////////////////////////////
 
 // Adds a MySQL instance to MRM
 func (m *Manager) mrmMySQL(inst proto.Instance) error {
@@ -144,9 +138,9 @@ func (m *Manager) mrmMySQL(inst proto.Instance) error {
 }
 
 // Auxiliary function to add MySQL instances on MRM
-func (m *Manager) mrmAddedMySQL(added *[]proto.Instance) {
+func (m *Manager) mrmAddedMySQL(added []proto.Instance) {
 	// Process added instances
-	for _, addIt := range *added {
+	for _, addIt := range added {
 		if err := m.mrmMySQL(addIt); err != nil {
 			m.logger.Error(err)
 		}
@@ -154,8 +148,8 @@ func (m *Manager) mrmAddedMySQL(added *[]proto.Instance) {
 }
 
 // Auxiliary function to remove deleted MySQL instances from MRM
-func (m *Manager) mrmDeletedMySQL(deleted *[]proto.Instance) {
-	for _, dltIt := range *deleted {
+func (m *Manager) mrmDeletedMySQL(deleted []proto.Instance) {
+	for _, dltIt := range deleted {
 		itDSN, ok := dltIt.Properties["dns"]
 		if !ok {
 			err := errors.New("Missing DSN in deleted MySQL instance " + dltIt.UUID)
@@ -167,7 +161,7 @@ func (m *Manager) mrmDeletedMySQL(deleted *[]proto.Instance) {
 }
 
 // Auxiliary function to update MySQL instances on MRM
-func (m *Manager) mrmUpdatedMySQL(updated *[]proto.Instance) {
+func (m *Manager) mrmUpdatedMySQL(updated []proto.Instance) {
 	// For now updates means deleting and then adding DSN to MRM
 	m.mrmDeletedMySQL(updated)
 	m.mrmAddedMySQL(updated)
@@ -195,9 +189,9 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		// For the following block we only care about MySQL instances
 		// From former code logic, we don't actually care about if there was an error
 		// while updating MRM. TODO: really?
-		m.mrmAddedMySQL(onlyMySQLInsts(&added))
-		m.mrmDeletedMySQL(onlyMySQLInsts(&deleted))
-		m.mrmUpdatedMySQL(onlyMySQLInsts(&updated))
+		m.mrmAddedMySQL(onlyMySQLInsts(added))
+		m.mrmDeletedMySQL(onlyMySQLInsts(deleted))
+		m.mrmUpdatedMySQL(onlyMySQLInsts(updated))
 		return cmd.Reply(nil, nil)
 	case "GetInfo":
 		err := m.handleGetInfo(*it)
@@ -224,10 +218,6 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 func (m *Manager) Repo() *Repo {
 	return m.repo
 }
-
-/////////////////////////////////////////////////////////////////////////////
-// Implementation
-/////////////////////////////////////////////////////////////////////////////
 
 func (m *Manager) handleGetInfo(it proto.Instance) error {
 	if !isMySQLInst(it) {
@@ -263,10 +253,9 @@ func GetMySQLInfo(it proto.Instance) error {
 }
 
 func (m *Manager) GetMySQLInstances() []proto.Instance {
-	m.logger.Debug("getMySQLInstances:call")
-	defer m.logger.Debug("getMySQLInstances:return")
-	list := m.Repo().List()
-	return *onlyMySQLInsts(&list)
+	m.logger.Debug("GetMySQLInstances:call")
+	defer m.logger.Debug("GetMySQLInstances:return")
+	return m.Repo().GetMySQLInstances()
 }
 
 func (m *Manager) monitorInstancesRestart(ch chan string) {
@@ -318,7 +307,7 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 }
 
 func (m *Manager) pushInstanceInfo(inst proto.Instance) error {
-	// We need to be REST-friendly, subsystems should be left out of the PUT
+	// Subsystems will be ignored, don't send them
 	inst.Subsystems = make([]proto.Instance, 0)
 	uri := fmt.Sprintf("%s/%s", m.api.EntryLink("insts"), inst.UUID)
 	data, err := json.Marshal(&inst)

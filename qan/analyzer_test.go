@@ -18,9 +18,9 @@
 package qan_test
 
 import (
-	"encoding/json"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"time"
 
 	. "github.com/go-test/test"
@@ -36,22 +36,22 @@ import (
 )
 
 type AnalyzerTestSuite struct {
-	nullmysql     *mock.NullMySQL
-	iter          *mock.Iter
-	spool         *mock.Spooler
-	clock         *mock.Clock
-	api           *mock.API
-	worker        *mock.QanWorker
-	restartChan   chan bool
-	logChan       chan *proto.LogEntry
-	logger        *pct.Logger
-	intervalChan  chan *qan.Interval
-	dataChan      chan interface{}
-	tmpDir        string
-	configDir     string
-	im            *instance.Repo
-	mysqlInstance proto.ServiceInstance
-	config        qan.Config
+	nullmysql    *mock.NullMySQL
+	iter         *mock.Iter
+	spool        *mock.Spooler
+	clock        *mock.Clock
+	api          *mock.API
+	worker       *mock.QanWorker
+	restartChan  chan bool
+	logChan      chan *proto.LogEntry
+	logger       *pct.Logger
+	intervalChan chan *qan.Interval
+	dataChan     chan interface{}
+	tmpDir       string
+	configDir    string
+	im           *instance.Repo
+	mysqlUUID    string
+	config       qan.Config
 }
 
 var _ = Suite(&AnalyzerTestSuite{})
@@ -81,21 +81,17 @@ func (s *AnalyzerTestSuite) SetUpSuite(t *C) {
 	}
 	s.configDir = pct.Basedir.Dir("config")
 
-	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im-test"), s.configDir, s.api)
-	data, err := json.Marshal(&proto.MySQLInstance{
-		Hostname: "bm-cloud-db01",
-		Alias:    "db01",
-		DSN:      "user:pass@tcp/",
-	})
-	t.Assert(err, IsNil)
-	s.im.Add("mysql", 1, data, false)
-	s.mysqlInstance = proto.ServiceInstance{Service: "mysql", InstanceId: 1}
-
 	links := map[string]string{
-		"agent":     "http://localhost/agent",
-		"instances": "http://localhost/instances",
+		"instances": "http://localhost/insts",
 	}
 	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
+
+	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "analizer-test"), s.configDir, s.api)
+	s.mysqlUUID = "c540346a644b404a9d2ae006122fc5a2"
+	err = test.CopyFile(test.RootDir+"/instance/instances-1.conf", filepath.Join(s.configDir, "instances.conf"))
+	t.Assert(err, IsNil)
+	err = s.im.Init()
+	t.Assert(err, IsNil)
 
 	s.restartChan = make(chan bool, 1)
 }
@@ -111,11 +107,11 @@ func (s *AnalyzerTestSuite) SetUpTest(t *C) {
 	s.worker = mock.NewQanWorker()
 	// Config needs to be recreated on every test since it can be modified by the test analyzers
 	s.config = qan.Config{
-		ServiceInstance: s.mysqlInstance,
-		CollectFrom:     "slowlog",
-		Interval:        60,
-		WorkerRunTime:   60,
-		MaxSlowLogSize:  MAX_SLOW_LOG_SIZE,
+		UUID:           s.mysqlUUID,
+		CollectFrom:    "slowlog",
+		Interval:       60,
+		WorkerRunTime:  60,
+		MaxSlowLogSize: MAX_SLOW_LOG_SIZE,
 		Start: []mysql.Query{
 			mysql.Query{Set: "-- start"},
 		},

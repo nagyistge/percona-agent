@@ -17,13 +17,11 @@
 
 package qan
 
-import (
-	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/percona-agent/mysql"
-)
+import "github.com/percona/percona-agent/mysql"
 
 type Config struct {
-	proto.ServiceInstance
+	//proto.ServiceInstance
+	UUID string
 	// Manager
 	CollectFrom       string // "slowlog" or "perfschema"
 	Start             []mysql.Query

@@ -20,11 +20,12 @@ package data
 import (
 	"encoding/json"
 	"errors"
-	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/percona-agent/pct"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/percona-agent/pct"
 )
 
 type Manager struct {

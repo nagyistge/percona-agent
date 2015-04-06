@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
@@ -103,31 +102,31 @@ func (m *Manager) Start() error {
 		m.status.Update("qan", "Running")
 	}()
 
-	// Load qan config from disk.
-	// todo-1.1: get and start all qan-*.conf
-	config := Config{}
-	if err := pct.Basedir.ReadConfig("qan", &config); err != nil {
-		if os.IsNotExist(err) {
-			m.logger.Info("Not enabled")
-			return nil
+	it, err := pct.Basedir.NewConfigIterator("qan")
+	if err != nil {
+		m.logger.Error(fmt.Sprintf("Cannot read Query Analytics config files: %v", err))
+		return nil
+	}
+
+	for it.Next() {
+		config := new(Config)
+		if err := it.Read(config); err != nil {
+			m.logger.Error(fmt.Sprintf("Cannot read Query Analytics config for %s: %v", config.UUID, err))
+			continue
 		}
-		m.logger.Error("Read qan config:", err)
-		return nil
+		// Start the slow log or perf schema analyzer. If it fails that's ok for
+		// the qan manager itself (i.e. don't fail this func) because user can fix
+		// or reconfigure this analyzer instance later and have qan manager try
+		// again to start it.
+		// todo: this fails if agent starts before MySQL is running because MRMS
+		//       fails to connect to MySQL in mrms/monitor/instance.NewMysqlInstance();
+		//       it should succeed and retry until MySQL is online.
+		if err := m.startAnalyzer(*config); err != nil {
+			m.logger.Error(fmt.Sprintf("Cannot start Query Analytics for %s: %v. Verify that MySQL is running, "+
+				"then try again.", config.UUID, err))
+			continue
+		}
 	}
-
-	// Start the slow log or perf schema analyzer. If it fails that's ok for
-	// the qan manager itself (i.e. don't fail this func) because user can fix
-	// or reconfigure this analyzer instance later and have qan manager try
-	// again to start it.
-	// todo: this fails if agent starts before MySQL is running because MRMS
-	//       fails to connect to MySQL in mrms/monitor/instance.NewMysqlInstance();
-	//       it should succeed and retry until MySQL is online.
-	if err := m.startAnalyzer(config); err != nil {
-		m.logger.Error(fmt.Sprintf("Cannot start Query Analytics: %s. Verify that MySQL is running, "+
-			"then try again.", err))
-		return nil
-	}
-
 	return nil // success
 }
 
@@ -183,9 +182,8 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		if err := m.startAnalyzer(config); err != nil {
 			return cmd.Reply(nil, err)
 		}
-		// Write qan.conf to disk so agent runs qan on restart.
-
-		if err := pct.Basedir.WriteConfig("qan", config); err != nil {
+		// Write instance qan config to disk so agent runs qan on restart.
+		if err := pct.Basedir.WriteInstanceConfig("qan", config.UUID, config); err != nil {
 			return cmd.Reply(nil, err)
 		}
 		return cmd.Reply(nil) // success
@@ -285,7 +283,7 @@ func (m *Manager) startAnalyzer(config Config) error {
 	/*
 		XXX Assume caller has locked m.mux.
 	*/
-
+	fmt.Println(config)
 	m.logger.Debug("startAnalyzer:call")
 	defer m.logger.Debug("startAnalyzer:return")
 
@@ -295,21 +293,18 @@ func (m *Manager) startAnalyzer(config Config) error {
 	}
 
 	// Check if an analyzer for this MySQL instance already exists.
-	if a, ok := m.analyzers[config.InstanceId]; ok {
+	if a, ok := m.analyzers[config.UUID]; ok {
 		return pct.ServiceIsRunningError{Service: a.analyzer.String()}
 
 	}
 
 	// Get the MySQL DSN and create a MySQL connection.
-	// TODO: FIX THIS THIS WAS CHANGED FOR INSTANCE REFACTOR
-	//mysqlInstance, err := m.im.Get(config.InstanceId)
-	_, err := m.im.Get(string(config.InstanceId))
+	mysqlInstance, err := m.im.Get(config.UUID)
 	if err != nil {
 		return fmt.Errorf("Cannot get MySQL instance from repo: %s", err)
 	}
 	// This should use properties
-	//mysqlConn := m.mysqlFactory.Make(mysqlInstance.DSN)
-	mysqlConn := m.mysqlFactory.Make("whatever")
+	mysqlConn := m.mysqlFactory.Make(mysqlInstance.Properties["dsn"])
 
 	// Add the MySQL DSN to the MySQL restart monitor. If MySQL restarts,
 	// the analyzer will stop its worker and re-configure MySQL.
@@ -338,7 +333,7 @@ func (m *Manager) startAnalyzer(config Config) error {
 	}
 
 	// Save the new analyzer and its associated parts.
-	m.analyzers[config.InstanceId] = AnalyzerInstance{
+	m.analyzers[config.UUID] = AnalyzerInstance{
 		mysqlConn:   mysqlConn,
 		restartChan: restartChan,
 		tickChan:    tickChan,

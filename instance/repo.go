@@ -49,10 +49,7 @@ const (
 	INSTANCES_FILEMODE = 0660
 
 	// Type and prefix of proto.Instances that we need to validate
-	// TODO: important, validate the complete tree
-	MYSQL_TYPE   = "MySQL"
 	MYSQL_PREFIX = "mysql"
-	OS_TYPE      = "OS"
 	OS_PREFIX    = "os"
 )
 
@@ -99,23 +96,33 @@ func equalInstances(inst1, inst2 *proto.Instance) bool {
 	return true
 }
 
-// Checks if it instance has Type == itType and Prefix == itPrefix
-func hasTypePrefix(it proto.Instance, itType string, itPrefix string) bool {
-	if it.Type == itType && it.Prefix == itPrefix {
+// Checks if it instance has Prefix == itPrefix
+func hasPrefix(it proto.Instance, itPrefix string) bool {
+	if it.Prefix == itPrefix {
 		return true
 	}
 	return false
 }
 
 func isOSInstance(it proto.Instance) bool {
-	return hasTypePrefix(it, OS_TYPE, OS_PREFIX)
+	return hasPrefix(it, OS_PREFIX)
 }
 
 func isMySQLInst(it proto.Instance) bool {
-	return hasTypePrefix(it, MYSQL_TYPE, MYSQL_PREFIX)
+	return hasPrefix(it, MYSQL_PREFIX)
 }
 
-func (r *Repo) getCfgFilePath() string {
+func onlyMySQLInsts(slice []proto.Instance) []proto.Instance {
+	justMySQL := make([]proto.Instance, 0)
+	for _, it := range slice {
+		if isMySQLInst(it) {
+			justMySQL = append(justMySQL, it)
+		}
+	}
+	return justMySQL
+}
+
+func (r *Repo) configFilePath() string {
 	return filepath.Join(r.configDir, INSTANCES_FILE)
 }
 
@@ -194,7 +201,7 @@ func (r *Repo) updateInstanceIndex() error {
 func (r *Repo) Init() error {
 	r.mux.Lock()
 	defer r.mux.Unlock()
-	file := r.getCfgFilePath()
+	file := r.configFilePath()
 	var data []byte
 	var err error
 	if !pct.FileExists(file) {
@@ -330,7 +337,7 @@ func (r *Repo) updateTree(tree proto.Instance, added *[]proto.Instance, deleted 
 	}
 
 	if writeToDisk {
-		return r.treeToDisk(r.getCfgFilePath())
+		return r.treeToDisk(r.configFilePath())
 	}
 	return nil
 }
@@ -363,7 +370,7 @@ func (r *Repo) get(uuid string) (proto.Instance, error) {
 		if err := r.loadConfig(data); err != nil {
 			return proto.Instance{}, err
 		}
-		if err := r.treeToDisk(r.getCfgFilePath()); err != nil {
+		if err := r.treeToDisk(r.configFilePath()); err != nil {
 			return proto.Instance{}, err
 		}
 	}
@@ -382,4 +389,8 @@ func (r *Repo) List() []proto.Instance {
 		instances = append(instances, *inst)
 	}
 	return instances
+}
+
+func (r *Repo) GetMySQLInstances() []proto.Instance {
+	return onlyMySQLInsts(r.List())
 }
