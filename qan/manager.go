@@ -283,7 +283,6 @@ func (m *Manager) startAnalyzer(config Config) error {
 	/*
 		XXX Assume caller has locked m.mux.
 	*/
-	fmt.Println(config)
 	m.logger.Debug("startAnalyzer:call")
 	defer m.logger.Debug("startAnalyzer:return")
 

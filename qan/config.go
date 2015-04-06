@@ -20,7 +20,6 @@ package qan
 import "github.com/percona/percona-agent/mysql"
 
 type Config struct {
-	//proto.ServiceInstance
 	UUID string
 	// Manager
 	CollectFrom       string // "slowlog" or "perfschema"
