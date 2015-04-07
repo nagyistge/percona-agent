@@ -1,5 +1,14 @@
 percona-agent Changelog
 
+v1.0.12 released 2015-04-09
+
+  * PCT-625: Handle failure when number of agents exceeded
+  * PCT-1133: Log when agent starts, stops, and its version
+  * PCT-1319: percona-agent can't use slow log for query analysis when level rotation is set up
+  * PCT-1320: percona-agent doesn't use -agent-mysql-user and -agent-mysql-pass on non-interactive installation
+  * PCT-1479: Limit number of used cpu cores to 1
+  * PCT-1510: Can't run EXPLAIN on query
+
 v1.0.11 released 2015-02-24
 
   * Rewrite QAN for Performance Schema
