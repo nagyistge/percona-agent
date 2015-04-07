@@ -303,7 +303,7 @@ func (m *Manager) startAnalyzer(config Config) error {
 		return fmt.Errorf("Cannot get MySQL instance from repo: %s", err)
 	}
 	// This should use properties
-	mysqlConn := m.mysqlFactory.Make(mysqlInstance.Properties["dsn"])
+	mysqlConn := m.mysqlFactory.Make(mysqlInstance.DSN)
 
 	// Add the MySQL DSN to the MySQL restart monitor. If MySQL restarts,
 	// the analyzer will stop its worker and re-configure MySQL.

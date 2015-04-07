@@ -19,7 +19,6 @@ package instance
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -82,12 +81,12 @@ func (m *Manager) Start() error {
 	}
 
 	for _, instance := range m.GetMySQLInstances() {
-		ch, err := m.mrm.Add(instance.Properties["dsn"])
+		ch, err := m.mrm.Add(instance.DSN)
 		if err != nil {
 			m.logger.Error("Cannot add instance to the monitor:", err)
 			continue
 		}
-		safeDSN := mysql.HideDSNPassword(instance.Properties["dsn"])
+		safeDSN := mysql.HideDSNPassword(instance.DSN)
 		m.status.Update("instance", "Getting info "+safeDSN)
 		if err := GetMySQLInfo(instance); err != nil {
 			m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
@@ -96,7 +95,7 @@ func (m *Manager) Start() error {
 		m.status.Update("instance", "Updating info "+safeDSN)
 		m.pushInstanceInfo(instance)
 		// Store the channel to be able to remove it from mrms
-		m.mrmChans[instance.Properties["dsn"]] = ch
+		m.mrmChans[instance.DSN] = ch
 	}
 	go m.monitorInstancesRestart(mrmsGlobalChan)
 	return nil
@@ -113,18 +112,14 @@ func (m *Manager) Stop() error {
 /////////////////////////////////////////////////////////////////////////////
 
 // Adds a MySQL instance to MRM
-func (m *Manager) mrmMySQL(inst proto.Instance) error {
-	itDSN, ok := inst.Properties["dns"]
-	if !ok {
-		return errors.New("Missing DSN in MySQL instance " + inst.UUID)
-	}
-	ch, err := m.mrm.Add(itDSN)
+func (m *Manager) addMRMInstance(inst proto.Instance) error {
+	ch, err := m.mrm.Add(inst.DSN)
 	if err != nil {
 		return err
 	}
-	m.mrmChans[itDSN] = ch
+	m.mrmChans[inst.DSN] = ch
 
-	safeDSN := mysql.HideDSNPassword(itDSN)
+	safeDSN := mysql.HideDSNPassword(inst.DSN)
 	m.status.Update("instance", "Getting info "+safeDSN)
 	if err := GetMySQLInfo(inst); err != nil {
 		m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
@@ -138,33 +133,28 @@ func (m *Manager) mrmMySQL(inst proto.Instance) error {
 }
 
 // Auxiliary function to add MySQL instances on MRM
-func (m *Manager) mrmAddedMySQL(added []proto.Instance) {
+func (m *Manager) mrmAddMySQL(added []proto.Instance) {
 	// Process added instances
 	for _, addIt := range added {
-		if err := m.mrmMySQL(addIt); err != nil {
+		if err := m.addMRMInstance(addIt); err != nil {
 			m.logger.Error(err)
 		}
 	}
 }
 
 // Auxiliary function to remove deleted MySQL instances from MRM
-func (m *Manager) mrmDeletedMySQL(deleted []proto.Instance) {
+func (m *Manager) mrmDeleteMySQL(deleted []proto.Instance) {
+
 	for _, dltIt := range deleted {
-		itDSN, ok := dltIt.Properties["dns"]
-		if !ok {
-			err := errors.New("Missing DSN in deleted MySQL instance " + dltIt.UUID)
-			m.logger.Error(err)
-			continue
-		}
-		m.mrm.Remove(itDSN, m.mrmChans[itDSN])
+		m.mrm.Remove(dltIt.DSN, m.mrmChans[dltIt.DSN])
 	}
 }
 
 // Auxiliary function to update MySQL instances on MRM
-func (m *Manager) mrmUpdatedMySQL(updated []proto.Instance) {
+func (m *Manager) mrmUpdateMySQL(updated []proto.Instance) {
 	// For now updates means deleting and then adding DSN to MRM
-	m.mrmDeletedMySQL(updated)
-	m.mrmAddedMySQL(updated)
+	m.mrmDeleteMySQL(updated)
+	m.mrmAddMySQL(updated)
 }
 
 // @goroutine[0]
@@ -178,7 +168,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	}
 
 	switch cmd.Cmd {
-	case "Update":
+	case "UpdateTree":
 		added := make([]proto.Instance, 0)
 		deleted := make([]proto.Instance, 0)
 		updated := make([]proto.Instance, 0)
@@ -189,13 +179,16 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		// For the following block we only care about MySQL instances
 		// From former code logic, we don't actually care about if there was an error
 		// while updating MRM. TODO: really?
-		m.mrmAddedMySQL(onlyMySQLInsts(added))
-		m.mrmDeletedMySQL(onlyMySQLInsts(deleted))
-		m.mrmUpdatedMySQL(onlyMySQLInsts(updated))
+		m.mrmAddMySQL(onlyMySQLInsts(added))
+		m.mrmDeleteMySQL(onlyMySQLInsts(deleted))
+		m.mrmUpdateMySQL(onlyMySQLInsts(updated))
 		return cmd.Reply(nil, nil)
 	case "GetInfo":
 		err := m.handleGetInfo(*it)
 		return cmd.Reply(it, err)
+	case "GetTree":
+		tree, err := m.repo.GetTree()
+		return cmd.Reply(tree, err)
 	default:
 		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
@@ -227,7 +220,7 @@ func (m *Manager) handleGetInfo(it proto.Instance) error {
 }
 
 func GetMySQLInfo(it proto.Instance) error {
-	conn := mysql.NewConnection(it.Properties["dsn"])
+	conn := mysql.NewConnection(it.DSN)
 	if err := conn.Connect(1); err != nil {
 		return err
 	}
@@ -287,7 +280,7 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 			// Get the updated instances list. It should be updated every time since
 			// the Add method can add new instances to the list.
 			for _, instance := range m.GetMySQLInstances() {
-				if instance.Properties["dsn"] != dsn {
+				if instance.DSN != dsn {
 					continue
 				}
 				m.status.Update("instance-mrms", "Getting info "+safeDSN)

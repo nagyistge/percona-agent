@@ -73,13 +73,13 @@ func (s *RepoTestSuite) SetUpTest(t *C) {
 	}
 
 	links := map[string]string{
-		"insts": "http://localhost/insts",
+		"instance_tree": "http://localhost/insts",
 	}
 	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
 	s.im = instance.NewRepo(s.logger, s.configDir, s.api)
 	t.Assert(s.im, NotNil)
 
-	s.instancesFile = filepath.Join(s.configDir, "instances.conf")
+	s.instancesFile = filepath.Join(s.configDir, instance.INSTANCES_FILE)
 	err := test.CopyFile(test.RootDir+"/instance/instances-1.conf", s.instancesFile)
 	t.Assert(err, IsNil)
 
@@ -187,8 +187,8 @@ func (s *RepoTestSuite) TestUpdateTree(t *C) {
 
 	// Lets modify one instance in our test tree copy
 	// index 1 corresponds to instance c540346a644b404a9d2ae006122fc5a2
-	tree.Subsystems[1].Properties["dsn"] = "other DSN"
-	// Remove last element
+	tree.Subsystems[1].DSN = "other DSN"
+	// Remove leaf of tree
 	_, tree.Subsystems = tree.Subsystems[len(tree.Subsystems)-1], tree.Subsystems[:len(tree.Subsystems)-1]
 	// Add new instance
 	mysqlIt := &proto.Instance{}
@@ -196,7 +196,8 @@ func (s *RepoTestSuite) TestUpdateTree(t *C) {
 	mysqlIt.Prefix = "mysql"
 	mysqlIt.UUID = "27aec282f0e7b25bc4bffdbe4a432a66"
 	mysqlIt.Name = "test-mysql"
-	mysqlIt.Properties = map[string]string{"dsn": "test/"}
+	mysqlIt.DSN = "test/"
+	mysqlIt.Properties = map[string]string{}
 	tree.Subsystems = append(tree.Subsystems, *mysqlIt)
 
 	added := make([]proto.Instance, 0)
@@ -217,7 +218,7 @@ func (s *RepoTestSuite) TestUpdateTree(t *C) {
 	t.Assert(updated[0].UUID, Equals, "31dd3b7b602849f8871fd3e7acc8c2e3")
 	//The updated MySQL instance
 	t.Assert(updated[1].UUID, Equals, "c540346a644b404a9d2ae006122fc5a2")
-	t.Assert(updated[1].Properties["dsn"], Equals, "other DSN")
+	t.Assert(updated[1].DSN, Equals, "other DSN")
 
 	// Check if saved file has the same modified tree structure
 	savedTree, err := ioutil.ReadFile(s.instancesFile)
@@ -337,7 +338,8 @@ func (s *ManagerTestSuite) TestHandleGetInfoMySQL(t *C) {
 	mysqlIt.Prefix = "mysql"
 	mysqlIt.UUID = "c540346a644b404a9d2ae006122fc5a2"
 	mysqlIt.Name = "mysql-bm-cloud-0001"
-	mysqlIt.Properties = map[string]string{"dsn": dsn}
+	mysqlIt.DSN = dsn
+	mysqlIt.Properties = map[string]string{}
 	mysqlData, err := json.Marshal(mysqlIt)
 	t.Assert(err, IsNil)
 
@@ -356,7 +358,7 @@ func (s *ManagerTestSuite) TestHandleGetInfoMySQL(t *C) {
 	t.Check(got.Type, Equals, mysqlIt.Type)               // not changed
 	t.Check(got.Prefix, Equals, mysqlIt.Prefix)           // not changed
 	t.Check(got.UUID, Equals, mysqlIt.UUID)               // not changed
-	t.Check(got.Properties["dsn"], Equals, dsn)           // not changed
+	t.Check(got.DSN, Equals, dsn)                         // not changed
 	t.Check(got.Properties["hostname"], Equals, hostname) // new
 	t.Check(got.Properties["distro"], Equals, distro)     // new
 	t.Check(got.Properties["version"], Equals, version)   // new
@@ -378,14 +380,15 @@ func (s *ManagerTestSuite) TestHandleUpdate(t *C) {
 	mysqlIt.Prefix = "mysql"
 	mysqlIt.UUID = "c540346a644b404a9d2ae006122fc5a2"
 	mysqlIt.Name = "mysql-bm-cloud-0001"
-	mysqlIt.Properties = map[string]string{"dsn": dsn}
+	mysqlIt.DSN = dsn
+	mysqlIt.Properties = map[string]string{}
 	osIt.Subsystems = append(osIt.Subsystems, *mysqlIt)
 
 	osData, err := json.Marshal(osIt)
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
-		Cmd:     "Update",
+		Cmd:     "UpdateTree",
 		Service: "instance",
 		Data:    osData,
 	}
@@ -412,12 +415,13 @@ func (s *ManagerTestSuite) TestHandleUpdateNoOS(t *C) {
 	mysqlIt.Prefix = "mysql"
 	mysqlIt.UUID = "c540346a644b404a9d2ae006122fc5a2"
 	mysqlIt.Name = "mysql-bm-cloud-0001"
-	mysqlIt.Properties = map[string]string{"dsn": dsn}
+	mysqlIt.DSN = dsn
+	mysqlIt.Properties = map[string]string{}
 	mysqlData, err := json.Marshal(mysqlIt)
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
-		Cmd:     "Update",
+		Cmd:     "UpdateTree",
 		Service: "instance",
 		Data:    mysqlData,
 	}

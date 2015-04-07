@@ -74,13 +74,13 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.configDir = pct.Basedir.Dir("config")
 
 	links := map[string]string{
-		"instances": "http://localhost/insts",
+		"instance_tree": "http://localhost/insts",
 	}
 
 	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
 
 	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "manager-test"), s.configDir, s.api)
-	err = test.CopyFile(test.RootDir+"/instance/instances-1.conf", filepath.Join(s.configDir, "instances.conf"))
+	err = test.CopyFile(test.RootDir+"/instance/instances-1.conf", filepath.Join(s.configDir, "instance-tree.json"))
 	t.Assert(err, IsNil)
 	err = s.im.Init()
 	t.Assert(err, IsNil)

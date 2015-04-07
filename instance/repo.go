@@ -35,17 +35,16 @@ import (
 )
 
 type Repo struct {
-	logger         *pct.Logger
-	configDir      string
-	api            pct.APIConnector
-	it             map[string]*proto.Instance
-	tree           *proto.Instance
-	downloadedInst []byte
-	mux            *sync.RWMutex
+	logger    *pct.Logger
+	configDir string
+	api       pct.APIConnector
+	it        map[string]*proto.Instance
+	tree      *proto.Instance
+	mux       *sync.RWMutex
 }
 
 const (
-	INSTANCES_FILE     = "instances.conf" // relative to Repo.configDir
+	INSTANCES_FILE     = "instance-tree.json" // relative to Repo.configDir
 	INSTANCES_FILEMODE = 0660
 
 	// Type and prefix of proto.Instances that we need to validate
@@ -77,6 +76,7 @@ func equalInstances(inst1, inst2 *proto.Instance) bool {
 		inst1.Name != inst2.Name ||
 		inst1.Created != inst2.Created ||
 		inst1.Deleted != inst2.Deleted ||
+		inst1.DSN != inst2.DSN ||
 		len(inst1.Subsystems) != len(inst2.Subsystems) ||
 		!reflect.DeepEqual(inst1.Properties, inst2.Properties) {
 		return false
@@ -96,20 +96,12 @@ func equalInstances(inst1, inst2 *proto.Instance) bool {
 	return true
 }
 
-// Checks if it instance has Prefix == itPrefix
-func hasPrefix(it proto.Instance, itPrefix string) bool {
-	if it.Prefix == itPrefix {
-		return true
-	}
-	return false
-}
-
 func isOSInstance(it proto.Instance) bool {
-	return hasPrefix(it, OS_PREFIX)
+	return it.Prefix == OS_PREFIX
 }
 
 func isMySQLInst(it proto.Instance) bool {
-	return hasPrefix(it, MYSQL_PREFIX)
+	return it.Prefix == MYSQL_PREFIX
 }
 
 func onlyMySQLInsts(slice []proto.Instance) []proto.Instance {
@@ -137,8 +129,7 @@ func (r *Repo) loadConfig(data []byte) error {
 
 // Downloads and returns the instances tree data from API.
 func (r *Repo) downloadInstances() (data []byte, err error) {
-	errors.New(fmt.Sprintf("Downloading instance config file from API"))
-	url := r.api.EntryLink("insts")
+	url := r.api.EntryLink("instance_tree")
 	data = make([]byte, 0)
 	if url == "" {
 		errMsg := "No 'insts' API link registered"
@@ -360,9 +351,8 @@ func (r *Repo) get(uuid string) (proto.Instance, error) {
 
 	// We do full tree syncs, if we can't find an instance UUID download
 	// everything and query again.
-	// TODO: implement instances (tree branches) checksums to avoid downloading
-	// unmodified trees
 	if _, ok := r.it[uuid]; !ok {
+		r.logger.Info("Downloading instance tree from API")
 		data, err := r.downloadInstances()
 		if err != nil {
 			return proto.Instance{}, err
@@ -389,6 +379,18 @@ func (r *Repo) List() []proto.Instance {
 		instances = append(instances, *inst)
 	}
 	return instances
+}
+
+func (r *Repo) GetTree() (*proto.Instance, error) {
+	r.mux.Lock()
+	defer r.mux.Unlock()
+	var newTree *proto.Instance
+	if err := cloneTree(&r.tree, &newTree); err != nil {
+		longErr := fmt.Errorf("Couldn't clone local tree: %v", err)
+		r.logger.Error(longErr)
+		return nil, longErr
+	}
+	return newTree, nil
 }
 
 func (r *Repo) GetMySQLInstances() []proto.Instance {
