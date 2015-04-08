@@ -30,4 +30,5 @@ func FormatError(err error) string {
 const (
 	ER_SPECIFIC_ACCESS_DENIED_ERROR = 1227
 	ER_SYNTAX_ERROR                 = 1064
+	ER_USER_DENIED                  = 1142
 )

@@ -37,7 +37,7 @@ import (
 // REV="$(git rev-parse HEAD)"
 // go build -ldflags "-X github.com/percona/percon-agent/agnet.REVISION $REV"
 var REVISION string = "0"
-var VERSION string = "1.0.11"
+var VERSION string = "1.0.12"
 var REL string = ""
 var MIN_SUPPORTED_MYSQL_VERSION = "5.1.0"
 
@@ -129,7 +129,7 @@ func (agent *Agent) Run() error {
 	// https://jira.percona.com/browse/PCT-765
 	agent.keepalive = time.NewTicker(time.Duration(agent.config.Keepalive) * time.Second)
 
-	logger.Info("Started")
+	logger.Info("Started version: " + VERSION)
 
 	for {
 		logger.Debug("idle")
