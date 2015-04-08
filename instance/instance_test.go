@@ -150,7 +150,7 @@ func (s *RepoTestSuite) TestUpdateTreeWrongRoot(t *C) {
 	t.Assert(err, IsNil)
 
 	// Request 2 instance tree copies (using instances-1.conf fixture)
-	orig_tree, err := s.im.GetTree()
+	origTree, err := s.im.GetTree()
 	t.Assert(err, IsNil)
 	tree, err := s.im.GetTree()
 	t.Assert(err, IsNil)
@@ -165,11 +165,11 @@ func (s *RepoTestSuite) TestUpdateTreeWrongRoot(t *C) {
 	// Check if saved instance config was not modified
 	savedTreeData, err := ioutil.ReadFile(s.instancesFile)
 	t.Assert(err, IsNil)
-	var savedTree *proto.Instance = nil
+	var savedTree *proto.Instance
 	err = json.Unmarshal(savedTreeData, &savedTree)
 	t.Assert(err, IsNil)
-	if same, diff := test.IsDeeply(&orig_tree, savedTree); !same {
-		test.Dump(&orig_tree)
+	if same, diff := test.IsDeeply(&origTree, savedTree); !same {
+		test.Dump(&origTree)
 		test.Dump(savedTree)
 		t.Error(diff)
 	}
@@ -206,7 +206,7 @@ func (s *RepoTestSuite) TestUpdateTree(t *C) {
 	// Check if saved file has the same modified tree structure
 	savedTree, err := ioutil.ReadFile(s.instancesFile)
 	t.Assert(err, IsNil)
-	var newTree *proto.Instance = nil
+	var newTree *proto.Instance
 	err = json.Unmarshal(savedTree, &newTree)
 	t.Assert(err, IsNil)
 	if same, diff := test.IsDeeply(&tree, newTree); !same {
@@ -226,6 +226,7 @@ type ManagerTestSuite struct {
 	logger        *pct.Logger
 	configDir     string
 	instancesFile string
+	instances     proto.Instance
 	api           *mock.API
 }
 
@@ -262,6 +263,11 @@ func (s *ManagerTestSuite) SetUpTest(t *C) {
 	err := test.CopyFile(test.RootDir+"/instance/instances-1.conf", s.instancesFile)
 	t.Assert(err, IsNil)
 
+	data, err := ioutil.ReadFile(s.instancesFile)
+	t.Assert(err, IsNil)
+
+	err = json.Unmarshal(data, &s.instances)
+	t.Assert(err, IsNil)
 }
 
 func (s *ManagerTestSuite) TearDownSuite(t *C) {
@@ -451,4 +457,37 @@ func (s *ManagerTestSuite) TestHandleUpdateNoOS(t *C) {
 
 	reply := m.Handle(cmd)
 	t.Assert(reply.Error, Equals, "Instance tree root is not of OS type ('os' prefix)")
+}
+
+func (s *ManagerTestSuite) TestGetTree(t *C) {
+	bin, err := ioutil.ReadFile(s.instancesFile)
+	t.Assert(err, IsNil)
+	s.api.GetData = [][]byte{bin}
+	s.api.GetCode = []int{http.StatusOK}
+
+	// Create an instance manager.
+	mrm := mock.NewMrmsMonitor()
+	m := instance.NewManager(s.logger, s.configDir, s.api, mrm)
+	t.Assert(m, NotNil)
+	err = m.Start()
+	t.Assert(err, IsNil)
+
+	cmd := &proto.Cmd{
+		Cmd:     "GetTree",
+		Service: "instance",
+		Data:    nil,
+	}
+
+	reply := m.Handle(cmd)
+	t.Assert(reply.Error, Equals, "")
+
+	var sync *proto.InstanceSync
+
+	json.Unmarshal(reply.Data, &sync)
+	t.Assert(sync.Version, Equals, uint(0))
+	if same, diff := test.IsDeeply(sync.Tree, s.instances); !same {
+		test.Dump(sync.Tree)
+		test.Dump(s.instances)
+		t.Error(diff)
+	}
 }

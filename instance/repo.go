@@ -334,6 +334,11 @@ func (r *Repo) List() []proto.Instance {
 func (r *Repo) GetTree() (proto.Instance, error) {
 	r.mux.Lock()
 	defer r.mux.Unlock()
+
+	if r.tree == nil {
+		return proto.Instance{}, errors.New("Repository has no local instance tree")
+	}
+
 	var newTree *proto.Instance
 	if err := cloneTree(&r.tree, &newTree); err != nil {
 		longErr := fmt.Errorf("Couldn't clone local tree: %v", err)

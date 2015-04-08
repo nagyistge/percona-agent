@@ -205,12 +205,15 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		return cmd.Reply(it, err)
 	case "GetTree":
 		// GetTree will return the tree plus its version in a proto.InstanceSync
-		var sync *proto.InstanceSync
+		sync := proto.InstanceSync{}
 		tree, err := m.repo.GetTree()
+		if err != nil {
+			return cmd.Reply(nil, err)
+		}
 		version := m.repo.GetTreeVersion()
 		sync.Tree = tree
 		sync.Version = version
-		return cmd.Reply(sync, err)
+		return cmd.Reply(sync, nil)
 	default:
 		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
