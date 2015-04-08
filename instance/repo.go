@@ -343,6 +343,10 @@ func (r *Repo) GetTree() (proto.Instance, error) {
 	return *newTree, nil
 }
 
+func (r *Repo) GetTreeVersion() uint {
+	return r.treeVersion
+}
+
 func (r *Repo) GetMySQLInstances() []proto.Instance {
 	return onlyMySQLInsts(r.List())
 }
