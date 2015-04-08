@@ -1,6 +1,6 @@
 percona-agent Changelog
 
-v1.0.12 released 2015-04-09
+v1.0.12 released 2015-04-08
 
   * PCT-625: Handle failure when number of agents exceeded
   * PCT-1133: Log when agent starts, stops, and its version
