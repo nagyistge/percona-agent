@@ -250,6 +250,32 @@ func (s *WorkerTestSuite) Test002(t *C) {
 	t.Assert(err, IsNil)
 }
 
+func (s *WorkerTestSuite) TestEmptyDigest(t *C) {
+	// This is the simplest input possible: 1 query in iter 1 and 2. The result
+	// is just the increase in its values.
+
+	rows, err := s.loadData("004")
+	t.Assert(err, IsNil)
+	getRows := makeGetRowsFunc(rows)
+	getText := makeGetTextFunc("select 1")
+	w := perfschema.NewWorker(s.logger, s.nullmysql, getRows, getText)
+
+	// First run doesn't produce a result because 2 snapshots are required.
+	i := &qan.Interval{
+		Number:    1,
+		StartTime: time.Now().UTC(),
+	}
+	err = w.Setup(i)
+	t.Assert(err, IsNil)
+
+	res, err := w.Run()
+	t.Assert(err, IsNil)
+	t.Check(res, IsNil)
+
+	err = w.Cleanup()
+	t.Assert(err, IsNil)
+
+}
 func (s *WorkerTestSuite) TestRealWorker(t *C) {
 	if s.dsn == "" {
 		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
