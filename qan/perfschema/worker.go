@@ -324,7 +324,10 @@ ROW_LOOP:
 		select {
 		case row := <-rowChan:
 			w.lastRowCnt++
-			classId := strings.ToUpper(row.Digest[16:32])
+			classId := "0000000000000000"
+			if len(row.Digest) >= 32 {
+				classId = strings.ToUpper(row.Digest[16:32])
+			}
 			if class, haveClass := curr[classId]; haveClass {
 				if _, haveRow := class.Rows[row.Schema]; haveRow {
 					w.logger.Error("Got class twice: ", row.Schema, row.Digest)
