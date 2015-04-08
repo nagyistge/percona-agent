@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 
 	"github.com/percona/cloud-protocol/proto"
@@ -102,7 +103,9 @@ func (s *RepoTestSuite) TestInit(t *C) {
 	err := s.im.Init()
 	t.Assert(err, IsNil)
 
-	tree := s.im.Instances()
+	tree, err := s.im.GetTree()
+	t.Assert(err, IsNil)
+
 	if same, diff := test.IsDeeply(tree, s.instances); !same {
 		test.Dump(tree)
 		test.Dump(s.instances)
@@ -147,22 +150,17 @@ func (s *RepoTestSuite) TestUpdateTreeWrongRoot(t *C) {
 	t.Assert(err, IsNil)
 
 	// Request 2 instance tree copies (using instances-1.conf fixture)
-	orig_tree := s.im.Instances()
-	tree := s.im.Instances()
+	orig_tree, err := s.im.GetTree()
+	t.Assert(err, IsNil)
+	tree, err := s.im.GetTree()
+	t.Assert(err, IsNil)
 
 	// Make our test tree root instance not an OS type, pick any Subsystem
 	tree = tree.Subsystems[0]
+	var treeVersion uint = 2
 
-	added := make([]proto.Instance, 0)
-	deleted := make([]proto.Instance, 0)
-	updated := make([]proto.Instance, 0)
-	err = s.im.UpdateTree(tree, &added, &deleted, &updated, true)
+	err = s.im.UpdateTree(tree, treeVersion, true)
 	t.Assert(err, NotNil)
-
-	// No instance was updated
-	t.Assert(len(added), Equals, 0)
-	t.Assert(len(deleted), Equals, 0)
-	t.Assert(len(updated), Equals, 0)
 
 	// Check if saved instance config was not modified
 	savedTreeData, err := ioutil.ReadFile(s.instancesFile)
@@ -183,7 +181,8 @@ func (s *RepoTestSuite) TestUpdateTree(t *C) {
 	t.Assert(err, IsNil)
 
 	// Request an instance tree copy (using instances-1.conf fixture)
-	tree := s.im.Instances()
+	tree, err := s.im.GetTree()
+	t.Assert(err, IsNil)
 
 	// Lets modify one instance in our test tree copy
 	// index 1 corresponds to instance c540346a644b404a9d2ae006122fc5a2
@@ -200,25 +199,9 @@ func (s *RepoTestSuite) TestUpdateTree(t *C) {
 	mysqlIt.Properties = map[string]string{}
 	tree.Subsystems = append(tree.Subsystems, *mysqlIt)
 
-	added := make([]proto.Instance, 0)
-	deleted := make([]proto.Instance, 0)
-	updated := make([]proto.Instance, 0)
-	err = s.im.UpdateTree(tree, &added, &deleted, &updated, true)
+	var treeVersion uint = 2
+	err = s.im.UpdateTree(tree, treeVersion, true)
 	t.Assert(err, IsNil)
-
-	t.Assert(len(added), Equals, 1)
-	t.Assert(len(deleted), Equals, 1)
-	t.Assert(len(updated), Equals, 2)
-
-	// The new instance
-	t.Assert(added[0].UUID, Equals, "27aec282f0e7b25bc4bffdbe4a432a66")
-	// The deleted MySQL instance leaf
-	t.Assert(deleted[0].UUID, Equals, "67b6ac9eaace265d3dad87663235eba8")
-	// The root lost a subsystem
-	t.Assert(updated[0].UUID, Equals, "31dd3b7b602849f8871fd3e7acc8c2e3")
-	//The updated MySQL instance
-	t.Assert(updated[1].UUID, Equals, "c540346a644b404a9d2ae006122fc5a2")
-	t.Assert(updated[1].DSN, Equals, "other DSN")
 
 	// Check if saved file has the same modified tree structure
 	savedTree, err := ioutil.ReadFile(s.instancesFile)
@@ -262,7 +245,8 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.logger = pct.NewLogger(s.logChan, "pct-it-test")
 
 	links := map[string]string{
-		"insts": "http://localhost/insts",
+		"instance_tree": "http://localhost/agent/instance/sync",
+		"instances":     "http://localhost/instances",
 	}
 	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
 }
@@ -370,27 +354,50 @@ func (s *ManagerTestSuite) TestHandleUpdate(t *C) {
 	m := instance.NewManager(s.logger, s.configDir, s.api, mrm)
 	t.Assert(m, NotNil)
 
-	osIt := &proto.Instance{}
+	// New OS instance
+	osIt := proto.Instance{}
 	osIt.Type = "OS"
 	osIt.Prefix = "os"
 	osIt.UUID = "916f4c31aaa35d6b867dae9a7f54270d"
 	osIt.Name = "os-bm-cloud-0001"
-	mysqlIt := &proto.Instance{}
-	mysqlIt.Type = "MySQL"
-	mysqlIt.Prefix = "mysql"
-	mysqlIt.UUID = "c540346a644b404a9d2ae006122fc5a2"
-	mysqlIt.Name = "mysql-bm-cloud-0001"
-	mysqlIt.DSN = dsn
-	mysqlIt.Properties = map[string]string{}
-	osIt.Subsystems = append(osIt.Subsystems, *mysqlIt)
 
-	osData, err := json.Marshal(osIt)
+	// New MySQL instance
+	mysqlIt1 := proto.Instance{}
+	mysqlIt1.Type = "MySQL"
+	mysqlIt1.Prefix = "mysql"
+	mysqlIt1.UUID = "c540346a644b404a9d2ae006122fc5a2"
+	mysqlIt1.Name = "mysql-bm-cloud-0001"
+	mysqlIt1.DSN = "test:test@localhost/mysql"
+
+	// This instance exists in test data but slightly different
+	mysqlIt2 := proto.Instance{}
+	mysqlIt2.Type = "MySQL"
+	mysqlIt2.Prefix = "mysql"
+	mysqlIt2.ParentUUID = "31dd3b7b602849f8871fd3e7acc8c2e3"
+	mysqlIt2.UUID = "67b6ac9eaace265d3dad87663235eba8"
+	mysqlIt2.Name = "mysql-test-0002"
+	mysqlIt2.DSN = "test:test@localhost/otherdsn" // change DSN
+
+	osIt.Subsystems = append(osIt.Subsystems, mysqlIt1)
+	osIt.Subsystems = append(osIt.Subsystems, mysqlIt2)
+
+	sync := proto.InstanceSync{}
+	sync.Version = 2
+	sync.Added = []string{"916f4c31aaa35d6b867dae9a7f54270d"}
+	sync.Updated = []string{"67b6ac9eaace265d3dad87663235eba8"}
+	sync.Deleted = []string{"31dd3b7b602849f8871fd3e7acc8c2e3", "dc2b15a5400b4c67ab27848255468e65",
+		"c540346a644b404a9d2ae006122fc5a2", "3fc9ebfee2bb401ba5a0158464ea606d",
+		"46488b31c44847239749183d83cbd910", "2b94b61d25614c60a25cbed205e035e8",
+		"2b94b61d25614c60a25cbed205e035e8"}
+	sync.Tree = osIt
+
+	syncData, err := json.Marshal(&sync)
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
 		Cmd:     "UpdateTree",
 		Service: "instance",
-		Data:    osData,
+		Data:    syncData,
 	}
 
 	reply := m.Handle(cmd)
@@ -399,9 +406,17 @@ func (s *ManagerTestSuite) TestHandleUpdate(t *C) {
 	// Test GetMySQLInstances here because we already have a Repo with instances
 	mySQLinsts := m.GetMySQLInstances()
 	t.Assert(mySQLinsts, NotNil)
-	t.Assert(len(mySQLinsts), Equals, 1)
+	t.Assert(len(mySQLinsts), Equals, 2)
 
-	t.Assert(mySQLinsts[0].UUID, Equals, "c540346a644b404a9d2ae006122fc5a2")
+	received := []string{mySQLinsts[0].UUID, mySQLinsts[1].UUID}
+	// We need to sort as order is not stable
+	sort.Strings(received)
+	expected := []string{"67b6ac9eaace265d3dad87663235eba8", "c540346a644b404a9d2ae006122fc5a2"}
+	if same, diff := test.IsDeeply(received, expected); !same {
+		test.Dump(received)
+		test.Dump(expected)
+		t.Error(diff)
+	}
 }
 
 func (s *ManagerTestSuite) TestHandleUpdateNoOS(t *C) {
@@ -410,22 +425,30 @@ func (s *ManagerTestSuite) TestHandleUpdateNoOS(t *C) {
 	m := instance.NewManager(s.logger, s.configDir, s.api, mrm)
 	t.Assert(m, NotNil)
 
-	mysqlIt := &proto.Instance{}
+	mysqlIt := proto.Instance{}
 	mysqlIt.Type = "MySQL"
 	mysqlIt.Prefix = "mysql"
 	mysqlIt.UUID = "c540346a644b404a9d2ae006122fc5a2"
-	mysqlIt.Name = "mysql-bm-cloud-0001"
-	mysqlIt.DSN = dsn
-	mysqlIt.Properties = map[string]string{}
-	mysqlData, err := json.Marshal(mysqlIt)
+
+	sync := proto.InstanceSync{}
+	sync.Version = 2
+	sync.Added = []string{"916f4c31aaa35d6b867dae9a7f54270d"}
+	sync.Updated = []string{"67b6ac9eaace265d3dad87663235eba8"}
+	sync.Deleted = []string{"31dd3b7b602849f8871fd3e7acc8c2e3", "dc2b15a5400b4c67ab27848255468e65",
+		"c540346a644b404a9d2ae006122fc5a2", "3fc9ebfee2bb401ba5a0158464ea606d",
+		"46488b31c44847239749183d83cbd910", "2b94b61d25614c60a25cbed205e035e8",
+		"2b94b61d25614c60a25cbed205e035e8"}
+	sync.Tree = mysqlIt
+
+	syncData, err := json.Marshal(&sync)
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
 		Cmd:     "UpdateTree",
 		Service: "instance",
-		Data:    mysqlData,
+		Data:    syncData,
 	}
 
 	reply := m.Handle(cmd)
-	t.Assert(reply.Error, Equals, "Tree instance root is not of 'OS' type and 'os' prefix")
+	t.Assert(reply.Error, Equals, "Instance tree root is not of OS type ('os' prefix)")
 }

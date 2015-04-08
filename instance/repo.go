@@ -26,7 +26,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"sync"
 
@@ -35,25 +34,27 @@ import (
 )
 
 type Repo struct {
-	logger    *pct.Logger
-	configDir string
-	api       pct.APIConnector
-	it        map[string]*proto.Instance
-	tree      *proto.Instance
-	mux       *sync.RWMutex
+	logger      *pct.Logger
+	configDir   string
+	api         pct.APIConnector
+	it          map[string]*proto.Instance
+	tree        *proto.Instance
+	treeVersion uint
+	mux         *sync.RWMutex
 }
 
 const (
 	INSTANCES_FILE     = "instance-tree.json" // relative to Repo.configDir
 	INSTANCES_FILEMODE = 0660
 
-	// Type and prefix of proto.Instances that we need to validate
+	// MYSQL_PREFIX an OS_PREFIX are the instance prefixes we need to validate
 	MYSQL_PREFIX = "mysql"
 	OS_PREFIX    = "os"
 )
 
 var UUID_RE, _ = regexp.Compile("^[0-9A-Fa-f]{32}$")
 
+// Creates a new instance repository and returns a pointer to it
 func NewRepo(logger *pct.Logger, configDir string, api pct.APIConnector) *Repo {
 	m := &Repo{
 		logger:    logger,
@@ -67,35 +68,6 @@ func NewRepo(logger *pct.Logger, configDir string, api pct.APIConnector) *Repo {
 	return m
 }
 
-// Determine if two instances are "equal".
-// Instance equality is defined by the equality of all its attributes, plus
-// the number of subsystems and their UUIDs.
-func equalInstances(inst1, inst2 *proto.Instance) bool {
-	if inst1.ParentUUID != inst2.ParentUUID ||
-		inst1.UUID != inst2.UUID ||
-		inst1.Name != inst2.Name ||
-		inst1.Created != inst2.Created ||
-		inst1.Deleted != inst2.Deleted ||
-		inst1.DSN != inst2.DSN ||
-		len(inst1.Subsystems) != len(inst2.Subsystems) ||
-		!reflect.DeepEqual(inst1.Properties, inst2.Properties) {
-		return false
-	}
-	equals := 0
-	for _, it1 := range inst1.Subsystems {
-		for _, it2 := range inst2.Subsystems {
-			if it1.UUID == it2.UUID {
-				equals += 1
-				break
-			}
-		}
-	}
-	if equals != len(inst1.Subsystems) {
-		return false
-	}
-	return true
-}
-
 func isOSInstance(it proto.Instance) bool {
 	return it.Prefix == OS_PREFIX
 }
@@ -105,7 +77,7 @@ func isMySQLInst(it proto.Instance) bool {
 }
 
 func onlyMySQLInsts(slice []proto.Instance) []proto.Instance {
-	justMySQL := make([]proto.Instance, 0)
+	var justMySQL []proto.Instance
 	for _, it := range slice {
 		if isMySQLInst(it) {
 			justMySQL = append(justMySQL, it)
@@ -132,7 +104,7 @@ func (r *Repo) downloadInstances() (data []byte, err error) {
 	url := r.api.EntryLink("instance_tree")
 	data = make([]byte, 0)
 	if url == "" {
-		errMsg := "No 'insts' API link registered"
+		errMsg := "No 'instance_tree' API link registered"
 		r.logger.Warn(errMsg)
 		return data, errors.New(errMsg)
 	}
@@ -142,10 +114,10 @@ func (r *Repo) downloadInstances() (data []byte, err error) {
 		return data, err
 	}
 	if code != http.StatusOK {
-		return data, errors.New(fmt.Sprintf("Failed to get instance config, API returned HTTP status code %d", code))
+		return data, fmt.Errorf("Failed to get instance tree, API returned HTTP status code %d", code)
 	}
 	if data == nil {
-		return data, errors.New("API returned an empty instance config data")
+		return data, errors.New("API returned an empty instance tree data")
 	}
 	return data, nil
 }
@@ -168,27 +140,25 @@ func (r *Repo) updateInstanceIndex() error {
 			return nil
 		case count > 0:
 			// Pop element
-			var inst *proto.Instance = nil
+			var inst *proto.Instance
 			inst, tovisit = tovisit[len(tovisit)-1], tovisit[:len(tovisit)-1]
 			if _, ok := r.it[inst.UUID]; ok {
 				// Should this be a Fatal error?
 				return fmt.Errorf("Cycle in instances tree detected with UUID %s", inst.UUID)
-				// Avoid cycles
+				// TODO: Avoid cycles and keep going?
 				// continue
-			} else {
-				// Index our instance with its UUID
-				r.it[inst.UUID] = inst
 			}
+			// Index our instance with its UUID
+			r.it[inst.UUID] = inst
 			// Queue all our subsystem instances
-			for i, _ := range inst.Subsystems {
+			for i := range inst.Subsystems {
 				tovisit = append(tovisit, &inst.Subsystems[i])
 			}
 		}
 	}
-	return nil
 }
 
-// Initializes the instance repository reading instances tree from local file and pulling it from API
+// Initializes the instance repository by reading instances tree from local file and if not found pulling it from API
 func (r *Repo) Init() error {
 	r.mux.Lock()
 	defer r.mux.Unlock()
@@ -196,7 +166,7 @@ func (r *Repo) Init() error {
 	var data []byte
 	var err error
 	if !pct.FileExists(file) {
-		r.logger.Info(fmt.Sprintf("Instance config file (%s) does not exist, downloading", file))
+		r.logger.Info(fmt.Sprintf("Instance tree file (%s) does not exist, downloading", file))
 		data, err = r.downloadInstances()
 		if err != nil {
 			r.logger.Error(err)
@@ -206,19 +176,19 @@ func (r *Repo) Init() error {
 		r.logger.Debug("Reading " + file)
 		data, err = ioutil.ReadFile(file)
 		if err != nil {
-			r.logger.Error("Could not read instance config file: " + file)
+			r.logger.Error("Could not read instance tree file: " + file)
 			return err
 		}
 	}
 
-	r.logger.Debug("Loading instance config data")
+	r.logger.Debug("Loading instance tree data")
 	if err := r.loadConfig(data); err != nil {
 		r.logger.Error(fmt.Sprintf("Error loading instances config file: %v", err))
 		return err
 	}
-	r.logger.Debug("Saving instance config data to file")
+	r.logger.Debug("Saving instance tree data to file")
 	if err := r.treeToDisk(file); err != nil {
-		r.logger.Error(fmt.Sprintf("Error saving instance config tree to file: %v", err))
+		r.logger.Error(fmt.Sprintf("Error saving instance tree to file: %v", err))
 		return err
 	}
 	r.logger.Info("Loaded " + file)
@@ -245,16 +215,6 @@ func cloneTree(source, target interface{}) error {
 	return nil
 }
 
-// Returns a copy of the instances tree
-func (r *Repo) Instances() proto.Instance {
-	r.mux.Lock()
-	defer r.mux.Unlock()
-
-	var newTree *proto.Instance = nil
-	cloneTree(r.tree, &newTree)
-	return *newTree
-}
-
 // Saves instances tree to disk
 func (r *Repo) treeToDisk(filepath string) error {
 	if r.tree == nil {
@@ -263,7 +223,7 @@ func (r *Repo) treeToDisk(filepath string) error {
 	}
 	data, err := json.Marshal(r.tree)
 	if err != nil {
-		r.logger.Error(fmt.Sprintf("Error JSON-marshalling instance's tree: %v", err))
+		r.logger.Error(fmt.Sprintf("Error JSON-marshalling instance tree: %v", err))
 		return err
 	}
 	return ioutil.WriteFile(filepath, data, INSTANCES_FILEMODE)
@@ -273,26 +233,32 @@ func (r *Repo) treeToDisk(filepath string) error {
 // The method will populate the provided proto.Instance slices with added,
 // deleted or updated instances. If writeToDisk = true the tree will be
 // dumped to disk if update is successfull.
-func (r *Repo) UpdateTree(tree proto.Instance, added *[]proto.Instance, deleted *[]proto.Instance, updated *[]proto.Instance, writeToDisk bool) error {
+func (r *Repo) UpdateTree(tree proto.Instance, version uint, writeToDisk bool) error {
 	r.logger.Debug("Update:call")
 	defer r.logger.Debug("Update:return")
 
 	r.mux.Lock()
 	defer r.mux.Unlock()
 
-	return r.updateTree(tree, added, deleted, updated, writeToDisk)
+	return r.updateTree(tree, version, writeToDisk)
 }
 
-func (r *Repo) updateTree(tree proto.Instance, added *[]proto.Instance, deleted *[]proto.Instance, updated *[]proto.Instance, writeToDisk bool) error {
+func (r *Repo) updateTree(tree proto.Instance, version uint, writeToDisk bool) error {
 	r.logger.Debug("update:call")
 	defer r.logger.Debug("update:return")
 
-	if !isOSInstance(tree) {
-		// tree instance root is not an OS instance
-		return errors.New("Tree instance root is not of 'OS' type and 'os' prefix")
+	if version <= r.treeVersion {
+		err := errors.New("Discarding tree update because its version is lower than current one")
+		// Error to the update process but the user should only receive a warning in log
+		r.logger.Warn(err)
+		return err
 	}
 
-	oldIt := r.it
+	if !isOSInstance(tree) {
+		// tree instance root is not an OS instance
+		return errors.New("Instance tree root is not of OS type ('os' prefix)")
+	}
+
 	// We need to deep copy the provided tree as it keeps references to
 	// proto.Instances in Subsystems slice that are not copied, hence the caller
 	// can modify them without our knowledge
@@ -302,30 +268,7 @@ func (r *Repo) updateTree(tree proto.Instance, added *[]proto.Instance, deleted 
 	}
 	r.tree = newTree
 	r.updateInstanceIndex()
-
-	// Find out what new instances are not in old r.it
-	for _, it := range r.it {
-		if _, ok := oldIt[it.UUID]; !ok {
-			*added = append(*added, *it)
-		}
-	}
-
-	// Find out what instances were updated or deleted
-	for uuid, _ := range oldIt {
-		// Does it exist in new tree?
-		if _, ok := r.it[uuid]; ok {
-			// Is it the same as the former instance?
-			// We use custom compare method instead of using DeepEquals
-			// on the instances as they include references to child instances;
-			// a change in a child instance means DeepEquals will detect that
-			// a parent was also modified.
-			if !equalInstances(oldIt[uuid], r.it[uuid]) {
-				*updated = append(*updated, *(r.it[uuid]))
-			}
-		} else {
-			*deleted = append(*deleted, *(oldIt[uuid]))
-		}
-	}
+	r.treeVersion = version
 
 	if writeToDisk {
 		return r.treeToDisk(r.configFilePath())
@@ -334,8 +277,8 @@ func (r *Repo) updateTree(tree proto.Instance, added *[]proto.Instance, deleted 
 }
 
 func (r *Repo) Get(uuid string) (proto.Instance, error) {
-	//r.logger.Debug("Get:call")
-	//defer r.logger.Debug("Get:return")
+	r.logger.Debug("Get:call")
+	defer r.logger.Debug("Get:return")
 	r.mux.Lock()
 	defer r.mux.Unlock()
 	return r.get(uuid)
@@ -371,26 +314,33 @@ func (r *Repo) valid(uuid string) bool {
 	return UUID_RE.MatchString(uuid)
 }
 
+// Returns a flat list of instances copies in the tree, notice that these are efectively the subtrees on each instance
 func (r *Repo) List() []proto.Instance {
 	r.mux.Lock()
 	defer r.mux.Unlock()
-	instances := make([]proto.Instance, 0)
+	var instances []proto.Instance
 	for _, inst := range r.it {
-		instances = append(instances, *inst)
+		var instCopy *proto.Instance
+		if err := cloneTree(&inst, &instCopy); err != nil {
+			longErr := fmt.Errorf("Couldn't clone local tree: %v", err)
+			r.logger.Error(longErr)
+		}
+		instances = append(instances, *instCopy)
 	}
 	return instances
 }
 
-func (r *Repo) GetTree() (*proto.Instance, error) {
+// Returns a copy of the tree
+func (r *Repo) GetTree() (proto.Instance, error) {
 	r.mux.Lock()
 	defer r.mux.Unlock()
 	var newTree *proto.Instance
 	if err := cloneTree(&r.tree, &newTree); err != nil {
 		longErr := fmt.Errorf("Couldn't clone local tree: %v", err)
 		r.logger.Error(longErr)
-		return nil, longErr
+		return proto.Instance{}, longErr
 	}
-	return newTree, nil
+	return *newTree, nil
 }
 
 func (r *Repo) GetMySQLInstances() []proto.Instance {

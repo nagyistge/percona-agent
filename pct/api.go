@@ -23,7 +23,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/percona/cloud-protocol/proto"
 	"io"
 	"io/ioutil"
 	"net"
@@ -32,9 +31,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/percona/cloud-protocol/proto"
 )
 
-var requiredEntryLinks = []string{"agents", "instances", "download"}
+var requiredEntryLinks = []string{"agents", "instances", "download", "instance_tree"}
 var requiredAgentLinks = []string{"cmd", "log", "data"}
 var timeoutClientConfig = &TimeoutClientConfig{
 	ConnectTimeout:   10 * time.Second,

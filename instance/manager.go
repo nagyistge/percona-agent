@@ -157,38 +157,60 @@ func (m *Manager) mrmUpdateMySQL(updated []proto.Instance) {
 	m.mrmAddMySQL(updated)
 }
 
+// Auxiliary function that will take a slice of uuids and return a new slice with its corresponding proto.Instances
+func (m *Manager) getInstances(uuids []string) []proto.Instance {
+	var insts []proto.Instance
+	for _, uuid := range uuids {
+		it, err := m.repo.Get(uuid)
+		if err != nil {
+			// This should never happen, this reflects a bug in the API code that builds the InstanceSync document with
+			// instances UUIDs in either added, deleted or updated slices that are not present in the tree.
+			// Log the error and keep going, we need to fulfill as much operations as possible.
+			m.logger.Error(fmt.Sprintf("Could not find UUID '%s' in local registry", uuid))
+			continue
+		}
+		insts = append(insts, it)
+	}
+	return insts
+}
+
 // @goroutine[0]
 func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	m.status.UpdateRe("instance", "Handling", cmd)
 	defer m.status.Update("instance", "Running")
 
-	var it *proto.Instance = nil
-	if err := json.Unmarshal(cmd.Data, &it); err != nil {
-		return cmd.Reply(nil, err)
-	}
-
 	switch cmd.Cmd {
 	case "UpdateTree":
-		added := make([]proto.Instance, 0)
-		deleted := make([]proto.Instance, 0)
-		updated := make([]proto.Instance, 0)
-		err := m.repo.UpdateTree(*it, &added, &deleted, &updated, true) // true = write to disk
+		var sync *proto.InstanceSync
+		if err := json.Unmarshal(cmd.Data, &sync); err != nil {
+			return cmd.Reply(nil, err)
+		}
+		err := m.repo.UpdateTree(sync.Tree, sync.Version, true) // true = write to disk
 		if err != nil {
 			return cmd.Reply(nil, err)
 		}
-		// For the following block we only care about MySQL instances
+		// For the following block segment we only care about MySQL instances
 		// From former code logic, we don't actually care about if there was an error
 		// while updating MRM. TODO: really?
-		m.mrmAddMySQL(onlyMySQLInsts(added))
-		m.mrmDeleteMySQL(onlyMySQLInsts(deleted))
-		m.mrmUpdateMySQL(onlyMySQLInsts(updated))
+		m.mrmAddMySQL(onlyMySQLInsts(m.getInstances(sync.Added)))
+		m.mrmDeleteMySQL(onlyMySQLInsts(m.getInstances(sync.Deleted)))
+		m.mrmUpdateMySQL(onlyMySQLInsts(m.getInstances(sync.Updated)))
 		return cmd.Reply(nil, nil)
 	case "GetInfo":
+		var it *proto.Instance
+		if err := json.Unmarshal(cmd.Data, &it); err != nil {
+			return cmd.Reply(nil, err)
+		}
 		err := m.handleGetInfo(*it)
 		return cmd.Reply(it, err)
 	case "GetTree":
+		// GetTree will return the tree plus its version in a proto.InstanceSync
+		var sync *proto.InstanceSync
 		tree, err := m.repo.GetTree()
-		return cmd.Reply(tree, err)
+		version := m.repo.GetTreeVersion()
+		sync.Tree = tree
+		sync.Version = version
+		return cmd.Reply(sync, err)
 	default:
 		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
@@ -245,6 +267,7 @@ func GetMySQLInfo(it proto.Instance) error {
 	return nil
 }
 
+// Returns a slice of all MySQL proto.Instances in the system
 func (m *Manager) GetMySQLInstances() []proto.Instance {
 	m.logger.Debug("GetMySQLInstances:call")
 	defer m.logger.Debug("GetMySQLInstances:return")
@@ -299,10 +322,11 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 	}
 }
 
+// Given a inst proto.Instance this methid will update the instance in API with a PUT request
 func (m *Manager) pushInstanceInfo(inst proto.Instance) error {
 	// Subsystems will be ignored, don't send them
 	inst.Subsystems = make([]proto.Instance, 0)
-	uri := fmt.Sprintf("%s/%s", m.api.EntryLink("insts"), inst.UUID)
+	uri := fmt.Sprintf("%s/%s", m.api.EntryLink("instances"), inst.UUID)
 	data, err := json.Marshal(&inst)
 	if err != nil {
 		m.logger.Error(err)
