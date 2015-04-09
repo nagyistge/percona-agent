@@ -52,7 +52,7 @@ const (
 	OS_PREFIX    = "os"
 )
 
-var UUID_RE, _ = regexp.Compile("^[0-9A-Fa-f]{32}$")
+var UUID_RE = regexp.MustCompile("^[0-9A-Fa-f]{32}$")
 
 // Creates a new instance repository and returns a pointer to it
 func NewRepo(logger *pct.Logger, configDir string, api pct.APIConnector) *Repo {
@@ -72,14 +72,14 @@ func isOSInstance(it proto.Instance) bool {
 	return it.Prefix == OS_PREFIX
 }
 
-func isMySQLInst(it proto.Instance) bool {
+func isMySQLInstance(it proto.Instance) bool {
 	return it.Prefix == MYSQL_PREFIX
 }
 
 func onlyMySQLInsts(slice []proto.Instance) []proto.Instance {
 	var justMySQL []proto.Instance
 	for _, it := range slice {
-		if isMySQLInst(it) {
+		if isMySQLInstance(it) {
 			justMySQL = append(justMySQL, it)
 		}
 	}
