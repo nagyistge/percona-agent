@@ -64,7 +64,7 @@ type WorkerTestSuite struct {
 	logChan       chan *proto.LogEntry
 	logger        *pct.Logger
 	now           time.Time
-	mysqlInstance proto.ServiceInstance
+	mysqlInstance proto.Instance
 	config        qan.Config
 	mysqlConn     mysql.Connector
 	worker        *slowlog.Worker
@@ -77,9 +77,9 @@ func (s *WorkerTestSuite) SetUpSuite(t *C) {
 	s.logChan = make(chan *proto.LogEntry, 100)
 	s.logger = pct.NewLogger(s.logChan, "qan-worker")
 	s.now = time.Now()
-	s.mysqlInstance = proto.ServiceInstance{Service: "mysql", InstanceId: 1}
+	s.mysqlInstance = proto.Instance{UUID: "1", Name: "mysql1"}
 	s.config = qan.Config{
-		ServiceInstance: s.mysqlInstance,
+		UUID: s.mysqlInstance.UUID,
 		Start: []mysql.Query{
 			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
 			mysql.Query{Set: "SET GLOBAL long_query_time=0.123"},
@@ -260,7 +260,7 @@ func (s *WorkerTestSuite) TestRotateAndRemoveSlowLog(t *C) {
 
 	// See TestStartService() for description of these startup tasks.
 	config := qan.Config{
-		ServiceInstance:   s.mysqlInstance,
+		UUID:              s.mysqlInstance.UUID,
 		Interval:          300,
 		MaxSlowLogSize:    1000, // <-- HERE
 		RemoveOldSlowLogs: true, // <-- HERE too
@@ -372,7 +372,7 @@ func (s *WorkerTestSuite) TestRotateSlowLog(t *C) {
 
 	// See TestStartService() for description of these startup tasks.
 	config := qan.Config{
-		ServiceInstance:   s.mysqlInstance,
+		UUID:              s.mysqlInstance.UUID,
 		Interval:          300,
 		MaxSlowLogSize:    1000,
 		RemoveOldSlowLogs: false, // <-- HERE
@@ -472,7 +472,7 @@ func (s *WorkerTestSuite) TestRotateSlowLog(t *C) {
 
 func (s *WorkerTestSuite) TestStop(t *C) {
 	config := qan.Config{
-		ServiceInstance:   s.mysqlInstance,
+		UUID:              s.mysqlInstance.UUID,
 		Interval:          300,
 		MaxSlowLogSize:    1024 * 1024 * 1024,
 		RemoveOldSlowLogs: true,
