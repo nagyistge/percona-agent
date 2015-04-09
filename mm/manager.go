@@ -175,7 +175,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		}
 
 		// Create the monitor based on its type.
-		monitor, err := m.factory.Make(mm.Service, mm.InstanceId, cmd.Data)
+		monitor, err := m.factory.Make(mm.UUID, cmd.Data)
 		if err != nil {
 			return cmd.Reply(nil, errors.New("Factory: "+err.Error()))
 		}
@@ -297,12 +297,9 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 		}
 		config := proto.AgentConfig{
 			InternalService: "mm",
-			ExternalService: proto.ServiceInstance{
-				Service:    mmConfig.Service,
-				InstanceId: mmConfig.InstanceId,
-			},
-			Config:  string(bytes),
-			Running: true, // config removed if stopped, so it must be running
+			UUID:            mmConfig.UUID,
+			Config:          string(bytes),
+			Running:         true, // config removed if stopped, so it must be running
 		}
 		configs = append(configs, config)
 	}

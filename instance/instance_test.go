@@ -75,14 +75,14 @@ func (s *RepoTestSuite) SetUpTest(t *C) {
 	}
 
 	links := map[string]string{
-		"instance_tree": "http://localhost/insts",
+		"system_tree": "http://localhost/insts",
 	}
 	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
 	s.im = instance.NewRepo(s.logger, s.configDir, s.api)
 	t.Assert(s.im, NotNil)
 
 	s.instancesFile = filepath.Join(s.configDir, instance.INSTANCES_FILE)
-	err := test.CopyFile(test.RootDir+"/instance/instances-1.conf", s.instancesFile)
+	err := test.CopyFile(test.RootDir+"/instance/system-tree-1.json", s.instancesFile)
 	t.Assert(err, IsNil)
 
 	data, err := ioutil.ReadFile(s.instancesFile)
@@ -150,7 +150,7 @@ func (s *RepoTestSuite) TestUpdateTreeWrongRoot(t *C) {
 	err := s.im.Init()
 	t.Assert(err, IsNil)
 
-	// Request 2 instance tree copies (using instances-1.conf fixture)
+	// Request 2 system tree copies (using instances-1.conf fixture)
 	origTree, err := s.im.GetTree()
 	t.Assert(err, IsNil)
 	tree, err := s.im.GetTree()
@@ -181,7 +181,7 @@ func (s *RepoTestSuite) TestUpdateTree(t *C) {
 	err := s.im.Init()
 	t.Assert(err, IsNil)
 
-	// Request an instance tree copy (using instances-1.conf fixture)
+	// Request an system tree copy (using instances-1.conf fixture)
 	tree, err := s.im.GetTree()
 	t.Assert(err, IsNil)
 
@@ -247,8 +247,8 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.logger = pct.NewLogger(s.logChan, "pct-it-test")
 
 	links := map[string]string{
-		"instance_tree": "http://localhost/agent/instance/sync",
-		"instances":     "http://localhost/instances",
+		"system_tree": "http://localhost/agent/instance/sync",
+		"instances":   "http://localhost/instances",
 	}
 	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
 }
@@ -260,8 +260,8 @@ func (s *ManagerTestSuite) SetUpTest(t *C) {
 			t.Error(err)
 		}
 	}
-	s.instancesFile = filepath.Join(s.configDir, "instances.conf")
-	err := test.CopyFile(test.RootDir+"/instance/instances-1.conf", s.instancesFile)
+	s.instancesFile = filepath.Join(s.configDir, "system-tree.json")
+	err := test.CopyFile(test.RootDir+"/instance/system-tree-1.json", s.instancesFile)
 	t.Assert(err, IsNil)
 
 	data, err := ioutil.ReadFile(s.instancesFile)
@@ -388,7 +388,7 @@ func (s *ManagerTestSuite) TestHandleUpdate(t *C) {
 	osIt.Subsystems = append(osIt.Subsystems, mysqlIt1)
 	osIt.Subsystems = append(osIt.Subsystems, mysqlIt2)
 
-	sync := proto.InstanceSync{}
+	sync := proto.SystemTreeSync{}
 	sync.Version = 2
 	sync.Added = []string{"916f4c31aaa35d6b867dae9a7f54270d"}
 	sync.Updated = []string{"67b6ac9eaace265d3dad87663235eba8"}
@@ -437,7 +437,7 @@ func (s *ManagerTestSuite) TestHandleUpdateNoOS(t *C) {
 	mysqlIt.Prefix = "mysql"
 	mysqlIt.UUID = "c540346a644b404a9d2ae006122fc5a2"
 
-	sync := proto.InstanceSync{}
+	sync := proto.SystemTreeSync{}
 	sync.Version = 2
 	sync.Added = []string{"916f4c31aaa35d6b867dae9a7f54270d"}
 	sync.Updated = []string{"67b6ac9eaace265d3dad87663235eba8"}
@@ -457,7 +457,7 @@ func (s *ManagerTestSuite) TestHandleUpdateNoOS(t *C) {
 	}
 
 	reply := m.Handle(cmd)
-	t.Assert(reply.Error, Equals, "Instance tree root is not of OS type ('os' prefix)")
+	t.Assert(reply.Error, Equals, "System tree root is not of OS type ('os' prefix)")
 }
 
 func (s *ManagerTestSuite) TestGetTree(t *C) {
@@ -482,7 +482,7 @@ func (s *ManagerTestSuite) TestGetTree(t *C) {
 	reply := m.Handle(cmd)
 	t.Assert(reply.Error, Equals, "")
 
-	var sync *proto.InstanceSync
+	var sync *proto.SystemTreeSync
 
 	json.Unmarshal(reply.Data, &sync)
 	t.Assert(sync.Version, Equals, uint(0))

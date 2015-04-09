@@ -162,7 +162,7 @@ func (m *Manager) getInstances(uuids []string) []proto.Instance {
 	for _, uuid := range uuids {
 		it, err := m.repo.Get(uuid)
 		if err != nil {
-			// This should never happen, this reflects a bug in the API code that builds the InstanceSync document with
+			// This should never happen, this reflects a bug in the API code that builds the proto.SystemTreeSync document with
 			// instances UUIDs in either added, deleted or updated slices that are not present in the tree.
 			// Log the error and keep going, we need to fulfill as much operations as possible.
 			m.logger.Error(fmt.Sprintf("Could not find UUID '%s' in local registry", uuid))
@@ -180,7 +180,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 	switch cmd.Cmd {
 	case "UpdateTree":
-		var sync *proto.InstanceSync
+		var sync *proto.SystemTreeSync
 		if err := json.Unmarshal(cmd.Data, &sync); err != nil {
 			return cmd.Reply(nil, err)
 		}
@@ -203,8 +203,8 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		err := m.handleGetInfo(*it)
 		return cmd.Reply(it, err)
 	case "GetTree":
-		// GetTree will return the tree plus its version in a proto.InstanceSync
-		sync := proto.InstanceSync{}
+		// GetTree will return the tree plus its version in a proto.proto.SystemTreeSync
+		sync := proto.SystemTreeSync{}
 		tree, err := m.repo.GetTree()
 		if err != nil {
 			return cmd.Reply(nil, err)

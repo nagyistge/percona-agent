@@ -17,10 +17,6 @@
 
 package mm
 
-import (
-	"github.com/percona/cloud-protocol/proto"
-)
-
 /**
  * mm is a proxy service for monitors so this config is per-monitor.
  * Monitors are uniquely identified by name, so one agent can monitor
@@ -28,7 +24,7 @@ import (
  */
 
 type Config struct {
-	proto.ServiceInstance      // info about external service being monitored
-	Collect               uint // how often monitor collects metrics (seconds)
-	Report                uint // how often aggregator reports metrics (seconds)
+	UUID    string // info about external service being monitored
+	Collect uint   // how often monitor collects metrics (seconds)
+	Report  uint   // how often aggregator reports metrics (seconds)
 }

@@ -32,7 +32,7 @@ type Monitor interface {
 }
 
 type MonitorFactory interface {
-	Make(service string, instanceId string, data []byte) (Monitor, error)
+	Make(uuid string, data []byte) (Monitor, error)
 }
 
 // ["variable", "value"]

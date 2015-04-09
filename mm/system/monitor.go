@@ -19,13 +19,13 @@ package system
 
 import (
 	"fmt"
-	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/percona-agent/mm"
-	"github.com/percona/percona-agent/pct"
 	"io/ioutil"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/percona/percona-agent/mm"
+	"github.com/percona/percona-agent/pct"
 )
 
 // Keep CPUStates and nCPUStates in sync, else Go will panic accessing index out of range.
@@ -155,10 +155,7 @@ func (m *Monitor) run() {
 			m.status.Update(m.name, "Running")
 
 			c := &mm.Collection{
-				ServiceInstance: proto.ServiceInstance{
-					Service:    m.config.Service,
-					InstanceId: m.config.InstanceId,
-				},
+				UUID:    m.config.UUID,
 				Ts:      now.UTC().Unix(),
 				Metrics: []mm.Metric{},
 			}

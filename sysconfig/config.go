@@ -17,11 +17,7 @@
 
 package sysconfig
 
-import (
-	"github.com/percona/cloud-protocol/proto"
-)
-
 type Config struct {
-	proto.ServiceInstance
+	UUID   string
 	Report uint // how often to collect and send config (seconds)
 }

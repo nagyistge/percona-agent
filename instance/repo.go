@@ -44,7 +44,7 @@ type Repo struct {
 }
 
 const (
-	INSTANCES_FILE     = "instance-tree.json" // relative to Repo.configDir
+	INSTANCES_FILE     = "system-tree.json" // relative to Repo.configDir
 	INSTANCES_FILEMODE = 0660
 
 	// MYSQL_PREFIX an OS_PREFIX are the instance prefixes we need to validate
@@ -99,12 +99,12 @@ func (r *Repo) loadConfig(data []byte) error {
 	return r.updateInstanceIndex()
 }
 
-// Downloads and returns the instances tree data from API.
+// Downloads and returns the system tree data from API.
 func (r *Repo) downloadInstances() (data []byte, err error) {
-	url := r.api.EntryLink("instance_tree")
+	url := r.api.EntryLink("system_tree")
 	data = make([]byte, 0)
 	if url == "" {
-		errMsg := "No 'instance_tree' API link registered"
+		errMsg := "No 'system_tree' API link registered"
 		r.logger.Warn(errMsg)
 		return data, errors.New(errMsg)
 	}
@@ -114,10 +114,10 @@ func (r *Repo) downloadInstances() (data []byte, err error) {
 		return data, err
 	}
 	if code != http.StatusOK {
-		return data, fmt.Errorf("Failed to get instance tree, API returned HTTP status code %d", code)
+		return data, fmt.Errorf("Failed to get system tree, API returned HTTP status code %d", code)
 	}
 	if data == nil {
-		return data, errors.New("API returned an empty instance tree data")
+		return data, errors.New("API returned an empty system tree data")
 	}
 	return data, nil
 }
@@ -144,7 +144,7 @@ func (r *Repo) updateInstanceIndex() error {
 			inst, tovisit = tovisit[len(tovisit)-1], tovisit[:len(tovisit)-1]
 			if _, ok := r.it[inst.UUID]; ok {
 				// Should this be a Fatal error?
-				return fmt.Errorf("Cycle in instances tree detected with UUID %s", inst.UUID)
+				return fmt.Errorf("Cycle in system tree detected with UUID %s", inst.UUID)
 				// TODO: Avoid cycles and keep going?
 				// continue
 			}
@@ -158,7 +158,7 @@ func (r *Repo) updateInstanceIndex() error {
 	}
 }
 
-// Initializes the instance repository by reading instances tree from local file and if not found pulling it from API
+// Initializes the instance repository by reading system tree from local file and if not found pulling it from API
 func (r *Repo) Init() error {
 	r.mux.Lock()
 	defer r.mux.Unlock()
@@ -166,7 +166,7 @@ func (r *Repo) Init() error {
 	var data []byte
 	var err error
 	if !pct.FileExists(file) {
-		r.logger.Info(fmt.Sprintf("Instance tree file (%s) does not exist, downloading", file))
+		r.logger.Info(fmt.Sprintf("System tree file (%s) does not exist, downloading", file))
 		data, err = r.downloadInstances()
 		if err != nil {
 			r.logger.Error(err)
@@ -176,19 +176,19 @@ func (r *Repo) Init() error {
 		r.logger.Debug("Reading " + file)
 		data, err = ioutil.ReadFile(file)
 		if err != nil {
-			r.logger.Error("Could not read instance tree file: " + file)
+			r.logger.Error("Could not read system tree file: " + file)
 			return err
 		}
 	}
 
-	r.logger.Debug("Loading instance tree data")
+	r.logger.Debug("Loading system tree data")
 	if err := r.loadConfig(data); err != nil {
 		r.logger.Error(fmt.Sprintf("Error loading instances config file: %v", err))
 		return err
 	}
-	r.logger.Debug("Saving instance tree data to file")
+	r.logger.Debug("Saving system tree data to file")
 	if err := r.treeToDisk(file); err != nil {
-		r.logger.Error(fmt.Sprintf("Error saving instance tree to file: %v", err))
+		r.logger.Error(fmt.Sprintf("Error saving system tree to file: %v", err))
 		return err
 	}
 	r.logger.Info("Loaded " + file)
@@ -215,7 +215,7 @@ func cloneTree(source, target interface{}) error {
 	return nil
 }
 
-// Saves instances tree to disk
+// Saves system tree to disk
 func (r *Repo) treeToDisk(filepath string) error {
 	if r.tree == nil {
 		// Nothing to save to disk, return inmediatly
@@ -223,7 +223,7 @@ func (r *Repo) treeToDisk(filepath string) error {
 	}
 	data, err := json.Marshal(r.tree)
 	if err != nil {
-		r.logger.Error(fmt.Sprintf("Error JSON-marshalling instance tree: %v", err))
+		r.logger.Error(fmt.Sprintf("Error JSON-marshalling system tree: %v", err))
 		return err
 	}
 	return ioutil.WriteFile(filepath, data, INSTANCES_FILEMODE)
@@ -256,7 +256,7 @@ func (r *Repo) updateTree(tree proto.Instance, version uint, writeToDisk bool) e
 
 	if !isOSInstance(tree) {
 		// tree instance root is not an OS instance
-		return errors.New("Instance tree root is not of OS type ('os' prefix)")
+		return errors.New("System tree root is not of OS type ('os' prefix)")
 	}
 
 	// We need to deep copy the provided tree as it keeps references to
@@ -295,7 +295,7 @@ func (r *Repo) get(uuid string) (proto.Instance, error) {
 	// We do full tree syncs, if we can't find an instance UUID download
 	// everything and query again.
 	if _, ok := r.it[uuid]; !ok {
-		r.logger.Info("Downloading instance tree from API")
+		r.logger.Info("Downloading system tree from API")
 		data, err := r.downloadInstances()
 		if err != nil {
 			return proto.Instance{}, err
@@ -336,7 +336,7 @@ func (r *Repo) GetTree() (proto.Instance, error) {
 	defer r.mux.Unlock()
 
 	if r.tree == nil {
-		return proto.Instance{}, errors.New("Repository has no local instance tree")
+		return proto.Instance{}, errors.New("Repository has no local system tree")
 	}
 
 	var newTree *proto.Instance

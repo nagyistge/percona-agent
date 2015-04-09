@@ -17,11 +17,7 @@
 
 package mm
 
-import (
-	"time"
-
-	"github.com/percona/cloud-protocol/proto"
-)
+import "time"
 
 /**
  * A Monitor collects one or more Metric, usually many.  The MySQL monitor
@@ -43,7 +39,7 @@ type Monitor interface {
 }
 
 type MonitorFactory interface {
-	Make(service string, instanceId string, data []byte) (Monitor, error)
+	Make(uuid string, data []byte) (Monitor, error)
 }
 
 var MetricTypes map[string]bool = map[string]bool{
@@ -64,14 +60,14 @@ type Metric struct {
 // Collections can come from different instances.  For example,
 // one agent can monitor two different MySQL instances.
 type Collection struct {
-	proto.ServiceInstance
+	UUID    string
 	Ts      int64 // UTC Unix timestamp
 	Metrics []Metric
 }
 
 // Stats for each metric from a service instance, computed at each report interval.
 type InstanceStats struct {
-	proto.ServiceInstance
+	UUID  string
 	Stats map[string]*Stats // keyed on metric name
 }
 
