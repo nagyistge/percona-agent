@@ -144,7 +144,6 @@ func (m *Manager) mrmAddMySQL(added []proto.Instance) {
 
 // Auxiliary function to remove deleted MySQL instances from MRM
 func (m *Manager) mrmDeleteMySQL(deleted []proto.Instance) {
-
 	for _, dltIt := range deleted {
 		m.mrm.Remove(dltIt.DSN, m.mrmChans[dltIt.DSN])
 	}
