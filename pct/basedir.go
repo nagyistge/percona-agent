@@ -151,8 +151,8 @@ func (b *basedir) NewConfigIterator(service string) (*ConfigIterator, error) {
 	return &ConfigIterator{files: files, current: -1}, nil
 }
 
-func (b *basedir) ReadConfig(service string, v interface{}) error {
-	data, err := ioutil.ReadFile(b.ConfigFile(service))
+func (b *basedir) ReadConfig(name string, v interface{}) error {
+	data, err := ioutil.ReadFile(b.ConfigFile(name))
 	if err != nil && !os.IsNotExist(err) {
 		// There's an error and it's not "file not found".
 		return err
@@ -163,8 +163,8 @@ func (b *basedir) ReadConfig(service string, v interface{}) error {
 	return err
 }
 
-func (b *basedir) WriteConfig(service string, config interface{}) error {
-	return b.writeFile(b.ConfigFile(service), config)
+func (b *basedir) WriteConfig(name string, config interface{}) error {
+	return b.writeFile(b.ConfigFile(name), config)
 }
 
 // Given a service string and a config this method will serialize the config

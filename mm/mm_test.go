@@ -535,43 +535,49 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	}
 	s.configDir = pct.Basedir.Dir("config")
 
-	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im"), s.configDir, s.api)
-	data, err := json.Marshal(&proto.MySQLInstance{
-		Hostname: "db1",
-		DSN:      "user:host@tcp:(127.0.0.1:3306)",
-	})
-	t.Assert(err, IsNil)
-	s.im.Add("mysql", 1, data, false)
-	data, err = json.Marshal(&proto.ServerInstance{Hostname: "host1"})
-	t.Assert(err, IsNil)
-	s.im.Add("server", 1, data, false)
+	//	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im"), s.configDir, s.api)
+	//	data, err := json.Marshal(&proto.MySQLInstance{
+	//		Hostname: "db1",
+	//		DSN:      "user:host@tcp:(127.0.0.1:3306)",
+	//	})
+	//	t.Assert(err, IsNil)
+	//	s.im.Add("mysql", 1, data, false)
+	//	data, err = json.Marshal(&proto.ServerInstance{Hostname: "host1"})
+	//	t.Assert(err, IsNil)
+	//	s.im.Add("server", 1, data, false)
 
 	s.mysqlMonitor = mock.NewMmMonitor()
 	s.systemMonitor = mock.NewMmMonitor()
 	s.factory = mock.NewMmMonitorFactory(map[string]mm.Monitor{
-		"mysql-1":  s.mysqlMonitor,
-		"server-1": s.systemMonitor,
+		"c540346a644b404a9d2ae006122fc5a2": s.mysqlMonitor,  // corresponds to OS instance in test data
+		"31dd3b7b602849f8871fd3e7acc8c2e3": s.systemMonitor, // corresponds to first MySQL instance in test data
 	})
 
+	systemTreeFile := filepath.Join(s.configDir, instance.INSTANCES_FILE)
+	err = test.CopyFile(test.RootDir+"/instance/system-tree-1.json", systemTreeFile)
+	t.Assert(err, IsNil)
+
 	links := map[string]string{
-		"agent":     "http://localhost/agent",
-		"instances": "http://localhost/instances",
+		"agent":       "http://localhost/agent",
+		"instances":   "http://localhost/instances",
+		"system_tree": "http://localhost/systemtree",
 	}
 	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
+	s.im = instance.NewRepo(s.logger, s.configDir, s.api)
+	t.Assert(s.im, NotNil)
+	err = s.im.Init()
+	t.Assert(err, IsNil)
 }
 
 func (s *ManagerTestSuite) SetUpTest(t *C) {
 	s.clock = mock.NewClock()
-	glob := filepath.Join(pct.Basedir.Dir("config"), "*")
-	files, err := filepath.Glob(glob)
-	if err != nil {
-		t.Fatal(err)
-	}
+	files, _ := filepath.Glob(s.configDir + "/*")
 	for _, file := range files {
 		if err := os.Remove(file); err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 	}
+
 }
 
 func (s *ManagerTestSuite) TearDownSuite(t *C) {
@@ -602,10 +608,7 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 
 	// First the API marshals an mm.Config.
 	config := &mm.Config{
-		ServiceInstance: proto.ServiceInstance{
-			Service:    "mysql",
-			InstanceId: 1,
-		},
+		UUID:    "c540346a644b404a9d2ae006122fc5a2",
 		Collect: 1,
 		Report:  60,
 		// No monitor-specific config
@@ -660,10 +663,7 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	// This is the config in test/mm/config/mm-mysql-1.conf.
 	mmConfig := &mysql.Config{
 		Config: mm.Config{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
+			UUID:    "c540346a644b404a9d2ae006122fc5a2",
 			Collect: 1,
 			Report:  60,
 		},
@@ -703,7 +703,8 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	// After starting a monitor, mm should write its config to the dir
 	// it learned when mm.LoadConfig() was called.  Next time agent starts,
 	// it will have mm start the monitor with this config.
-	data, err := ioutil.ReadFile(s.configDir + "/mm-mysql-1.conf")
+	configFile := "mm-c540346a644b404a9d2ae006122fc5a2.conf"
+	data, err := ioutil.ReadFile(filepath.Join(s.configDir, configFile))
 	t.Check(err, IsNil)
 	gotConfig := &mysql.Config{}
 	err = json.Unmarshal(data, gotConfig)
@@ -741,9 +742,8 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 
 	// After stopping a monitor, mm should remove its config file so agent
 	// doesn't start it on restart.
-	file := s.configDir + "/mm-mysql-1.conf"
-	if pct.FileExists(file) {
-		t.Error("Stopping monitor removes its config; ", file, " exists")
+	if pct.FileExists(configFile) {
+		t.Error("Stopping monitor removes its config; ", configFile, " exists")
 	}
 
 	/**
@@ -779,7 +779,7 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	// After starting a monitor, mm should write its config to the dir
 	// it learned when mm.LoadConfig() was called.  Next time agent starts,
 	// it will have mm start the monitor with this config.
-	data, err = ioutil.ReadFile(s.configDir + "/mm-mysql-1.conf")
+	data, err = ioutil.ReadFile(filepath.Join(s.configDir, configFile))
 	t.Check(err, IsNil)
 	gotConfig = &mysql.Config{}
 	err = json.Unmarshal(data, gotConfig)
@@ -818,10 +818,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	 */
 	mysqlMonitorConfig := &mysql.Config{
 		Config: mm.Config{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
+			UUID:    "c540346a644b404a9d2ae006122fc5a2",
 			Collect: 1,
 			Report:  60,
 		},
@@ -848,10 +845,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	 */
 	systemMonitorConfig := &system.Config{
 		Config: mm.Config{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    "server",
-				InstanceId: 1,
-			},
+			UUID:    "31dd3b7b602849f8871fd3e7acc8c2e3",
 			Collect: 10,
 			Report:  60,
 		},
@@ -887,21 +881,15 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	expectConfig := []proto.AgentConfig{
 		{
 			InternalService: "mm",
-			ExternalService: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
-			Config:  string(mysqlData),
-			Running: true,
+			UUID:            "c540346a644b404a9d2ae006122fc5a2",
+			Config:          string(mysqlData),
+			Running:         true,
 		},
 		{
 			InternalService: "mm",
-			ExternalService: proto.ServiceInstance{
-				Service:    "server",
-				InstanceId: 1,
-			},
-			Config:  string(systemData),
-			Running: true,
+			UUID:            "31dd3b7b602849f8871fd3e7acc8c2e3",
+			Config:          string(systemData),
+			Running:         true,
 		},
 	}
 	if same, diff := test.IsDeeply(gotConfig, expectConfig); !same {

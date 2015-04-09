@@ -39,6 +39,8 @@ import (
 	"github.com/percona/percona-agent/ticker"
 )
 
+const CONFIG_PREFIX = "mm-"
+
 // We use one binding per unique mm.Report interval.  For example, if some monitors
 // report every 60s and others every 10s, then there are two bindings.  All monitors
 // with the same report interval share the same binding: collectionChan to send
@@ -158,20 +160,20 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 	switch cmd.Cmd {
 	case "StartService":
-		mm, name, err := m.getMonitorConfig(cmd)
+		mm, uuid, err := m.getMonitorConfig(cmd)
 		if err != nil {
 			return cmd.Reply(nil, err)
 		}
 
-		m.status.UpdateRe("mm", "Starting "+name, cmd)
-		m.logger.Info("Start", name, cmd)
+		m.status.UpdateRe("mm", "Starting "+uuid, cmd)
+		m.logger.Info("Start", uuid, cmd)
 
 		// Monitors names must be unique.
 		m.mux.RLock()
-		_, haveMonitor := m.monitors[name]
+		_, haveMonitor := m.monitors[uuid]
 		m.mux.RUnlock()
 		if haveMonitor {
-			return cmd.Reply(nil, errors.New("Duplicate monitor: "+name))
+			return cmd.Reply(nil, errors.New("Duplicate monitor: "+uuid))
 		}
 
 		// Create the monitor based on its type.
@@ -208,16 +210,16 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 		// Start the monitor.
 		if err := monitor.Start(tickChan, a.collectionChan); err != nil {
-			return cmd.Reply(nil, errors.New("Start "+name+": "+err.Error()))
+			return cmd.Reply(nil, errors.New("Start "+uuid+": "+err.Error()))
 		}
 		m.mux.Lock()
-		m.monitors[name] = monitor
+		m.monitors[uuid] = monitor
 		m.mux.Unlock()
 
 		// Save the monitor-specific config to disk so agent starts on restart.
 		monitorConfig := monitor.Config()
-		if err := pct.Basedir.WriteConfig(name, monitorConfig); err != nil {
-			return cmd.Reply(nil, errors.New("Write "+name+" config:"+err.Error()))
+		if err := pct.Basedir.WriteConfig(CONFIG_PREFIX+uuid, monitorConfig); err != nil {
+			return cmd.Reply(nil, errors.New("Write "+uuid+" config:"+err.Error()))
 		}
 
 		return cmd.Reply(nil) // success
@@ -322,9 +324,5 @@ func (m *Manager) getMonitorConfig(cmd *proto.Cmd) (*Config, string, error) {
 		}
 	}
 
-	// The real name of the internal service, e.g. mm-mysql-1:
-	// TODO: FIX THIS - COMMENTED ON instance refactor
-	//name := "mm-" + m.im.Name(mm.InstanceId)
-	name := ""
-	return mm, name, nil
+	return mm, mm.UUID, nil
 }

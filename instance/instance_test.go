@@ -75,7 +75,7 @@ func (s *RepoTestSuite) SetUpTest(t *C) {
 	}
 
 	links := map[string]string{
-		"system_tree": "http://localhost/insts",
+		"system_tree": "http://localhost/systemtree",
 	}
 	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
 	s.im = instance.NewRepo(s.logger, s.configDir, s.api)
@@ -247,7 +247,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.logger = pct.NewLogger(s.logChan, "pct-it-test")
 
 	links := map[string]string{
-		"system_tree": "http://localhost/agent/instance/sync",
+		"system_tree": "http://localhost/systemtree",
 		"instances":   "http://localhost/instances",
 	}
 	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
