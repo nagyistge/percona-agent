@@ -96,10 +96,7 @@ func (s *TestSuite) TestStartCollectStop(t *C) {
 	// embed a mm.Config which embed an instance.Config:
 	config := &mysql.Config{
 		Config: mm.Config{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
+			UUID:    "1",
 			Collect: 1,
 			Report:  60,
 		},
@@ -199,10 +196,7 @@ func (s *TestSuite) TestCollectInnoDBStats(t *C) {
 
 	config := &mysql.Config{
 		Config: mm.Config{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
+			UUID:    "1",
 			Collect: 1,
 			Report:  60,
 		},
@@ -281,10 +275,7 @@ func (s *TestSuite) TestCollectUserstats(t *C) {
 
 	config := &mysql.Config{
 		Config: mm.Config{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
+			UUID:    "1",
 			Collect: 1,
 			Report:  60,
 		},
@@ -382,10 +373,7 @@ func (s *TestSuite) TestHandleMySQLRestarts(t *C) {
 
 	config := &mysql.Config{
 		Config: mm.Config{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
+			UUID:    "1",
 			Collect: 1,
 			Report:  60,
 		},
@@ -468,10 +456,7 @@ func (s *TestSuite) TestSlowResponse(t *C) {
 	// https://jira.percona.com/browse/PCT-565
 	config := &mysql.Config{
 		Config: mm.Config{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
+			UUID:    "1",
 			Collect: 1,
 			Report:  60,
 		},
@@ -509,10 +494,7 @@ func (s *TestSuite) TestSlowResponse(t *C) {
 func (s *TestSuite) TestStartWithInvalidDSN(t *C) {
 	config := &mysql.Config{
 		Config: mm.Config{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
+			UUID:    "1",
 			Collect: 1,
 			Report:  60,
 		},
