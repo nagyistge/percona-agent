@@ -26,6 +26,7 @@ import (
 	"sort"
 	"testing"
 
+	. "github.com/go-test/test"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/mysql"
@@ -106,9 +107,9 @@ func (s *RepoTestSuite) TestInit(t *C) {
 	tree, err := s.im.GetTree()
 	t.Assert(err, IsNil)
 
-	if same, diff := test.IsDeeply(tree, s.instances); !same {
-		test.Dump(tree)
-		test.Dump(s.instances)
+	if same, diff := IsDeeply(tree, s.instances); !same {
+		Dump(tree)
+		Dump(s.instances)
 		t.Error(diff)
 	}
 	t.Assert(len(s.im.List()), Equals, 7)
@@ -137,9 +138,9 @@ func (s *RepoTestSuite) TestInitDownload(t *C) {
 	err = json.Unmarshal(downloadedFile, &saved)
 	t.Assert(err, IsNil)
 
-	if same, diff := test.IsDeeply(original, saved); !same {
-		test.Dump(original)
-		test.Dump(saved)
+	if same, diff := IsDeeply(original, saved); !same {
+		Dump(original)
+		Dump(saved)
 		t.Error(diff)
 	}
 }
@@ -168,9 +169,9 @@ func (s *RepoTestSuite) TestUpdateTreeWrongRoot(t *C) {
 	var savedTree *proto.Instance
 	err = json.Unmarshal(savedTreeData, &savedTree)
 	t.Assert(err, IsNil)
-	if same, diff := test.IsDeeply(&origTree, savedTree); !same {
-		test.Dump(&origTree)
-		test.Dump(savedTree)
+	if same, diff := IsDeeply(&origTree, savedTree); !same {
+		Dump(&origTree)
+		Dump(savedTree)
 		t.Error(diff)
 	}
 }
@@ -209,9 +210,9 @@ func (s *RepoTestSuite) TestUpdateTree(t *C) {
 	var newTree *proto.Instance
 	err = json.Unmarshal(savedTree, &newTree)
 	t.Assert(err, IsNil)
-	if same, diff := test.IsDeeply(&tree, newTree); !same {
-		test.Dump(&tree)
-		test.Dump(newTree)
+	if same, diff := IsDeeply(&tree, newTree); !same {
+		Dump(&tree)
+		Dump(newTree)
 		t.Error(diff)
 	}
 }
@@ -418,9 +419,9 @@ func (s *ManagerTestSuite) TestHandleUpdate(t *C) {
 	// We need to sort as order is not stable
 	sort.Strings(received)
 	expected := []string{"67b6ac9eaace265d3dad87663235eba8", "c540346a644b404a9d2ae006122fc5a2"}
-	if same, diff := test.IsDeeply(received, expected); !same {
-		test.Dump(received)
-		test.Dump(expected)
+	if same, diff := IsDeeply(received, expected); !same {
+		Dump(received)
+		Dump(expected)
 		t.Error(diff)
 	}
 }
@@ -485,9 +486,9 @@ func (s *ManagerTestSuite) TestGetTree(t *C) {
 
 	json.Unmarshal(reply.Data, &sync)
 	t.Assert(sync.Version, Equals, uint(0))
-	if same, diff := test.IsDeeply(sync.Tree, s.instances); !same {
-		test.Dump(sync.Tree)
-		test.Dump(s.instances)
+	if same, diff := IsDeeply(sync.Tree, s.instances); !same {
+		Dump(sync.Tree)
+		Dump(s.instances)
 		t.Error(diff)
 	}
 }
