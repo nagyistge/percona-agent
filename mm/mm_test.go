@@ -892,10 +892,27 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 			Running:         true,
 		},
 	}
+	// Sort, slice order is not stable
+	sort.Sort(ByUUID(gotConfig))
+	sort.Sort(ByUUID(expectConfig))
 	if same, diff := test.IsDeeply(gotConfig, expectConfig); !same {
 		test.Dump(gotConfig)
 		t.Error(diff)
 	}
+}
+
+type ByUUID []proto.AgentConfig
+
+func (s ByUUID) Len() int {
+	return len(s)
+}
+
+func (s ByUUID) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s ByUUID) Less(i, j int) bool {
+	return s[i].UUID < s[j].UUID
 }
 
 /////////////////////////////////////////////////////////////////////////////
