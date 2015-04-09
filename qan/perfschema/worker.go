@@ -324,7 +324,13 @@ ROW_LOOP:
 		select {
 		case row := <-rowChan:
 			w.lastRowCnt++
-			classId := "0000000000000000"
+			// If events_statements_summary_by_digest is full, MySQL will start
+			// setting the digest to NULL and will only compute a summary under that
+			// null digest.
+			// http://dev.mysql.com/doc/refman/5.6/en/statement-summary-tables.html#idm140190647360848
+			// In that case, we set the digest to the string NULL to support this
+			// summary in PCT
+			classId := "NULL"
 			if len(row.Digest) >= 32 {
 				classId = strings.ToUpper(row.Digest[16:32])
 			}
