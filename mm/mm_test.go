@@ -549,8 +549,8 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.mysqlMonitor = mock.NewMmMonitor()
 	s.systemMonitor = mock.NewMmMonitor()
 	s.factory = mock.NewMmMonitorFactory(map[string]mm.Monitor{
-		"c540346a644b404a9d2ae006122fc5a2": s.mysqlMonitor,  // corresponds to OS instance in test data
-		"31dd3b7b602849f8871fd3e7acc8c2e3": s.systemMonitor, // corresponds to first MySQL instance in test data
+		"31dd3b7b602849f8871fd3e7acc8c2e3": s.systemMonitor, // corresponds to OS instance in test data
+		"c540346a644b404a9d2ae006122fc5a2": s.mysqlMonitor,  // corresponds to first MySQL instance in test data
 	})
 
 	systemTreeFile := filepath.Join(s.configDir, instance.INSTANCES_FILE)
