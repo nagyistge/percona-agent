@@ -351,8 +351,10 @@ ROW_LOOP:
 					var err error
 					digestText, err = w.getText(row.Digest)
 					if classId == "NULL" && digestText == "" {
-						digestText = "perf_schema_tables_full"
+						// To make explains works
+						digestText = `SELECT "perf_schema_tables_are_full"`
 					}
+					fmt.Println(digestText)
 					if err != nil {
 						w.logger.Error(err)
 						continue
