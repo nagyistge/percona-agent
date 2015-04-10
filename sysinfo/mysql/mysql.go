@@ -20,6 +20,7 @@ package mysql
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/pct"
@@ -56,9 +57,9 @@ func (m *MySQL) Handle(protoCmd *proto.Cmd) *proto.Reply {
 		return protoCmd.Reply(nil, err)
 	}
 
-	// Load the MySQL instance info (DSN, name, etc.).
-	mysqlIt := &proto.MySQLInstance{}
-	if err = m.ir.Get(serviceInstance.Service, serviceInstance.InstanceId, mysqlIt); err != nil {
+	// Load the MySQL instance
+	mysqlIt, err := m.ir.Get(serviceInstance.UUID)
+	if err != nil {
 		return protoCmd.Reply(nil, err)
 	}
 
