@@ -179,12 +179,12 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	defer m.status.Update("instance", "Running")
 
 	switch cmd.Cmd {
-	case "UpdateTree":
+	case "UpdateSystemTree":
 		var sync *proto.SystemTreeSync
 		if err := json.Unmarshal(cmd.Data, &sync); err != nil {
 			return cmd.Reply(nil, err)
 		}
-		err := m.repo.UpdateTree(sync.Tree, sync.Version, true) // true = write to disk
+		err := m.repo.UpdateSystemTree(sync.Tree, sync.Version, true) // true = write to disk
 		if err != nil {
 			return cmd.Reply(nil, err)
 		}
@@ -195,17 +195,10 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		m.mrmDeleteMySQL(onlyMySQLInsts(m.getInstances(sync.Deleted)))
 		m.mrmUpdateMySQL(onlyMySQLInsts(m.getInstances(sync.Updated)))
 		return cmd.Reply(nil, nil)
-	case "GetInfo":
-		var it *proto.Instance
-		if err := json.Unmarshal(cmd.Data, &it); err != nil {
-			return cmd.Reply(nil, err)
-		}
-		err := m.handleGetInfo(*it)
-		return cmd.Reply(it, err)
-	case "GetTree":
+	case "GetSystemTree":
 		// GetTree will return the tree plus its version in a proto.proto.SystemTreeSync
 		sync := proto.SystemTreeSync{}
-		tree, err := m.repo.GetTree()
+		tree, err := m.repo.GetSystemTree()
 		if err != nil {
 			return cmd.Reply(nil, err)
 		}
@@ -213,6 +206,13 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		sync.Tree = tree
 		sync.Version = version
 		return cmd.Reply(sync, nil)
+	case "GetInfo":
+		var it *proto.Instance
+		if err := json.Unmarshal(cmd.Data, &it); err != nil {
+			return cmd.Reply(nil, err)
+		}
+		err := m.handleGetInfo(*it)
+		return cmd.Reply(it, err)
 	default:
 		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}

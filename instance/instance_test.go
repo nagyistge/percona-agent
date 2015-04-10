@@ -81,7 +81,7 @@ func (s *RepoTestSuite) SetUpTest(t *C) {
 	s.im = instance.NewRepo(s.logger, s.configDir, s.api)
 	t.Assert(s.im, NotNil)
 
-	s.instancesFile = filepath.Join(s.configDir, instance.INSTANCES_FILE)
+	s.instancesFile = filepath.Join(s.configDir, instance.SYSTEM_TREE_FILE)
 	err := test.CopyFile(test.RootDir+"/instance/system-tree-1.json", s.instancesFile)
 	t.Assert(err, IsNil)
 
@@ -104,7 +104,7 @@ func (s *RepoTestSuite) TestInit(t *C) {
 	err := s.im.Init()
 	t.Assert(err, IsNil)
 
-	tree, err := s.im.GetTree()
+	tree, err := s.im.GetSystemTree()
 	t.Assert(err, IsNil)
 
 	if same, diff := IsDeeply(tree, s.instances); !same {
@@ -151,16 +151,16 @@ func (s *RepoTestSuite) TestUpdateTreeWrongRoot(t *C) {
 	t.Assert(err, IsNil)
 
 	// Request 2 system tree copies (using instances-1.conf fixture)
-	origTree, err := s.im.GetTree()
+	origTree, err := s.im.GetSystemTree()
 	t.Assert(err, IsNil)
-	tree, err := s.im.GetTree()
+	tree, err := s.im.GetSystemTree()
 	t.Assert(err, IsNil)
 
 	// Make our test tree root instance not an OS type, pick any Subsystem
 	tree = tree.Subsystems[0]
 	var treeVersion uint = 2
 
-	err = s.im.UpdateTree(tree, treeVersion, true)
+	err = s.im.UpdateSystemTree(tree, treeVersion, true)
 	t.Assert(err, NotNil)
 
 	// Check if saved instance config was not modified
@@ -182,7 +182,7 @@ func (s *RepoTestSuite) TestUpdateTree(t *C) {
 	t.Assert(err, IsNil)
 
 	// Request an system tree copy (using instances-1.conf fixture)
-	tree, err := s.im.GetTree()
+	tree, err := s.im.GetSystemTree()
 	t.Assert(err, IsNil)
 
 	// Lets modify one instance in our test tree copy
@@ -201,7 +201,7 @@ func (s *RepoTestSuite) TestUpdateTree(t *C) {
 	tree.Subsystems = append(tree.Subsystems, *mysqlIt)
 
 	var treeVersion uint = 2
-	err = s.im.UpdateTree(tree, treeVersion, true)
+	err = s.im.UpdateSystemTree(tree, treeVersion, true)
 	t.Assert(err, IsNil)
 
 	// Check if saved file has the same modified tree structure
@@ -402,7 +402,7 @@ func (s *ManagerTestSuite) TestHandleUpdate(t *C) {
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
-		Cmd:     "UpdateTree",
+		Cmd:     "UpdateSystemTree",
 		Service: "instance",
 		Data:    syncData,
 	}
@@ -451,7 +451,7 @@ func (s *ManagerTestSuite) TestHandleUpdateNoOS(t *C) {
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
-		Cmd:     "UpdateTree",
+		Cmd:     "UpdateSystemTree",
 		Service: "instance",
 		Data:    syncData,
 	}
@@ -474,7 +474,7 @@ func (s *ManagerTestSuite) TestGetTree(t *C) {
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
-		Cmd:     "GetTree",
+		Cmd:     "GetSystemTree",
 		Service: "instance",
 		Data:    nil,
 	}

@@ -44,8 +44,8 @@ type Repo struct {
 }
 
 const (
-	INSTANCES_FILE     = "system-tree.json" // relative to Repo.configDir
-	INSTANCES_FILEMODE = 0660
+	SYSTEM_TREE_FILE     = "system-tree.json" // relative to Repo.configDir
+	SYSTEM_TREE_FILEMODE = 0660
 
 	// MYSQL_PREFIX an OS_PREFIX are the instance prefixes we need to validate
 	MYSQL_PREFIX = "mysql"
@@ -87,7 +87,7 @@ func onlyMySQLInsts(slice []proto.Instance) []proto.Instance {
 }
 
 func (r *Repo) configFilePath() string {
-	return filepath.Join(r.configDir, INSTANCES_FILE)
+	return filepath.Join(r.configDir, SYSTEM_TREE_FILE)
 }
 
 func (r *Repo) loadConfig(data []byte) error {
@@ -226,14 +226,14 @@ func (r *Repo) treeToDisk(filepath string) error {
 		r.logger.Error(fmt.Sprintf("Error JSON-marshalling system tree: %v", err))
 		return err
 	}
-	return ioutil.WriteFile(filepath, data, INSTANCES_FILEMODE)
+	return ioutil.WriteFile(filepath, data, SYSTEM_TREE_FILEMODE)
 }
 
 // Substitute local repo instances with provided tree parameter.
 // The method will populate the provided proto.Instance slices with added,
 // deleted or updated instances. If writeToDisk = true the tree will be
 // dumped to disk if update is successfull.
-func (r *Repo) UpdateTree(tree proto.Instance, version uint, writeToDisk bool) error {
+func (r *Repo) UpdateSystemTree(tree proto.Instance, version uint, writeToDisk bool) error {
 	r.logger.Debug("Update:call")
 	defer r.logger.Debug("Update:return")
 
@@ -331,7 +331,7 @@ func (r *Repo) List() []proto.Instance {
 }
 
 // Returns a copy of the tree
-func (r *Repo) GetTree() (proto.Instance, error) {
+func (r *Repo) GetSystemTree() (proto.Instance, error) {
 	r.mux.Lock()
 	defer r.mux.Unlock()
 
@@ -349,7 +349,19 @@ func (r *Repo) GetTree() (proto.Instance, error) {
 }
 
 func (r *Repo) GetTreeVersion() uint {
+	r.mux.Lock()
+	defer r.mux.Unlock()
 	return r.treeVersion
+}
+
+func (r *Repo) Name(uuid string) (string, error) {
+	r.mux.Lock()
+	defer r.mux.Unlock()
+	inst, ok := r.it[uuid]
+	if !ok {
+		return "", fmt.Errorf("Could not find instance %s in local repository", uuid)
+	}
+	return inst.Name, nil
 }
 
 func (r *Repo) GetMySQLInstances() []proto.Instance {
