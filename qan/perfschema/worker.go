@@ -354,7 +354,6 @@ ROW_LOOP:
 						// To make explains works
 						digestText = `SELECT "perf_schema_tables_are_full"`
 					}
-					fmt.Println(digestText)
 					if err != nil {
 						w.logger.Error(err)
 						continue
