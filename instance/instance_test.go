@@ -40,14 +40,14 @@ import (
 func Test(t *testing.T) { TestingT(t) }
 
 type RepoTestSuite struct {
-	tmpDir        string
-	logChan       chan *proto.LogEntry
-	logger        *pct.Logger
-	configDir     string
-	api           *mock.API
-	instances     proto.Instance
-	instancesFile string
-	im            *instance.Repo
+	tmpDir         string
+	logChan        chan *proto.LogEntry
+	logger         *pct.Logger
+	configDir      string
+	api            *mock.API
+	systemTree     proto.Instance
+	systemTreeFile string
+	ir             *instance.Repo
 }
 
 var _ = Suite(&RepoTestSuite{})
@@ -78,17 +78,17 @@ func (s *RepoTestSuite) SetUpTest(t *C) {
 		"system_tree": "http://localhost/systemtree",
 	}
 	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
-	s.im = instance.NewRepo(s.logger, s.configDir, s.api)
-	t.Assert(s.im, NotNil)
+	s.ir = instance.NewRepo(s.logger, s.configDir, s.api)
+	t.Assert(s.ir, NotNil)
 
-	s.instancesFile = filepath.Join(s.configDir, instance.SYSTEM_TREE_FILE)
-	err := test.CopyFile(test.RootDir+"/instance/system-tree-1.json", s.instancesFile)
+	s.systemTreeFile = filepath.Join(s.configDir, instance.SYSTEM_TREE_FILE)
+	err := test.CopyFile(test.RootDir+"/instance/system-tree-1.json", s.systemTreeFile)
 	t.Assert(err, IsNil)
 
-	data, err := ioutil.ReadFile(s.instancesFile)
+	data, err := ioutil.ReadFile(s.systemTreeFile)
 	t.Assert(err, IsNil)
 
-	err = json.Unmarshal(data, &s.instances)
+	err = json.Unmarshal(data, &s.systemTree)
 	t.Assert(err, IsNil)
 }
 
@@ -101,35 +101,35 @@ func (s *RepoTestSuite) TearDownSuite(t *C) {
 // --------------------------------------------------------------------------
 
 func (s *RepoTestSuite) TestInit(t *C) {
-	err := s.im.Init()
+	err := s.ir.Init()
 	t.Assert(err, IsNil)
 
-	tree, err := s.im.GetSystemTree()
+	tree, err := s.ir.GetSystemTree()
 	t.Assert(err, IsNil)
 
-	if same, diff := IsDeeply(tree, s.instances); !same {
+	if same, diff := IsDeeply(tree, s.systemTree); !same {
 		Dump(tree)
-		Dump(s.instances)
+		Dump(s.systemTree)
 		t.Error(diff)
 	}
-	t.Assert(len(s.im.List()), Equals, 7)
+	t.Assert(len(s.ir.List()), Equals, 7)
 }
 
 func (s *RepoTestSuite) TestInitDownload(t *C) {
-	bin, err := ioutil.ReadFile(s.instancesFile)
+	bin, err := ioutil.ReadFile(s.systemTreeFile)
 	t.Assert(err, IsNil)
 	s.api.GetData = [][]byte{bin}
 	s.api.GetCode = []int{http.StatusOK}
 
 	// Remove our local test config file, so Init will download it and place it there
-	err = os.Remove(s.instancesFile)
+	err = os.Remove(s.systemTreeFile)
 	t.Assert(err, IsNil)
 
-	err = s.im.Init()
+	err = s.ir.Init()
 	t.Assert(err, IsNil)
 
-	t.Assert(pct.FileExists(s.instancesFile), Equals, true)
-	downloadedFile, err := ioutil.ReadFile(s.instancesFile)
+	t.Assert(pct.FileExists(s.systemTreeFile), Equals, true)
+	downloadedFile, err := ioutil.ReadFile(s.systemTreeFile)
 	t.Assert(err, IsNil)
 
 	var original, saved *proto.Instance
@@ -147,24 +147,24 @@ func (s *RepoTestSuite) TestInitDownload(t *C) {
 
 func (s *RepoTestSuite) TestUpdateTreeWrongRoot(t *C) {
 	// Init with test data
-	err := s.im.Init()
+	err := s.ir.Init()
 	t.Assert(err, IsNil)
 
 	// Request 2 system tree copies (using instances-1.conf fixture)
-	origTree, err := s.im.GetSystemTree()
+	origTree, err := s.ir.GetSystemTree()
 	t.Assert(err, IsNil)
-	tree, err := s.im.GetSystemTree()
+	tree, err := s.ir.GetSystemTree()
 	t.Assert(err, IsNil)
 
 	// Make our test tree root instance not an OS type, pick any Subsystem
 	tree = tree.Subsystems[0]
 	var treeVersion uint = 2
 
-	err = s.im.UpdateSystemTree(tree, treeVersion, true)
+	err = s.ir.UpdateSystemTree(tree, treeVersion, true)
 	t.Assert(err, NotNil)
 
 	// Check if saved instance config was not modified
-	savedTreeData, err := ioutil.ReadFile(s.instancesFile)
+	savedTreeData, err := ioutil.ReadFile(s.systemTreeFile)
 	t.Assert(err, IsNil)
 	var savedTree *proto.Instance
 	err = json.Unmarshal(savedTreeData, &savedTree)
@@ -178,11 +178,11 @@ func (s *RepoTestSuite) TestUpdateTreeWrongRoot(t *C) {
 
 func (s *RepoTestSuite) TestUpdateTree(t *C) {
 	// Init with test data
-	err := s.im.Init()
+	err := s.ir.Init()
 	t.Assert(err, IsNil)
 
 	// Request an system tree copy (using instances-1.conf fixture)
-	tree, err := s.im.GetSystemTree()
+	tree, err := s.ir.GetSystemTree()
 	t.Assert(err, IsNil)
 
 	// Lets modify one instance in our test tree copy
@@ -201,11 +201,11 @@ func (s *RepoTestSuite) TestUpdateTree(t *C) {
 	tree.Subsystems = append(tree.Subsystems, *mysqlIt)
 
 	var treeVersion uint = 2
-	err = s.im.UpdateSystemTree(tree, treeVersion, true)
+	err = s.ir.UpdateSystemTree(tree, treeVersion, true)
 	t.Assert(err, IsNil)
 
 	// Check if saved file has the same modified tree structure
-	savedTree, err := ioutil.ReadFile(s.instancesFile)
+	savedTree, err := ioutil.ReadFile(s.systemTreeFile)
 	t.Assert(err, IsNil)
 	var newTree *proto.Instance
 	err = json.Unmarshal(savedTree, &newTree)

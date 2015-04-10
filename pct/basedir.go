@@ -58,7 +58,6 @@ func (b *basedir) Init(path string) error {
 	if err := MakeDir(b.path); err != nil && !os.IsExist(err) {
 		return err
 	}
-
 	b.configDir = filepath.Join(b.path, CONFIG_DIR)
 	if err := MakeDir(b.configDir); err != nil && !os.IsExist(err) {
 		return err

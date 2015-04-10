@@ -553,7 +553,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 		"c540346a644b404a9d2ae006122fc5a2": s.mysqlMonitor,  // corresponds to first MySQL instance in test data
 	})
 
-	systemTreeFile := filepath.Join(s.configDir, instance.INSTANCES_FILE)
+	systemTreeFile := filepath.Join(s.configDir, instance.SYSTEM_TREE_FILE)
 	err = test.CopyFile(test.RootDir+"/instance/system-tree-1.json", systemTreeFile)
 	t.Assert(err, IsNil)
 
