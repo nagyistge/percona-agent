@@ -17,11 +17,7 @@
 
 package sysconfig
 
-import (
-	"time"
-
-	"github.com/percona/cloud-protocol/proto"
-)
+import "time"
 
 type Monitor interface {
 	Start(tickChan chan time.Time, reportChan chan *Report) error
@@ -39,7 +35,7 @@ type MonitorFactory interface {
 type Setting [2]string
 
 type Report struct {
-	proto.ServiceInstance
+	UUID     string
 	Ts       int64 // UTC Unix timestamp
 	System   string
 	Settings []Setting

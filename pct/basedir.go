@@ -167,7 +167,7 @@ func (b *basedir) WriteConfig(name string, config interface{}) error {
 }
 
 // Given a service string and a config this method will serialize the config
-// to JSON and store the result in its corresponding config directory.
+// to JSON and store the result in a file with composite name <service>-<uuid>.conf
 func (b *basedir) WriteInstanceConfig(service, UUID string, config interface{}) error {
 	if err := b.writeFile(b.InstanceConfigFile(service, UUID), config); err != nil {
 		return fmt.Errorf("Could not store file in service config directory: %v", err)
@@ -175,6 +175,7 @@ func (b *basedir) WriteInstanceConfig(service, UUID string, config interface{}) 
 	return nil
 }
 
+// writeFile writes a config to a filePath
 func (b *basedir) writeFile(filePath string, config interface{}) error {
 	data, err := json.MarshalIndent(config, "", "    ")
 	if err != nil {

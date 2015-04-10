@@ -18,6 +18,10 @@
 package mysql_test
 
 import (
+	"os"
+	"testing"
+	"time"
+
 	"github.com/percona/cloud-protocol/proto"
 	mysqlConn "github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
@@ -25,9 +29,6 @@ import (
 	"github.com/percona/percona-agent/sysconfig/mysql"
 	"github.com/percona/percona-agent/test"
 	. "gopkg.in/check.v1"
-	"os"
-	"testing"
-	"time"
 )
 
 /**
@@ -67,10 +68,7 @@ func (s *TestSuite) TestStartCollectStop(t *C) {
 	// Create the monitor.
 	config := &mysql.Config{
 		Config: sysconfig.Config{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
+			UUID: "1",
 		},
 	}
 	m := mysql.NewMonitor(s.name, config, s.logger, mysqlConn.NewConnection(dsn))

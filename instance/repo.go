@@ -264,7 +264,7 @@ func (r *Repo) updateTree(tree proto.Instance, version uint, writeToDisk bool) e
 	// can modify them without our knowledge
 	var newTree *proto.Instance
 	if err := cloneTree(&tree, &newTree); err != nil {
-		return fmt.Errorf("Couldn't clone provided tree: %v", err)
+		return fmt.Errorf("Couldn't clone provided system tree: %v", err)
 	}
 	r.tree = newTree
 	r.updateInstanceIndex()
@@ -359,7 +359,7 @@ func (r *Repo) Name(uuid string) (string, error) {
 	defer r.mux.Unlock()
 	inst, ok := r.it[uuid]
 	if !ok {
-		return "", fmt.Errorf("Could not find instance %s in local repository", uuid)
+		return "", fmt.Errorf("Instance %s is not registered in agent", uuid)
 	}
 	return inst.Name, nil
 }

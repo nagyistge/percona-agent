@@ -19,6 +19,13 @@ package sysconfig_test
 
 import (
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/instance"
@@ -28,11 +35,6 @@ import (
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
-	"io/ioutil"
-	"os"
-	"path/filepath"
-	"testing"
-	"time"
 )
 
 // Hook up gocheck into the "go test" runner.
@@ -43,18 +45,19 @@ func Test(t *testing.T) { TestingT(t) }
 /////////////////////////////////////////////////////////////////////////////
 
 type ManagerTestSuite struct {
-	logChan     chan *proto.LogEntry
-	logger      *pct.Logger
-	mockMonitor *mock.SysconfigMonitor
-	factory     *mock.SysconfigMonitorFactory
-	tickChan    chan time.Time
-	clock       *mock.Clock
-	dataChan    chan interface{}
-	spool       data.Spooler
-	tmpDir      string
-	configDir   string
-	im          *instance.Repo
-	api         *mock.API
+	logChan       chan *proto.LogEntry
+	logger        *pct.Logger
+	mockMonitor   *mock.SysconfigMonitor
+	factory       *mock.SysconfigMonitorFactory
+	tickChan      chan time.Time
+	clock         *mock.Clock
+	dataChan      chan interface{}
+	spool         data.Spooler
+	tmpDir        string
+	configDir     string
+	ir            *instance.Repo
+	mysqlInstance proto.Instance
+	api           *mock.API
 }
 
 var _ = Suite(&ManagerTestSuite{})
@@ -80,13 +83,22 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	}
 	s.configDir = pct.Basedir.Dir("config")
 
+	systemTreeFile := filepath.Join(s.configDir, instance.SYSTEM_TREE_FILE)
+	err = test.CopyFile(test.RootDir+"/instance/system-tree-1.json", systemTreeFile)
+	t.Assert(err, IsNil)
+
 	links := map[string]string{
-		"agent":     "http://localhost/agent",
-		"instances": "http://localhost/instances",
+		"agent":       "http://localhost/agent",
+		"instances":   "http://localhost/instances",
+		"system_tree": "http://localhost/systemtree",
 	}
 	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
-
-	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im-test"), s.configDir, s.api)
+	s.ir = instance.NewRepo(s.logger, s.configDir, s.api)
+	t.Assert(s.ir, NotNil)
+	err = s.ir.Init()
+	t.Assert(err, IsNil)
+	s.mysqlInstance, err = s.ir.Get("c540346a644b404a9d2ae006122fc5a2")
+	t.Assert(err, IsNil)
 }
 
 func (s *ManagerTestSuite) SetUpTest(t *C) {
@@ -113,7 +125,7 @@ func (s *ManagerTestSuite) TearDownSuite(t *C) {
 // --------------------------------------------------------------------------
 
 func (s *ManagerTestSuite) TestStartStopManager(t *C) {
-	m := sysconfig.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
+	m := sysconfig.NewManager(s.logger, s.factory, s.clock, s.spool, s.ir)
 	t.Assert(m, NotNil)
 
 	// It shouldn't have added a tickChan yet.
@@ -123,8 +135,8 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 
 	// Write a sysconfig monitor config to disk.
 	config := &sysconfig.Config{
-		ServiceInstance: proto.ServiceInstance{Service: "mysql", InstanceId: 1},
-		Report:          3600,
+		UUID:   s.mysqlInstance.UUID,
+		Report: 3600,
 		// No monitor-specific config
 	}
 	pct.Basedir.WriteConfig("sysconfig-mysql-1", config)
@@ -157,7 +169,7 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 }
 
 func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
-	m := sysconfig.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
+	m := sysconfig.NewManager(s.logger, s.factory, s.clock, s.spool, s.ir)
 	t.Assert(m, NotNil)
 
 	err := m.Start()
@@ -168,10 +180,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 	// config in configDir/db1-mysql-monitor.conf.
 	sysconfigConfig := &mysql.Config{
 		Config: sysconfig.Config{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
+			UUID:   s.mysqlInstance.UUID,
 			Report: 3600,
 		},
 	}
@@ -210,7 +219,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 	// After starting a monitor, sysconfig should write its config to the dir
 	// it learned when sysconfig.LoadConfig() was called.  Next time agent starts,
 	// it will have sysconfig start the monitor with this config.
-	data, err := ioutil.ReadFile(s.configDir + "/sysconfig-mysql-1.conf")
+	data, err := ioutil.ReadFile(fmt.Sprintf("%s/sysconfig-%s.conf", s.configDir, s.mysqlInstance.UUID))
 	t.Check(err, IsNil)
 	gotConfig := &mysql.Config{}
 	err = json.Unmarshal(data, gotConfig)
@@ -278,7 +287,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 }
 
 func (s *ManagerTestSuite) TestGetConfig(t *C) {
-	m := sysconfig.NewManager(s.logger, s.factory, s.clock, s.spool, s.im)
+	m := sysconfig.NewManager(s.logger, s.factory, s.clock, s.spool, s.ir)
 	t.Assert(m, NotNil)
 
 	err := m.Start()
@@ -287,10 +296,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	// Start a sysconfig monitor.
 	sysconfigConfig := &mysql.Config{
 		Config: sysconfig.Config{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
+			UUID:   s.mysqlInstance.UUID,
 			Report: 3600,
 		},
 	}
@@ -326,12 +332,9 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	expectConfig := []proto.AgentConfig{
 		{
 			InternalService: "sysconfig",
-			ExternalService: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
-			Config:  string(sysconfigConfigData),
-			Running: true,
+			UUID:            s.mysqlInstance.UUID,
+			Config:          string(sysconfigConfigData),
+			Running:         true,
 		},
 	}
 	if same, diff := test.IsDeeply(gotConfig, expectConfig); !same {
