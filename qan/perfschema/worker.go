@@ -350,6 +350,9 @@ ROW_LOOP:
 					// Have never seen class before, so get digext text from perf schema.
 					var err error
 					digestText, err = w.getText(row.Digest)
+					if classId == "NULL" && digestText == "" {
+						digestText = "perf_schema_tables_full"
+					}
 					if err != nil {
 						w.logger.Error(err)
 						continue
