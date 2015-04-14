@@ -200,7 +200,7 @@ type Worker struct {
 }
 
 func NewWorker(logger *pct.Logger, mysqlConn mysql.Connector, getRows GetDigestRowsFunc, getText GetDigestTextFunc) *Worker {
-	name := logger.Service()
+	name := logger.Tool()
 	w := &Worker{
 		logger:    logger,
 		mysqlConn: mysqlConn,

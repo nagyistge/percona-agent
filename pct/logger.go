@@ -19,26 +19,27 @@ package pct
 
 import (
 	"fmt"
-	"github.com/percona/cloud-protocol/proto"
 	"time"
+
+	"github.com/percona/cloud-protocol/proto"
 )
 
 type Logger struct {
 	logChan chan *proto.LogEntry
-	service string
+	tool    string
 	cmd     *proto.Cmd
 }
 
-func NewLogger(logChan chan *proto.LogEntry, service string) *Logger {
+func NewLogger(logChan chan *proto.LogEntry, tool string) *Logger {
 	l := &Logger{
 		logChan: logChan,
-		service: service,
+		tool:    tool,
 	}
 	return l
 }
 
-func (l *Logger) Service() string {
-	return l.service
+func (l *Logger) Tool() string {
+	return l.tool
 }
 
 func (l *Logger) LogChan() chan *proto.LogEntry {
@@ -81,7 +82,7 @@ func (l *Logger) log(offline bool, level byte, entry []interface{}) {
 	logEntry := &proto.LogEntry{
 		Ts:      time.Now().UTC(),
 		Level:   level,
-		Service: l.service,
+		Tool:    l.tool,
 		Msg:     fullMsg,
 		Offline: offline,
 	}

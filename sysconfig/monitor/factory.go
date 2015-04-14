@@ -42,12 +42,12 @@ func NewFactory(logChan chan *proto.LogEntry, ir *instance.Repo) *Factory {
 	return f
 }
 
-func (f *Factory) Make(uuid string, data []byte) (sysconfig.Monitor, error) {
+func (f *Factory) Make(tool, uuid string, data []byte) (sysconfig.Monitor, error) {
 	var monitor sysconfig.Monitor
-	switch service {
+
+	switch tool {
 	case "mysql":
 		// Load the MySQL instance info (DSN, name, etc.).
-		mysqlIt := &proto.MySQLInstance{}
 		mysqlIt, err := f.ir.Get(uuid)
 		if err != nil {
 			return nil, err
@@ -59,7 +59,7 @@ func (f *Factory) Make(uuid string, data []byte) (sysconfig.Monitor, error) {
 			return nil, err
 		}
 
-		// The user-friendly name of the service, e.g. sysconfig-mysql-db101:
+		// The user-friendly name of the tool, e.g. sysconfig-mysql-db101:
 		alias := "sysconfig-mysql-" + mysqlIt.Name
 
 		// Make a MySQL sysconfig monitor.
@@ -70,7 +70,7 @@ func (f *Factory) Make(uuid string, data []byte) (sysconfig.Monitor, error) {
 			mysqlConn.NewConnection(mysqlIt.DSN),
 		)
 	default:
-		return nil, errors.New("Unknown sysconfig monitor type: " + service)
+		return nil, errors.New("Unknown sysconfig monitor type: " + tool)
 	}
 	return monitor, nil
 }

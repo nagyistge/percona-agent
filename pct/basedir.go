@@ -162,6 +162,13 @@ func (b *basedir) ReadConfig(name string, v interface{}) error {
 	return err
 }
 
+func (b *basedir) ReadInstanceConfig(service, UUID string, config interface{}) error {
+	if err := b.ReadConfig(b.InstanceConfigFile(service, UUID), config); err != nil {
+		return fmt.Errorf("Could not read config file: %v", err)
+	}
+	return nil
+}
+
 func (b *basedir) WriteConfig(name string, config interface{}) error {
 	return b.writeFile(b.ConfigFile(name), config)
 }
@@ -170,7 +177,7 @@ func (b *basedir) WriteConfig(name string, config interface{}) error {
 // to JSON and store the result in a file with composite name <service>-<uuid>.conf
 func (b *basedir) WriteInstanceConfig(service, UUID string, config interface{}) error {
 	if err := b.writeFile(b.InstanceConfigFile(service, UUID), config); err != nil {
-		return fmt.Errorf("Could not store file in service config directory: %v", err)
+		return fmt.Errorf("Could not store config file: %v", err)
 	}
 	return nil
 }

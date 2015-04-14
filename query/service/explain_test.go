@@ -217,7 +217,7 @@ func (s *ManagerTestSuite) TestExplainWithoutDb(t *C) {
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
-		Service: "query",
+		Tool: "query",
 		Cmd:     "Explain",
 		Data:    data,
 	}
@@ -323,7 +323,7 @@ func (s *ManagerTestSuite) TestExplainWithDb(t *C) {
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
-		Service: "query",
+		Tool: "query",
 		Cmd:     "Explain",
 		Data:    data,
 	}

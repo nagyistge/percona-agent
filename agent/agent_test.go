@@ -50,7 +50,7 @@ type AgentTestSuite struct {
 	agent        *agent.Agent
 	config       *agent.Config
 	services     map[string]*mock.MockServiceManager
-	servicesMap  map[string]pct.ServiceManager
+	servicesMap  map[string]pct.ToolManager
 	client       *mock.WebsocketClient
 	sendDataChan chan interface{}
 	recvDataChan chan interface{}
@@ -116,7 +116,7 @@ func (s *AgentTestSuite) SetUpTest(t *C) {
 	}
 	s.api = mock.NewAPI("http://localhost", s.config.ApiHostname, s.config.ApiKey, s.config.AgentUuid, links)
 
-	s.servicesMap = map[string]pct.ServiceManager{
+	s.servicesMap = map[string]pct.ToolManager{
 		"mm":  s.services["mm"],
 		"qan": s.services["qan"],
 	}
@@ -171,7 +171,7 @@ type ByInternalService []proto.AgentConfig
 func (a ByInternalService) Len() int      { return len(a) }
 func (a ByInternalService) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a ByInternalService) Less(i, j int) bool {
-	return a[i].InternalService < a[j].InternalService
+	return a[i].Tool < a[j].Tool
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -210,7 +210,7 @@ func (s *AgentTestSuite) TestStatus(t *C) {
 		Ts:      time.Now(),
 		User:    "daniel",
 		Cmd:     "Status",
-		Service: "agent",
+		Tool: "agent",
 	}
 	s.sendChan <- statusCmd
 	got = test.WaitStatusReply(s.recvChan)
@@ -227,7 +227,7 @@ func (s *AgentTestSuite) TestStatus(t *C) {
 		Ts:      time.Now(),
 		User:    "daniel",
 		Cmd:     "Status",
-		Service: "mm",
+		Tool: "mm",
 	}
 	s.sendChan <- statusCmd
 	got = test.WaitStatusReply(s.recvChan)
@@ -282,7 +282,7 @@ func (s *AgentTestSuite) TestStartStopService(t *C) {
 
 	// Second, the service config is encoded and encapsulated in a ServiceData:
 	qanConfigData, _ := json.Marshal(qanConfig)
-	serviceCmd := &proto.ServiceData{
+	serviceCmd := &proto.ToolData{
 		Name:   "qan",
 		Config: qanConfigData,
 	}
@@ -292,7 +292,7 @@ func (s *AgentTestSuite) TestStartStopService(t *C) {
 	cmd := &proto.Cmd{
 		Ts:      time.Now(),
 		User:    "daniel",
-		Service: "agent",
+		Tool: "agent",
 		Cmd:     "StartService",
 		Data:    serviceData,
 	}
@@ -343,14 +343,14 @@ func (s *AgentTestSuite) TestStartStopService(t *C) {
 	 * Stop the service.
 	 */
 
-	serviceCmd = &proto.ServiceData{
+	serviceCmd = &proto.ToolData{
 		Name: "qan",
 	}
 	serviceData, _ = json.Marshal(serviceCmd)
 	cmd = &proto.Cmd{
 		Ts:      time.Now(),
 		User:    "daniel",
-		Service: "agent",
+		Tool: "agent",
 		Cmd:     "StopService",
 		Data:    serviceData,
 	}
@@ -387,7 +387,7 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
 		WorkerRunTime:     120, // seconds
 	}
 	qanConfigData, _ := json.Marshal(qanConfig)
-	serviceCmd := &proto.ServiceData{
+	serviceCmd := &proto.ToolData{
 		Name:   "qan",
 		Config: qanConfigData,
 	}
@@ -396,7 +396,7 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
 	cmd := &proto.Cmd{
 		Ts:      now,
 		User:    "daniel",
-		Service: "agent",
+		Tool: "agent",
 		Cmd:     "StartService",
 		Data:    serviceData,
 	}
@@ -436,14 +436,14 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
 
 func (s *AgentTestSuite) TestStartStopUnknownService(t *C) {
 	// Starting an unknown service should return an error.
-	serviceCmd := &proto.ServiceData{
+	serviceCmd := &proto.ToolData{
 		Name: "foo",
 	}
 	serviceData, _ := json.Marshal(serviceCmd)
 	cmd := &proto.Cmd{
 		Ts:      time.Now(),
 		User:    "daniel",
-		Service: "agent",
+		Tool: "agent",
 		Cmd:     "StartService",
 		Data:    serviceData,
 	}
@@ -458,7 +458,7 @@ func (s *AgentTestSuite) TestStartStopUnknownService(t *C) {
 	cmd = &proto.Cmd{
 		Ts:      time.Now(),
 		User:    "daniel",
-		Service: "agent",
+		Tool: "agent",
 		Cmd:     "StopService",
 		Data:    serviceData,
 	}
@@ -521,7 +521,7 @@ func (s *AgentTestSuite) TestGetConfig(t *C) {
 		Ts:      time.Now(),
 		User:    "daniel",
 		Cmd:     "GetConfig",
-		Service: "agent",
+		Tool: "agent",
 	}
 	s.sendChan <- cmd
 
@@ -537,7 +537,7 @@ func (s *AgentTestSuite) TestGetConfig(t *C) {
 	bytes, _ := json.Marshal(config)
 	expect := []proto.AgentConfig{
 		{
-			InternalService: "agent",
+			Tool: "agent",
 			Config:          string(bytes),
 			Running:         true,
 		},
@@ -554,7 +554,7 @@ func (s *AgentTestSuite) TestGetAllConfigs(t *C) {
 		Ts:      time.Now(),
 		User:    "daniel",
 		Cmd:     "GetAllConfigs",
-		Service: "agent",
+		Tool: "agent",
 	}
 	s.sendChan <- cmd
 
@@ -573,17 +573,17 @@ func (s *AgentTestSuite) TestGetAllConfigs(t *C) {
 	sort.Sort(ByInternalService(gotConfigs))
 	expectConfigs := []proto.AgentConfig{
 		{
-			InternalService: "agent",
+			Tool: "agent",
 			Config:          string(bytes),
 			Running:         true,
 		},
 		{
-			InternalService: "mm",
+			Tool: "mm",
 			Config:          `{"Foo":"bar"}`,
 			Running:         false,
 		},
 		{
-			InternalService: "qan",
+			Tool: "qan",
 			Config:          `{"Foo":"bar"}`,
 			Running:         false,
 		},
@@ -599,7 +599,7 @@ func (s *AgentTestSuite) TestGetVersion(t *C) {
 		Ts:      time.Now(),
 		User:    "daniel",
 		Cmd:     "Version",
-		Service: "agent",
+		Tool: "agent",
 	}
 	s.sendChan <- cmd
 
@@ -620,7 +620,7 @@ func (s *AgentTestSuite) TestSetConfigApiKey(t *C) {
 		Ts:      time.Now(),
 		User:    "daniel",
 		Cmd:     "SetConfig",
-		Service: "agent",
+		Tool: "agent",
 		Data:    data,
 	}
 	s.sendChan <- cmd
@@ -682,7 +682,7 @@ func (s *AgentTestSuite) TestSetConfigApiHostname(t *C) {
 		Ts:      time.Now(),
 		User:    "daniel",
 		Cmd:     "SetConfig",
-		Service: "agent",
+		Tool: "agent",
 		Data:    data,
 	}
 	s.sendChan <- cmd
@@ -747,7 +747,7 @@ func (s *AgentTestSuite) TestSetConfigApiHostname(t *C) {
 		Ts:      time.Now(),
 		User:    "daniel",
 		Cmd:     "Reconnect",
-		Service: "agent",
+		Tool: "agent",
 	}
 	s.sendChan <- cmd
 
@@ -810,7 +810,7 @@ func (s *AgentTestSuite) TestRestart(t *C) {
 	}()
 
 	cmd := &proto.Cmd{
-		Service: "agent",
+		Tool: "agent",
 		Cmd:     "Restart",
 	}
 	s.sendChan <- cmd
@@ -841,7 +841,7 @@ func (s *AgentTestSuite) TestRestart(t *C) {
 
 func (s *AgentTestSuite) TestCmdToService(t *C) {
 	cmd := &proto.Cmd{
-		Service: "mm",
+		Tool: "mm",
 		Cmd:     "Hello",
 	}
 	s.sendChan <- cmd

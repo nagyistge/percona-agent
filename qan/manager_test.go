@@ -284,7 +284,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	t.Assert(got, HasLen, 1)
 	expect := []proto.AgentConfig{
 		{
-			InternalService: "qan",
+			Tool: "qan",
 			Config:          string(qanConfig),
 			Running:         true,
 		},
@@ -417,7 +417,7 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 		User:      "daniel",
 		Ts:        now,
 		AgentUuid: "123",
-		Service:   "agent",
+		Tool:   "agent",
 		Cmd:       "StartService",
 		Data:      qanConfig,
 	}
@@ -452,7 +452,7 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 		User:      "daniel",
 		Ts:        now,
 		AgentUuid: "123",
-		Service:   "qan",
+		Tool:   "qan",
 		Cmd:       "StopService",
 	}
 	reply = m.Handle(cmd)
@@ -489,7 +489,7 @@ func (s *ManagerTestSuite) TestBadCmd(t *C) {
 		User:      "daniel",
 		Ts:        time.Now(),
 		AgentUuid: "123",
-		Service:   "qan",
+		Tool:   "qan",
 		Cmd:       "foo", // bad cmd
 	}
 	reply := m.Handle(cmd)

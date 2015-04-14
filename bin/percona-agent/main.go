@@ -400,7 +400,7 @@ func run() error {
 	// The official list of services known to the agent.  Adding a new service
 	// requires a manager, starting the manager as above, and adding the manager
 	// to this map.
-	services := map[string]pct.ServiceManager{
+	services := map[string]pct.ToolManager{
 		"log":       logManager,
 		"data":      dataManager,
 		"qan":       qanManager,
@@ -463,7 +463,7 @@ func run() error {
 				Ts:        time.Now().UTC(),
 				User:      u.Username + " (SIGHUP)",
 				AgentUuid: agentConfig.AgentUuid,
-				Service:   "agent",
+				Tool:   "agent",
 				Cmd:       "Reconnect",
 			}
 			agent.Handle(cmd)

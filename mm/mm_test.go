@@ -681,10 +681,10 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 
 	// The agent calls mm.Handle() with the cmd (for logging and status) and the config data.
 	cmd := &proto.Cmd{
-		User:    "daniel",
-		Service: "mm",
-		Cmd:     "StartService",
-		Data:    mmConfigData,
+		User: "daniel",
+		Tool: "mm",
+		Cmd:  "StartService",
+		Data: mmConfigData,
 	}
 	reply := m.Handle(cmd)
 	t.Assert(reply, NotNil)
@@ -719,10 +719,10 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	 */
 
 	cmd = &proto.Cmd{
-		User:    "daniel",
-		Service: "mm",
-		Cmd:     "StopService",
-		Data:    mmConfigData,
+		User: "daniel",
+		Tool: "mm",
+		Cmd:  "StopService",
+		Data: mmConfigData,
 	}
 
 	// Handles StopService without error.
@@ -750,10 +750,10 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	 * Start the monitor again (restarting monitor).
 	 */
 	cmd = &proto.Cmd{
-		User:    "daniel",
-		Service: "mm",
-		Cmd:     "StartService",
-		Data:    mmConfigData,
+		User: "daniel",
+		Tool: "mm",
+		Cmd:  "StartService",
+		Data: mmConfigData,
 	}
 
 	// If this were a real monitor, it would decode and set its own config.
@@ -794,10 +794,10 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	 */
 
 	cmd = &proto.Cmd{
-		User:    "daniel",
-		Service: "mm",
-		Cmd:     "Pontificate",
-		Data:    mmConfigData,
+		User: "daniel",
+		Tool: "mm",
+		Cmd:  "Pontificate",
+		Data: mmConfigData,
 	}
 
 	// Unknown cmd causes error.
@@ -830,10 +830,10 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	mysqlData, err := json.Marshal(mysqlMonitorConfig)
 	t.Assert(err, IsNil)
 	cmd := &proto.Cmd{
-		User:    "daniel",
-		Service: "mm",
-		Cmd:     "StartService",
-		Data:    mysqlData,
+		User: "daniel",
+		Tool: "mm",
+		Cmd:  "StartService",
+		Data: mysqlData,
 	}
 	s.mysqlMonitor.SetConfig(mysqlMonitorConfig)
 	reply := m.Handle(cmd)
@@ -853,10 +853,10 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	systemData, err := json.Marshal(systemMonitorConfig)
 	t.Assert(err, IsNil)
 	cmd = &proto.Cmd{
-		User:    "daniel",
-		Service: "mm",
-		Cmd:     "StartService",
-		Data:    systemData,
+		User: "daniel",
+		Tool: "mm",
+		Cmd:  "StartService",
+		Data: systemData,
 	}
 	s.systemMonitor.SetConfig(systemMonitorConfig)
 	reply = m.Handle(cmd)
@@ -867,8 +867,8 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	 * GetConfig from mm which should return all monitors' configs.
 	 */
 	cmd = &proto.Cmd{
-		Cmd:     "GetConfig",
-		Service: "mm",
+		Cmd:  "GetConfig",
+		Tool: "mm",
 	}
 	reply = m.Handle(cmd)
 	t.Assert(reply, NotNil)
@@ -880,16 +880,16 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	}
 	expectConfig := []proto.AgentConfig{
 		{
-			InternalService: "mm",
-			UUID:            "c540346a644b404a9d2ae006122fc5a2",
-			Config:          string(mysqlData),
-			Running:         true,
+			Tool:    "mm",
+			UUID:    "c540346a644b404a9d2ae006122fc5a2",
+			Config:  string(mysqlData),
+			Running: true,
 		},
 		{
-			InternalService: "mm",
-			UUID:            "31dd3b7b602849f8871fd3e7acc8c2e3",
-			Config:          string(systemData),
-			Running:         true,
+			Tool:    "mm",
+			UUID:    "31dd3b7b602849f8871fd3e7acc8c2e3",
+			Config:  string(systemData),
+			Running: true,
 		},
 	}
 	// Sort, slice order is not stable

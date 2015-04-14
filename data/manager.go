@@ -32,7 +32,7 @@ type Manager struct {
 	logger   *pct.Logger
 	dataDir  string
 	trashDir string
-	hostname string
+	OSUUID   string
 	client   pct.WebsocketClient
 	// --
 	config  *Config
@@ -44,12 +44,12 @@ type Manager struct {
 	status  *pct.Status
 }
 
-func NewManager(logger *pct.Logger, dataDir, trashDir, hostname string, client pct.WebsocketClient) *Manager {
+func NewManager(logger *pct.Logger, dataDir, trashDir, OSUUID string, client pct.WebsocketClient) *Manager {
 	m := &Manager{
 		logger:   logger,
 		dataDir:  dataDir,
 		trashDir: trashDir,
-		hostname: hostname,
+		OSUUID:   OSUUID,
 		client:   client,
 		// --
 		status: pct.NewStatus([]string{"data"}),
@@ -104,7 +104,7 @@ func (m *Manager) Start() error {
 		pct.NewLogger(m.logger.LogChan(), "data-spooler"),
 		m.dataDir,
 		m.trashDir,
-		m.hostname,
+		m.OSUUID,
 	)
 	if err := spooler.Start(sz); err != nil {
 		return err
@@ -183,7 +183,7 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 	}
 	// Configs are always returned as array of AgentConfig resources.
 	config := proto.AgentConfig{
-		InternalService: "data",
+		Tool: "data",
 		// no external service
 		Config:  string(bytes),
 		Running: m.running,

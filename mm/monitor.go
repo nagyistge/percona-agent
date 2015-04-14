@@ -24,7 +24,7 @@ import "time"
  * (mysql/monitor.go) collects most SHOW STATUS variables, each as its own
  * Metric.  Each Metric collected during a single period are sent as a
  * Collection to an Aggregator (aggregator.go).  The Aggregator keeps Stats
- * for each unique Metric, for each service instance.  When it's time to
+ * for each unique Metric, for each tool instance.  When it's time to
  * report, the per-instance stats are summarized and the stats are encoded
  * in a Report and sent to the Spooler (data/spooler.go).
  */
@@ -56,7 +56,7 @@ type Metric struct {
 	String string
 }
 
-// All metrics from a service instance collected at the same time.
+// All metrics from a tool instance collected at the same time.
 // Collections can come from different instances.  For example,
 // one agent can monitor two different MySQL instances.
 type Collection struct {
@@ -65,7 +65,7 @@ type Collection struct {
 	Metrics []Metric
 }
 
-// Stats for each metric from a service instance, computed at each report interval.
+// Stats for each metric from a tool instance, computed at each report interval.
 type InstanceStats struct {
 	UUID  string
 	Stats map[string]*Stats // keyed on metric name

@@ -159,7 +159,7 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 	}
 	// Configs are always returned as array of AgentConfig resources.
 	config := proto.AgentConfig{
-		InternalService: "log",
+		Tool: "log",
 		// no external service
 		Config:  string(bytes),
 		Running: m.running,

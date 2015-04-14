@@ -37,7 +37,7 @@ import (
 // REV="$(git rev-parse HEAD)"
 // go build -ldflags "-X github.com/percona/percon-agent/agnet.REVISION $REV"
 var REVISION string = "0"
-var VERSION string = "1.0.11"
+var VERSION string = "1.1.0"
 var REL string = ""
 var MIN_SUPPORTED_MYSQL_VERSION = "5.1.0"
 
@@ -54,7 +54,7 @@ type Agent struct {
 	logger    *pct.Logger
 	client    pct.WebsocketClient
 	api       pct.APIConnector
-	services  map[string]pct.ServiceManager
+	services  map[string]pct.ToolManager
 	updater   *pct.Updater
 	keepalive *time.Ticker
 	// --
@@ -68,7 +68,7 @@ type Agent struct {
 	statusHandlerSync *pct.SyncChan
 }
 
-func NewAgent(config *Config, logger *pct.Logger, api pct.APIConnector, client pct.WebsocketClient, services map[string]pct.ServiceManager) *Agent {
+func NewAgent(config *Config, logger *pct.Logger, api pct.APIConnector, client pct.WebsocketClient, services map[string]pct.ToolManager) *Agent {
 	agent := &Agent{
 		config:    config,
 		api:       api,
@@ -329,7 +329,7 @@ func (agent *Agent) GetConfig() ([]proto.AgentConfig, []error) {
 
 	// Configs are always returned as array of AgentConfig resources.
 	agentConfig := proto.AgentConfig{
-		InternalService: "agent",
+		Tool: "agent",
 		// no external service
 		Config:  string(bytes),
 		Running: true,
@@ -370,13 +370,13 @@ func (agent *Agent) cmdHandler() {
 					}
 					cmdReply <- reply
 				}()
-				if cmd.Service == "agent" {
+				if cmd.Tool == "agent" {
 					reply = agent.Handle(cmd)
 				} else {
-					if manager, ok := agent.services[cmd.Service]; ok {
+					if manager, ok := agent.services[cmd.Tool]; ok {
 						reply = manager.Handle(cmd)
 					} else {
-						reply = cmd.Reply(nil, pct.UnknownServiceError{Service: cmd.Service})
+						reply = cmd.Reply(nil, pct.UnknownServiceError{Service: cmd.Tool})
 					}
 				}
 			}()
@@ -483,7 +483,7 @@ func (agent *Agent) handleStartService(cmd *proto.Cmd) (interface{}, error) {
 	agent.logger.Info(cmd)
 
 	// Unmarshal the data to get the service name and config.
-	s := &proto.ServiceData{}
+	s := &proto.ToolData{}
 	if err := json.Unmarshal(cmd.Data, s); err != nil {
 		return nil, err
 	}
@@ -508,7 +508,7 @@ func (agent *Agent) handleStopService(cmd *proto.Cmd) (interface{}, error) {
 	agent.logger.Info(cmd)
 
 	// Unmarshal the data to get the service name.
-	s := new(proto.ServiceData)
+	s := new(proto.ToolData)
 	if err := json.Unmarshal(cmd.Data, s); err != nil {
 		return nil, err
 	}
@@ -658,16 +658,16 @@ func (agent *Agent) statusHandler() {
 	for {
 		select {
 		case cmd := <-agent.statusChan:
-			switch cmd.Service {
+			switch cmd.Tool {
 			case "":
 				replyChan <- cmd.Reply(agent.AllStatus())
 			case "agent":
 				replyChan <- cmd.Reply(agent.Status())
 			default:
-				if manager, ok := agent.services[cmd.Service]; ok {
+				if manager, ok := agent.services[cmd.Tool]; ok {
 					replyChan <- cmd.Reply(manager.Status())
 				} else {
-					replyChan <- cmd.Reply(nil, pct.UnknownServiceError{Service: cmd.Service})
+					replyChan <- cmd.Reply(nil, pct.UnknownServiceError{Service: cmd.Tool})
 				}
 			}
 		case <-agent.statusHandlerSync.StopChan:

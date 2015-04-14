@@ -78,7 +78,7 @@ func (s *ManagerTestSuite) TestStartStopHandleManager(t *C) {
 
 	// Test known cmd
 	cmd := &proto.Cmd{
-		Service: "query",
+		Tool: "query",
 		Cmd:     "Explain",
 	}
 	gotReply := m.Handle(cmd)
@@ -87,7 +87,7 @@ func (s *ManagerTestSuite) TestStartStopHandleManager(t *C) {
 
 	// Test unknown cmd
 	cmd = &proto.Cmd{
-		Service: "query",
+		Tool: "query",
 		Cmd:     "Unknown",
 	}
 	gotReply = m.Handle(cmd)

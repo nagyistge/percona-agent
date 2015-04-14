@@ -336,7 +336,7 @@ func (s *ManagerTestSuite) TestHandleGetInfoMySQL(t *C) {
 
 	cmd := &proto.Cmd{
 		Cmd:     "GetInfo",
-		Service: "instance",
+		Tool: "instance",
 		Data:    mysqlData,
 	}
 
@@ -403,7 +403,7 @@ func (s *ManagerTestSuite) TestHandleUpdate(t *C) {
 
 	cmd := &proto.Cmd{
 		Cmd:     "UpdateSystemTree",
-		Service: "instance",
+		Tool: "instance",
 		Data:    syncData,
 	}
 
@@ -452,7 +452,7 @@ func (s *ManagerTestSuite) TestHandleUpdateNoOS(t *C) {
 
 	cmd := &proto.Cmd{
 		Cmd:     "UpdateSystemTree",
-		Service: "instance",
+		Tool: "instance",
 		Data:    syncData,
 	}
 
@@ -475,7 +475,7 @@ func (s *ManagerTestSuite) TestGetTree(t *C) {
 
 	cmd := &proto.Cmd{
 		Cmd:     "GetSystemTree",
-		Service: "instance",
+		Tool: "instance",
 		Data:    nil,
 	}
 

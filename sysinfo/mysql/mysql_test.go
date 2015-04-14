@@ -135,7 +135,7 @@ func (s *TestSuite) TestService(t *C) {
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
-		Service: "Summary",
+		Tool: "Summary",
 		Cmd:     "mysql",
 		Data:    data,
 	}
@@ -184,7 +184,7 @@ func (s *TestSuite) TestExecutableNotFound(t *C) {
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
-		Service: "Summary",
+		Tool: "Summary",
 		Cmd:     "mysql",
 		Data:    data,
 	}

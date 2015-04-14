@@ -39,7 +39,7 @@ import (
 	"github.com/percona/percona-agent/ticker"
 )
 
-const CONFIG_PREFIX = "mm-"
+const TOOL_NAME = "mm"
 
 // We use one binding per unique mm.Report interval.  For example, if some monitors
 // report every 60s and others every 10s, then there are two bindings.  All monitors
@@ -164,16 +164,19 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		if err != nil {
 			return cmd.Reply(nil, err)
 		}
-
-		m.status.UpdateRe("mm", "Starting "+uuid, cmd)
-		m.logger.Info("Start", uuid, cmd)
+		name, err := m.im.Name(uuid)
+		if err != nil {
+			return cmd.Reply(nil, err)
+		}
+		m.status.UpdateRe("mm", "Starting "+name, cmd)
+		m.logger.Info("Start", name, cmd)
 
 		// Monitors names must be unique.
 		m.mux.RLock()
 		_, haveMonitor := m.monitors[uuid]
 		m.mux.RUnlock()
 		if haveMonitor {
-			return cmd.Reply(nil, errors.New("Duplicate monitor: "+uuid))
+			return cmd.Reply(nil, fmt.Errorf("Duplicate monitor: %s (UUID:%s)", name, uuid))
 		}
 
 		// Create the monitor based on its type.
@@ -218,7 +221,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 		// Save the monitor-specific config to disk so agent starts on restart.
 		monitorConfig := monitor.Config()
-		if err := pct.Basedir.WriteConfig(CONFIG_PREFIX+uuid, monitorConfig); err != nil {
+		if err := pct.Basedir.WriteInstanceConfig(TOOL_NAME, uuid, monitorConfig); err != nil {
 			return cmd.Reply(nil, errors.New("Write "+uuid+" config:"+err.Error()))
 		}
 
@@ -298,10 +301,10 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 			continue
 		}
 		config := proto.AgentConfig{
-			InternalService: "mm",
-			UUID:            mmConfig.UUID,
-			Config:          string(bytes),
-			Running:         true, // config removed if stopped, so it must be running
+			Tool:    "mm",
+			UUID:    mmConfig.UUID,
+			Config:  string(bytes),
+			Running: true, // config removed if stopped, so it must be running
 		}
 		configs = append(configs, config)
 	}

@@ -230,7 +230,7 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 			continue
 		}
 		configs = append(configs, proto.AgentConfig{
-			InternalService: "qan",
+			Tool: "qan",
 			// no external service
 			Config:  string(bytes),
 			Running: true,

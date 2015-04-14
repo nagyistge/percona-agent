@@ -21,15 +21,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/percona-agent/pct"
-	"github.com/peterbourgon/diskv"
 	"os"
 	"path"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/percona-agent/agent"
+	"github.com/percona/percona-agent/pct"
+	"github.com/peterbourgon/diskv"
 )
 
 const (
@@ -43,7 +45,7 @@ type Spooler interface {
 	Start(Serializer) error
 	Stop() error
 	Status() map[string]string
-	Write(service string, data interface{}) error
+	Write(tool string, data interface{}) error
 	Files() <-chan string
 	Read(file string) ([]byte, error)
 	Remove(file string) error
@@ -55,7 +57,7 @@ type DiskvSpooler struct {
 	logger   *pct.Logger
 	dataDir  string
 	trashDir string
-	hostname string
+	OSUUID   string
 	// --
 	sz           Serializer
 	dataChan     chan *proto.Data
@@ -70,12 +72,12 @@ type DiskvSpooler struct {
 	fileSize     map[string]int
 }
 
-func NewDiskvSpooler(logger *pct.Logger, dataDir, trashDir, hostname string) *DiskvSpooler {
+func NewDiskvSpooler(logger *pct.Logger, dataDir, trashDir, OSUUID string) *DiskvSpooler {
 	s := &DiskvSpooler{
 		logger:   logger,
 		dataDir:  dataDir,
 		trashDir: trashDir,
-		hostname: hostname,
+		OSUUID:   OSUUID,
 		// --
 		dataChan: make(chan *proto.Data, WRITE_BUFFER),
 		sync:     pct.NewSyncChan(),
@@ -127,7 +129,7 @@ func (s *DiskvSpooler) Start(sz Serializer) error {
 			s.cache.Erase(key)
 			continue
 		}
-		parts := strings.Split(key, "_") // service_nanoUnixTs
+		parts := strings.Split(key, "_") // tool_nanoUnixTs
 		if len(parts) != 2 {
 			s.logger.Error("Invalid data file name:", key)
 			s.cache.Erase(key)
@@ -170,7 +172,7 @@ func (s *DiskvSpooler) Status() map[string]string {
 	return s.status.All()
 }
 
-func (s *DiskvSpooler) Write(service string, data interface{}) error {
+func (s *DiskvSpooler) Write(tool string, data interface{}) error {
 	/**
 	 * This method is shared: multiple goroutines call it to write data.
 	 * If the data serializer (sz) is not concurrent, then we serialize
@@ -194,10 +196,11 @@ func (s *DiskvSpooler) Write(service string, data interface{}) error {
 	// Wrap data in proto.Data with metadata to allow API to handle it properly.
 	protoData := &proto.Data{
 		Created:         time.Now().UTC(),
-		Hostname:        s.hostname,
-		Service:         service,
+		OSUUID:          s.OSUUID,
+		Tool:            tool,
 		ContentType:     "application/json",
 		ContentEncoding: s.sz.Encoding(),
+		AgentVersion:    agent.VERSION,
 		Data:            encodedData,
 	}
 
@@ -283,7 +286,7 @@ func (s *DiskvSpooler) run() {
 		select {
 		case protoData := <-s.dataChan:
 			ts := protoData.Created.UnixNano()
-			key := fmt.Sprintf("%s_%d", protoData.Service, ts)
+			key := fmt.Sprintf("%s_%d", protoData.Tool, ts)
 			s.logger.Debug("run:spool:" + key)
 			s.status.Update("data-spooler", "Spooling "+key)
 

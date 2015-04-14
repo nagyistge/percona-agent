@@ -21,12 +21,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
-	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/percona-agent/data"
-	"github.com/percona/percona-agent/pct"
-	"github.com/percona/percona-agent/test"
-	"github.com/percona/percona-agent/test/mock"
-	. "gopkg.in/check.v1"
 	"io"
 	"io/ioutil"
 	"log"
@@ -35,6 +29,13 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/percona-agent/data"
+	"github.com/percona/percona-agent/pct"
+	"github.com/percona/percona-agent/test"
+	"github.com/percona/percona-agent/test/mock"
+	. "gopkg.in/check.v1"
 )
 
 // Hook up gocheck into the "go test" runner.
@@ -111,10 +112,10 @@ func (s *DiskvSpoolerTestSuite) TestSpoolData(t *C) {
 	// Doesn't matter what data we spool; just send some bytes...
 	now := time.Now()
 	logEntry := &proto.LogEntry{
-		Ts:      now,
-		Level:   1,
-		Service: "mm",
-		Msg:     "hello world",
+		Ts:    now,
+		Level: 1,
+		Tool:  "mm",
+		Msg:   "hello world",
 	}
 	spool.Write("log", logEntry)
 
@@ -145,7 +146,7 @@ func (s *DiskvSpoolerTestSuite) TestSpoolData(t *C) {
 	if err := json.Unmarshal(data, protoData); err != nil {
 		t.Fatal(err)
 	}
-	t.Check(protoData.Service, Equals, "log")
+	t.Check(protoData.Tool, Equals, "log")
 	t.Check(protoData.ContentType, Equals, "application/json")
 	t.Check(protoData.ContentEncoding, Equals, "")
 	if protoData.Created.IsZero() || protoData.Created.Before(now) {
@@ -191,10 +192,10 @@ func (s *DiskvSpoolerTestSuite) TestSpoolGzipData(t *C) {
 
 	now := time.Now()
 	logEntry := &proto.LogEntry{
-		Ts:      now,
-		Level:   1,
-		Service: "mm",
-		Msg:     "hello world",
+		Ts:    now,
+		Level: 1,
+		Tool:  "mm",
+		Msg:   "hello world",
 	}
 	spool.Write("log", logEntry)
 
@@ -221,7 +222,7 @@ func (s *DiskvSpoolerTestSuite) TestSpoolGzipData(t *C) {
 	if err := json.Unmarshal(gotData, protoData); err != nil {
 		t.Fatal(err)
 	}
-	t.Check(protoData.Service, Equals, "log")
+	t.Check(protoData.Tool, Equals, "log")
 	t.Check(protoData.ContentType, Equals, "application/json")
 	t.Check(protoData.ContentEncoding, Equals, "gzip")
 
@@ -247,10 +248,10 @@ func (s *DiskvSpoolerTestSuite) TestSpoolGzipData(t *C) {
 	 */
 
 	logEntry2 := &proto.LogEntry{
-		Ts:      now,
-		Level:   2,
-		Service: "mm",
-		Msg:     "number 2",
+		Ts:    now,
+		Level: 2,
+		Tool:  "mm",
+		Msg:   "number 2",
 	}
 	spool.Write("log", logEntry2)
 
@@ -277,7 +278,7 @@ func (s *DiskvSpoolerTestSuite) TestSpoolGzipData(t *C) {
 	if err := json.Unmarshal(gotData, protoData); err != nil {
 		t.Fatal(err)
 	}
-	t.Check(protoData.Service, Equals, "log")
+	t.Check(protoData.Tool, Equals, "log")
 	t.Check(protoData.ContentType, Equals, "application/json")
 	t.Check(protoData.ContentEncoding, Equals, "gzip")
 
@@ -318,10 +319,10 @@ func (s *DiskvSpoolerTestSuite) TestRejectData(t *C) {
 	// Spool any data...
 	now := time.Now()
 	logEntry := &proto.LogEntry{
-		Ts:      now,
-		Level:   1,
-		Service: "mm",
-		Msg:     "hello world",
+		Ts:    now,
+		Level: 1,
+		Tool:  "mm",
+		Msg:   "hello world",
 	}
 	spool.Write("log", logEntry)
 
@@ -814,9 +815,9 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	 */
 
 	cmd := &proto.Cmd{
-		User:    "daniel",
-		Service: "data",
-		Cmd:     "GetConfig",
+		User: "daniel",
+		Tool: "data",
+		Cmd:  "GetConfig",
 	}
 
 	reply := m.Handle(cmd)
@@ -828,9 +829,9 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	}
 	expectConfig := []proto.AgentConfig{
 		{
-			InternalService: "data",
-			Config:          string(bytes),
-			Running:         true,
+			Tool:    "data",
+			Config:  string(bytes),
+			Running: true,
 		},
 	}
 	if same, diff := test.IsDeeply(gotConfig, expectConfig); !same {
@@ -884,19 +885,19 @@ func (s *ManagerTestSuite) TestSetConfig(t *C) {
 	configData, err := json.Marshal(config)
 	t.Assert(err, IsNil)
 	cmd := &proto.Cmd{
-		User:    "daniel",
-		Service: "data",
-		Cmd:     "SetConfig",
-		Data:    configData,
+		User: "daniel",
+		Tool: "data",
+		Cmd:  "SetConfig",
+		Data: configData,
 	}
 
 	gotReply := m.Handle(cmd)
 	t.Assert(gotReply.Error, Equals, "")
 
 	cmd = &proto.Cmd{
-		User:    "daniel",
-		Service: "data",
-		Cmd:     "GetConfig",
+		User: "daniel",
+		Tool: "data",
+		Cmd:  "GetConfig",
 	}
 	reply := m.Handle(cmd)
 	t.Assert(reply.Error, Equals, "")
@@ -907,9 +908,9 @@ func (s *ManagerTestSuite) TestSetConfig(t *C) {
 	}
 	expectConfigRes := []proto.AgentConfig{
 		{
-			InternalService: "data",
-			Config:          string(configData),
-			Running:         true,
+			Tool:    "data",
+			Config:  string(configData),
+			Running: true,
 		},
 	}
 	if same, diff := test.IsDeeply(gotConfigRes, expectConfigRes); !same {
@@ -936,19 +937,19 @@ func (s *ManagerTestSuite) TestSetConfig(t *C) {
 	configData, err = json.Marshal(config)
 	t.Assert(err, IsNil)
 	cmd = &proto.Cmd{
-		User:    "daniel",
-		Service: "data",
-		Cmd:     "SetConfig",
-		Data:    configData,
+		User: "daniel",
+		Tool: "data",
+		Cmd:  "SetConfig",
+		Data: configData,
 	}
 
 	gotReply = m.Handle(cmd)
 	t.Assert(gotReply.Error, Equals, "")
 
 	cmd = &proto.Cmd{
-		User:    "daniel",
-		Service: "data",
-		Cmd:     "GetConfig",
+		User: "daniel",
+		Tool: "data",
+		Cmd:  "GetConfig",
 	}
 	reply = m.Handle(cmd)
 	t.Assert(reply.Error, Equals, "")
@@ -958,9 +959,9 @@ func (s *ManagerTestSuite) TestSetConfig(t *C) {
 	}
 	expectConfigRes = []proto.AgentConfig{
 		{
-			InternalService: "data",
-			Config:          string(configData),
-			Running:         true,
+			Tool:    "data",
+			Config:  string(configData),
+			Running: true,
 		},
 	}
 	if same, diff := test.IsDeeply(gotConfigRes, expectConfigRes); !same {

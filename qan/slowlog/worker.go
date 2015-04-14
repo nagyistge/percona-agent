@@ -90,7 +90,7 @@ func NewWorker(logger *pct.Logger, config qan.Config, mysqlConn mysql.Connector)
 	// By default replace numbers in words with ?
 	query.ReplaceNumbersInWords = true
 
-	name := logger.Service()
+	name := logger.Tool()
 	w := &Worker{
 		logger:    logger,
 		config:    config,

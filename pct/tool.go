@@ -21,7 +21,7 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 )
 
-type ServiceManager interface {
+type ToolManager interface {
 	Start() error
 	Stop() error
 	Status() map[string]string

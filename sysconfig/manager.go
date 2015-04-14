@@ -275,7 +275,7 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 			continue
 		}
 		config := proto.AgentConfig{
-			InternalService: SERVICE_NAME,
+			Tool: SERVICE_NAME,
 			UUID:            mmConfig.UUID,
 			Config:          string(bytes),
 			Running:         true, // config removed if stopped, so it must be running

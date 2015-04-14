@@ -57,7 +57,7 @@ type WebsocketClient struct {
 }
 
 func NewWebsocketClient(logger *pct.Logger, api pct.APIConnector, link string, headers map[string]string) (*WebsocketClient, error) {
-	name := logger.Service()
+	name := logger.Tool()
 	c := &WebsocketClient{
 		logger:  logger,
 		api:     api,
