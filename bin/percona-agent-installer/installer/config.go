@@ -19,44 +19,44 @@ package installer
 
 import (
 	"encoding/json"
-	"fmt"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/data"
 	pctLog "github.com/percona/percona-agent/log"
 	"github.com/percona/percona-agent/pct"
 )
 
-func (i *Installer) writeInstances(si *proto.ServerInstance, mi *proto.MySQLInstance) error {
-	// We could write the instance structs directly, but this is the job of an
-	// instance repo and it's easy enough to create one, so do the right thing.
-	if si != nil {
-		bytes, err := json.Marshal(si)
-		if err != nil {
-			return err
-		}
-		if err := i.instanceRepo.Add("server", si.Id, bytes, true); err != nil {
-			return err
-		}
-	}
-	if mi != nil {
-		bytes, err := json.Marshal(mi)
-		if err != nil {
-			return err
-		}
-		if err := i.instanceRepo.Add("mysql", mi.Id, bytes, true); err != nil {
-			return err
-		}
-	}
-	return nil
-}
+//func (i *Installer) writeInstance(inst *proto.Instance) error {
+//	// We could write the instance structs directly, but this is the job of an
+//	// instance repo and it's easy enough to create one, so do the right thing.
+//	if si != nil {
+//		bytes, err := json.Marshal(si)
+//		if err != nil {
+//			return err
+//		}
+//		if err := i.instanceRepo.Add("server", si.Id, bytes, true); err != nil {
+//			return err
+//		}
+//	}
+//	if mi != nil {
+//		bytes, err := json.Marshal(mi)
+//		if err != nil {
+//			return err
+//		}
+//		if err := i.instanceRepo.Add("mysql", mi.Id, bytes, true); err != nil {
+//			return err
+//		}
+//	}
+//	return nil
+//}
 
 func (i *Installer) writeConfigs(configs []proto.AgentConfig) error {
 	for _, config := range configs {
-		name := config.InternalService
+		name := config.Tool
 		switch name {
 		case "agent", "log", "data", "qan":
 		default:
-			name += fmt.Sprintf("-%s-%d", config.ExternalService.Service, config.ExternalService.InstanceId)
+			name += "-" + config.UUID
 		}
 
 		if err := pct.Basedir.WriteConfigString(name, config.Config); err != nil {
@@ -77,8 +77,8 @@ func (i *Installer) getLogConfig() (*proto.AgentConfig, error) {
 		return nil, err
 	}
 	agentConfig := &proto.AgentConfig{
-		InternalService: "log",
-		Config:          string(configJson),
+		Tool:   "log",
+		Config: string(configJson),
 	}
 
 	return agentConfig, nil
@@ -94,8 +94,8 @@ func (i *Installer) getDataConfig() (*proto.AgentConfig, error) {
 		return nil, err
 	}
 	agentConfig := &proto.AgentConfig{
-		InternalService: "data",
-		Config:          string(configJson),
+		Tool:   "data",
+		Config: string(configJson),
 	}
 
 	return agentConfig, nil
@@ -107,8 +107,8 @@ func (i *Installer) getAgentConfig() (*proto.AgentConfig, error) {
 		return nil, err
 	}
 	agentConfig := &proto.AgentConfig{
-		InternalService: "agent",
-		Config:          string(configJson),
+		Tool:   "agent",
+		Config: string(configJson),
 	}
 
 	return agentConfig, nil

@@ -20,6 +20,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
+	"os"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/api"
@@ -27,8 +30,6 @@ import (
 	"github.com/percona/percona-agent/bin/percona-agent-installer/term"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/pct"
-	"log"
-	"os"
 )
 
 const (
@@ -41,7 +42,7 @@ var (
 	flagBasedir                 string
 	flagDebug                   bool
 	flagCreateMySQLInstance     bool
-	flagCreateServerInstance    bool
+	flagCreateOSInstance        bool
 	flagStartServices           bool
 	flagCreateAgent             bool
 	flagStartMySQLServices      bool
@@ -73,7 +74,7 @@ func init() {
 	// --
 	flag.BoolVar(&flagMySQL, "mysql", true, "Install for MySQL")
 	flag.BoolVar(&flagCreateMySQLInstance, "create-mysql-instance", true, "Create MySQL instance")
-	flag.BoolVar(&flagCreateServerInstance, "create-server-instance", true, "Create server instance")
+	flag.BoolVar(&flagCreateOSInstance, "create-os-instance", true, "Create Operating System instance")
 	flag.BoolVar(&flagStartServices, "start-services", true, "Start all services")
 	flag.BoolVar(&flagStartMySQLServices, "start-mysql-services", true, "Start MySQL services")
 	flag.BoolVar(&flagCreateAgent, "create-agent", true, "Create agent")
@@ -125,18 +126,18 @@ func main() {
 
 	flags := installer.Flags{
 		Bool: map[string]bool{
-			"debug":                  flagDebug,
-			"create-server-instance": flagCreateServerInstance,
-			"start-services":         flagStartServices,
-			"create-mysql-instance":  flagCreateMySQLInstance,
-			"start-mysql-services":   flagStartMySQLServices,
-			"create-agent":           flagCreateAgent,
-			"old-passwords":          flagOldPasswords,
-			"plain-passwords":        flagPlainPasswords,
-			"interactive":            flagInteractive,
-			"auto-detect-mysql":      flagAutoDetectMySQL,
-			"create-mysql-user":      flagCreateMySQLUser,
-			"mysql":                  flagMySQL,
+			"debug":                 flagDebug,
+			"create-os-instance":    flagCreatOSInstance,
+			"start-services":        flagStartServices,
+			"create-mysql-instance": flagCreateMySQLInstance,
+			"start-mysql-services":  flagStartMySQLServices,
+			"create-agent":          flagCreateAgent,
+			"old-passwords":         flagOldPasswords,
+			"plain-passwords":       flagPlainPasswords,
+			"interactive":           flagInteractive,
+			"auto-detect-mysql":     flagAutoDetectMySQL,
+			"create-mysql-user":     flagCreateMySQLUser,
+			"mysql":                 flagMySQL,
 		},
 		String: map[string]string{
 			"app-host":            DEFAULT_APP_HOSTNAME,
@@ -167,7 +168,12 @@ func main() {
 	logger := pct.NewLogger(logChan, "instance-repo")
 	instanceRepo := instance.NewRepo(logger, pct.Basedir.Dir("config"), apiConnector)
 	terminal := term.NewTerminal(os.Stdin, flagInteractive, flagDebug)
-	agentInstaller := installer.NewInstaller(terminal, flagBasedir, api, instanceRepo, agentConfig, flags)
+	var uf pct.UUID4 // UUID4 implements UUIDFactory interface
+	agentInstaller, err := installer.NewInstaller(terminal, flagBasedir, api, instanceRepo, agentConfig, uf, flags)
+	if err != nil {
+		fmt.Println(fmt.Sprintf("Could not generate UUID4 for OS instance: %v", err))
+		os.Exit(1)
+	}
 	fmt.Println("CTRL-C at any time to quit")
 	// todo: catch SIGINT and clean up
 	if err := agentInstaller.Run(); err != nil {

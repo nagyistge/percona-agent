@@ -52,7 +52,7 @@ func NewMySQL(logger *pct.Logger, ir *instance.Repo) *MySQL {
 
 func (m *MySQL) Handle(protoCmd *proto.Cmd) *proto.Reply {
 	// Get service instance
-	serviceInstance, err := getServiceInstance(protoCmd)
+	serviceInstance, err := getToolInstance(protoCmd)
 	if err != nil {
 		return protoCmd.Reply(nil, err)
 	}
@@ -91,16 +91,16 @@ func (m *MySQL) Handle(protoCmd *proto.Cmd) *proto.Reply {
 // Implementation
 /////////////////////////////////////////////////////////////////////////////
 
-func getServiceInstance(protoCmd *proto.Cmd) (serviceInstance *proto.ServiceInstance, err error) {
+func getToolInstance(protoCmd *proto.Cmd) (toolInstance *proto.ToolInstance, err error) {
 	if protoCmd.Data == nil {
 		return nil, fmt.Errorf("%s.getMySQLInstance:cmd.Data is empty", SERVICE_NAME)
 	}
 
-	if err := json.Unmarshal(protoCmd.Data, &serviceInstance); err != nil {
+	if err := json.Unmarshal(protoCmd.Data, &toolInstance); err != nil {
 		return nil, fmt.Errorf("%s.getMySQLInstance:json.Unmarshal:%s", SERVICE_NAME, err)
 	}
 
-	return serviceInstance, nil
+	return toolInstance, nil
 }
 
 func CreateParamsForPtMySQLSummary(dsn *DSN) (args []string) {

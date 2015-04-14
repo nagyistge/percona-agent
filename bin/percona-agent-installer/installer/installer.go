@@ -19,6 +19,13 @@ package installer
 
 import (
 	"fmt"
+	"log"
+	"net"
+	"net/url"
+	"os"
+	"regexp"
+	"time"
+
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/agent"
@@ -26,12 +33,7 @@ import (
 	"github.com/percona/percona-agent/bin/percona-agent-installer/term"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/mysql"
-	"log"
-	"net"
-	"net/url"
-	"os"
-	"regexp"
-	"time"
+	"github.com/percona/percona-agent/pct"
 )
 
 var portNumberRe = regexp.MustCompile(`\.\d+$`)
@@ -50,11 +52,11 @@ type Installer struct {
 	agentConfig  *agent.Config
 	flags        Flags
 	// --
-	hostname   string
+	osInstance proto.Instance
 	defaultDSN mysql.DSN
 }
 
-func NewInstaller(terminal *term.Terminal, basedir string, api *api.Api, instanceRepo *instance.Repo, agentConfig *agent.Config, flags Flags) *Installer {
+func NewInstaller(terminal *term.Terminal, basedir string, api *api.Api, instanceRepo *instance.Repo, agentConfig *agent.Config, uf pct.UUIDFactory, flags Flags) (*Installer, error) {
 	if agentConfig.ApiHostname == "" {
 		agentConfig.ApiHostname = agent.DEFAULT_API_HOSTNAME
 	}
@@ -62,6 +64,18 @@ func NewInstaller(terminal *term.Terminal, basedir string, api *api.Api, instanc
 		agentConfig.PidFile = agent.DEFAULT_PIDFILE
 	}
 	hostname, _ := os.Hostname()
+	UUID, err := uf.New()
+	if err != nil {
+		return nil, err
+	}
+	
+	osIt := proto.Instance{}
+	osIt.Type = "OS"
+	osIt.Prefix = "os"
+	osIt.UUID = UUID
+	osIt.Name = hostname
+	osIt.ParentUUID = ""
+	
 	defaultDSN := mysql.DSN{
 		Username: flags.String["mysql-user"],
 		Password: flags.String["mysql-pass"],
@@ -69,6 +83,7 @@ func NewInstaller(terminal *term.Terminal, basedir string, api *api.Api, instanc
 		Port:     flags.String["mysql-port"],
 		Socket:   flags.String["mysql-socket"],
 	}
+	
 	installer := &Installer{
 		term:         terminal,
 		basedir:      basedir,
@@ -77,10 +92,10 @@ func NewInstaller(terminal *term.Terminal, basedir string, api *api.Api, instanc
 		agentConfig:  agentConfig,
 		flags:        flags,
 		// --
-		hostname:   hostname,
+		osInstance: osIt,
 		defaultDSN: defaultDSN,
 	}
-	return installer
+	return installer, nil
 }
 
 func (i *Installer) Run() (err error) {
@@ -107,22 +122,22 @@ func (i *Installer) Run() (err error) {
 		}
 
 		// To save data we need agent config with uuid and links
-		i.agentConfig.AgentUuid = protoAgent.Uuid
+		i.agentConfig.AgentUuid = protoAgent.UUID
 		i.agentConfig.Links = protoAgent.Links
 	}
 
 	/**
-	 * Create new service instances.
+	 * Create new OS and MySQL instances.
 	 */
 
 	// Server instance
-	si, err := i.InstallerCreateServerInstance()
+	oi, err := i.InstallerCreateOSInstance()
 	if err != nil {
 		return err
 	}
 
 	// MySQL instance
-	var mi *proto.MySQLInstance
+	var mi *proto.Instance
 	if i.flags.Bool["mysql"] {
 		mi, err = i.InstallerCreateMySQLInstance()
 		if err != nil {
@@ -134,9 +149,15 @@ func (i *Installer) Run() (err error) {
 			}
 		}
 	}
-
-	if err = i.writeInstances(si, mi); err != nil {
-		return fmt.Errorf("Created agent but failed to write service instances: %s", err)
+	
+	tree, err = i.api.GetSystemTree()
+	if err != nil {
+		return fmt.Errorf("Created agent but failed to get system tree from API: %s", err)
+	}
+	// Update system tree on repository and save the tree to disk (second parameter)
+	// This is our very first system tree - version 1
+	if err = i.instanceRepo.UpdateSystemTree(tree, 1, true); err != nil {
+		return fmt.Errorf("Created agent but failed to write instances: %s", err)
 	}
 
 	/**
@@ -146,7 +167,7 @@ func (i *Installer) Run() (err error) {
 		/**
 		 * Get default configs for all services.
 		 */
-		configs, err := i.InstallerGetDefaultConfigs(si, mi)
+		configs, err := i.InstallerGetDefaultConfigs(oi, mi)
 		if err != nil {
 			return err
 		}
@@ -158,7 +179,6 @@ func (i *Installer) Run() (err error) {
 	} else {
 		fmt.Println("Not creating agent (-create-agent=false)")
 	}
-
 	return nil // success
 }
 
@@ -282,25 +302,21 @@ VERIFY_API_KEY:
 	return nil
 }
 
-func (i *Installer) InstallerCreateServerInstance() (si *proto.ServerInstance, err error) {
-	if i.flags.Bool["create-server-instance"] {
-		// POST <api>/instances/server
-		si = &proto.ServerInstance{
-			Hostname: i.hostname,
-		}
-		si, err = i.api.CreateServerInstance(si)
+func (i *Installer) InstallerCreateOSInstance() (it *proto.Instance, err error) {
+	if i.flags.Bool["create-os-instance"] {
+		// TODO: we also need distro, version and arch as Properties
+		oi, err = i.api.CreateInstance(i.osInstance)
 		if err != nil {
 			return nil, err
 		}
-		fmt.Printf("Created server instance: hostname=%s id=%d\n", si.Hostname, si.Id)
+		fmt.Printf("Created OS instance: name=%s id=%d\n", oi.Name, oi.UUID)
 	} else {
-		fmt.Println("Not creating server instance (-create-server-instance=false)")
+		fmt.Println("Not creating OS instance (-create-os-instance=false)")
 	}
-
-	return si, nil
+	return oi, nil
 }
 
-func (i *Installer) InstallerCreateMySQLInstance() (mi *proto.MySQLInstance, err error) {
+func (i *Installer) InstallerCreateMySQLInstance() (it *proto.Instance, err error) {
 	if i.flags.Bool["create-mysql-instance"] {
 		// Get MySQL DSN for agent to use.
 		// It is new MySQL user created just for agent
@@ -310,18 +326,20 @@ func (i *Installer) InstallerCreateMySQLInstance() (mi *proto.MySQLInstance, err
 		if err != nil {
 			return nil, err
 		}
-
-		// Create MySQL instance in API.
+		// Create MySQL instance, UUID will be set by API.
 		dsnString, _ := agentDSN.DSN()
-		mi = &proto.MySQLInstance{
-			Hostname: i.hostname,
-			DSN:      dsnString,
+		mi = &proto.Instance{
+			Type: "MySQL",
+			Prefix: "mysql",
+			Name: i.osInstance.Hostname,
+			DSN:  dsnString,
+			ParentUUID: i.osInstance.UUID,
 		}
-		mi, err = i.api.CreateMySQLInstance(mi)
+		mi, err = i.api.CreateInstance(mi)
 		if err != nil {
 			return nil, err
 		}
-		fmt.Printf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mi.DSN, mi.Hostname, mi.Id)
+		fmt.Printf("Created MySQL instance: dsn=%s name=%s uuid=%d\n", mi.DSN, mi.Name, mi.UUID)
 	} else {
 		fmt.Println("Not creating MySQL instance (-create-mysql-instance=false)")
 	}
@@ -329,7 +347,7 @@ func (i *Installer) InstallerCreateMySQLInstance() (mi *proto.MySQLInstance, err
 	return mi, nil
 }
 
-func (i *Installer) InstallerGetDefaultConfigs(si *proto.ServerInstance, mi *proto.MySQLInstance) (configs []proto.AgentConfig, err error) {
+func (i *Installer) InstallerGetDefaultConfigs(oi, mi *proto.Instance) (configs []proto.AgentConfig, err error) {
 	agentConfig, err := i.getAgentConfig()
 	if err != nil {
 		return nil, err
@@ -352,7 +370,7 @@ func (i *Installer) InstallerGetDefaultConfigs(si *proto.ServerInstance, mi *pro
 
 	if i.flags.Bool["start-services"] {
 		// Server metrics monitor
-		config, err := i.api.GetMmServerConfig(si)
+		config, err := i.api.GetMmServerConfig(oi)
 		if err != nil {
 			fmt.Println(err)
 			fmt.Println("WARNING: cannot start server metrics monitor")
@@ -405,15 +423,18 @@ func (i *Installer) InstallerGetDefaultConfigs(si *proto.ServerInstance, mi *pro
 	return configs, nil
 }
 
-func (i *Installer) InstallerCreateAgentWithInitialServiceConfigs() (protoAgent *proto.Agent, err error) {
-	protoAgent = &proto.Agent{
-		Hostname: i.hostname,
-		Version:  agent.VERSION,
-	}
-	protoAgent, err = i.api.CreateAgent(protoAgent)
+func (i *Installer) InstallerCreateAgentWithInitialServiceConfigs() (protoAgentInst *proto.Instance, err error) {
+	var protoAgentInst *proto.Instance
+	protoAgentInst.Type = "Percona Agent"
+	protoAgentInst.Prefix = "agent"
+	protoAgentInst.ParentUUID = i.osInstance.UUID
+	protoAgentInst.Name = i.hostname
+	protoAgentInst.Properties := map[string]string{ "version": agent.VERSION }
+	
+	protoAgentInst, err = i.api.CreateAgent(protoAgentInst)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("Created agent: uuid=%s\n", protoAgent.Uuid)
+	fmt.Printf("Created agent: uuid=%s\n", protoAgentInst.UUID)
 	return protoAgent, nil
 }

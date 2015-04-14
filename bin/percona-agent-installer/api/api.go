@@ -20,15 +20,16 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"net/http"
+
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/percona/cloud-protocol/proto"
 	mmMySQL "github.com/percona/percona-agent/mm/mysql"
-	mmServer "github.com/percona/percona-agent/mm/system"
+	mmOS "github.com/percona/percona-agent/mm/system"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/qan"
 	sysconfigMySQL "github.com/percona/percona-agent/sysconfig/mysql"
-	"log"
-	"net/http"
 )
 
 type Api struct {
@@ -47,120 +48,171 @@ func (a *Api) Init(hostname, apiKey string, headers map[string]string) (code int
 	return a.apiConnector.Init(hostname, apiKey, headers)
 }
 
-func (a *Api) CreateServerInstance(si *proto.ServerInstance) (*proto.ServerInstance, error) {
-	// POST <api>/instances/server
-	data, err := json.Marshal(si)
+//func (a *Api) CreateServerInstance(si *proto.ServerInstance) (*proto.ServerInstance, error) {
+//	// POST <api>/instances/server
+//	data, err := json.Marshal(si)
+//	if err != nil {
+//		return nil, err
+//	}
+//	url := a.apiConnector.URL("instances", "server")
+//	resp, _, err := a.apiConnector.Post(a.apiConnector.ApiKey(), url, data)
+//	if a.debug {
+//		log.Printf("resp=%#v\n", resp)
+//		log.Printf("err=%s\n", err)
+//	}
+//	if err != nil {
+//		return nil, err
+//	}
+//	// Create new instance, if it already exist then just use it
+//	// todo: better handling of duplicate instance
+//	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusConflict {
+//		return nil, fmt.Errorf("Failed to create server instance (status code %d)", resp.StatusCode)
+//	}
+
+//	// API returns URI of new resource in Location header
+//	uri := resp.Header.Get("Location")
+//	if uri == "" {
+//		return nil, fmt.Errorf("API did not return location of new server instance")
+//	}
+
+//	// GET <api>/instances/server/id (URI)
+//	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), uri)
+//	if a.debug {
+//		log.Printf("code=%d\n", code)
+//		log.Printf("err=%s\n", err)
+//	}
+//	if err != nil {
+//		return nil, err
+//	}
+//	if code != http.StatusOK {
+//		return nil, fmt.Errorf("Failed to get new server instance (status code %d)", code)
+//	}
+//	if err := json.Unmarshal(data, si); err != nil {
+//		return nil, fmt.Errorf("Failed to parse server instance entity: %s", err)
+//	}
+//	return si, nil
+//}
+
+//func (a *Api) CreateMySQLInstance(mi *proto.MySQLInstance) (*proto.MySQLInstance, error) {
+//	// POST <api>/instances/mysql
+//	data, err := json.Marshal(mi)
+//	if err != nil {
+//		return nil, err
+//	}
+//	url := a.apiConnector.URL("instances", "mysql")
+//	resp, _, err := a.apiConnector.Post(a.apiConnector.ApiKey(), url, data)
+//	if a.debug {
+//		log.Printf("resp=%#v\n", resp)
+//		log.Printf("err=%s\n", err)
+//	}
+//	if err != nil {
+//		return nil, err
+//	}
+
+//	// Create new instance, if it already exist then update it
+//	if resp.StatusCode == http.StatusConflict {
+//		// API returns URI of existing resource in Location header
+//		uri := resp.Header.Get("Location")
+//		if uri == "" {
+//			return nil, fmt.Errorf("API did not return location of existing MySQL instance")
+//		}
+
+//		resp, _, err := a.apiConnector.Put(a.apiConnector.ApiKey(), uri, data)
+//		if a.debug {
+//			log.Printf("resp=%#v\n", resp)
+//			log.Printf("err=%s\n", err)
+//		}
+//		if err != nil {
+//			return nil, err
+//		}
+//		if resp.StatusCode != http.StatusOK {
+//			return nil, fmt.Errorf("Failed to update MySQL instance (status code %d)", resp.StatusCode)
+//		}
+//	} else if resp.StatusCode != http.StatusCreated {
+//		return nil, fmt.Errorf("Failed to create MySQL instance (status code %d)", resp.StatusCode)
+//	}
+
+//	// API returns URI of new (or already existing one) resource in Location header
+//	uri := resp.Header.Get("Location")
+//	if uri == "" {
+//		return nil, fmt.Errorf("API did not return location of new MySQL instance")
+//	}
+
+//	// GET <api>/instances/mysql/id (URI)
+//	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), uri)
+//	if a.debug {
+//		log.Printf("code=%d\n", code)
+//		log.Printf("err=%s\n", err)
+//	}
+//	if err != nil {
+//		return nil, err
+//	}
+//	if code != http.StatusOK {
+//		return nil, fmt.Errorf("Failed to get new MySQL instance (status code %d)", code)
+//	}
+//	if err := json.Unmarshal(data, mi); err != nil {
+//		return nil, fmt.Errorf("Failed to parse MySQL instance entity: %s", err)
+//	}
+//	return mi, nil
+//}
+
+//func (a *Api) CreateAgent(agent *proto.Agent) (*proto.Agent, error) {
+//	data, err := json.Marshal(agent)
+//	if err != nil {
+//		return nil, err
+//	}
+//	url := a.apiConnector.URL("agents")
+//	resp, _, err := a.apiConnector.Post(a.apiConnector.ApiKey(), url, data)
+//	if a.debug {
+//		log.Printf("resp=%#v\n", resp)
+//		log.Printf("err=%s\n", err)
+//	}
+//	if err != nil {
+//		return nil, err
+//	}
+
+//	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusConflict {
+//		// agent was created or already exist - either is ok, continue
+//	} else if resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-Percona-Agents-Limit") != "" {
+//		return nil, fmt.Errorf(
+//			"Maximum number of %s agents exceeded.\n"+
+//				"Go to https://cloud.percona.com/agents and remove unused agents or contact Percona to increase limit.",
+//			resp.Header.Get("X-Percona-Agents-Limit"),
+//		)
+//	} else {
+//		return nil, fmt.Errorf("Failed to create agent instance (status code %d)", resp.StatusCode)
+//	}
+
+//	// API returns URI of new resource in Location header
+//	uri := resp.Header.Get("Location")
+//	if uri == "" {
+//		return nil, fmt.Errorf("API did not return location of new agent")
+//	}
+
+//	// GET <api>/agents/:uuid
+//	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), uri)
+//	if a.debug {
+//		log.Printf("code=%d\n", code)
+//		log.Printf("err=%s\n", err)
+//	}
+//	if err != nil {
+//		return nil, err
+//	}
+//	if code != http.StatusOK {
+//		return nil, fmt.Errorf("Failed to get new agent (status code %d)", code)
+//	}
+//	if err := json.Unmarshal(data, agent); err != nil {
+//		return nil, fmt.Errorf("Failed to parse agent entity: %s", err)
+//	}
+//	return agent, nil
+//}
+
+func (a *Api) CreateInstance(it *proto.Instance) (*proto.Instance, error) {
+	data, err := json.Marshal(it)
 	if err != nil {
 		return nil, err
 	}
-	url := a.apiConnector.URL("instances", "server")
-	resp, _, err := a.apiConnector.Post(a.apiConnector.ApiKey(), url, data)
-	if a.debug {
-		log.Printf("resp=%#v\n", resp)
-		log.Printf("err=%s\n", err)
-	}
-	if err != nil {
-		return nil, err
-	}
-	// Create new instance, if it already exist then just use it
-	// todo: better handling of duplicate instance
-	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusConflict {
-		return nil, fmt.Errorf("Failed to create server instance (status code %d)", resp.StatusCode)
-	}
-
-	// API returns URI of new resource in Location header
-	uri := resp.Header.Get("Location")
-	if uri == "" {
-		return nil, fmt.Errorf("API did not return location of new server instance")
-	}
-
-	// GET <api>/instances/server/id (URI)
-	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), uri)
-	if a.debug {
-		log.Printf("code=%d\n", code)
-		log.Printf("err=%s\n", err)
-	}
-	if err != nil {
-		return nil, err
-	}
-	if code != http.StatusOK {
-		return nil, fmt.Errorf("Failed to get new server instance (status code %d)", code)
-	}
-	if err := json.Unmarshal(data, si); err != nil {
-		return nil, fmt.Errorf("Failed to parse server instance entity: %s", err)
-	}
-	return si, nil
-}
-
-func (a *Api) CreateMySQLInstance(mi *proto.MySQLInstance) (*proto.MySQLInstance, error) {
-	// POST <api>/instances/mysql
-	data, err := json.Marshal(mi)
-	if err != nil {
-		return nil, err
-	}
-	url := a.apiConnector.URL("instances", "mysql")
-	resp, _, err := a.apiConnector.Post(a.apiConnector.ApiKey(), url, data)
-	if a.debug {
-		log.Printf("resp=%#v\n", resp)
-		log.Printf("err=%s\n", err)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	// Create new instance, if it already exist then update it
-	if resp.StatusCode == http.StatusConflict {
-		// API returns URI of existing resource in Location header
-		uri := resp.Header.Get("Location")
-		if uri == "" {
-			return nil, fmt.Errorf("API did not return location of existing MySQL instance")
-		}
-
-		resp, _, err := a.apiConnector.Put(a.apiConnector.ApiKey(), uri, data)
-		if a.debug {
-			log.Printf("resp=%#v\n", resp)
-			log.Printf("err=%s\n", err)
-		}
-		if err != nil {
-			return nil, err
-		}
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("Failed to update MySQL instance (status code %d)", resp.StatusCode)
-		}
-	} else if resp.StatusCode != http.StatusCreated {
-		return nil, fmt.Errorf("Failed to create MySQL instance (status code %d)", resp.StatusCode)
-	}
-
-	// API returns URI of new (or already existing one) resource in Location header
-	uri := resp.Header.Get("Location")
-	if uri == "" {
-		return nil, fmt.Errorf("API did not return location of new MySQL instance")
-	}
-
-	// GET <api>/instances/mysql/id (URI)
-	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), uri)
-	if a.debug {
-		log.Printf("code=%d\n", code)
-		log.Printf("err=%s\n", err)
-	}
-	if err != nil {
-		return nil, err
-	}
-	if code != http.StatusOK {
-		return nil, fmt.Errorf("Failed to get new MySQL instance (status code %d)", code)
-	}
-	if err := json.Unmarshal(data, mi); err != nil {
-		return nil, fmt.Errorf("Failed to parse MySQL instance entity: %s", err)
-	}
-	return mi, nil
-}
-
-func (a *Api) CreateAgent(agent *proto.Agent) (*proto.Agent, error) {
-	data, err := json.Marshal(agent)
-	if err != nil {
-		return nil, err
-	}
-	url := a.apiConnector.URL("agents")
+	url := a.apiConnector.URL("instances")
 	resp, _, err := a.apiConnector.Post(a.apiConnector.ApiKey(), url, data)
 	if a.debug {
 		log.Printf("resp=%#v\n", resp)
@@ -179,16 +231,16 @@ func (a *Api) CreateAgent(agent *proto.Agent) (*proto.Agent, error) {
 			resp.Header.Get("X-Percona-Agents-Limit"),
 		)
 	} else {
-		return nil, fmt.Errorf("Failed to create agent instance (status code %d)", resp.StatusCode)
+		return nil, fmt.Errorf("Failed to create instance (status code %d)", resp.StatusCode)
 	}
 
 	// API returns URI of new resource in Location header
 	uri := resp.Header.Get("Location")
 	if uri == "" {
-		return nil, fmt.Errorf("API did not return location of new agent")
+		return nil, fmt.Errorf("API did not return location of new instance")
 	}
 
-	// GET <api>/agents/:uuid
+	// GET <api>/instances/:uuid
 	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), uri)
 	if a.debug {
 		log.Printf("code=%d\n", code)
@@ -198,37 +250,79 @@ func (a *Api) CreateAgent(agent *proto.Agent) (*proto.Agent, error) {
 		return nil, err
 	}
 	if code != http.StatusOK {
-		return nil, fmt.Errorf("Failed to get new agent (status code %d)", code)
+		return nil, fmt.Errorf("Failed to get new instance (status code %d)", code)
 	}
-	if err := json.Unmarshal(data, agent); err != nil {
-		return nil, fmt.Errorf("Failed to parse agent entity: %s", err)
+	if err := json.Unmarshal(data, &it); err != nil {
+		return nil, fmt.Errorf("Failed to parse instance entity: %s", err)
 	}
-	return agent, nil
+	return it, nil
 }
 
-func (a *Api) UpdateAgent(agent *proto.Agent, uuid string) (*proto.Agent, error) {
-	data, err := json.Marshal(agent)
+func (a *Api) UpdateInstance(it *proto.Instance) error {
+	data, err := json.Marshal(it)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	url := a.apiConnector.URL("agents", uuid)
+	url := a.apiConnector.URL("instances", it.UUID)
 	resp, _, err := a.apiConnector.Put(a.apiConnector.ApiKey(), url, data)
 	if a.debug {
 		log.Printf("resp=%#v\n", resp)
 		log.Printf("err=%s\n", err)
 	}
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Failed to update agent via API (status code %d)", resp.StatusCode)
+		return fmt.Errorf("Failed to update instance via API (status code %d)", resp.StatusCode)
 	}
-	return agent, nil
+	return nil
 }
 
-func (a *Api) GetMmServerConfig(si *proto.ServerInstance) (*proto.AgentConfig, error) {
-	url := a.apiConnector.URL("/configs/mm/default-server")
+func (a *Api) GetSystemTree() (it *proto.Instance, err error) {
+	url := a.apiConnector.URL("system_tree")
+	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), url)
+	if a.debug {
+		log.Printf("code=%#v\n", code)
+		log.Printf("err=%s\n", err)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if code != http.StatusOK {
+		return nil, fmt.Errorf("Failed to update instance via API (status code %d)", code)
+	}
+	if err := json.Unmarshal(data, &it); err != nil {
+		return nil, err
+	}
+
+	return it, nil
+}
+
+//func (a *Api) UpdateAgent(agent *proto.Agent, uuid string) (*proto.Agent, error) {
+//	data, err := json.Marshal(agent)
+//	if err != nil {
+//		return nil, err
+//	}
+//	url := a.apiConnector.URL("agents", uuid)
+//	resp, _, err := a.apiConnector.Put(a.apiConnector.ApiKey(), url, data)
+//	if a.debug {
+//		log.Printf("resp=%#v\n", resp)
+//		log.Printf("err=%s\n", err)
+//	}
+//	if err != nil {
+//		return nil, err
+//	}
+
+//	if resp.StatusCode != http.StatusOK {
+//		return nil, fmt.Errorf("Failed to update agent via API (status code %d)", resp.StatusCode)
+//	}
+//	return agent, nil
+//}
+
+func (a *Api) GetMmOSConfig(oi *proto.Instance) (*proto.AgentConfig, error) {
+	url := a.apiConnector.URL("/configs/mm/default-os")
 	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), url)
 	if a.debug {
 		log.Printf("code=%d\n", code)
@@ -238,32 +332,28 @@ func (a *Api) GetMmServerConfig(si *proto.ServerInstance) (*proto.AgentConfig, e
 		return nil, err
 	}
 	if code != http.StatusOK {
-		return nil, fmt.Errorf("Failed to get default server monitor config (%s, status %d)", url, code)
+		return nil, fmt.Errorf("Failed to get default OS monitor config (%s, status %d)", url, code)
 	}
-	config := &mmServer.Config{}
+	config := &mmOS.Config{}
 	if err := json.Unmarshal(data, config); err != nil {
 		return nil, err
 	}
-	config.Service = "server"
-	config.InstanceId = si.Id
+	config.UUID = oi.UUID
 
 	bytes, err := json.Marshal(config)
 	if err != nil {
 		return nil, err
 	}
 	agentConfig := &proto.AgentConfig{
-		InternalService: "mm",
-		ExternalService: proto.ServiceInstance{
-			Service:    "server",
-			InstanceId: si.Id,
-		},
+		Tool:    "mm",
+		UUID:    oi.UUID,
 		Config:  string(bytes),
 		Running: true,
 	}
 	return agentConfig, nil
 }
 
-func (a *Api) GetMmMySQLConfig(mi *proto.MySQLInstance) (*proto.AgentConfig, error) {
+func (a *Api) GetMmMySQLConfig(mi *proto.Instance) (*proto.AgentConfig, error) {
 	url := a.apiConnector.URL("/configs/mm/default-mysql")
 	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), url)
 	if a.debug {
@@ -280,26 +370,22 @@ func (a *Api) GetMmMySQLConfig(mi *proto.MySQLInstance) (*proto.AgentConfig, err
 	if err := json.Unmarshal(data, config); err != nil {
 		return nil, err
 	}
-	config.Service = "mysql"
-	config.InstanceId = mi.Id
+	config.UUID = mi.UUID
 
 	bytes, err := json.Marshal(config)
 	if err != nil {
 		return nil, err
 	}
 	agentConfig := &proto.AgentConfig{
-		InternalService: "mm",
-		ExternalService: proto.ServiceInstance{
-			Service:    "mysql",
-			InstanceId: mi.Id,
-		},
+		Tool:    "mm",
+		UUID:    mi.UUID,
 		Config:  string(bytes),
 		Running: true,
 	}
 	return agentConfig, nil
 }
 
-func (a *Api) GetSysconfigMySQLConfig(mi *proto.MySQLInstance) (*proto.AgentConfig, error) {
+func (a *Api) GetSysconfigMySQLConfig(mi *proto.Instance) (*proto.AgentConfig, error) {
 	url := a.apiConnector.URL("/configs/sysconfig/default-mysql")
 	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), url)
 	if a.debug {
@@ -316,26 +402,22 @@ func (a *Api) GetSysconfigMySQLConfig(mi *proto.MySQLInstance) (*proto.AgentConf
 	if err := json.Unmarshal(data, config); err != nil {
 		return nil, err
 	}
-	config.Service = "mysql"
-	config.InstanceId = mi.Id
+	config.UUID = mi.UUID
 
 	bytes, err := json.Marshal(config)
 	if err != nil {
 		return nil, err
 	}
 	agentConfig := &proto.AgentConfig{
-		InternalService: "sysconfig",
-		ExternalService: proto.ServiceInstance{
-			Service:    "mysql",
-			InstanceId: mi.Id,
-		},
+		Tool:    "sysconfig",
+		UUID:    mi.UUID,
 		Config:  string(bytes),
 		Running: true,
 	}
 	return agentConfig, nil
 }
 
-func (a *Api) GetQanConfig(mi *proto.MySQLInstance) (*proto.AgentConfig, error) {
+func (a *Api) GetQanConfig(mi *proto.Instance) (*proto.AgentConfig, error) {
 	url := a.apiConnector.URL("/configs/qan/default")
 	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), url)
 	if a.debug {
@@ -352,19 +434,15 @@ func (a *Api) GetQanConfig(mi *proto.MySQLInstance) (*proto.AgentConfig, error) 
 	if err := json.Unmarshal(data, config); err != nil {
 		return nil, err
 	}
-	config.Service = "mysql"
-	config.InstanceId = mi.Id
+	config.UUID = mi.UUID
 
 	bytes, err := json.Marshal(config)
 	if err != nil {
 		return nil, err
 	}
 	agentConfig := &proto.AgentConfig{
-		InternalService: "qan",
-		ExternalService: proto.ServiceInstance{
-			Service:    "mysql",
-			InstanceId: mi.Id,
-		},
+		Tool:    "qan",
+		UUID:    mi.UUID,
 		Config:  string(bytes),
 		Running: true,
 	}
