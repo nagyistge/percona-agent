@@ -19,6 +19,13 @@ package agent_test
 
 import (
 	"encoding/json"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"sort"
+	"testing"
+	"time"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/pct"
@@ -27,12 +34,6 @@ import (
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
-	"io/ioutil"
-	"os"
-	"path/filepath"
-	"sort"
-	"testing"
-	"time"
 )
 
 // Hook gocheck into the "go test" runner.
@@ -49,7 +50,7 @@ type AgentTestSuite struct {
 	// Agent
 	agent        *agent.Agent
 	config       *agent.Config
-	services     map[string]*mock.MockServiceManager
+	services     map[string]*mock.MockToolManager
 	servicesMap  map[string]pct.ToolManager
 	client       *mock.WebsocketClient
 	sendDataChan chan interface{}
@@ -85,7 +86,7 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 
 	// Agent
 	s.config = &agent.Config{
-		AgentUuid:   "abc-123-def",
+		AgentUUID:   "abc-123-def",
 		ApiKey:      "789",
 		ApiHostname: agent.DEFAULT_API_HOSTNAME,
 		Keepalive:   1, // don't send while testing
@@ -106,15 +107,15 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 func (s *AgentTestSuite) SetUpTest(t *C) {
 	// Before each test, create an agent.  Tests make change the agent,
 	// so this ensures each test starts with an agent with known values.
-	s.services = make(map[string]*mock.MockServiceManager)
-	s.services["qan"] = mock.NewMockServiceManager("qan", s.readyChan, s.traceChan)
-	s.services["mm"] = mock.NewMockServiceManager("mm", s.readyChan, s.traceChan)
+	s.services = make(map[string]*mock.MockToolManager)
+	s.services["qan"] = mock.NewMockToolManager("qan", s.readyChan, s.traceChan)
+	s.services["mm"] = mock.NewMockToolManager("mm", s.readyChan, s.traceChan)
 
 	links := map[string]string{
 		"agent":     "http://localhost/agent",
 		"instances": "http://localhost/instances",
 	}
-	s.api = mock.NewAPI("http://localhost", s.config.ApiHostname, s.config.ApiKey, s.config.AgentUuid, links)
+	s.api = mock.NewAPI("http://localhost", s.config.ApiHostname, s.config.ApiKey, s.config.AgentUUID, links)
 
 	s.servicesMap = map[string]pct.ToolManager{
 		"mm":  s.services["mm"],
@@ -207,9 +208,9 @@ func (s *AgentTestSuite) TestStatus(t *C) {
 	 * Get only agent's status
 	 */
 	statusCmd = &proto.Cmd{
-		Ts:      time.Now(),
-		User:    "daniel",
-		Cmd:     "Status",
+		Ts:   time.Now(),
+		User: "daniel",
+		Cmd:  "Status",
 		Tool: "agent",
 	}
 	s.sendChan <- statusCmd
@@ -224,9 +225,9 @@ func (s *AgentTestSuite) TestStatus(t *C) {
 	 * Get only sub-service status.
 	 */
 	statusCmd = &proto.Cmd{
-		Ts:      time.Now(),
-		User:    "daniel",
-		Cmd:     "Status",
+		Ts:   time.Now(),
+		User: "daniel",
+		Cmd:  "Status",
 		Tool: "mm",
 	}
 	s.sendChan <- statusCmd
@@ -290,14 +291,14 @@ func (s *AgentTestSuite) TestStartStopService(t *C) {
 	// Third and final, the service data is encoded and encapsulated in a Cmd:
 	serviceData, _ := json.Marshal(serviceCmd)
 	cmd := &proto.Cmd{
-		Ts:      time.Now(),
-		User:    "daniel",
+		Ts:   time.Now(),
+		User: "daniel",
 		Tool: "agent",
-		Cmd:     "StartService",
-		Data:    serviceData,
+		Cmd:  "StartService",
+		Data: serviceData,
 	}
 
-	// The readyChan is used by mock.MockServiceManager.Start() and Stop()
+	// The readyChan is used by mock.MockToolManager.Start() and Stop()
 	// to simulate slow starts and stops.  We're not testing that here, so
 	// this lets the service start immediately.
 	s.readyChan <- true
@@ -348,11 +349,11 @@ func (s *AgentTestSuite) TestStartStopService(t *C) {
 	}
 	serviceData, _ = json.Marshal(serviceCmd)
 	cmd = &proto.Cmd{
-		Ts:      time.Now(),
-		User:    "daniel",
+		Ts:   time.Now(),
+		User: "daniel",
 		Tool: "agent",
-		Cmd:     "StopService",
-		Data:    serviceData,
+		Cmd:  "StopService",
+		Data: serviceData,
 	}
 
 	// Let fake qan service stop immediately.
@@ -394,11 +395,11 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
 	serviceData, _ := json.Marshal(serviceCmd)
 	now := time.Now()
 	cmd := &proto.Cmd{
-		Ts:      now,
-		User:    "daniel",
+		Ts:   now,
+		User: "daniel",
 		Tool: "agent",
-		Cmd:     "StartService",
-		Data:    serviceData,
+		Cmd:  "StartService",
+		Data: serviceData,
 	}
 
 	// Send the cmd to the client, tell the agent to stop, then wait for it.
@@ -441,11 +442,11 @@ func (s *AgentTestSuite) TestStartStopUnknownService(t *C) {
 	}
 	serviceData, _ := json.Marshal(serviceCmd)
 	cmd := &proto.Cmd{
-		Ts:      time.Now(),
-		User:    "daniel",
+		Ts:   time.Now(),
+		User: "daniel",
 		Tool: "agent",
-		Cmd:     "StartService",
-		Data:    serviceData,
+		Cmd:  "StartService",
+		Data: serviceData,
 	}
 
 	s.sendChan <- cmd
@@ -456,11 +457,11 @@ func (s *AgentTestSuite) TestStartStopUnknownService(t *C) {
 
 	// Stopp an unknown service should return an error.
 	cmd = &proto.Cmd{
-		Ts:      time.Now(),
-		User:    "daniel",
+		Ts:   time.Now(),
+		User: "daniel",
 		Tool: "agent",
-		Cmd:     "StopService",
-		Data:    serviceData,
+		Cmd:  "StopService",
+		Data: serviceData,
 	}
 
 	s.sendChan <- cmd
@@ -482,7 +483,7 @@ func (s *AgentTestSuite) TestLoadConfig(t *C) {
 		t.Fatal(err)
 	}
 	expect := &agent.Config{
-		AgentUuid:   "abc-123-def",
+		AgentUUID:   "abc-123-def",
 		ApiHostname: agent.DEFAULT_API_HOSTNAME,
 		ApiKey:      "123",
 		Keepalive:   agent.DEFAULT_KEEPALIVE,
@@ -506,7 +507,7 @@ func (s *AgentTestSuite) TestLoadConfig(t *C) {
 	expect = &agent.Config{
 		ApiHostname: "agent hostname",
 		ApiKey:      "api key",
-		AgentUuid:   "agent uuid",
+		AgentUUID:   "agent uuid",
 		Keepalive:   agent.DEFAULT_KEEPALIVE,
 		PidFile:     "pid file",
 	}
@@ -518,9 +519,9 @@ func (s *AgentTestSuite) TestLoadConfig(t *C) {
 
 func (s *AgentTestSuite) TestGetConfig(t *C) {
 	cmd := &proto.Cmd{
-		Ts:      time.Now(),
-		User:    "daniel",
-		Cmd:     "GetConfig",
+		Ts:   time.Now(),
+		User: "daniel",
+		Cmd:  "GetConfig",
 		Tool: "agent",
 	}
 	s.sendChan <- cmd
@@ -537,9 +538,9 @@ func (s *AgentTestSuite) TestGetConfig(t *C) {
 	bytes, _ := json.Marshal(config)
 	expect := []proto.AgentConfig{
 		{
-			Tool: "agent",
-			Config:          string(bytes),
-			Running:         true,
+			Tool:    "agent",
+			Config:  string(bytes),
+			Running: true,
 		},
 	}
 
@@ -551,9 +552,9 @@ func (s *AgentTestSuite) TestGetConfig(t *C) {
 
 func (s *AgentTestSuite) TestGetAllConfigs(t *C) {
 	cmd := &proto.Cmd{
-		Ts:      time.Now(),
-		User:    "daniel",
-		Cmd:     "GetAllConfigs",
+		Ts:   time.Now(),
+		User: "daniel",
+		Cmd:  "GetAllConfigs",
 		Tool: "agent",
 	}
 	s.sendChan <- cmd
@@ -573,19 +574,19 @@ func (s *AgentTestSuite) TestGetAllConfigs(t *C) {
 	sort.Sort(ByInternalService(gotConfigs))
 	expectConfigs := []proto.AgentConfig{
 		{
-			Tool: "agent",
-			Config:          string(bytes),
-			Running:         true,
+			Tool:    "agent",
+			Config:  string(bytes),
+			Running: true,
 		},
 		{
-			Tool: "mm",
-			Config:          `{"Foo":"bar"}`,
-			Running:         false,
+			Tool:    "mm",
+			Config:  `{"Foo":"bar"}`,
+			Running: false,
 		},
 		{
-			Tool: "qan",
-			Config:          `{"Foo":"bar"}`,
-			Running:         false,
+			Tool:    "qan",
+			Config:  `{"Foo":"bar"}`,
+			Running: false,
 		},
 	}
 	if ok, diff := test.IsDeeply(gotConfigs, expectConfigs); !ok {
@@ -596,9 +597,9 @@ func (s *AgentTestSuite) TestGetAllConfigs(t *C) {
 
 func (s *AgentTestSuite) TestGetVersion(t *C) {
 	cmd := &proto.Cmd{
-		Ts:      time.Now(),
-		User:    "daniel",
-		Cmd:     "Version",
+		Ts:   time.Now(),
+		User: "daniel",
+		Cmd:  "Version",
 		Tool: "agent",
 	}
 	s.sendChan <- cmd
@@ -617,11 +618,11 @@ func (s *AgentTestSuite) TestSetConfigApiKey(t *C) {
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
-		Ts:      time.Now(),
-		User:    "daniel",
-		Cmd:     "SetConfig",
+		Ts:   time.Now(),
+		User: "daniel",
+		Cmd:  "SetConfig",
 		Tool: "agent",
-		Data:    data,
+		Data: data,
 	}
 	s.sendChan <- cmd
 
@@ -679,11 +680,11 @@ func (s *AgentTestSuite) TestSetConfigApiHostname(t *C) {
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
-		Ts:      time.Now(),
-		User:    "daniel",
-		Cmd:     "SetConfig",
+		Ts:   time.Now(),
+		User: "daniel",
+		Cmd:  "SetConfig",
 		Tool: "agent",
-		Data:    data,
+		Data: data,
 	}
 	s.sendChan <- cmd
 
@@ -744,9 +745,9 @@ func (s *AgentTestSuite) TestSetConfigApiHostname(t *C) {
 	defer s.client.SetConnectChan(nil)
 
 	cmd = &proto.Cmd{
-		Ts:      time.Now(),
-		User:    "daniel",
-		Cmd:     "Reconnect",
+		Ts:   time.Now(),
+		User: "daniel",
+		Cmd:  "Reconnect",
 		Tool: "agent",
 	}
 	s.sendChan <- cmd
@@ -811,7 +812,7 @@ func (s *AgentTestSuite) TestRestart(t *C) {
 
 	cmd := &proto.Cmd{
 		Tool: "agent",
-		Cmd:     "Restart",
+		Cmd:  "Restart",
 	}
 	s.sendChan <- cmd
 
@@ -842,7 +843,7 @@ func (s *AgentTestSuite) TestRestart(t *C) {
 func (s *AgentTestSuite) TestCmdToService(t *C) {
 	cmd := &proto.Cmd{
 		Tool: "mm",
-		Cmd:     "Hello",
+		Cmd:  "Hello",
 	}
 	s.sendChan <- cmd
 

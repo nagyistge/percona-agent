@@ -35,8 +35,8 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 )
 
-var requiredEntryLinks = []string{"agents", "instances", "download", "instance_tree"}
-var requiredAgentLinks = []string{"cmd", "log", "data"}
+var requiredEntryLinks = []string{"agents", "download"}
+var requiredAgentLinks = []string{"cmd", "log", "data", "system_tree", "self"}
 var timeoutClientConfig = &TimeoutClientConfig{
 	ConnectTimeout:   10 * time.Second,
 	ReadWriteTimeout: 10 * time.Second,
@@ -50,6 +50,7 @@ type APIConnector interface {
 	Put(apiKey, url string, data []byte) (*http.Response, []byte, error)
 	EntryLink(resource string) string
 	AgentLink(resource string) string
+	AgentLinks() map[string]string
 	Origin() string
 	Hostname() string
 	ApiKey() string
@@ -257,6 +258,12 @@ func (a *API) AgentLink(resource string) string {
 	a.mux.RLock()
 	defer a.mux.RUnlock()
 	return a.agentLinks[resource]
+}
+
+func (a *API) AgentLinks() map[string]string {
+	a.mux.RLock()
+	defer a.mux.RUnlock()
+	return a.agentLinks
 }
 
 func (a *API) Origin() string {

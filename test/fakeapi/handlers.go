@@ -154,27 +154,27 @@ func (f *FakeApi) AppendSysconfigDefaultMysql() {
 func (f *FakeApi) AppendConfigsQanDefault() {
 	f.Append("/configs/qan/default", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{ "Service": "mysql", "InstanceId": 0, "Interval": 60}`))
+		w.Write([]byte(`{ "Service": "mysql", "UUID": 0, "Interval": 60}`))
 	})
 }
 func (f *FakeApi) AppendAgents(agent *proto.Agent) {
 	f.Append("/agents", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Location", fmt.Sprintf("%s/agents/%s", f.URL(), agent.Uuid))
+		w.Header().Set("Location", fmt.Sprintf("%s/agents/%s", f.URL(), agent.UUID))
 		w.WriteHeader(http.StatusCreated)
 	})
 }
 func (f *FakeApi) AppendAgentsUuid(agent *proto.Agent) {
-	f.Append(fmt.Sprintf("/agents/%s", agent.Uuid), func(w http.ResponseWriter, r *http.Request) {
+	f.Append(fmt.Sprintf("/agents/%s", agent.UUID), func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		data, _ := json.Marshal(&agent)
 		w.Write(data)
 	})
 }
 
-func (f *FakeApi) AppendNInsts(instances []proto.Instance) {
-	f.Append("/insts", func(w http.ResponseWriter, r *http.Request) {
+func (f *FakeApi) AppendSystemTree(tree *proto.Instance) {
+	f.Append("/systemtree", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		data, _ := json.Marshal(instances)
+		data, _ := json.Marshal(&tree)
 		w.Write(data)
 	})
 }

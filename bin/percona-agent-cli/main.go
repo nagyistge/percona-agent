@@ -246,7 +246,7 @@ func (cli *Cli) send(args []string) {
 	cmd := &proto.Cmd{
 		Ts:        time.Now(),
 		User:      "percona-agent-cli",
-		AgentUuid: cli.agentUuid,
+		AgentUUID: cli.agentUuid,
 		Cmd:       args[1],
 		Tool:   args[2],
 	}
@@ -299,7 +299,7 @@ func (cli *Cli) info(args []string) {
 	cmd := &proto.Cmd{
 		Ts:        time.Now(),
 		User:      "percona-agent-cli",
-		AgentUuid: cli.agentUuid,
+		AgentUUID: cli.agentUuid,
 		Cmd:       "GetInfo",
 		Tool:   "instance",
 	}

@@ -301,8 +301,8 @@ func LoadConfig() ([]byte, error) {
 	if config.ApiKey == "" {
 		return nil, errors.New("Missing ApiKey")
 	}
-	if config.AgentUuid == "" {
-		return nil, errors.New("Missing AgentUuid")
+	if config.AgentUUID == "" {
+		return nil, errors.New("Missing AgentUUID")
 	}
 	data, err := json.Marshal(config)
 	if err != nil {

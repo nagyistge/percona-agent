@@ -127,7 +127,7 @@ func main() {
 	flags := installer.Flags{
 		Bool: map[string]bool{
 			"debug":                 flagDebug,
-			"create-os-instance":    flagCreatOSInstance,
+			"create-os-instance":    flagCreateOSInstance,
 			"start-services":        flagStartServices,
 			"create-mysql-instance": flagCreateMySQLInstance,
 			"start-mysql-services":  flagStartMySQLServices,
@@ -168,8 +168,7 @@ func main() {
 	logger := pct.NewLogger(logChan, "instance-repo")
 	instanceRepo := instance.NewRepo(logger, pct.Basedir.Dir("config"), apiConnector)
 	terminal := term.NewTerminal(os.Stdin, flagInteractive, flagDebug)
-	var uf pct.UUID4 // UUID4 implements UUIDFactory interface
-	agentInstaller, err := installer.NewInstaller(terminal, flagBasedir, api, instanceRepo, agentConfig, uf, flags)
+	agentInstaller, err := installer.NewInstaller(terminal, flagBasedir, api, instanceRepo, agentConfig, flags)
 	if err != nil {
 		fmt.Println(fmt.Sprintf("Could not generate UUID4 for OS instance: %v", err))
 		os.Exit(1)

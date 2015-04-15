@@ -56,8 +56,9 @@ type MainTestSuite struct {
 	apphost       string
 	osInstance    *proto.Instance
 	mysqlInstance *proto.Instance
-	agent         *proto.Agent
-	agentUuid     string
+	agent         *proto.Instance
+	agentUUID     string
+	agentLinks    map[string]string
 	fakeApi       *fakeapi.FakeApi
 	apiKey        string
 	rootConn      *sql.DB
@@ -101,23 +102,24 @@ func (s *MainTestSuite) SetUpSuite(t *C) {
 		UUID: "1",
 		Name: hostname,
 	}
-	s.mysqlInstance = &proto.Instance{
-		UUID:       "2",
-		Name:       hostname,
-		DSN:        "",
-		ParentUUID: "1",
-	}
-	s.agentUuid = "0001"
-	s.agent = &proto.Agent{
-		Uuid:     s.agentUuid,
-		Hostname: hostname,
-		Version:  agent.VERSION,
-		Links: map[string]string{
-			"self": "http://localhost:8000/agents/" + s.agentUuid,
-			"cmd":  "ws://localhost:8000/agents/" + s.agentUuid + "/cmd",
-			"data": "ws://localhost:8000/agents/" + s.agentUuid + "/data",
-			"log":  "ws://localhost:8000/agents/" + s.agentUuid + "/log",
-		},
+	s.mysqlInstance = &proto.Instance{}
+	s.mysqlInstance.UUID = "2"
+	s.mysqlInstance.Name = hostname
+	s.mysqlInstance.DSN = ""
+	s.mysqlInstance.ParentUUID = s.osInstance.UUID
+
+	s.agentUUID = "3"
+	s.agent = &proto.Instance{}
+	s.agent.UUID = s.agentUUID
+	s.agent.Name = hostname
+	s.agent.ParentUUID = s.osInstance.UUID
+
+	s.agent.Properties = map[string]string{"version": agent.VERSION}
+	s.agentLinks = map[string]string{
+		"self": "http://localhost:8000/agents/" + s.agentUUID,
+		"cmd":  "ws://localhost:8000/agents/" + s.agentUUID + "/cmd",
+		"data": "ws://localhost:8000/agents/" + s.agentUUID + "/data",
+		"log":  "ws://localhost:8000/agents/" + s.agentUUID + "/log",
 	}
 }
 
@@ -204,15 +206,14 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 	osInstance := &proto.Instance{UUID: s.osInstance.UUID}
 	s.fakeApi.AppendInstances(osInstance)
 	s.fakeApi.AppendInstancesUUID(osInstance)
-	mysqlInstance := &proto.Instance{UUID: s.mysqlInstance.UUID}
-	s.fakeApi.AppendInstances(mysqlInstance)
-	s.fakeApi.AppendInstancesUUID(mysqlInstance)
-	s.fakeApi.AppendConfigsMmDefaultOS()
-	s.fakeApi.AppendConfigsMmDefaultMysql()
-	s.fakeApi.AppendSysconfigDefaultMysql()
-	s.fakeApi.AppendConfigsQanDefault()
-	s.fakeApi.AppendAgents(s.agent)
-	s.fakeApi.AppendAgentsUuid(s.agent)
+	//mysqlInstance := &proto.Instance{UUID: s.mysqlInstance.UUID}
+	//s.fakeApi.AppendInstancesUUID(mysqlInstance)
+	//s.fakeApi.AppendConfigsMmDefaultOS()
+	//s.fakeApi.AppendConfigsMmDefaultMysql()
+	//s.fakeApi.AppendSysconfigDefaultMysql()
+	//s.fakeApi.AppendConfigsQanDefault()
+	//s.fakeApi.AppendInstances(s.agent)
+	//s.fakeApi.AppendInstancesUUID(s.agent)
 
 	cmd := exec.Command(
 		s.bin,
@@ -232,13 +233,13 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created os instance: name=%s uuid=%d\n", s.osInstance.Name, s.osInstance.UUID))
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%d\n", mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%d\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -254,7 +255,7 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 			fmt.Sprintf("mysql-%s.conf", s.mysqlInstance.UUID),
 			"qan.conf",
 			fmt.Sprintf("server-%s.conf", s.osInstance.UUID),
-			fmt.Sprintf("sysconfig-mysql-%s.conf", s.mysqlInstance.UUID),
+			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
 		},
 		t,
 	)
@@ -264,9 +265,9 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 	s.expectDefaultLogConfig(t)
 	s.expectDefaultMmMysqlConfig(t)
 	s.expectDefaultMmOSConfig(t)
-	s.expectInstanceConfig(*mysqlInstance, t)
+	s.expectInstanceConfig(*s.mysqlInstance, t)
 	s.expectDefaultQanConfig(t)
-	s.expectInstanceConfig(*osInstance, t)
+	s.expectInstanceConfig(*s.osInstance, t)
 	s.expectDefaultSysconfigMysqlConfig(t)
 
 	// Should create percona-agent user with grants on *.* and performance_schema.*.
@@ -1176,11 +1177,11 @@ func (s *MainTestSuite) expectConfigs(expectedConfigs []string, t *C) {
 
 func (s *MainTestSuite) expectDefaultAgentConfig(t *C) {
 	expectedConfig := agent.Config{
-		AgentUuid:   s.agent.Uuid,
+		AgentUUID:   s.agent.UUID,
 		ApiHostname: s.fakeApi.URL(),
 		ApiKey:      s.apiKey,
 		Keepalive:   0,
-		Links:       s.agent.Links,
+		Links:       s.agentLinks,
 		PidFile:     "percona-agent.pid",
 	}
 
@@ -1286,23 +1287,22 @@ func (s *MainTestSuite) expectDefaultQanConfig(t *C) {
 func (s *MainTestSuite) expectInstanceConfig(expectedConfig proto.Instance, t *C) {
 	instanceUUID := expectedConfig.UUID
 	gotConfig := proto.Instance{}
-	service := "instance"
-	if err := pct.Basedir.ReadInstanceConfig(service, instanceUUID, &gotConfig); err != nil {
-		t.Errorf("Read %s-%d config: %s", service, instanceUUID, err)
+	tool := "instance"
+	if err := pct.Basedir.ReadInstanceConfig(tool, instanceUUID, &gotConfig); err != nil {
+		t.Errorf("Read %s-%d config: %s", tool, instanceUUID, err)
 	}
 
 	t.Check(gotConfig, DeepEquals, expectedConfig)
 }
 
 func (s *MainTestSuite) expectDefaultSysconfigMysqlConfig(t *C) {
-	service := "sysconfig"
 	instanceUUID := s.mysqlInstance.UUID
 	expectedConfig := fakeapi.ConfigSysconfigDefaultMysql
 	expectedConfig.UUID = instanceUUID
-
 	gotConfig := sysconfigMysql.Config{}
-	if err := pct.Basedir.ReadInstanceConfig(service, instanceUUID, &gotConfig); err != nil {
-		t.Errorf("Read sysconfig-%s config: %s", service, instanceUUID, err)
+	tool := "sysconfig"
+	if err := pct.Basedir.ReadInstanceConfig(tool, instanceUUID, &gotConfig); err != nil {
+		t.Errorf("Read sysconfig-%s config: %s", tool, instanceUUID, err)
 	}
 
 	t.Check(gotConfig, DeepEquals, expectedConfig)

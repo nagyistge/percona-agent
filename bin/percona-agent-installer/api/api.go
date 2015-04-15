@@ -19,6 +19,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -256,6 +257,14 @@ func (a *Api) CreateInstance(it *proto.Instance) (*proto.Instance, error) {
 		return nil, fmt.Errorf("Failed to parse instance entity: %s", err)
 	}
 	return it, nil
+}
+
+func (a *Api) GetAgentLinks() (links map[string]string, err error) {
+	links = a.apiConnector.AgentLinks()
+	if len(links) == 0 {
+		return nil, errors.New("No agent links")
+	}
+	return links, nil
 }
 
 func (a *Api) UpdateInstance(it *proto.Instance) error {

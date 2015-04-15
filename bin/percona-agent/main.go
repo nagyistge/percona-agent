@@ -462,7 +462,7 @@ func run() error {
 			cmd := &proto.Cmd{
 				Ts:        time.Now().UTC(),
 				User:      u.Username + " (SIGHUP)",
-				AgentUuid: agentConfig.AgentUuid,
+				AgentUUID: agentConfig.AgentUuid,
 				Tool:   "agent",
 				Cmd:       "Reconnect",
 			}
