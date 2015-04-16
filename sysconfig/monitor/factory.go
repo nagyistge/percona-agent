@@ -19,7 +19,7 @@ package factory
 
 import (
 	"encoding/json"
-	"errors"
+	"fmt"
 
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/instance"
@@ -48,28 +48,29 @@ func (f *Factory) Make(uuid string, data []byte) (sysconfig.Monitor, error) {
 	if err != nil {
 		return nil, err
 	}
-	switch mysqlIt.Prefix {
-	case "mysql":
-		// Load the MySQL instance info (DSN, name, etc.).
-
-		// Parse the MySQL sysconfig config.
-		config := &mysql.Config{}
-		if err := json.Unmarshal(data, config); err != nil {
-			return nil, err
-		}
-
-		// The user-friendly name of the tool, e.g. sysconfig-mysql-db101:
-		alias := "sysconfig-mysql-" + mysqlIt.Name
-
-		// Make a MySQL sysconfig monitor.
-		monitor = mysql.NewMonitor(
-			alias,
-			config,
-			pct.NewLogger(f.logChan, alias),
-			mysqlConn.NewConnection(mysqlIt.DSN),
-		)
-	default:
-		return nil, errors.New("Unknown sysconfig monitor type: " + mysqlIt.Prefix)
+	if !instance.IsMySQLInstance(mysqlIt) {
+		return nil, fmt.Errorf("Can't sysconfig monitor instance %s with prefix %s ", uuid, mysqlIt.Prefix)
 	}
+
+	/*
+	 * Load the MySQL instance info (DSN, name, etc.).
+	 */
+
+	// Parse the MySQL sysconfig config.
+	config := &mysql.Config{}
+	if err := json.Unmarshal(data, config); err != nil {
+		return nil, err
+	}
+
+	// The user-friendly name of the tool, e.g. sysconfig-mysql-db101:
+	alias := "sysconfig-mysql-" + mysqlIt.Name
+
+	// Make a MySQL sysconfig monitor.
+	monitor = mysql.NewMonitor(
+		alias,
+		config,
+		pct.NewLogger(f.logChan, alias),
+		mysqlConn.NewConnection(mysqlIt.DSN),
+	)
 	return monitor, nil
 }

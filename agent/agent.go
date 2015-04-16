@@ -54,7 +54,7 @@ type Agent struct {
 	logger    *pct.Logger
 	client    pct.WebsocketClient
 	api       pct.APIConnector
-	services  map[string]pct.ToolManager
+	tools     map[string]pct.ToolManager
 	updater   *pct.Updater
 	keepalive *time.Ticker
 	// --
@@ -68,14 +68,14 @@ type Agent struct {
 	statusHandlerSync *pct.SyncChan
 }
 
-func NewAgent(config *Config, logger *pct.Logger, api pct.APIConnector, client pct.WebsocketClient, services map[string]pct.ToolManager) *Agent {
+func NewAgent(config *Config, logger *pct.Logger, api pct.APIConnector, client pct.WebsocketClient, tools map[string]pct.ToolManager) *Agent {
 	agent := &Agent{
 		config:    config,
 		api:       api,
 		configMux: &sync.RWMutex{},
 		logger:    logger,
 		client:    client,
-		services:  services,
+		tools:     tools,
 		updater:   pct.NewUpdater(logger, api, pct.PublicKey, os.Args[0], VERSION),
 		// --
 		status:     pct.NewStatus([]string{"agent", "agent-cmd-handler"}),
@@ -267,7 +267,7 @@ func (agent *Agent) stop() {
 	agent.cmdHandlerSync.Stop()
 	agent.cmdHandlerSync.Wait()
 
-	for service, manager := range agent.services {
+	for service, manager := range agent.tools {
 		if service == "log" {
 			continue
 		}
@@ -373,7 +373,7 @@ func (agent *Agent) cmdHandler() {
 				if cmd.Tool == "agent" {
 					reply = agent.Handle(cmd)
 				} else {
-					if manager, ok := agent.services[cmd.Tool]; ok {
+					if manager, ok := agent.tools[cmd.Tool]; ok {
 						reply = manager.Handle(cmd)
 					} else {
 						reply = cmd.Reply(nil, pct.UnknownServiceError{Service: cmd.Tool})
@@ -489,7 +489,7 @@ func (agent *Agent) handleStartService(cmd *proto.Cmd) (interface{}, error) {
 	}
 
 	// Check if we have a manager for the service.
-	m, ok := agent.services[s.Name]
+	m, ok := agent.tools[s.Name]
 	if !ok {
 		return nil, pct.UnknownServiceError{Service: s.Name}
 	}
@@ -515,7 +515,7 @@ func (agent *Agent) handleStopService(cmd *proto.Cmd) (interface{}, error) {
 
 	// Check if we have a manager for the service.  If not, that's ok,
 	// just return because the service can't be running if we don't have it.
-	m, ok := agent.services[s.Name]
+	m, ok := agent.tools[s.Name]
 	if !ok {
 		return nil, pct.UnknownServiceError{Service: s.Name}
 	}
@@ -535,7 +535,7 @@ func (agent *Agent) handleGetConfig(cmd *proto.Cmd) (interface{}, []error) {
 // Handle:@goroutine[3]
 func (agent *Agent) handleGetAllConfigs(cmd *proto.Cmd) (interface{}, []error) {
 	configs, errs := agent.GetConfig()
-	for service, manager := range agent.services {
+	for service, manager := range agent.tools {
 		if manager == nil { // should not happen
 			agent.logger.Error("Nil manager:", service)
 			continue
@@ -664,7 +664,7 @@ func (agent *Agent) statusHandler() {
 			case "agent":
 				replyChan <- cmd.Reply(agent.Status())
 			default:
-				if manager, ok := agent.services[cmd.Tool]; ok {
+				if manager, ok := agent.tools[cmd.Tool]; ok {
 					replyChan <- cmd.Reply(manager.Status())
 				} else {
 					replyChan <- cmd.Reply(nil, pct.UnknownServiceError{Service: cmd.Tool})
@@ -685,7 +685,7 @@ func (agent *Agent) Status() map[string]string {
 // statusHandler:@goroutine[2]
 func (agent *Agent) AllStatus() map[string]string {
 	status := agent.Status()
-	for service, manager := range agent.services {
+	for service, manager := range agent.tools {
 		if manager == nil { // should not happen
 			status[service] = fmt.Sprintf("ERROR: %s service manager is nil", service)
 			continue

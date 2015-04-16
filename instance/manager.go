@@ -237,7 +237,7 @@ func (m *Manager) Repo() *Repo {
 }
 
 func (m *Manager) handleGetInfo(it proto.Instance) error {
-	if !isMySQLInstance(it) {
+	if !IsMySQLInstance(it) {
 		return fmt.Errorf("Don't know how to get info for %s instance", it.UUID)
 	}
 	return GetMySQLInfo(it)

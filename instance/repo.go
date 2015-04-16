@@ -47,7 +47,7 @@ const (
 	SYSTEM_TREE_FILE     = "system-tree.json" // relative to Repo.configDir
 	SYSTEM_TREE_FILEMODE = 0660
 
-	// MYSQL_PREFIX an OS_PREFIX are the instance prefixes we need to validate
+	// Instance prefixes used to validate
 	MYSQL_PREFIX = "mysql"
 	OS_PREFIX    = "os"
 )
@@ -68,18 +68,20 @@ func NewRepo(logger *pct.Logger, configDir string, api pct.APIConnector) *Repo {
 	return m
 }
 
-func isOSInstance(it proto.Instance) bool {
+// Function used by all components to check if and instance is an OS one
+func IsOSInstance(it proto.Instance) bool {
 	return it.Prefix == OS_PREFIX
 }
 
-func isMySQLInstance(it proto.Instance) bool {
+// Function used by all components to check if and instance is a MySQL one
+func IsMySQLInstance(it proto.Instance) bool {
 	return it.Prefix == MYSQL_PREFIX
 }
 
 func onlyMySQLInsts(slice []proto.Instance) []proto.Instance {
 	var justMySQL []proto.Instance
 	for _, it := range slice {
-		if isMySQLInstance(it) {
+		if IsMySQLInstance(it) {
 			justMySQL = append(justMySQL, it)
 		}
 	}
@@ -254,7 +256,7 @@ func (r *Repo) updateTree(tree proto.Instance, version uint, writeToDisk bool) e
 		return err
 	}
 
-	if !isOSInstance(tree) {
+	if !IsOSInstance(tree) {
 		// tree instance root is not an OS instance
 		return errors.New("System tree root is not of OS type ('os' prefix)")
 	}
