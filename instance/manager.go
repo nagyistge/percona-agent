@@ -67,9 +67,9 @@ func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm 
 /////////////////////////////////////////////////////////////////////////////
 
 // @goroutine[0]
-func (m *Manager) Start() error {
+func (m *Manager) Start(systemTreeURL string) error {
 	m.status.Update("instance", "Starting")
-	if err := m.repo.Init(); err != nil {
+	if err := m.repo.Init(systemTreeURL); err != nil {
 		return err
 	}
 	m.logger.Info("Started")

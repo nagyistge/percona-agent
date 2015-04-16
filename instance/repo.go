@@ -34,13 +34,14 @@ import (
 )
 
 type Repo struct {
-	logger      *pct.Logger
-	configDir   string
-	api         pct.APIConnector
-	it          map[string]*proto.Instance
-	tree        *proto.Instance
-	treeVersion uint
-	mux         *sync.RWMutex
+	logger        *pct.Logger
+	configDir     string
+	api           pct.APIConnector
+	it            map[string]*proto.Instance
+	tree          *proto.Instance
+	treeVersion   uint
+	systemTreeURL string
+	mux           *sync.RWMutex
 }
 
 const (
@@ -61,9 +62,10 @@ func NewRepo(logger *pct.Logger, configDir string, api pct.APIConnector) *Repo {
 		configDir: configDir,
 		api:       api,
 		// --
-		it:   make(map[string]*proto.Instance),
-		tree: nil,
-		mux:  &sync.RWMutex{},
+		it:            make(map[string]*proto.Instance),
+		tree:          nil,
+		systemTreeURL: "",
+		mux:           &sync.RWMutex{},
 	}
 	return m
 }
@@ -103,15 +105,9 @@ func (r *Repo) loadConfig(data []byte) error {
 
 // Downloads and returns the system tree data from API.
 func (r *Repo) downloadInstances() (data []byte, err error) {
-	url := r.api.EntryLink("system_tree")
 	data = make([]byte, 0)
-	if url == "" {
-		errMsg := "No 'system_tree' API link registered"
-		r.logger.Warn(errMsg)
-		return data, errors.New(errMsg)
-	}
-	r.logger.Info("GET", url)
-	code, data, err := r.api.Get(r.api.ApiKey(), url)
+	r.logger.Info("GET", r.systemTreeURL)
+	code, data, err := r.api.Get(r.api.ApiKey(), r.systemTreeURL)
 	if err != nil {
 		return data, err
 	}
@@ -161,9 +157,15 @@ func (r *Repo) updateInstanceIndex() error {
 }
 
 // Initializes the instance repository by reading system tree from local file and if not found pulling it from API
-func (r *Repo) Init() error {
+func (r *Repo) Init(systemTreeURL string) error {
 	r.mux.Lock()
 	defer r.mux.Unlock()
+	if systemTreeURL == "" {
+		errMsg := "No system tree URL"
+		r.logger.Warn(errMsg)
+		return errors.New(errMsg)
+	}
+	r.systemTreeURL = systemTreeURL
 	file := r.configFilePath()
 	var data []byte
 	var err error
