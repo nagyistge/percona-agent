@@ -18,6 +18,7 @@
 package installer
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -116,12 +117,7 @@ func (i *Installer) Run() (err error) {
 		return err
 	}
 
-	ai, err := i.InstallerCreateAgentWithInitialServiceConfigs()
-	if err != nil {
-		return err
-	}
-
-	links, err := i.api.GetAgentLinks()
+	ai, links, err := i.InstallerCreateAgentWithInitialServiceConfigs()
 	if err != nil {
 		return err
 	}
@@ -144,7 +140,7 @@ func (i *Installer) Run() (err error) {
 		}
 	}
 
-	tree, err := i.api.GetSystemTree()
+	tree, err := i.api.GetSystemTree(links["system_tree"])
 	if err != nil {
 		return fmt.Errorf("Failed to get system tree from API: %s", err)
 	}
@@ -292,11 +288,11 @@ VERIFY_API_KEY:
 
 func (i *Installer) InstallerCreateOSInstance() (oi *proto.Instance, err error) {
 	// TODO: we also need distro, version and arch as Properties
-	i.osInstance, err = i.api.CreateInstance(i.osInstance)
+	oi, _, err = i.api.CreateInstance(i.osInstance)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("Created OS instance: name=%s id=%d\n", i.osInstance.Name, i.osInstance.UUID)
+	fmt.Printf("Created OS: name=%s uuid=%d\n", oi.Name, oi.UUID)
 	return oi, nil
 }
 
@@ -319,7 +315,7 @@ func (i *Installer) InstallerCreateMySQLInstance() (mi *proto.Instance, err erro
 		mi.DSN = dsnString
 		mi.ParentUUID = i.osInstance.UUID
 
-		mi, err = i.api.CreateInstance(mi)
+		mi, _, err = i.api.CreateInstance(mi)
 		if err != nil {
 			return nil, err
 		}
@@ -407,7 +403,7 @@ func (i *Installer) InstallerGetDefaultConfigs(oi, mi *proto.Instance) (configs 
 	return configs, nil
 }
 
-func (i *Installer) InstallerCreateAgentWithInitialServiceConfigs() (protoAgentInst *proto.Instance, err error) {
+func (i *Installer) InstallerCreateAgentWithInitialServiceConfigs() (protoAgentInst *proto.Instance, links map[string]string, err error) {
 	protoAgentInst = &proto.Instance{}
 	protoAgentInst.Type = "Percona Agent"
 	protoAgentInst.Prefix = "agent"
@@ -415,10 +411,21 @@ func (i *Installer) InstallerCreateAgentWithInitialServiceConfigs() (protoAgentI
 	protoAgentInst.Name = i.osInstance.Name
 	protoAgentInst.Properties = map[string]string{"version": agent.VERSION}
 
-	protoAgentInst, err = i.api.CreateInstance(protoAgentInst)
+	protoAgentInst, metadata, err := i.api.CreateInstance(protoAgentInst)
 	if err != nil {
-		return nil, err
+		return nil, links, err
+	}
+
+	links, ok := metadata["links"]
+	if !ok {
+		return nil, links, errors.New("No agent links provided by API")
+	}
+	requiredLinks := []string{"self", "cmd", "log", "data", "system_tree"}
+	for _, link := range requiredLinks {
+		if _, ok := links[link]; !ok {
+			return nil, links, fmt.Errorf("No agent %s link provided by API", link)
+		}
 	}
 	fmt.Printf("Created agent: uuid=%s\n", protoAgentInst.UUID)
-	return protoAgentInst, nil
+	return protoAgentInst, links, nil
 }

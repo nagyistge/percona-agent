@@ -150,8 +150,12 @@ func (b *basedir) NewConfigIterator(service string) (*ConfigIterator, error) {
 	return &ConfigIterator{files: files, current: -1}, nil
 }
 
-func (b *basedir) ReadConfig(name string, v interface{}) error {
-	data, err := ioutil.ReadFile(b.ConfigFile(name))
+func (b *basedir) ReadConfig(name string, config interface{}) error {
+	return b.readFile(b.ConfigFile(name), config)
+}
+
+func (b *basedir) readFile(file string, v interface{}) error {
+	data, err := ioutil.ReadFile(file)
 	if err != nil && !os.IsNotExist(err) {
 		// There's an error and it's not "file not found".
 		return err
@@ -163,7 +167,7 @@ func (b *basedir) ReadConfig(name string, v interface{}) error {
 }
 
 func (b *basedir) ReadInstanceConfig(service, UUID string, config interface{}) error {
-	if err := b.ReadConfig(b.InstanceConfigFile(service, UUID), config); err != nil {
+	if err := b.readFile(b.InstanceConfigFile(service, UUID), config); err != nil {
 		return fmt.Errorf("Could not read config file: %v", err)
 	}
 	return nil

@@ -26,6 +26,7 @@ import (
 	"os/exec"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/percona/cloud-protocol/proto"
@@ -98,34 +99,43 @@ func (s *MainTestSuite) SetUpSuite(t *C) {
 	// Hostname must be correct because installer checks that
 	// hostname == mysql hostname to enable QAN.
 	hostname, _ := os.Hostname()
-	s.osInstance = &proto.Instance{
-		UUID: "1",
-		Name: hostname,
-	}
+	s.osInstance = &proto.Instance{}
+	s.osInstance.Type = "OS"
+	s.osInstance.Prefix = "os"
+	s.osInstance.UUID = "1"
+	s.osInstance.Name = hostname
+	s.osInstance.Created = time.Time{}
+	s.osInstance.Deleted = time.Time{}
+
+	s.agent = &proto.Instance{}
+	s.agent.Type = "Percona Agent"
+	s.agent.Prefix = "agent"
+	s.agent.UUID = "2"
+	s.agent.Name = hostname
+	s.agent.ParentUUID = s.osInstance.UUID
+
 	s.mysqlInstance = &proto.Instance{}
-	s.mysqlInstance.UUID = "2"
+	s.mysqlInstance.UUID = "3"
 	s.mysqlInstance.Name = hostname
 	s.mysqlInstance.DSN = ""
 	s.mysqlInstance.ParentUUID = s.osInstance.UUID
 
-	s.agentUUID = "3"
-	s.agent = &proto.Instance{}
-	s.agent.UUID = s.agentUUID
-	s.agent.Name = hostname
-	s.agent.ParentUUID = s.osInstance.UUID
+	s.osInstance.Subsystems = []proto.Instance{*s.agent, *s.mysqlInstance}
 
 	s.agent.Properties = map[string]string{"version": agent.VERSION}
-	s.agentLinks = map[string]string{
-		"self": "http://localhost:8000/agents/" + s.agentUUID,
-		"cmd":  "ws://localhost:8000/agents/" + s.agentUUID + "/cmd",
-		"data": "ws://localhost:8000/agents/" + s.agentUUID + "/data",
-		"log":  "ws://localhost:8000/agents/" + s.agentUUID + "/log",
-	}
 }
 
 func (s *MainTestSuite) SetUpTest(t *C) {
 	// Create fake api server
 	s.fakeApi = fakeapi.NewFakeApi()
+	// Expected agent links
+	s.agentLinks = map[string]string{
+		"log":         s.fakeApi.WSURL() + "/instances/" + s.agent.UUID + "/log",
+		"self":        s.fakeApi.URL() + "/instances/" + s.agent.UUID,
+		"system_tree": s.fakeApi.URL() + "/instances/" + s.osInstance.UUID + "?recursive=true",
+		"cmd":         s.fakeApi.WSURL() + "/instances/" + s.agent.UUID + "/cmd",
+		"data":        s.fakeApi.WSURL() + "/instances/" + s.agent.UUID + "/data",
+	}
 
 	_, err := s.rootConn.Exec("DELETE FROM mysql.user WHERE user='percona-agent'")
 	t.Check(err, IsNil)
@@ -203,17 +213,17 @@ func (s *MainTestSuite) GetGrants() []string {
 func (s *MainTestSuite) TestDefaultInstall(t *C) {
 	// Register required api handlers
 	s.fakeApi.AppendPing()
-	osInstance := &proto.Instance{UUID: s.osInstance.UUID}
-	s.fakeApi.AppendInstances(osInstance)
-	s.fakeApi.AppendInstancesUUID(osInstance)
-	//mysqlInstance := &proto.Instance{UUID: s.mysqlInstance.UUID}
-	//s.fakeApi.AppendInstancesUUID(mysqlInstance)
-	//s.fakeApi.AppendConfigsMmDefaultOS()
-	//s.fakeApi.AppendConfigsMmDefaultMysql()
-	//s.fakeApi.AppendSysconfigDefaultMysql()
-	//s.fakeApi.AppendConfigsQanDefault()
-	//s.fakeApi.AppendInstances(s.agent)
-	//s.fakeApi.AppendInstancesUUID(s.agent)
+	//osInstance := &proto.Instance{UUID: s.osInstance.UUID}
+	queueInstances := []*proto.Instance{s.osInstance, s.agent, s.mysqlInstance}
+	s.fakeApi.AppendInstances(nil, queueInstances) // GET instance first, POST instances UUIDs second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
+	s.fakeApi.AppendInstancesUUID(s.agent)
+	s.fakeApi.AppendInstancesUUID(s.mysqlInstance)
+	s.fakeApi.AppendSystemTree(s.osInstance)
+	s.fakeApi.AppendConfigsMmDefaultOS()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendConfigsQanDefault()
 
 	cmd := exec.Command(
 		s.bin,
@@ -233,8 +243,8 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
 
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%d\n", s.osInstance.Name, s.osInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created os instance: name=%s uuid=%d\n", s.osInstance.Name, s.osInstance.UUID))
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
@@ -250,12 +260,11 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 			"agent.conf",
 			"data.conf",
 			"log.conf",
-			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
 			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
-			fmt.Sprintf("mysql-%s.conf", s.mysqlInstance.UUID),
+			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
 			"qan.conf",
-			fmt.Sprintf("server-%s.conf", s.osInstance.UUID),
 			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
+			"system-tree.json",
 		},
 		t,
 	)
@@ -265,11 +274,8 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 	s.expectDefaultLogConfig(t)
 	s.expectDefaultMmMysqlConfig(t)
 	s.expectDefaultMmOSConfig(t)
-	s.expectInstanceConfig(*s.mysqlInstance, t)
 	s.expectDefaultQanConfig(t)
-	s.expectInstanceConfig(*s.osInstance, t)
 	s.expectDefaultSysconfigMysqlConfig(t)
-
 	// Should create percona-agent user with grants on *.* and performance_schema.*.
 	s.expectMysqlUserExists(t)
 }
@@ -1224,14 +1230,14 @@ func (s *MainTestSuite) expectDefaultLogConfig(t *C) {
 }
 
 func (s *MainTestSuite) expectDefaultMmMysqlConfig(t *C) {
-	service := "mm"
+	tool := "mm"
 	instanceUUID := s.mysqlInstance.UUID
 	expectedConfig := fakeapi.ConfigMmDefaultMysql
 	expectedConfig.UUID = instanceUUID
 
 	gotConfig := mmMysql.Config{}
-	if err := pct.Basedir.ReadInstanceConfig(service, instanceUUID, &gotConfig); err != nil {
-		t.Errorf("Read %s-%s config: %v", service, instanceUUID, err)
+	if err := pct.Basedir.ReadInstanceConfig(tool, instanceUUID, &gotConfig); err != nil {
+		t.Errorf("Read %s-%s config: %v", tool, instanceUUID, err)
 	}
 
 	t.Check(gotConfig, DeepEquals, expectedConfig)
@@ -1279,17 +1285,6 @@ func (s *MainTestSuite) expectDefaultQanConfig(t *C) {
 	gotConfig := qan.Config{}
 	if err := pct.Basedir.ReadConfig("qan", &gotConfig); err != nil {
 		t.Errorf("Read qan config: %s", err)
-	}
-
-	t.Check(gotConfig, DeepEquals, expectedConfig)
-}
-
-func (s *MainTestSuite) expectInstanceConfig(expectedConfig proto.Instance, t *C) {
-	instanceUUID := expectedConfig.UUID
-	gotConfig := proto.Instance{}
-	tool := "instance"
-	if err := pct.Basedir.ReadInstanceConfig(tool, instanceUUID, &gotConfig); err != nil {
-		t.Errorf("Read %s-%d config: %s", tool, instanceUUID, err)
 	}
 
 	t.Check(gotConfig, DeepEquals, expectedConfig)

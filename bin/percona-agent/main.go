@@ -126,7 +126,7 @@ func run() error {
 	}
 
 	golog.Println("ApiHostname: " + agentConfig.ApiHostname)
-	golog.Println("AgentUuid: " + agentConfig.AgentUuid)
+	golog.Println("AgentUUID: " + agentConfig.AgentUUID)
 
 	/**
 	 * Ping and exit, maybe.
@@ -244,7 +244,11 @@ func run() error {
 		api,
 		mrm,
 	)
-	if err := itManager.Start(); err != nil {
+	systemTreeURL, ok := agentConfig.Links["system_tree"]
+	if !ok {
+		return fmt.Errorf("Error starting instance manager: No system tree URL found in agent config\n")
+	}
+	if err := itManager.Start(systemTreeURL); err != nil {
 		return fmt.Errorf("Error starting instance manager: %s\n", err)
 	}
 
@@ -462,8 +466,8 @@ func run() error {
 			cmd := &proto.Cmd{
 				Ts:        time.Now().UTC(),
 				User:      u.Username + " (SIGHUP)",
-				AgentUUID: agentConfig.AgentUuid,
-				Tool:   "agent",
+				AgentUUID: agentConfig.AgentUUID,
+				Tool:      "agent",
 				Cmd:       "Reconnect",
 			}
 			agent.Handle(cmd)
@@ -488,7 +492,7 @@ func ConnectAPI(agentConfig *agent.Config, retry int) (*pct.API, error) {
 		try++
 		time.Sleep(backoff.Wait())
 		golog.Println("Connecting to API")
-		if err := api.Connect(agentConfig.ApiHostname, agentConfig.ApiKey, agentConfig.AgentUuid); err != nil {
+		if err := api.Connect(agentConfig.ApiHostname, agentConfig.ApiKey, agentConfig.AgentUUID); err != nil {
 			golog.Println(err)
 			continue
 		}

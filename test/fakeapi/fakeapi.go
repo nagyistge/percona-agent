@@ -22,6 +22,8 @@ import (
 	"net/http/httptest"
 )
 
+const WS_SCHEME = "wss://"
+
 type FakeApi struct {
 	testServer *httptest.Server
 	serveMux   *http.ServeMux
@@ -40,6 +42,10 @@ func (f *FakeApi) Close() {
 
 func (f *FakeApi) URL() string {
 	return f.testServer.URL
+}
+
+func (f *FakeApi) WSURL() string {
+	return swapHTTPScheme(f.testServer.URL, WS_SCHEME)
 }
 
 func (f *FakeApi) Append(pattern string, handler func(http.ResponseWriter, *http.Request)) {

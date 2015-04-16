@@ -35,8 +35,10 @@ import (
 	"github.com/percona/cloud-protocol/proto"
 )
 
-var requiredEntryLinks = []string{"agents", "download"}
-var requiredAgentLinks = []string{"cmd", "log", "data", "system_tree", "self"}
+var requiredEntryLinks = []string{"instances", "download"}
+
+// This must go as in PCTv3 everything is metadata of resources
+var requiredAgentLinks = []string{"cmd", "log", "data", "self"}
 var timeoutClientConfig = &TimeoutClientConfig{
 	ConnectTimeout:   10 * time.Second,
 	ReadWriteTimeout: 10 * time.Second,
@@ -50,7 +52,7 @@ type APIConnector interface {
 	Put(apiKey, url string, data []byte) (*http.Response, []byte, error)
 	EntryLink(resource string) string
 	AgentLink(resource string) string
-	AgentLinks() map[string]string
+	//	AgentLinks() map[string]string
 	Origin() string
 	Hostname() string
 	ApiKey() string
@@ -153,7 +155,7 @@ func (a *API) Connect(hostname, apiKey, agentUuid string) error {
 	}
 
 	// Get agent links: <API hostname>/agents/
-	agentLinks, err := a.getLinks(apiKey, entryLinks["agents"]+"/"+agentUuid)
+	agentLinks, err := a.getLinks(apiKey, entryLinks["instances"]+"/"+agentUuid)
 	if err != nil {
 		return err
 	}
@@ -168,7 +170,7 @@ func (a *API) Connect(hostname, apiKey, agentUuid string) error {
 	a.apiKey = apiKey
 	a.agentUuid = agentUuid
 	a.entryLinks = entryLinks
-	a.agentLinks = agentLinks
+	//a.agentLinks = agentLinks
 	return nil
 }
 
@@ -244,7 +246,6 @@ func (a *API) Get(apiKey, url string) (int, []byte, error) {
 			return resp.StatusCode, nil, fmt.Errorf("GET %s error: ioutil.ReadAll: %s", url, err)
 		}
 	}
-
 	return resp.StatusCode, data, nil
 }
 
@@ -254,16 +255,11 @@ func (a *API) EntryLink(resource string) string {
 	return a.entryLinks[resource]
 }
 
+// TODO: Remove
 func (a *API) AgentLink(resource string) string {
 	a.mux.RLock()
 	defer a.mux.RUnlock()
 	return a.agentLinks[resource]
-}
-
-func (a *API) AgentLinks() map[string]string {
-	a.mux.RLock()
-	defer a.mux.RUnlock()
-	return a.agentLinks
 }
 
 func (a *API) Origin() string {

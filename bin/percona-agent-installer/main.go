@@ -170,7 +170,7 @@ func main() {
 	terminal := term.NewTerminal(os.Stdin, flagInteractive, flagDebug)
 	agentInstaller, err := installer.NewInstaller(terminal, flagBasedir, api, instanceRepo, agentConfig, flags)
 	if err != nil {
-		fmt.Println(fmt.Sprintf("Could not generate UUID4 for OS instance: %v", err))
+		fmt.Println(err)
 		os.Exit(1)
 	}
 	fmt.Println("CTRL-C at any time to quit")

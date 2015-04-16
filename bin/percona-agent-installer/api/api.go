@@ -19,7 +19,6 @@ package api
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -49,196 +48,63 @@ func (a *Api) Init(hostname, apiKey string, headers map[string]string) (code int
 	return a.apiConnector.Init(hostname, apiKey, headers)
 }
 
-//func (a *Api) CreateServerInstance(si *proto.ServerInstance) (*proto.ServerInstance, error) {
-//	// POST <api>/instances/server
-//	data, err := json.Marshal(si)
-//	if err != nil {
-//		return nil, err
-//	}
-//	url := a.apiConnector.URL("instances", "server")
-//	resp, _, err := a.apiConnector.Post(a.apiConnector.ApiKey(), url, data)
-//	if a.debug {
-//		log.Printf("resp=%#v\n", resp)
-//		log.Printf("err=%s\n", err)
-//	}
-//	if err != nil {
-//		return nil, err
-//	}
-//	// Create new instance, if it already exist then just use it
-//	// todo: better handling of duplicate instance
-//	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusConflict {
-//		return nil, fmt.Errorf("Failed to create server instance (status code %d)", resp.StatusCode)
-//	}
-
-//	// API returns URI of new resource in Location header
-//	uri := resp.Header.Get("Location")
-//	if uri == "" {
-//		return nil, fmt.Errorf("API did not return location of new server instance")
-//	}
-
-//	// GET <api>/instances/server/id (URI)
-//	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), uri)
-//	if a.debug {
-//		log.Printf("code=%d\n", code)
-//		log.Printf("err=%s\n", err)
-//	}
-//	if err != nil {
-//		return nil, err
-//	}
-//	if code != http.StatusOK {
-//		return nil, fmt.Errorf("Failed to get new server instance (status code %d)", code)
-//	}
-//	if err := json.Unmarshal(data, si); err != nil {
-//		return nil, fmt.Errorf("Failed to parse server instance entity: %s", err)
-//	}
-//	return si, nil
-//}
-
-//func (a *Api) CreateMySQLInstance(mi *proto.MySQLInstance) (*proto.MySQLInstance, error) {
-//	// POST <api>/instances/mysql
-//	data, err := json.Marshal(mi)
-//	if err != nil {
-//		return nil, err
-//	}
-//	url := a.apiConnector.URL("instances", "mysql")
-//	resp, _, err := a.apiConnector.Post(a.apiConnector.ApiKey(), url, data)
-//	if a.debug {
-//		log.Printf("resp=%#v\n", resp)
-//		log.Printf("err=%s\n", err)
-//	}
-//	if err != nil {
-//		return nil, err
-//	}
-
-//	// Create new instance, if it already exist then update it
-//	if resp.StatusCode == http.StatusConflict {
-//		// API returns URI of existing resource in Location header
-//		uri := resp.Header.Get("Location")
-//		if uri == "" {
-//			return nil, fmt.Errorf("API did not return location of existing MySQL instance")
-//		}
-
-//		resp, _, err := a.apiConnector.Put(a.apiConnector.ApiKey(), uri, data)
-//		if a.debug {
-//			log.Printf("resp=%#v\n", resp)
-//			log.Printf("err=%s\n", err)
-//		}
-//		if err != nil {
-//			return nil, err
-//		}
-//		if resp.StatusCode != http.StatusOK {
-//			return nil, fmt.Errorf("Failed to update MySQL instance (status code %d)", resp.StatusCode)
-//		}
-//	} else if resp.StatusCode != http.StatusCreated {
-//		return nil, fmt.Errorf("Failed to create MySQL instance (status code %d)", resp.StatusCode)
-//	}
-
-//	// API returns URI of new (or already existing one) resource in Location header
-//	uri := resp.Header.Get("Location")
-//	if uri == "" {
-//		return nil, fmt.Errorf("API did not return location of new MySQL instance")
-//	}
-
-//	// GET <api>/instances/mysql/id (URI)
-//	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), uri)
-//	if a.debug {
-//		log.Printf("code=%d\n", code)
-//		log.Printf("err=%s\n", err)
-//	}
-//	if err != nil {
-//		return nil, err
-//	}
-//	if code != http.StatusOK {
-//		return nil, fmt.Errorf("Failed to get new MySQL instance (status code %d)", code)
-//	}
-//	if err := json.Unmarshal(data, mi); err != nil {
-//		return nil, fmt.Errorf("Failed to parse MySQL instance entity: %s", err)
-//	}
-//	return mi, nil
-//}
-
-//func (a *Api) CreateAgent(agent *proto.Agent) (*proto.Agent, error) {
-//	data, err := json.Marshal(agent)
-//	if err != nil {
-//		return nil, err
-//	}
-//	url := a.apiConnector.URL("agents")
-//	resp, _, err := a.apiConnector.Post(a.apiConnector.ApiKey(), url, data)
-//	if a.debug {
-//		log.Printf("resp=%#v\n", resp)
-//		log.Printf("err=%s\n", err)
-//	}
-//	if err != nil {
-//		return nil, err
-//	}
-
-//	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusConflict {
-//		// agent was created or already exist - either is ok, continue
-//	} else if resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-Percona-Agents-Limit") != "" {
-//		return nil, fmt.Errorf(
-//			"Maximum number of %s agents exceeded.\n"+
-//				"Go to https://cloud.percona.com/agents and remove unused agents or contact Percona to increase limit.",
-//			resp.Header.Get("X-Percona-Agents-Limit"),
-//		)
-//	} else {
-//		return nil, fmt.Errorf("Failed to create agent instance (status code %d)", resp.StatusCode)
-//	}
-
-//	// API returns URI of new resource in Location header
-//	uri := resp.Header.Get("Location")
-//	if uri == "" {
-//		return nil, fmt.Errorf("API did not return location of new agent")
-//	}
-
-//	// GET <api>/agents/:uuid
-//	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), uri)
-//	if a.debug {
-//		log.Printf("code=%d\n", code)
-//		log.Printf("err=%s\n", err)
-//	}
-//	if err != nil {
-//		return nil, err
-//	}
-//	if code != http.StatusOK {
-//		return nil, fmt.Errorf("Failed to get new agent (status code %d)", code)
-//	}
-//	if err := json.Unmarshal(data, agent); err != nil {
-//		return nil, fmt.Errorf("Failed to parse agent entity: %s", err)
-//	}
-//	return agent, nil
-//}
-
-func (a *Api) CreateInstance(it *proto.Instance) (*proto.Instance, error) {
+// CreateInstance will POST the instance and make sure the request was successful by GET-ing and returning the new resource.
+// Metadata associated with the resource will be returned as a string map of string maps, i.e. metadata["links"]["systemtree"]
+func (a *Api) CreateInstance(it *proto.Instance) (newIt *proto.Instance, metadata map[string]map[string]string, err error) {
+	metadata = make(map[string]map[string]string)
 	data, err := json.Marshal(it)
 	if err != nil {
-		return nil, err
+		return nil, metadata, err
 	}
-	url := a.apiConnector.URL("instances")
+	url := a.apiConnector.URL("/instances")
 	resp, _, err := a.apiConnector.Post(a.apiConnector.ApiKey(), url, data)
 	if a.debug {
 		log.Printf("resp=%#v\n", resp)
 		log.Printf("err=%s\n", err)
 	}
 	if err != nil {
-		return nil, err
+		return nil, metadata, err
 	}
 
 	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusConflict {
 		// agent was created or already exist - either is ok, continue
 	} else if resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-Percona-Agents-Limit") != "" {
-		return nil, fmt.Errorf(
+		return nil, metadata, fmt.Errorf(
 			"Maximum number of %s agents exceeded.\n"+
 				"Go to https://cloud.percona.com/agents and remove unused agents or contact Percona to increase limit.",
 			resp.Header.Get("X-Percona-Agents-Limit"),
 		)
 	} else {
-		return nil, fmt.Errorf("Failed to create instance (status code %d)", resp.StatusCode)
+		return nil, metadata, fmt.Errorf("Failed to create instance (status code %d)", resp.StatusCode)
 	}
-
 	// API returns URI of new resource in Location header
 	uri := resp.Header.Get("Location")
 	if uri == "" {
-		return nil, fmt.Errorf("API did not return location of new instance")
+		return nil, metadata, fmt.Errorf("API did not return location of new instance")
+	}
+
+	// Collect metadata
+	metadata["links"] = make(map[string]string) // initialize links map
+	metadata["links"]["self"] = uri             //Location applies to all instances
+
+	// Get the rest of interesting metadata
+	// For now we only want some links associated with the resource
+	for header, _ := range resp.Header {
+		url := resp.Header.Get(header)
+		if url == "" {
+			continue
+		}
+		// Headers are canonicalized
+		switch header {
+		case "X-Percona-Agent-Url-Cmd":
+			metadata["links"]["cmd"] = url
+		case "X-Percona-Agent-Url-Data":
+			metadata["links"]["data"] = url
+		case "X-Percona-Agent-Url-Log":
+			metadata["links"]["log"] = url
+		case "X-Percona-Agent-Url-Systemtree":
+			metadata["links"]["system_tree"] = url
+		}
 	}
 
 	// GET <api>/instances/:uuid
@@ -248,23 +114,15 @@ func (a *Api) CreateInstance(it *proto.Instance) (*proto.Instance, error) {
 		log.Printf("err=%s\n", err)
 	}
 	if err != nil {
-		return nil, err
+		return nil, metadata, err
 	}
 	if code != http.StatusOK {
-		return nil, fmt.Errorf("Failed to get new instance (status code %d)", code)
+		return nil, metadata, fmt.Errorf("Failed to get new instance (status code %d)", code)
 	}
-	if err := json.Unmarshal(data, &it); err != nil {
-		return nil, fmt.Errorf("Failed to parse instance entity: %s", err)
+	if err := json.Unmarshal(data, &newIt); err != nil {
+		return nil, metadata, fmt.Errorf("Failed to parse instance entity: %s", err)
 	}
-	return it, nil
-}
-
-func (a *Api) GetAgentLinks() (links map[string]string, err error) {
-	links = a.apiConnector.AgentLinks()
-	if len(links) == 0 {
-		return nil, errors.New("No agent links")
-	}
-	return links, nil
+	return newIt, metadata, nil
 }
 
 func (a *Api) UpdateInstance(it *proto.Instance) error {
@@ -272,7 +130,7 @@ func (a *Api) UpdateInstance(it *proto.Instance) error {
 	if err != nil {
 		return err
 	}
-	url := a.apiConnector.URL("instances", it.UUID)
+	url := a.apiConnector.URL("/instances", it.UUID)
 	resp, _, err := a.apiConnector.Put(a.apiConnector.ApiKey(), url, data)
 	if a.debug {
 		log.Printf("resp=%#v\n", resp)
@@ -288,9 +146,8 @@ func (a *Api) UpdateInstance(it *proto.Instance) error {
 	return nil
 }
 
-func (a *Api) GetSystemTree() (it *proto.Instance, err error) {
-	url := a.apiConnector.URL("system_tree")
-	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), url)
+func (a *Api) GetSystemTree(systemTreeURL string) (it *proto.Instance, err error) {
+	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), systemTreeURL)
 	if a.debug {
 		log.Printf("code=%#v\n", code)
 		log.Printf("err=%s\n", err)
@@ -308,27 +165,6 @@ func (a *Api) GetSystemTree() (it *proto.Instance, err error) {
 
 	return it, nil
 }
-
-//func (a *Api) UpdateAgent(agent *proto.Agent, uuid string) (*proto.Agent, error) {
-//	data, err := json.Marshal(agent)
-//	if err != nil {
-//		return nil, err
-//	}
-//	url := a.apiConnector.URL("agents", uuid)
-//	resp, _, err := a.apiConnector.Put(a.apiConnector.ApiKey(), url, data)
-//	if a.debug {
-//		log.Printf("resp=%#v\n", resp)
-//		log.Printf("err=%s\n", err)
-//	}
-//	if err != nil {
-//		return nil, err
-//	}
-
-//	if resp.StatusCode != http.StatusOK {
-//		return nil, fmt.Errorf("Failed to update agent via API (status code %d)", resp.StatusCode)
-//	}
-//	return agent, nil
-//}
 
 func (a *Api) GetMmOSConfig(oi *proto.Instance) (*proto.AgentConfig, error) {
 	url := a.apiConnector.URL("/configs/mm/default-os")
