@@ -350,9 +350,9 @@ func (m *Manager) stopAnalyzer(uuid string) error {
 	m.logger.Debug("stopAnalyzer:call")
 	defer m.logger.Debug("stopAnalyzer:return")
 
-	a, ok := m.analyzers[instanceId]
+	a, ok := m.analyzers[uuid]
 	if !ok {
-		m.logger.Debug("stopAnalyzer:na", instanceId)
+		m.logger.Debug("stopAnalyzer:na", uuid)
 		return nil
 	}
 
@@ -374,8 +374,5 @@ func (m *Manager) stopAnalyzer(uuid string) error {
 
 	// Stop managing this analyzer.
 	delete(m.analyzers, uuid)
-
-	// todo-1.1: remove the analyzer's config file?
-
 	return nil // success
 }
