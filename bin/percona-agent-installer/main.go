@@ -42,9 +42,7 @@ var (
 	flagBasedir                 string
 	flagDebug                   bool
 	flagCreateMySQLInstance     bool
-	flagCreateOSInstance        bool
 	flagStartServices           bool
-	flagCreateAgent             bool
 	flagStartMySQLServices      bool
 	flagMySQL                   bool
 	flagOldPasswords            bool
@@ -74,10 +72,8 @@ func init() {
 	// --
 	flag.BoolVar(&flagMySQL, "mysql", true, "Install for MySQL")
 	flag.BoolVar(&flagCreateMySQLInstance, "create-mysql-instance", true, "Create MySQL instance")
-	flag.BoolVar(&flagCreateOSInstance, "create-os-instance", true, "Create Operating System instance")
 	flag.BoolVar(&flagStartServices, "start-services", true, "Start all services")
 	flag.BoolVar(&flagStartMySQLServices, "start-mysql-services", true, "Start MySQL services")
-	flag.BoolVar(&flagCreateAgent, "create-agent", true, "Create agent")
 	flag.BoolVar(&flagOldPasswords, "old-passwords", false, "Old passwords")
 	flag.BoolVar(&flagPlainPasswords, "plain-passwords", false, "Plain passwords") // @todo: Workaround used in tests for "stty: standard input: Inappropriate ioctl for device"
 	flag.BoolVar(&flagInteractive, "interactive", true, "Prompt for input on STDIN")
@@ -127,11 +123,9 @@ func main() {
 	flags := installer.Flags{
 		Bool: map[string]bool{
 			"debug":                 flagDebug,
-			"create-os-instance":    flagCreateOSInstance,
 			"start-services":        flagStartServices,
 			"create-mysql-instance": flagCreateMySQLInstance,
 			"start-mysql-services":  flagStartMySQLServices,
-			"create-agent":          flagCreateAgent,
 			"old-passwords":         flagOldPasswords,
 			"plain-passwords":       flagPlainPasswords,
 			"interactive":           flagInteractive,

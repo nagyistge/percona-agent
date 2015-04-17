@@ -358,6 +358,7 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 //	// Should create percona-agent user with grants on *.* and performance_schema.*.
 //	s.expectMysqlUserExists(t)
 //}
+
 //func (s *MainTestSuite) TestNonInteractiveInstallWithMissingApiKey(t *C) {
 //	cmd := exec.Command(
 //		s.bin,
