@@ -24,7 +24,7 @@ import (
 	"net/http"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v2"
 	mmMySQL "github.com/percona/percona-agent/mm/mysql"
 	mmOS "github.com/percona/percona-agent/mm/system"
 	"github.com/percona/percona-agent/pct"

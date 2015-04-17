@@ -30,7 +30,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test"

@@ -29,7 +29,7 @@ import (
 	"regexp"
 	"sync"
 
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/pct"
 )
 

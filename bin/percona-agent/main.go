@@ -30,7 +30,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/client"
 	"github.com/percona/percona-agent/data"

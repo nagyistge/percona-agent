@@ -32,7 +32,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v2"
 )
 
 var requiredEntryLinks = []string{"instances", "download"}

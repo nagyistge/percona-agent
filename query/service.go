@@ -18,7 +18,7 @@
 package query
 
 import (
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v2"
 )
 
 type Service interface {
