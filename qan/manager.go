@@ -342,7 +342,7 @@ func (m *Manager) startAnalyzer(config Config) error {
 	return nil // success
 }
 
-func (m *Manager) stopAnalyzer(instanceId string) error {
+func (m *Manager) stopAnalyzer(uuid string) error {
 	/*
 		XXX Assume caller has locked m.mux.
 	*/
@@ -373,7 +373,7 @@ func (m *Manager) stopAnalyzer(instanceId string) error {
 	}
 
 	// Stop managing this analyzer.
-	delete(m.analyzers, instanceId)
+	delete(m.analyzers, uuid)
 
 	// todo-1.1: remove the analyzer's config file?
 
