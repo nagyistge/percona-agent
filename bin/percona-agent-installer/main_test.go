@@ -1256,19 +1256,6 @@ func (s *MainTestSuite) expectDefaultMmOSConfig(t *C) {
 	t.Check(gotConfig, DeepEquals, expectedConfig)
 }
 
-// TODO delete
-//func (s *MainTestSuite) expectMysqlConfig(expectedConfig proto.MySQLInstance, t *C) {
-//	service := "mysql"
-//	instanceUUID := expectedConfig.UUID
-//	gotConfig := proto.Instance{}
-//	// TODO use ReadInstanceConfig?
-//	if err := pct.Basedir.ReadConfig(fmt.Sprintf("%s-%d", service, instanceUUID), &gotConfig); err != nil {
-//		t.Errorf("Read %s-%d config: %s", service, instanceUUID, err)
-//	}
-
-//	t.Check(gotConfig, DeepEquals, expectedConfig)
-//}
-
 func (s *MainTestSuite) expectDefaultQanConfig(t *C) {
 	expectedConfig := qan.Config{
 		UUID:              s.mysqlInstance.UUID,

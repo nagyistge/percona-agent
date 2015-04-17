@@ -26,30 +26,6 @@ import (
 	"github.com/percona/percona-agent/pct"
 )
 
-//func (i *Installer) writeInstance(inst *proto.Instance) error {
-//	// We could write the instance structs directly, but this is the job of an
-//	// instance repo and it's easy enough to create one, so do the right thing.
-//	if si != nil {
-//		bytes, err := json.Marshal(si)
-//		if err != nil {
-//			return err
-//		}
-//		if err := i.instanceRepo.Add("server", si.Id, bytes, true); err != nil {
-//			return err
-//		}
-//	}
-//	if mi != nil {
-//		bytes, err := json.Marshal(mi)
-//		if err != nil {
-//			return err
-//		}
-//		if err := i.instanceRepo.Add("mysql", mi.Id, bytes, true); err != nil {
-//			return err
-//		}
-//	}
-//	return nil
-//}
-
 func (i *Installer) writeConfigs(configs []proto.AgentConfig) error {
 	for _, config := range configs {
 		name := config.Tool

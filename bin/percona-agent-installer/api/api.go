@@ -48,8 +48,15 @@ func (a *Api) Init(hostname, apiKey string, headers map[string]string) (code int
 	return a.apiConnector.Init(hostname, apiKey, headers)
 }
 
-// CreateInstance will POST the instance and make sure the request was successful by GET-ing and returning the new resource.
-// Metadata associated with the resource will be returned as a string map of string maps, i.e. metadata["links"]["systemtree"]
+// CreateInstance will POST the instance and make sure the request was successful by GET-ing and returning the new
+// resource. Metadata associated with the resource will be returned as a string map of string maps, for now only
+// metadata for agent resources links are returned when provided by API.
+//
+// metadata["links"]["self"]        - URL of resource, present in all resources
+// metadata["links"]["data"]        - URL for data endpoint
+// metadata["links"]["log"]         - URL for log endpoint
+// metadata["links"]["cmd"]         - URL for command endpoint
+// metadata["links"]["system_tree"] - URL for obtaining System Tree of agent
 func (a *Api) CreateInstance(it *proto.Instance) (newIt *proto.Instance, metadata map[string]map[string]string, err error) {
 	metadata = make(map[string]map[string]string)
 	data, err := json.Marshal(it)
@@ -88,7 +95,7 @@ func (a *Api) CreateInstance(it *proto.Instance) (newIt *proto.Instance, metadat
 	metadata["links"]["self"] = uri             //Location applies to all instances
 
 	// Get the rest of interesting metadata
-	// For now we only want some links associated with the resource
+	// For now we only want some links associated with agent instances
 	for header, _ := range resp.Header {
 		url := resp.Header.Get(header)
 		if url == "" {
@@ -146,10 +153,11 @@ func (a *Api) UpdateInstance(it *proto.Instance) error {
 	return nil
 }
 
+// Gets System Tree from API and deserializes it to proto.Instance
 func (a *Api) GetSystemTree(systemTreeURL string) (it *proto.Instance, err error) {
 	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), systemTreeURL)
 	if a.debug {
-		log.Printf("code=%#v\n", code)
+		log.Printf("code=%#d\n", code)
 		log.Printf("err=%s\n", err)
 	}
 	if err != nil {
@@ -166,6 +174,7 @@ func (a *Api) GetSystemTree(systemTreeURL string) (it *proto.Instance, err error
 	return it, nil
 }
 
+// Gets the default OS MM config from API
 func (a *Api) GetMmOSConfig(oi *proto.Instance) (*proto.AgentConfig, error) {
 	url := a.apiConnector.URL("/configs/mm/default-os")
 	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), url)
@@ -198,6 +207,7 @@ func (a *Api) GetMmOSConfig(oi *proto.Instance) (*proto.AgentConfig, error) {
 	return agentConfig, nil
 }
 
+// Gets default MySQL MM config from API
 func (a *Api) GetMmMySQLConfig(mi *proto.Instance) (*proto.AgentConfig, error) {
 	url := a.apiConnector.URL("/configs/mm/default-mysql")
 	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), url)
@@ -230,6 +240,7 @@ func (a *Api) GetMmMySQLConfig(mi *proto.Instance) (*proto.AgentConfig, error) {
 	return agentConfig, nil
 }
 
+// Gets default MySQL SysConfig from API
 func (a *Api) GetSysconfigMySQLConfig(mi *proto.Instance) (*proto.AgentConfig, error) {
 	url := a.apiConnector.URL("/configs/sysconfig/default-mysql")
 	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), url)
@@ -262,6 +273,7 @@ func (a *Api) GetSysconfigMySQLConfig(mi *proto.Instance) (*proto.AgentConfig, e
 	return agentConfig, nil
 }
 
+// Gets the default QAN config from API
 func (a *Api) GetQanConfig(mi *proto.Instance) (*proto.AgentConfig, error) {
 	url := a.apiConnector.URL("/configs/qan/default")
 	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), url)

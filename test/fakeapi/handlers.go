@@ -162,18 +162,3 @@ func (f *FakeApi) AppendConfigsQanDefault() {
 		w.Write([]byte(`{ "UUID": "0", "Interval": 60}`))
 	})
 }
-
-//func (f *FakeApi) AppendAgents(agent *proto.Agent) {
-//	f.Append("/agents", func(w http.ResponseWriter, r *http.Request) {
-//		w.Header().Set("Location", fmt.Sprintf("%s/agents/%s", f.URL(), agent.UUID))
-//		w.WriteHeader(http.StatusCreated)
-//	})
-//}
-
-//func (f *FakeApi) AppendAgentsUuid(agent *proto.Agent) {
-//	f.Append(fmt.Sprintf("/agents/%s", agent.UUID), func(w http.ResponseWriter, r *http.Request) {
-//		w.WriteHeader(http.StatusOK)
-//		data, _ := json.Marshal(&agent)
-//		w.Write(data)
-//	})
-//}

@@ -535,17 +535,6 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	}
 	s.configDir = pct.Basedir.Dir("config")
 
-	//	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im"), s.configDir, s.api)
-	//	data, err := json.Marshal(&proto.MySQLInstance{
-	//		Hostname: "db1",
-	//		DSN:      "user:host@tcp:(127.0.0.1:3306)",
-	//	})
-	//	t.Assert(err, IsNil)
-	//	s.im.Add("mysql", 1, data, false)
-	//	data, err = json.Marshal(&proto.ServerInstance{Hostname: "host1"})
-	//	t.Assert(err, IsNil)
-	//	s.im.Add("server", 1, data, false)
-
 	s.mysqlMonitor = mock.NewMmMonitor()
 	s.systemMonitor = mock.NewMmMonitor()
 	s.factory = mock.NewMmMonitorFactory(map[string]mm.Monitor{

@@ -402,10 +402,10 @@ func run() error {
 		golog.Fatal(err)
 	}
 
-	// The official list of services known to the agent.  Adding a new service
+	// The official list of tools known to the agent.  Adding a new service
 	// requires a manager, starting the manager as above, and adding the manager
 	// to this map.
-	services := map[string]pct.ToolManager{
+	tools := map[string]pct.ToolManager{
 		"log":       logManager,
 		"data":      dataManager,
 		"qan":       qanManager,
@@ -427,7 +427,7 @@ func run() error {
 		agentLogger,
 		api,
 		cmdClient,
-		services,
+		tools,
 	)
 
 	/**

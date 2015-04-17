@@ -81,13 +81,13 @@ func IsMySQLInstance(it proto.Instance) bool {
 }
 
 func onlyMySQLInsts(slice []proto.Instance) []proto.Instance {
-	var justMySQL []proto.Instance
+	var onlyMySQL []proto.Instance
 	for _, it := range slice {
 		if IsMySQLInstance(it) {
-			justMySQL = append(justMySQL, it)
+			onlyMySQL = append(onlyMySQL, it)
 		}
 	}
-	return justMySQL
+	return onlyMySQL
 }
 
 func (r *Repo) configFilePath() string {
@@ -163,9 +163,8 @@ func (r *Repo) SetSystemTreeURL(u string) {
 	r.systemTreeURL = u
 }
 
-// Initializes the instance repository by reading system tree from local file and if not found pulling it from API
-// System Tree URL must be set using SetSystemTreeURL prior calling Init if the user expects the repo to download it
-// from API
+// Initializes the instance repository by reading system tree from local file and if not found pulling it from API.
+// System Tree URL must be set using SetSystemTreeURL prior calling Init if the user expects the repo to download it.
 func (r *Repo) Init() error {
 	r.mux.Lock()
 	defer r.mux.Unlock()
