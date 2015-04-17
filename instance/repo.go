@@ -156,16 +156,19 @@ func (r *Repo) updateInstanceIndex() error {
 	}
 }
 
-// Initializes the instance repository by reading system tree from local file and if not found pulling it from API
-func (r *Repo) Init(systemTreeURL string) error {
+func (r *Repo) SetSystemTreeURL(u string) {
+	// Not all users of this repo will have the System Tree URL, this method is for the ones that do.
 	r.mux.Lock()
 	defer r.mux.Unlock()
-	if systemTreeURL == "" {
-		errMsg := "No system tree URL"
-		r.logger.Warn(errMsg)
-		return errors.New(errMsg)
-	}
-	r.systemTreeURL = systemTreeURL
+	r.systemTreeURL = u
+}
+
+// Initializes the instance repository by reading system tree from local file and if not found pulling it from API
+// System Tree URL must be set using SetSystemTreeURL prior calling Init if the user expects the repo to download it
+// from API
+func (r *Repo) Init() error {
+	r.mux.Lock()
+	defer r.mux.Unlock()
 	file := r.configFilePath()
 	var data []byte
 	var err error

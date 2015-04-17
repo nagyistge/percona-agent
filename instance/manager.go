@@ -46,8 +46,9 @@ type Manager struct {
 	agentConfig    *agent.Config
 }
 
-func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm mrms.Monitor) *Manager {
+func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm mrms.Monitor, systemTreeURL string) *Manager {
 	repo := NewRepo(pct.NewLogger(logger.LogChan(), "instance-repo"), configDir, api)
+	repo.SetSystemTreeURL(systemTreeURL)
 	m := &Manager{
 		logger:    logger,
 		configDir: configDir,
@@ -67,9 +68,9 @@ func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm 
 /////////////////////////////////////////////////////////////////////////////
 
 // @goroutine[0]
-func (m *Manager) Start(systemTreeURL string) error {
+func (m *Manager) Start() error {
 	m.status.Update("instance", "Starting")
-	if err := m.repo.Init(systemTreeURL); err != nil {
+	if err := m.repo.Init(); err != nil {
 		return err
 	}
 	m.logger.Info("Started")
