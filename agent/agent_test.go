@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	. "github.com/go-test/test"
 	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/pct"
@@ -195,8 +196,8 @@ func (s *AgentTestSuite) TestStatus(t *C) {
 	expectStatus := map[string]string{
 		"agent": "Idle",
 	}
-	if ok, diff := test.IsDeeply(got, expectStatus); !ok {
-		test.Dump(got)
+	if ok, diff := IsDeeply(got, expectStatus); !ok {
+		Dump(got)
 		t.Error(diff)
 	}
 
@@ -324,7 +325,7 @@ func (s *AgentTestSuite) TestStartStopService(t *C) {
 		"qan":   "Ready",
 		"mm":    "",
 	}
-	if same, diff := test.IsDeeply(status, expectStatus); !same {
+	if same, diff := IsDeeply(status, expectStatus); !same {
 		t.Error(diff)
 	}
 
@@ -415,7 +416,7 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
 	// still starting the service.
 	gotStatus := test.GetStatus(s.sendChan, s.recvChan)
 	if !t.Check(gotStatus["agent"], Equals, "Idle") {
-		test.Dump(gotStatus)
+		Dump(gotStatus)
 	}
 
 	// Make it seem like service has started now.
@@ -489,9 +490,9 @@ func (s *AgentTestSuite) TestLoadConfig(t *C) {
 		Keepalive:   agent.DEFAULT_KEEPALIVE,
 		PidFile:     agent.DEFAULT_PIDFILE,
 	}
-	if same, diff := test.IsDeeply(got, expect); !same {
+	if same, diff := IsDeeply(got, expect); !same {
 		// @todo: if expect is not ptr, IsDeeply dies with "got ptr, expected struct"
-		test.Dump(got)
+		Dump(got)
 		t.Error(diff)
 	}
 
@@ -511,8 +512,8 @@ func (s *AgentTestSuite) TestLoadConfig(t *C) {
 		Keepalive:   agent.DEFAULT_KEEPALIVE,
 		PidFile:     "pid file",
 	}
-	if same, diff := test.IsDeeply(got, expect); !same {
-		test.Dump(got)
+	if same, diff := IsDeeply(got, expect); !same {
+		Dump(got)
 		t.Error(diff)
 	}
 }
@@ -544,7 +545,7 @@ func (s *AgentTestSuite) TestGetConfig(t *C) {
 		},
 	}
 
-	if ok, diff := test.IsDeeply(gotConfig, expect); !ok {
+	if ok, diff := IsDeeply(gotConfig, expect); !ok {
 		t.Logf("%+v", gotConfig)
 		t.Error(diff)
 	}
@@ -589,8 +590,8 @@ func (s *AgentTestSuite) TestGetAllConfigs(t *C) {
 			Running: false,
 		},
 	}
-	if ok, diff := test.IsDeeply(gotConfigs, expectConfigs); !ok {
-		test.Dump(gotConfigs)
+	if ok, diff := IsDeeply(gotConfigs, expectConfigs); !ok {
+		Dump(gotConfigs)
 		t.Error(diff)
 	}
 }
@@ -639,7 +640,7 @@ func (s *AgentTestSuite) TestSetConfigApiKey(t *C) {
 	expect := *s.config
 	expect.ApiKey = "101"
 	expect.Links = nil
-	if ok, diff := test.IsDeeply(gotConfig, &expect); !ok {
+	if ok, diff := IsDeeply(gotConfig, &expect); !ok {
 		t.Logf("%+v", gotConfig)
 		t.Error(diff)
 	}
@@ -659,7 +660,7 @@ func (s *AgentTestSuite) TestSetConfigApiKey(t *C) {
 	if err := json.Unmarshal(data, gotConfig); err != nil {
 		t.Fatal(err)
 	}
-	if same, diff := test.IsDeeply(gotConfig, &expect); !same {
+	if same, diff := IsDeeply(gotConfig, &expect); !same {
 		// @todo: if expect is not ptr, IsDeeply dies with "got ptr, expected struct"
 		t.Logf("%+v", gotConfig)
 		t.Error(diff)
@@ -701,7 +702,7 @@ func (s *AgentTestSuite) TestSetConfigApiHostname(t *C) {
 	expect := *s.config
 	expect.ApiHostname = "http://localhost"
 	expect.Links = nil
-	if ok, diff := test.IsDeeply(gotConfig, &expect); !ok {
+	if ok, diff := IsDeeply(gotConfig, &expect); !ok {
 		t.Logf("%+v", gotConfig)
 		t.Error(diff)
 	}
@@ -721,7 +722,7 @@ func (s *AgentTestSuite) TestSetConfigApiHostname(t *C) {
 	if err := json.Unmarshal(data, gotConfig); err != nil {
 		t.Fatal(err)
 	}
-	if same, diff := test.IsDeeply(gotConfig, &expect); !same {
+	if same, diff := IsDeeply(gotConfig, &expect); !same {
 		// @todo: if expect is not ptr, IsDeeply dies with "got ptr, expected struct"
 		t.Logf("%+v", gotConfig)
 		t.Error(diff)

@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	. "github.com/go-test/test"
 	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/instance"
@@ -146,7 +147,7 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 	t.Assert(err, IsNil)
 
 	// It should not add a tickChan to the clock (this is done in Handle()).
-	if ok, diff := test.IsDeeply(s.clock.Added, []uint{3600}); !ok {
+	if ok, diff := IsDeeply(s.clock.Added, []uint{3600}); !ok {
 		t.Errorf("Adds tickChan, got %#v", diff)
 	}
 
@@ -188,10 +189,10 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
-		User:    "daniel",
+		User: "daniel",
 		Tool: "sysconfig",
-		Cmd:     "StartService",
-		Data:    sysconfigConfigData,
+		Cmd:  "StartService",
+		Data: sysconfigConfigData,
 	}
 
 	// If this were a real monitor, it would decode and set its own config.
@@ -212,7 +213,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 
 	// There should be a 60s report ticker for the aggregator and a 1s collect ticker
 	// for the monitor.
-	if ok, diff := test.IsDeeply(s.clock.Added, []uint{3600}); !ok {
+	if ok, diff := IsDeeply(s.clock.Added, []uint{3600}); !ok {
 		t.Errorf("Make 3600s ticker for collect interval\n%s", diff)
 	}
 
@@ -224,7 +225,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 	gotConfig := &mysql.Config{}
 	err = json.Unmarshal(data, gotConfig)
 	t.Check(err, IsNil)
-	if same, diff := test.IsDeeply(gotConfig, sysconfigConfig); !same {
+	if same, diff := IsDeeply(gotConfig, sysconfigConfig); !same {
 		t.Logf("%+v", gotConfig)
 		t.Error(diff)
 	}
@@ -234,10 +235,10 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 	 */
 
 	cmd = &proto.Cmd{
-		User:    "daniel",
+		User: "daniel",
 		Tool: "sysconfig",
-		Cmd:     "StopService",
-		Data:    sysconfigConfigData,
+		Cmd:  "StopService",
+		Data: sysconfigConfigData,
 	}
 
 	// Handles StopService without error.
@@ -267,10 +268,10 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 	 */
 
 	cmd = &proto.Cmd{
-		User:    "daniel",
+		User: "daniel",
 		Tool: "sysconfig",
-		Cmd:     "Pontificate",
-		Data:    sysconfigConfigData,
+		Cmd:  "Pontificate",
+		Data: sysconfigConfigData,
 	}
 
 	// Unknown cmd causes error.
@@ -304,10 +305,10 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
-		User:    "daniel",
+		User: "daniel",
 		Tool: "sysconfig",
-		Cmd:     "StartService",
-		Data:    sysconfigConfigData,
+		Cmd:  "StartService",
+		Data: sysconfigConfigData,
 	}
 	reply := m.Handle(cmd)
 	t.Assert(reply, NotNil)
@@ -318,7 +319,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	 * GetConfig from sysconfig which should return all monitors' configs.
 	 */
 	cmd = &proto.Cmd{
-		Cmd:     "GetConfig",
+		Cmd:  "GetConfig",
 		Tool: "sysconfig",
 	}
 	reply = m.Handle(cmd)
@@ -331,14 +332,14 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	}
 	expectConfig := []proto.AgentConfig{
 		{
-			Tool: "sysconfig",
-			UUID:            s.mysqlInstance.UUID,
-			Config:          string(sysconfigConfigData),
-			Running:         true,
+			Tool:    "sysconfig",
+			UUID:    s.mysqlInstance.UUID,
+			Config:  string(sysconfigConfigData),
+			Running: true,
 		},
 	}
-	if same, diff := test.IsDeeply(gotConfig, expectConfig); !same {
-		test.Dump(gotConfig)
+	if same, diff := IsDeeply(gotConfig, expectConfig); !same {
+		Dump(gotConfig)
 		t.Error(diff)
 	}
 }

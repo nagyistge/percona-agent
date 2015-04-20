@@ -18,12 +18,14 @@
 package ticker_test
 
 import (
+	"testing"
+	"time"
+
+	. "github.com/go-test/test"
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
 	"github.com/percona/percona-agent/ticker"
 	"gopkg.in/check.v1"
-	"testing"
-	"time"
 )
 
 func Test(t *testing.T) { check.TestingT(t) }
@@ -203,7 +205,7 @@ func (s *ManagerTestSuite) TestAddWatcher(t *check.C) {
 		t.Error("Starts ticker")
 	}
 
-	if ok, diff := test.IsDeeply(s.tickerFactory.Made, []uint{79}); !ok {
+	if ok, diff := IsDeeply(s.tickerFactory.Made, []uint{79}); !ok {
 		t.Errorf("Make 79s ticker, got %#v", diff)
 	}
 

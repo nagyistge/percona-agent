@@ -615,7 +615,7 @@ func (s *IterTestSuite) TestIterFile(t *C) {
 		StartOffset: 3,
 		EndOffset:   6,
 	}
-	t.Check(got, test.DeepEquals, expect)
+	t.Check(got, DeepEquals, expect)
 
 	/**
 	 * Rename the file, then re-create it.  The file change should be detected.
@@ -646,7 +646,7 @@ func (s *IterTestSuite) TestIterFile(t *C) {
 		StartOffset: 0,
 		EndOffset:   10,
 	}
-	t.Check(got, test.DeepEquals, expect)
+	t.Check(got, DeepEquals, expect)
 
 	// Iter should no longer detect file change.
 	_ = ioutil.WriteFile(fileName, []byte("123456789ABCDEF"), 0777)
@@ -663,7 +663,7 @@ func (s *IterTestSuite) TestIterFile(t *C) {
 		StartOffset: 10,
 		EndOffset:   15,
 	}
-	t.Check(got, test.DeepEquals, expect)
+	t.Check(got, DeepEquals, expect)
 
 	i.Stop()
 }

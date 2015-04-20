@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	. "github.com/go-test/test"
 	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/instance"
@@ -128,9 +129,9 @@ func (s *AggregatorTestSuite) TestC001(t *C) {
 		t.Fatal(err)
 	}
 	t.Check(got.Ts, Equals, t1)
-	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
-		test.Dump(got.Stats)
-		test.Dump(expect.Stats)
+	if ok, diff := IsDeeply(got.Stats, expect.Stats); !ok {
+		Dump(got.Stats)
+		Dump(expect.Stats)
 		t.Fatal(diff)
 	}
 }
@@ -165,7 +166,7 @@ func (s *AggregatorTestSuite) TestC002(t *C) {
 	if err := test.LoadMmReport(sample+"/c002r.json", expect); err != nil {
 		t.Fatal("c002r.json ", err)
 	}
-	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
+	if ok, diff := IsDeeply(got.Stats, expect.Stats); !ok {
 		t.Fatal(diff)
 	}
 }
@@ -198,7 +199,7 @@ func (s *AggregatorTestSuite) TestC000(t *C) {
 	if err := test.LoadMmReport(sample+"/c000r.json", expect); err != nil {
 		t.Fatal("c000r.json ", err)
 	}
-	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
+	if ok, diff := IsDeeply(got.Stats, expect.Stats); !ok {
 		t.Fatal(diff)
 	}
 }
@@ -245,7 +246,7 @@ func (s *AggregatorTestSuite) TestC003(t *C) {
 	if err := test.LoadMmReport(sample+"/c003r.json", expect); err != nil {
 		t.Fatal("c003r.json ", err)
 	}
-	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
+	if ok, diff := IsDeeply(got.Stats, expect.Stats); !ok {
 		t.Fatal(diff)
 	}
 
@@ -282,7 +283,7 @@ func (s *AggregatorTestSuite) TestC003(t *C) {
 	if err := test.LoadMmReport(sample+"/c003r2.json", expect); err != nil {
 		t.Fatal("c003r2.json ", err)
 	}
-	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
+	if ok, diff := IsDeeply(got.Stats, expect.Stats); !ok {
 		t.Fatal(diff)
 	}
 }
@@ -325,9 +326,9 @@ func (s *AggregatorTestSuite) TestC003Lost(t *C) {
 	if err := test.LoadMmReport(sample+"/c003rlost.json", expect); err != nil {
 		t.Fatal("c003r.json ", err)
 	}
-	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
-		test.Dump(got.Stats)
-		test.Dump(expect.Stats)
+	if ok, diff := IsDeeply(got.Stats, expect.Stats); !ok {
+		Dump(got.Stats)
+		Dump(expect.Stats)
 		t.Fatal(diff)
 	}
 }
@@ -355,7 +356,7 @@ func (s *AggregatorTestSuite) TestBadMetric(t *C) {
 
 	got := test.WaitMmReport(s.dataChan)
 	if got != nil {
-		test.Dump(got)
+		Dump(got)
 		t.Error("Got a bad metric")
 	}
 }
@@ -610,8 +611,8 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 	t.Assert(err, IsNil)
 
 	// There is a monitor so there should be tickers.
-	if ok, diff := test.IsDeeply(s.clock.Added, []uint{1}); !ok {
-		test.Dump(s.clock.Added)
+	if ok, diff := IsDeeply(s.clock.Added, []uint{1}); !ok {
+		Dump(s.clock.Added)
 		t.Errorf("Does not add tickChan, got %#v", diff)
 	}
 
@@ -685,7 +686,7 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	t.Check(status["monitor"], Equals, "Running")
 
 	// There should be a 1s collect ticker for the monitor.
-	if ok, diff := test.IsDeeply(s.clock.Added, []uint{1}); !ok {
+	if ok, diff := IsDeeply(s.clock.Added, []uint{1}); !ok {
 		t.Errorf("Make 1s ticker for collect interval\n%s", diff)
 	}
 
@@ -698,8 +699,8 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	gotConfig := &mysql.Config{}
 	err = json.Unmarshal(data, gotConfig)
 	t.Check(err, IsNil)
-	if same, diff := test.IsDeeply(gotConfig, mmConfig); !same {
-		test.Dump(gotConfig)
+	if same, diff := IsDeeply(gotConfig, mmConfig); !same {
+		Dump(gotConfig)
 		t.Error(diff)
 	}
 
@@ -761,7 +762,7 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 
 	// There should be a 1s collect ticker for the monitor.
 	// (Actually two in s.clock.Added, as this is mock and we started monitor twice)
-	if ok, diff := test.IsDeeply(s.clock.Added, []uint{1, 1}); !ok {
+	if ok, diff := IsDeeply(s.clock.Added, []uint{1, 1}); !ok {
 		t.Errorf("Make 1s ticker for collect interval\n%s", diff)
 	}
 
@@ -773,7 +774,7 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	gotConfig = &mysql.Config{}
 	err = json.Unmarshal(data, gotConfig)
 	t.Check(err, IsNil)
-	if same, diff := test.IsDeeply(gotConfig, mmConfig); !same {
+	if same, diff := IsDeeply(gotConfig, mmConfig); !same {
 		t.Logf("%+v", gotConfig)
 		t.Error(diff)
 	}
@@ -884,8 +885,8 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	// Sort, slice order is not stable
 	sort.Sort(ByUUID(gotConfig))
 	sort.Sort(ByUUID(expectConfig))
-	if same, diff := test.IsDeeply(gotConfig, expectConfig); !same {
-		test.Dump(gotConfig)
+	if same, diff := IsDeeply(gotConfig, expectConfig); !same {
+		Dump(gotConfig)
 		t.Error(diff)
 	}
 }
@@ -1021,6 +1022,6 @@ func (s *StatsTestSuite) TestPCT939(t *C) {
 		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99590}, 57)
 		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99600}, 58)
 		got := stats.Finalize()
-		test.Dump(got)
+		Dump(got)
 	*/
 }

@@ -30,6 +30,7 @@ import (
 	"testing"
 	"time"
 
+	. "github.com/go-test/test"
 	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/pct"
@@ -159,7 +160,7 @@ func (s *DiskvSpoolerTestSuite) TestSpoolData(t *C) {
 	if err := json.Unmarshal(protoData.Data, gotLogEntry); err != nil {
 		t.Fatal(err)
 	}
-	if same, diff := test.IsDeeply(gotLogEntry, logEntry); !same {
+	if same, diff := IsDeeply(gotLogEntry, logEntry); !same {
 		t.Logf("%#v", gotLogEntry)
 		t.Error(diff)
 	}
@@ -239,7 +240,7 @@ func (s *DiskvSpoolerTestSuite) TestSpoolGzipData(t *C) {
 		t.Error(err)
 	}
 
-	if same, diff := test.IsDeeply(gotLogEntry, logEntry); !same {
+	if same, diff := IsDeeply(gotLogEntry, logEntry); !same {
 		t.Error(diff)
 	}
 
@@ -294,7 +295,7 @@ func (s *DiskvSpoolerTestSuite) TestSpoolGzipData(t *C) {
 		t.Error(err)
 	}
 
-	if same, diff := test.IsDeeply(gotLogEntry, logEntry2); !same {
+	if same, diff := IsDeeply(gotLogEntry, logEntry2); !same {
 		t.Error(diff)
 	}
 
@@ -437,7 +438,7 @@ func (s *SenderTestSuite) TestSendData(t *C) {
 	s.tickerChan <- time.Now()
 
 	data = test.WaitBytes(s.dataChan)
-	if same, diff := test.IsDeeply(data[0], slow001); !same {
+	if same, diff := IsDeeply(data[0], slow001); !same {
 		t.Error(diff)
 	}
 
@@ -661,7 +662,7 @@ func (s *SenderTestSuite) Test500Error(t *C) {
 	s.tickerChan <- time.Now()
 
 	got := test.WaitBytes(s.dataChan)
-	if same, diff := test.IsDeeply(got[0], []byte("file1")); !same {
+	if same, diff := IsDeeply(got[0], []byte("file1")); !same {
 		t.Error(diff)
 	}
 
@@ -834,8 +835,8 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 			Running: true,
 		},
 	}
-	if same, diff := test.IsDeeply(gotConfig, expectConfig); !same {
-		test.Dump(gotConfig)
+	if same, diff := IsDeeply(gotConfig, expectConfig); !same {
+		Dump(gotConfig)
 		t.Error(diff)
 	}
 
@@ -856,8 +857,8 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 		t.Fatal(err)
 	}
 	expectConfig[0].Running = false
-	if same, diff := test.IsDeeply(gotConfig, expectConfig); !same {
-		test.Dump(gotConfig)
+	if same, diff := IsDeeply(gotConfig, expectConfig); !same {
+		Dump(gotConfig)
 		t.Error(diff)
 	}
 }
@@ -913,8 +914,8 @@ func (s *ManagerTestSuite) TestSetConfig(t *C) {
 			Running: true,
 		},
 	}
-	if same, diff := test.IsDeeply(gotConfigRes, expectConfigRes); !same {
-		test.Dump(gotConfigRes)
+	if same, diff := IsDeeply(gotConfigRes, expectConfigRes); !same {
+		Dump(gotConfigRes)
 		t.Error(diff)
 	}
 
@@ -925,8 +926,8 @@ func (s *ManagerTestSuite) TestSetConfig(t *C) {
 	if err := json.Unmarshal(content, gotConfig); err != nil {
 		t.Fatal(err)
 	}
-	if same, diff := test.IsDeeply(gotConfig, config); !same {
-		test.Dump(gotConfig)
+	if same, diff := IsDeeply(gotConfig, config); !same {
+		Dump(gotConfig)
 		t.Error(diff)
 	}
 
@@ -964,8 +965,8 @@ func (s *ManagerTestSuite) TestSetConfig(t *C) {
 			Running: true,
 		},
 	}
-	if same, diff := test.IsDeeply(gotConfigRes, expectConfigRes); !same {
-		test.Dump(gotConfigRes)
+	if same, diff := IsDeeply(gotConfigRes, expectConfigRes); !same {
+		Dump(gotConfigRes)
 		t.Error(diff)
 	}
 
@@ -976,8 +977,8 @@ func (s *ManagerTestSuite) TestSetConfig(t *C) {
 	if err := json.Unmarshal(content, gotConfig); err != nil {
 		t.Fatal(err)
 	}
-	if same, diff := test.IsDeeply(gotConfig, config); !same {
-		test.Dump(gotConfig)
+	if same, diff := IsDeeply(gotConfig, config); !same {
+		Dump(gotConfig)
 		t.Error(diff)
 	}
 }

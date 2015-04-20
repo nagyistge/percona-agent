@@ -25,6 +25,7 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 
+	. "github.com/go-test/test"
 	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/mm"
 	"github.com/percona/percona-agent/mm/mysql"
@@ -251,7 +252,7 @@ func (s *TestSuite) TestCollectInnoDBStats(t *C) {
 		{Name: "mysql/innodb/dml/dml_deletes", Type: "counter", Number: 0},
 		{Name: "mysql/innodb/dml/dml_updates", Type: "counter", Number: 0},
 	}
-	if ok, diff := test.IsDeeply(c.Metrics, expect); !ok {
+	if ok, diff := IsDeeply(c.Metrics, expect); !ok {
 		t.Error(diff)
 	}
 
@@ -444,7 +445,7 @@ func (s *TestSuite) TestHandleMySQLRestarts(t *C) {
 		{Name: "mysql/innodb/dml/dml_deletes", Type: "counter", Number: 0},
 		{Name: "mysql/innodb/dml/dml_updates", Type: "counter", Number: 0},
 	}
-	if ok, diff := test.IsDeeply(c.Metrics, expect); !ok {
+	if ok, diff := IsDeeply(c.Metrics, expect); !ok {
 		t.Error(diff)
 	}
 
