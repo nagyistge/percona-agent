@@ -82,12 +82,27 @@ func (a *Api) CreateInstance(it *proto.Instance) (newIt *proto.Instance, metadat
 			resp.Header.Get("X-Percona-Agents-Limit"),
 		)
 	} else {
-		return nil, metadata, fmt.Errorf("Failed to create instance (status code %d)", resp.StatusCode)
+		return nil, metadata, fmt.Errorf("Failed to create %s instance (status code %d)", it.Type, resp.StatusCode)
 	}
+
 	// API returns URI of new resource in Location header
 	uri := resp.Header.Get("Location")
 	if uri == "" {
-		return nil, metadata, fmt.Errorf("API did not return location of new instance")
+		return nil, metadata, fmt.Errorf("API did not return location of new %s instance", it.Type)
+	}
+
+	if resp.StatusCode == http.StatusConflict {
+		resp, _, err := a.apiConnector.Put(a.apiConnector.ApiKey(), uri, data)
+		if a.debug {
+			log.Printf("resp=%#v\n", resp)
+			log.Printf("err=%s\n", err)
+		}
+		if err != nil {
+			return nil, metadata, err
+		}
+		if resp.StatusCode != http.StatusOK {
+			return nil, metadata, fmt.Errorf("Failed to update %s instance (status code %d)", it.Type, resp.StatusCode)
+		}
 	}
 
 	// Collect metadata
@@ -132,27 +147,6 @@ func (a *Api) CreateInstance(it *proto.Instance) (newIt *proto.Instance, metadat
 	return newIt, metadata, nil
 }
 
-func (a *Api) UpdateInstance(it *proto.Instance) error {
-	data, err := json.Marshal(it)
-	if err != nil {
-		return err
-	}
-	url := a.apiConnector.URL("/instances", it.UUID)
-	resp, _, err := a.apiConnector.Put(a.apiConnector.ApiKey(), url, data)
-	if a.debug {
-		log.Printf("resp=%#v\n", resp)
-		log.Printf("err=%s\n", err)
-	}
-	if err != nil {
-		return err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("Failed to update instance via API (status code %d)", resp.StatusCode)
-	}
-	return nil
-}
-
 // Gets System Tree from API and deserializes it to proto.Instance
 func (a *Api) GetSystemTree(systemTreeURL string) (it *proto.Instance, err error) {
 	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), systemTreeURL)
@@ -165,7 +159,7 @@ func (a *Api) GetSystemTree(systemTreeURL string) (it *proto.Instance, err error
 	}
 
 	if code != http.StatusOK {
-		return nil, fmt.Errorf("Failed to update instance via API (status code %d)", code)
+		return nil, fmt.Errorf("Failed to get System Tree via API (status code %d)", code)
 	}
 	if err := json.Unmarshal(data, &it); err != nil {
 		return nil, err

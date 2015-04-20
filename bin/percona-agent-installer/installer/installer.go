@@ -117,7 +117,7 @@ func (i *Installer) Run() (err error) {
 		return err
 	}
 
-	ai, links, err := i.InstallerCreateAgentWithInitialServiceConfigs()
+	ai, links, err := i.InstallerCreateAgentWithInitialToolConfigs()
 	if err != nil {
 		return err
 	}
@@ -292,38 +292,38 @@ func (i *Installer) InstallerCreateOSInstance() (oi *proto.Instance, err error) 
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("Created OS: name=%s uuid=%d\n", oi.Name, oi.UUID)
+	fmt.Printf("Created OS: name=%s uuid=%s\n", oi.Name, oi.UUID)
 	return oi, nil
 }
 
 func (i *Installer) InstallerCreateMySQLInstance() (mi *proto.Instance, err error) {
-	if i.flags.Bool["create-mysql-instance"] {
-		// Get MySQL DSN for agent to use.
-		// It is new MySQL user created just for agent
-		// or user is asked for existing one.
-		// DSN is verified prior returning by connecting to MySQL.
-		agentDSN, err := i.getAgentDSN()
-		if err != nil {
-			return nil, err
-		}
-		// Create MySQL instance, UUID will be set by API.
-		dsnString, _ := agentDSN.DSN()
-		mi = &proto.Instance{}
-		mi.Type = "MySQL"
-		mi.Prefix = "mysql"
-		mi.Name = i.osInstance.Name
-		mi.DSN = dsnString
-		mi.ParentUUID = i.osInstance.UUID
-
-		mi, _, err = i.api.CreateInstance(mi)
-		if err != nil {
-			return nil, err
-		}
-		fmt.Printf("Created MySQL instance: dsn=%s name=%s uuid=%d\n", mi.DSN, mi.Name, mi.UUID)
-	} else {
+	if !i.flags.Bool["create-mysql-instance"] {
 		fmt.Println("Not creating MySQL instance (-create-mysql-instance=false)")
+		// No error, just return
+		return nil, nil
 	}
+	// Get MySQL DSN for agent to use.
+	// It is new MySQL user created just for agent
+	// or user is asked for existing one.
+	// DSN is verified prior returning by connecting to MySQL.
+	agentDSN, err := i.getAgentDSN()
+	if err != nil {
+		return nil, err
+	}
+	// Create MySQL instance, UUID will be set by API.
+	dsnString, _ := agentDSN.DSN()
+	mi = &proto.Instance{}
+	mi.Type = "MySQL"
+	mi.Prefix = "mysql"
+	mi.Name = i.osInstance.Name
+	mi.DSN = dsnString
+	mi.ParentUUID = i.osInstance.UUID
 
+	mi, _, err = i.api.CreateInstance(mi)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Printf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", mi.DSN, mi.Name, mi.UUID)
 	return mi, nil
 }
 
@@ -403,7 +403,7 @@ func (i *Installer) InstallerGetDefaultConfigs(oi, mi *proto.Instance) (configs 
 	return configs, nil
 }
 
-func (i *Installer) InstallerCreateAgentWithInitialServiceConfigs() (protoAgentInst *proto.Instance, links map[string]string, err error) {
+func (i *Installer) InstallerCreateAgentWithInitialToolConfigs() (protoAgentInst *proto.Instance, links map[string]string, err error) {
 	protoAgentInst = &proto.Instance{}
 	protoAgentInst.Type = "Percona Agent"
 	protoAgentInst.Prefix = "agent"

@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"regexp"
@@ -213,8 +214,11 @@ func (s *MainTestSuite) GetGrants() []string {
 func (s *MainTestSuite) TestDefaultInstall(t *C) {
 	// Register required api handlers
 	s.fakeApi.AppendPing()
-	//osInstance := &proto.Instance{UUID: s.osInstance.UUID}
-	queueInstances := []*proto.Instance{s.osInstance, s.agent, s.mysqlInstance}
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.mysqlInstance, http.StatusCreated, 0),
+	}
 	s.fakeApi.AppendInstances(nil, queueInstances) // GET instance first, POST instances UUIDs second
 	s.fakeApi.AppendInstancesUUID(s.osInstance)
 	s.fakeApi.AppendInstancesUUID(s.agent)
@@ -243,13 +247,13 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%d\n", s.osInstance.Name, s.osInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%d\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -280,897 +284,705 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 	s.expectMysqlUserExists(t)
 }
 
-//func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(t *C) {
-//	// Register required api handlers
-//	s.fakeApi.AppendPing()
-//	serverInstance := &proto.ServerInstance{}
-//	s.fakeApi.AppendInstancesServer(s.serverInstance.Id, serverInstance)
-//	s.fakeApi.AppendInstancesServerId(s.serverInstance.Id, serverInstance)
-//	mysqlInstance := &proto.MySQLInstance{}
-//	s.fakeApi.AppendInstancesMysql(s.mysqlInstance.Id, mysqlInstance)
-//	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance.Id, mysqlInstance)
-//	s.fakeApi.AppendConfigsMmDefaultServer()
-//	s.fakeApi.AppendConfigsMmDefaultMysql()
-//	s.fakeApi.AppendConfigsQanDefault()
-//	s.fakeApi.AppendSysconfigDefaultMysql()
-//	s.fakeApi.AppendAgents(s.agent)
-//	s.fakeApi.AppendAgentsUuid(s.agent)
-
-//	cmd := exec.Command(
-//		s.bin,
-//		"-basedir="+pct.Basedir.Path(),
-//		"-api-host="+s.fakeApi.URL(),
-//		"-interactive=false",
-//		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-wrong_user",
-//		"-mysql-user="+s.username,
-//		"-mysql-socket=/var/run/mysqld/mysqld.sock",
-//		"-api-key="+s.apiKey, // Required because of non-interactive mode
-//	)
-
-//	cmdTest := cmdtest.NewCmdTest(cmd)
-
-//	if err := cmd.Start(); err != nil {
-//		log.Fatal(err)
-//	}
-
-//	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
-//	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
-//	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-
-//	err := cmd.Wait()
-//	t.Assert(err, IsNil)
-
-//	s.expectConfigs(
-//		[]string{
-//			"agent.conf",
-//			"data.conf",
-//			"log.conf",
-//			fmt.Sprintf("mm-mysql-%d.conf", s.mysqlInstance.Id),
-//			fmt.Sprintf("mm-server-%d.conf", s.serverInstance.Id),
-//			fmt.Sprintf("mysql-%d.conf", s.mysqlInstance.Id),
-//			"qan.conf",
-//			fmt.Sprintf("server-%d.conf", s.serverInstance.Id),
-//			fmt.Sprintf("sysconfig-mysql-%d.conf", s.mysqlInstance.Id),
-//		},
-//		t,
-//	)
-
-//	s.expectDefaultAgentConfig(t)
-//	s.expectDefaultDataConfig(t)
-//	s.expectDefaultLogConfig(t)
-//	s.expectDefaultMmMysqlConfig(t)
-//	s.expectDefaultMmServerConfig(t)
-//	s.expectMysqlConfig(*mysqlInstance, t)
-//	s.expectDefaultQanConfig(t)
-//	s.expectServerConfig(*serverInstance, t)
-//	s.expectDefaultSysconfigMysqlConfig(t)
-
-//	// Should create percona-agent user with grants on *.* and performance_schema.*.
-//	s.expectMysqlUserExists(t)
-//}
-
-//func (s *MainTestSuite) TestNonInteractiveInstallWithMissingApiKey(t *C) {
-//	cmd := exec.Command(
-//		s.bin,
-//		"-basedir="+pct.Basedir.Path(),
-//		"-api-host="+s.fakeApi.URL(),
-//		"-interactive=false",
-//	)
-
-//	cmdTest := cmdtest.NewCmdTest(cmd)
-
-//	if err := cmd.Start(); err != nil {
-//		log.Fatal(err)
-//	}
-
-//	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, "API key is required, please provide it with -api-key option.\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "API Key is available at "+s.apphost+"/api-key\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-
-//	err := cmd.Wait()
-//	t.Assert(err, ErrorMatches, "exit status 1")
-
-//	s.expectConfigs([]string{}, t)
-//	s.expectMysqlUserNotExists(t)
-//}
-
-//func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t *C) {
-//	// Register required api handlers
-//	s.fakeApi.AppendPing()
-//	serverInstance := &proto.ServerInstance{}
-//	s.fakeApi.AppendInstancesServer(s.serverInstance.Id, serverInstance)
-//	s.fakeApi.AppendInstancesServerId(s.serverInstance.Id, serverInstance)
-//	mysqlInstance := &proto.MySQLInstance{}
-//	s.fakeApi.AppendInstancesMysql(s.mysqlInstance.Id, mysqlInstance)
-//	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance.Id, mysqlInstance)
-//	s.fakeApi.AppendConfigsMmDefaultServer()
-//	s.fakeApi.AppendConfigsMmDefaultMysql()
-//	s.fakeApi.AppendConfigsQanDefault()
-//	s.fakeApi.AppendSysconfigDefaultMysql()
-//	s.fakeApi.AppendAgents(s.agent)
-//	s.fakeApi.AppendAgentsUuid(s.agent)
-
-//	cmd := exec.Command(
-//		s.bin,
-//		"-basedir="+pct.Basedir.Path(),
-//		"-api-host="+s.fakeApi.URL(),
-//		"-create-mysql-user=false", // We are testing this flag
-//		"-interactive=false",       // -create-mysql-user=false works only in non-interactive mode
-//		"-api-key="+s.apiKey,       // Required because of non-interactive mode
-//		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-percona_user",
-//	)
-
-//	cmdTest := cmdtest.NewCmdTest(cmd)
-
-//	if err := cmd.Start(); err != nil {
-//		log.Fatal(err)
-//	}
-
-//	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
-
-//	t.Check(cmdTest.ReadLine(), Equals, "Skip creating MySQL user (-create-mysql-user=false)\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
-//	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-
-//	err := cmd.Wait()
-//	t.Assert(err, IsNil)
-
-//	s.expectConfigs(
-//		[]string{
-//			"agent.conf",
-//			"data.conf",
-//			"log.conf",
-//			fmt.Sprintf("mm-mysql-%d.conf", s.mysqlInstance.Id),
-//			fmt.Sprintf("mm-server-%d.conf", s.serverInstance.Id),
-//			fmt.Sprintf("mysql-%d.conf", s.mysqlInstance.Id),
-//			"qan.conf",
-//			fmt.Sprintf("server-%d.conf", s.serverInstance.Id),
-//			fmt.Sprintf("sysconfig-mysql-%d.conf", s.mysqlInstance.Id),
-//		},
-//		t,
-//	)
-
-//	s.expectDefaultAgentConfig(t)
-//	s.expectDefaultDataConfig(t)
-//	s.expectDefaultLogConfig(t)
-//	s.expectDefaultMmMysqlConfig(t)
-//	s.expectDefaultMmServerConfig(t)
-//	s.expectMysqlConfig(*mysqlInstance, t)
-//	s.expectDefaultQanConfig(t)
-//	s.expectServerConfig(*serverInstance, t)
-//	s.expectDefaultSysconfigMysqlConfig(t)
-
-//	// -create-mysql-user=false
-//	s.expectMysqlUserNotExists(t)
-//}
-//func (s *MainTestSuite) TestWithAgentMySQLUser(t *C) {
-
-//	// Register required api handlers
-//	s.fakeApi.AppendPing()
-//	s.fakeApi.AppendInstancesServer(1, s.serverInstance)
-//	s.fakeApi.AppendInstancesServerId(1, s.serverInstance)
-//	s.fakeApi.AppendInstancesMysql(1, s.mysqlInstance)
-//	s.fakeApi.AppendInstancesMysqlId(1, s.mysqlInstance)
-//	s.fakeApi.AppendConfigsMmDefaultServer()
-//	s.fakeApi.AppendConfigsQanDefault()
-//	s.fakeApi.AppendConfigsMmDefaultMysql()
-//	s.fakeApi.AppendSysconfigDefaultMysql()
-//	s.fakeApi.AppendAgents(s.agent)
-//	s.fakeApi.AppendAgentsUuid(s.agent)
-
-//	user := "some-user"
-//	pass := "some-pass"
-//	host := "localhost"
-//	maxCons := 10
-
-//	// Create a temporary user because on some installations the default user & pass
-//	// are empty and for testing -agent-mysql-user & -agent-mysql-pass, we need non-empty
-//	// user & pass parameters
-//	grantQuery := fmt.Sprintf("GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO '%s'@'%s' IDENTIFIED BY '%s' WITH MAX_USER_CONNECTIONS %d", user, host, pass, maxCons)
-//	s.rootConn.Exec(grantQuery)
-
-//	basedir, err := ioutil.TempDir("/tmp", "agent-installer-test-basedir-")
-//	cmd := exec.Command(
-//		s.bin,
-//		"-basedir="+basedir,
-//		"-api-host="+s.fakeApi.URL(),
-//		"-agent-mysql-user="+user,
-//		"-agent-mysql-pass="+pass,
-//		"-interactive=false",
-//		"-api-key="+s.apiKey,
-//	)
-
-//	cmdTest := cmdtest.NewCmdTest(cmd)
-
-//	if err := cmd.Start(); err != nil {
-//		log.Fatal(err)
-//	}
-
-//	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "Created agent: uuid=0001\n")
-//	// Use the s flag (?s) to let .* match \n
-//	t.Assert(cmdTest.ReadLine(), Matches, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
-//	t.Check(cmdTest.ReadLine(), Equals, "Using provided user/pass for mysql-agent user. DSN: some-user:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n")
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", s.mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
-//	t.Check(cmdTest.ReadLine(), Equals, "")
-
-//	err = cmd.Wait()
-//	t.Assert(err, IsNil)
-
-//	// Remove the user we just created for this test
-//	s.rootConn.Exec(fmt.Sprintf("DROP USER '%s'@'%s'", user, host))
-//}
-
-//func (s *MainTestSuite) TestInstall(t *C) {
-//	// Register required api handlers
-//	s.fakeApi.AppendPing()
-//	serverInstance := &proto.ServerInstance{}
-//	s.fakeApi.AppendInstancesServer(s.serverInstance.Id, serverInstance)
-//	s.fakeApi.AppendInstancesServerId(s.serverInstance.Id, serverInstance)
-//	mysqlInstance := &proto.MySQLInstance{}
-//	s.fakeApi.AppendInstancesMysql(s.mysqlInstance.Id, mysqlInstance)
-//	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance.Id, mysqlInstance)
-//	s.fakeApi.AppendConfigsMmDefaultServer()
-//	s.fakeApi.AppendConfigsMmDefaultMysql()
-//	s.fakeApi.AppendSysconfigDefaultMysql()
-//	s.fakeApi.AppendConfigsQanDefault()
-//	s.fakeApi.Append("/agents", func(w http.ResponseWriter, r *http.Request) {
-//		// Validate
-//		expectedProtoAgent := proto.Agent{
-//			Uuid:     "",
-//			Hostname: s.agent.Hostname,
-//			Version:  s.agent.Version,
-//		}
-//		protoAgent := proto.Agent{}
-//		body, err := ioutil.ReadAll(r.Body)
-//		t.Assert(err, IsNil)
-//		err = json.Unmarshal(body, &protoAgent)
-//		t.Assert(err, IsNil)
-//		for i := range protoAgent.Configs {
-//			protoAgent.Configs[i].Updated = time.Time{}
-//		}
-//		t.Assert(protoAgent, DeepEquals, expectedProtoAgent)
-
-//		// Send response
-//		w.Header().Set("Location", fmt.Sprintf("%s/agents/%s", s.fakeApi.URL(), s.agent.Uuid))
-//		w.WriteHeader(http.StatusCreated)
-//	})
-//	s.fakeApi.AppendAgentsUuid(s.agent)
-
-//	cmd := exec.Command(
-//		s.bin,
-//		"-basedir="+pct.Basedir.Path(),
-//		"-api-host="+s.fakeApi.URL(),
-//		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
-//	)
-
-//	cmdTest := cmdtest.NewCmdTest(cmd)
-
-//	if err := cmd.Start(); err != nil {
-//		log.Fatal(err)
-//	}
-
-//	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
-//	cmdTest.Write(s.apiKey + "\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
-//	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
-//	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-
-//	err := cmd.Wait()
-//	t.Assert(err, IsNil)
-
-//	s.expectConfigs(
-//		[]string{
-//			"agent.conf",
-//			"data.conf",
-//			"log.conf",
-//			fmt.Sprintf("mm-mysql-%d.conf", s.mysqlInstance.Id),
-//			fmt.Sprintf("mm-server-%d.conf", s.serverInstance.Id),
-//			fmt.Sprintf("mysql-%d.conf", s.mysqlInstance.Id),
-//			"qan.conf",
-//			fmt.Sprintf("server-%d.conf", s.serverInstance.Id),
-//			fmt.Sprintf("sysconfig-mysql-%d.conf", s.mysqlInstance.Id),
-//		},
-//		t,
-//	)
-
-//	s.expectDefaultAgentConfig(t)
-//	s.expectDefaultDataConfig(t)
-//	s.expectDefaultLogConfig(t)
-//	s.expectDefaultMmMysqlConfig(t)
-//	s.expectDefaultMmServerConfig(t)
-//	s.expectMysqlConfig(*mysqlInstance, t)
-//	s.expectDefaultQanConfig(t)
-//	s.expectServerConfig(*serverInstance, t)
-//	s.expectDefaultSysconfigMysqlConfig(t)
-
-//	// Should create percona-agent user with grants on *.* and performance_schema.*.
-//	s.expectMysqlUserExists(t)
-//}
-
-//func (s *MainTestSuite) TestInstallFailsOnAgentsLimit(t *C) {
-//	agentLimit := 5
-
-//	// Register required api handlers
-//	s.fakeApi.AppendPing()
-//	s.fakeApi.Append("/agents", func(w http.ResponseWriter, r *http.Request) {
-//		w.Header().Set("X-Percona-Agents-Limit", fmt.Sprintf("%d", agentLimit))
-//		// Send response
-//		w.WriteHeader(http.StatusForbidden)
-//	})
-
-//	cmd := exec.Command(
-//		s.bin,
-//		"-basedir="+pct.Basedir.Path(),
-//		"-api-host="+s.fakeApi.URL(),
-//		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
-//	)
-
-//	cmdTest := cmdtest.NewCmdTest(cmd)
-
-//	if err := cmd.Start(); err != nil {
-//		log.Fatal(err)
-//	}
-
-//	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
-//	cmdTest.Write(s.apiKey + "\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Maximum number of %d agents exceeded.\n", agentLimit))
-//	t.Check(cmdTest.ReadLine(), Equals, "Go to https://cloud.percona.com/agents and remove unused agents or contact Percona to increase limit.\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-
-//	err := cmd.Wait()
-//	t.Check(err, ErrorMatches, "exit status 1")
-
-//	s.expectConfigs([]string{}, t)
-//	s.expectMysqlUserNotExists(t)
-//}
-//func (s *MainTestSuite) TestInstallWorksWithExistingMySQLInstanceAndInstanceIsUpdated(t *C) {
-//	// Register required api handlers
-//	s.fakeApi.AppendPing()
-//	serverInstance := &proto.ServerInstance{}
-//	s.fakeApi.AppendInstancesServer(s.serverInstance.Id, serverInstance)
-//	s.fakeApi.AppendInstancesServerId(s.serverInstance.Id, serverInstance)
-//	mysqlInstance := &proto.MySQLInstance{}
-//	s.fakeApi.Append("/instances/mysql", func(w http.ResponseWriter, r *http.Request) {
-//		w.Header().Set("Location", fmt.Sprintf("%s/instances/mysql/%d", s.fakeApi.URL(), s.mysqlInstance.Id))
-//		w.WriteHeader(http.StatusConflict) // Instance already exists
-//	})
-//	s.fakeApi.Append(fmt.Sprintf("/instances/mysql/%d", s.mysqlInstance.Id), func(w http.ResponseWriter, r *http.Request) {
-//		switch r.Method {
-//		case "GET":
-//			w.WriteHeader(http.StatusOK)
-//			data, _ := json.Marshal(mysqlInstance)
-//			w.Write(data)
-//		case "PUT":
-//			body, err := ioutil.ReadAll(r.Body)
-//			if err != nil {
-//				panic(err)
-//			}
-//			err = json.Unmarshal(body, mysqlInstance)
-//			if err != nil {
-//				panic(err)
-//			}
-//			mysqlInstance.Id = s.mysqlInstance.Id
-//			w.WriteHeader(http.StatusOK)
-//		default:
-//			w.WriteHeader(600)
-//		}
-//	})
-//	s.fakeApi.AppendConfigsMmDefaultServer()
-//	s.fakeApi.AppendConfigsMmDefaultMysql()
-//	s.fakeApi.AppendSysconfigDefaultMysql()
-//	s.fakeApi.AppendConfigsQanDefault()
-//	s.fakeApi.AppendAgents(s.agent)
-//	s.fakeApi.AppendAgentsUuid(s.agent)
-
-//	cmd := exec.Command(
-//		s.bin,
-//		"-basedir="+pct.Basedir.Path(),
-//		"-api-host="+s.fakeApi.URL(),
-//		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
-//	)
-
-//	cmdTest := cmdtest.NewCmdTest(cmd)
-
-//	if err := cmd.Start(); err != nil {
-//		log.Fatal(err)
-//	}
-
-//	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
-//	cmdTest.Write(s.apiKey + "\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
-//	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
-//	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-
-//	err := cmd.Wait()
-//	t.Assert(err, IsNil)
-
-//	s.expectConfigs(
-//		[]string{
-//			"agent.conf",
-//			"data.conf",
-//			"log.conf",
-//			fmt.Sprintf("mm-mysql-%d.conf", s.mysqlInstance.Id),
-//			fmt.Sprintf("mm-server-%d.conf", s.serverInstance.Id),
-//			fmt.Sprintf("mysql-%d.conf", s.mysqlInstance.Id),
-//			"qan.conf",
-//			fmt.Sprintf("server-%d.conf", s.serverInstance.Id),
-//			fmt.Sprintf("sysconfig-mysql-%d.conf", s.mysqlInstance.Id),
-//		},
-//		t,
-//	)
-
-//	s.expectDefaultAgentConfig(t)
-//	s.expectDefaultDataConfig(t)
-//	s.expectDefaultLogConfig(t)
-//	s.expectDefaultMmMysqlConfig(t)
-//	s.expectDefaultMmServerConfig(t)
-//	s.expectMysqlConfig(*mysqlInstance, t)
-//	s.expectDefaultQanConfig(t)
-//	s.expectServerConfig(*serverInstance, t)
-//	s.expectDefaultSysconfigMysqlConfig(t)
-
-//	// Should create percona-agent user with grants on *.* and performance_schema.*.
-//	s.expectMysqlUserExists(t)
-//}
-
-//func (s *MainTestSuite) TestInstallFailsOnUpdatingMySQLInstance(t *C) {
-//	// Register required api handlers
-//	s.fakeApi.AppendPing()
-//	serverInstance := &proto.ServerInstance{}
-//	s.fakeApi.AppendInstancesServer(s.serverInstance.Id, serverInstance)
-//	s.fakeApi.AppendInstancesServerId(s.serverInstance.Id, serverInstance)
-//	s.fakeApi.Append("/instances/mysql", func(w http.ResponseWriter, r *http.Request) {
-//		w.Header().Set("Location", fmt.Sprintf("%s/instances/mysql/%d", s.fakeApi.URL(), s.mysqlInstance.Id))
-//		w.WriteHeader(http.StatusConflict) // Instance already exists
-//	})
-//	s.fakeApi.Append(fmt.Sprintf("/instances/mysql/%d", s.mysqlInstance.Id), func(w http.ResponseWriter, r *http.Request) {
-//		switch r.Method {
-//		case "PUT":
-//			w.WriteHeader(http.StatusInternalServerError)
-//		default:
-//			w.WriteHeader(600)
-//		}
-//	})
-//	s.fakeApi.AppendConfigsMmDefaultServer()
-//	s.fakeApi.AppendConfigsMmDefaultMysql()
-//	s.fakeApi.AppendSysconfigDefaultMysql()
-//	s.fakeApi.AppendAgents(s.agent)
-//	s.fakeApi.AppendAgentsUuid(s.agent)
-
-//	cmd := exec.Command(
-//		s.bin,
-//		"-basedir="+pct.Basedir.Path(),
-//		"-api-host="+s.fakeApi.URL(),
-//		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
-//	)
-
-//	cmdTest := cmdtest.NewCmdTest(cmd)
-
-//	if err := cmd.Start(); err != nil {
-//		log.Fatal(err)
-//	}
-
-//	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
-//	cmdTest.Write(s.apiKey + "\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
-//	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, "Failed to update MySQL instance (status code 500)\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-
-//	err := cmd.Wait()
-//	t.Assert(err, ErrorMatches, "exit status 1")
-
-//	s.expectConfigs([]string{}, t)
-//	s.expectMysqlUserExists(t) // @todo this is wrong
-//}
-
-//func (s *MainTestSuite) TestInstallWithWrongApiKey(t *C) {
-//	s.fakeApi.Append("/ping", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-//		w.WriteHeader(http.StatusInternalServerError)
-//	}))
-
-//	cmd := exec.Command(
-//		s.bin,
-//		"-basedir="+pct.Basedir.Path(),
-//		"-api-host="+s.fakeApi.URL(),
-//	)
-
-//	cmdTest := cmdtest.NewCmdTest(cmd)
-
-//	if err := cmd.Start(); err != nil {
-//		log.Fatal(err)
-//	}
-
-//	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
-
-//	apiKey := "WrongApiKey"
-//	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
-//	t.Assert(cmdTest.ReadLine(), Equals, "API key: ")
-//	cmdTest.Write(apiKey + "\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "Sorry, there's an API problem (status code 500). Please try to install again. If the problem continues, contact Percona.\n")
-
-//	t.Assert(cmdTest.ReadLine(), Equals, "Try again? (Y): ")
-//	cmdTest.Write("N\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "Failed to verify API key\n")
-
-//	t.Assert(cmdTest.ReadLine(), Equals, "") // No more data
-
-//	err := cmd.Wait()
-//	t.Assert(err, ErrorMatches, "exit status 1")
-
-//	s.expectConfigs([]string{}, t)
-//	s.expectMysqlUserNotExists(t)
-//}
-
-//// todo what's the point of -create-agent flag? for what is it usefull?
-//func (s *MainTestSuite) TestInstallWithFlagCreateAgentFalse(t *C) {
-//	// Register required api handlers
-//	s.fakeApi.AppendPing()
-//	serverInstance := &proto.ServerInstance{}
-//	s.fakeApi.AppendInstancesServer(s.serverInstance.Id, serverInstance)
-//	s.fakeApi.AppendInstancesServerId(s.serverInstance.Id, serverInstance)
-//	mysqlInstance := &proto.MySQLInstance{}
-//	s.fakeApi.AppendInstancesMysql(s.mysqlInstance.Id, mysqlInstance)
-//	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance.Id, mysqlInstance)
-//	s.fakeApi.AppendConfigsMmDefaultServer()
-//	s.fakeApi.AppendConfigsMmDefaultMysql()
-//	s.fakeApi.AppendSysconfigDefaultMysql()
-//	s.fakeApi.AppendConfigsQanDefault()
-//	// Flag -create-agent=false implies that agent
-//	// shouldn't query below api routes
-//	//s.fakeApi.AppendAgents(s.agent)
-//	//s.fakeApi.AppendAgentsUuid(s.agent)
-
-//	cmd := exec.Command(
-//		s.bin,
-//		"-basedir="+pct.Basedir.Path(),
-//		"-api-host="+s.fakeApi.URL(),
-//		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
-//		"-create-agent=false", // we are testing this flag
-//	)
-
-//	cmdTest := cmdtest.NewCmdTest(cmd)
-
-//	if err := cmd.Start(); err != nil {
-//		log.Fatal(err)
-//	}
-
-//	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
-//	cmdTest.Write(s.apiKey + "\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
-//	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Not creating agent (-create-agent=false)\n"))
-//	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-
-//	err := cmd.Wait()
-//	t.Assert(err, IsNil)
-
-//	s.expectConfigs(
-//		[]string{
-//			//fmt.Sprintf("mm-mysql-%d.conf", s.mysqlInstance.Id),
-//			//fmt.Sprintf("mm-server-%d.conf", s.serverInstance.Id),
-//			fmt.Sprintf("mysql-%d.conf", s.mysqlInstance.Id),
-//			//"qan.conf",
-//			fmt.Sprintf("server-%d.conf", s.serverInstance.Id),
-//			//fmt.Sprintf("sysconfig-mysql-%d.conf", s.mysqlInstance.Id),
-//		},
-//		t,
-//	)
-
-//	//s.expectDefaultMmMysqlConfig(t)
-//	//s.expectDefaultMmServerConfig(t)
-//	s.expectMysqlConfig(*mysqlInstance, t)
-//	//s.expectDefaultQanConfig(t)
-//	s.expectServerConfig(*serverInstance, t)
-//	//s.expectDefaultSysconfigMysqlConfig(t)
-
-//	s.expectMysqlUserExists(t)
-//}
-
-//func (s *MainTestSuite) TestInstallWithFlagOldPasswordsTrue(t *C) {
-//	// Register required api handlers
-//	s.fakeApi.AppendPing()
-//	serverInstance := &proto.ServerInstance{}
-//	s.fakeApi.AppendInstancesServer(s.serverInstance.Id, serverInstance)
-//	s.fakeApi.AppendInstancesServerId(s.serverInstance.Id, serverInstance)
-//	mysqlInstance := &proto.MySQLInstance{}
-//	s.fakeApi.AppendInstancesMysql(s.mysqlInstance.Id, mysqlInstance)
-//	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance.Id, mysqlInstance)
-//	s.fakeApi.AppendConfigsMmDefaultServer()
-//	s.fakeApi.AppendConfigsMmDefaultMysql()
-//	s.fakeApi.AppendSysconfigDefaultMysql()
-//	s.fakeApi.AppendConfigsQanDefault()
-//	s.fakeApi.AppendAgents(s.agent)
-//	s.fakeApi.AppendAgentsUuid(s.agent)
-
-//	cmd := exec.Command(
-//		s.bin,
-//		"-basedir="+pct.Basedir.Path(),
-//		"-api-host="+s.fakeApi.URL(),
-//		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
-//		"-old-passwords=true",
-//	)
-
-//	cmdTest := cmdtest.NewCmdTest(cmd)
-
-//	if err := cmd.Start(); err != nil {
-//		log.Fatal(err)
-//	}
-
-//	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
-//	cmdTest.Write(s.apiKey + "\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
-//	// Flag -old-passwords=true should add &allowOldPasswords=true to DSN
-//	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true&allowOldPasswords=true\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
-//	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-
-//	err := cmd.Wait()
-//	t.Assert(err, IsNil)
-
-//	s.expectConfigs(
-//		[]string{
-//			"agent.conf",
-//			"data.conf",
-//			"log.conf",
-//			fmt.Sprintf("mm-mysql-%d.conf", s.mysqlInstance.Id),
-//			fmt.Sprintf("mm-server-%d.conf", s.serverInstance.Id),
-//			fmt.Sprintf("mysql-%d.conf", s.mysqlInstance.Id),
-//			"qan.conf",
-//			fmt.Sprintf("server-%d.conf", s.serverInstance.Id),
-//			fmt.Sprintf("sysconfig-mysql-%d.conf", s.mysqlInstance.Id),
-//		},
-//		t,
-//	)
-
-//	s.expectDefaultAgentConfig(t)
-//	s.expectDefaultDataConfig(t)
-//	s.expectDefaultLogConfig(t)
-//	s.expectDefaultMmMysqlConfig(t)
-//	s.expectDefaultMmServerConfig(t)
-//	s.expectMysqlConfig(*mysqlInstance, t)
-//	s.expectDefaultQanConfig(t)
-//	s.expectServerConfig(*serverInstance, t)
-//	s.expectDefaultSysconfigMysqlConfig(t)
-
-//	// Should create percona-agent user with grants on *.* and performance_schema.*.
-//	s.expectMysqlUserExists(t)
-//}
-
-//func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) {
-//	// Register required api handlers
-//	s.fakeApi.AppendPing()
-//	serverInstance := &proto.Instance{}
-//	s.fakeApi.AppendInstancesServer(s.serverInstance.UUID, serverInstance)
-//	s.fakeApi.AppendInstancesServerId(s.serverInstance.UUID, serverInstance)
-//	mysqlInstance := &proto.Instance{}
-//	s.fakeApi.AppendInstancesMysql(s.mysqlInstance.UUID, mysqlInstance)
-//	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance.UUID, mysqlInstance)
-//	s.fakeApi.AppendConfigsMmDefaultServer()
-//	s.fakeApi.AppendConfigsMmDefaultMysql()
-//	s.fakeApi.AppendSysconfigDefaultMysql()
-//	s.fakeApi.AppendConfigsQanDefault()
-//	s.fakeApi.AppendAgents(s.agent)
-//	s.fakeApi.AppendAgentsUuid(s.agent)
-
-//	cmd := exec.Command(
-//		s.bin,
-//		"-basedir="+pct.Basedir.Path(),
-//		"-api-host="+s.fakeApi.URL(),
-//		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
-//		"-api-key="+s.apiKey, // We are testing this flag
-//	)
-
-//	cmdTest := cmdtest.NewCmdTest(cmd)
-//	if err := cmd.Start(); err != nil {
-//		log.Fatal(err)
-//	}
-
-//	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
-//	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
-//	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-
-//	err := cmd.Wait()
-//	t.Assert(err, IsNil)
-
-//	s.expectConfigs(
-//		[]string{
-//			"agent.conf",
-//			"data.conf",
-//			"log.conf",
-//			fmt.Sprintf("mm-mysql-%d.conf", s.mysqlInstance.Id),
-//			fmt.Sprintf("mm-server-%d.conf", s.serverInstance.Id),
-//			fmt.Sprintf("mysql-%d.conf", s.mysqlInstance.Id),
-//			"qan.conf",
-//			fmt.Sprintf("server-%d.conf", s.serverInstance.Id),
-//			fmt.Sprintf("sysconfig-mysql-%d.conf", s.mysqlInstance.Id),
-//		},
-//		t,
-//	)
-
-//	s.expectDefaultAgentConfig(t)
-//	s.expectDefaultDataConfig(t)
-//	s.expectDefaultLogConfig(t)
-//	s.expectDefaultMmMysqlConfig(t)
-//	s.expectDefaultMmServerConfig(t)
-//	s.expectMysqlConfig(*mysqlInstance, t)
-//	s.expectDefaultQanConfig(t)
-//	s.expectServerConfig(*serverInstance, t)
-//	s.expectDefaultSysconfigMysqlConfig(t)
-
-//	// Should create percona-agent user with grants on *.* and performance_schema.*.
-//	s.expectMysqlUserExists(t)
-//}
-
-//func (s *MainTestSuite) TestInstallWithFlagMysqlFalse(t *C) {
-//	// Register required api handlers
-//	s.fakeApi.AppendPing()
-//	serverInstance := &proto.ServerInstance{}
-//	s.fakeApi.AppendInstancesServer(s.serverInstance.Id, serverInstance)
-//	s.fakeApi.AppendInstancesServerId(s.serverInstance.Id, serverInstance)
-//	// Flag -mysql=false implies that agent
-//	// shouldn't query below api routes
-//	//s.fakeApi.AppendInstancesMysql(s.mysqlInstance)
-//	//s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance)
-//	s.fakeApi.AppendConfigsMmDefaultServer()
-//	//s.fakeApi.AppendConfigsMmDefaultMysql()
-//	//s.fakeApi.AppendSysconfigDefaultMysql()
-//	//s.fakeApi.AppendConfigsQanDefault()
-//	s.fakeApi.AppendAgents(s.agent)
-//	s.fakeApi.AppendAgentsUuid(s.agent)
-
-//	cmd := exec.Command(
-//		s.bin,
-//		"-basedir="+pct.Basedir.Path(),
-//		"-api-host="+s.fakeApi.URL(),
-//		"-api-key="+s.apiKey,
-//		"-mysql=false", // We are testing this flag
-//	)
-
-//	cmdTest := cmdtest.NewCmdTest(cmd)
-//	if err := cmd.Start(); err != nil {
-//		log.Fatal(err)
-//	}
-
-//	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
-
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
-//	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
-
-//	t.Check(cmdTest.ReadLine(), Equals, "Not starting MySQL services (-start-mysql-services=false)\n")
-//	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-
-//	err := cmd.Wait()
-//	t.Assert(err, IsNil)
-
-//	s.expectConfigs(
-//		[]string{
-//			"agent.conf",
-//			"data.conf",
-//			"log.conf",
-//			fmt.Sprintf("mm-server-%d.conf", s.serverInstance.Id),
-//			fmt.Sprintf("server-%d.conf", s.serverInstance.Id),
-//		},
-//		t,
-//	)
-
-//	s.expectDefaultAgentConfig(t)
-//	s.expectDefaultDataConfig(t)
-//	s.expectDefaultLogConfig(t)
-//	s.expectDefaultMmServerConfig(t)
-//	s.expectServerConfig(*serverInstance, t)
-
-//	// Should NOT create percona-agent user with grants on *.* and performance_schema.*.
-//	s.expectMysqlUserNotExists(t)
-//}
+func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(t *C) {
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.mysqlInstance, http.StatusCreated, 0),
+	}
+	s.fakeApi.AppendInstances(nil, queueInstances) // GET instance first, POST instances UUIDs second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
+	s.fakeApi.AppendInstancesUUID(s.agent)
+	s.fakeApi.AppendInstancesUUID(s.mysqlInstance)
+	s.fakeApi.AppendSystemTree(s.osInstance)
+	s.fakeApi.AppendConfigsMmDefaultOS()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendConfigsQanDefault()
+
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+pct.Basedir.Path(),
+		"-api-host="+s.fakeApi.URL(),
+		"-interactive=false",
+		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-wrong_user",
+		"-mysql-user="+s.username,
+		"-mysql-socket=/var/run/mysqld/mysqld.sock",
+		"-api-key="+s.apiKey, // Required because of non-interactive mode
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
+	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	s.expectConfigs(
+		[]string{
+			"agent.conf",
+			"data.conf",
+			"log.conf",
+			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
+			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
+			"qan.conf",
+			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
+			"system-tree.json",
+		},
+		t,
+	)
+
+	s.expectDefaultAgentConfig(t)
+	s.expectDefaultDataConfig(t)
+	s.expectDefaultLogConfig(t)
+	s.expectDefaultMmMysqlConfig(t)
+	s.expectDefaultMmOSConfig(t)
+	s.expectDefaultQanConfig(t)
+	s.expectDefaultSysconfigMysqlConfig(t)
+	// Should create percona-agent user with grants on *.* and performance_schema.*.
+	s.expectMysqlUserExists(t)
+}
+
+func (s *MainTestSuite) TestNonInteractiveInstallWithMissingApiKey(t *C) {
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+pct.Basedir.Path(),
+		"-api-host="+s.fakeApi.URL(),
+		"-interactive=false",
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "API key is required, please provide it with -api-key option.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API Key is available at "+s.apphost+"/api-key\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Assert(err, ErrorMatches, "exit status 1")
+
+	s.expectConfigs([]string{}, t)
+	s.expectMysqlUserNotExists(t)
+}
+
+func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t *C) {
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.mysqlInstance, http.StatusCreated, 0),
+	}
+	s.fakeApi.AppendInstances(nil, queueInstances) // GET instance first, POST instances UUIDs second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
+	s.fakeApi.AppendInstancesUUID(s.agent)
+	s.fakeApi.AppendInstancesUUID(s.mysqlInstance)
+	s.fakeApi.AppendSystemTree(s.osInstance)
+	s.fakeApi.AppendConfigsMmDefaultOS()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendConfigsQanDefault()
+
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+pct.Basedir.Path(),
+		"-api-host="+s.fakeApi.URL(),
+		"-create-mysql-user=false", // We are testing this flag
+		"-interactive=false",       // -create-mysql-user=false works only in non-interactive mode
+		"-api-key="+s.apiKey,       // Required because of non-interactive mode
+		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-percona_user",
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
+
+	t.Check(cmdTest.ReadLine(), Equals, "Skip creating MySQL user (-create-mysql-user=false)\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Assert(err, IsNil)
+
+	s.expectConfigs(
+		[]string{
+			"agent.conf",
+			"data.conf",
+			"log.conf",
+			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
+			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
+			"qan.conf",
+			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
+			"system-tree.json",
+		},
+		t,
+	)
+	s.expectDefaultAgentConfig(t)
+	s.expectDefaultDataConfig(t)
+	s.expectDefaultLogConfig(t)
+	s.expectDefaultMmMysqlConfig(t)
+	s.expectDefaultMmOSConfig(t)
+	s.expectDefaultQanConfig(t)
+	s.expectDefaultSysconfigMysqlConfig(t)
+	// Should not create percona-agent user
+	s.expectMysqlUserNotExists(t)
+}
+
+func (s *MainTestSuite) TestWithAgentMySQLUser(t *C) {
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.mysqlInstance, http.StatusCreated, 0),
+	}
+	s.fakeApi.AppendInstances(nil, queueInstances) // GET instance first, POST instances UUIDs second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
+	s.fakeApi.AppendInstancesUUID(s.agent)
+	s.fakeApi.AppendInstancesUUID(s.mysqlInstance)
+	s.fakeApi.AppendSystemTree(s.osInstance)
+	s.fakeApi.AppendConfigsMmDefaultOS()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendConfigsQanDefault()
+
+	user := "some-user"
+	pass := "some-pass"
+	host := "localhost"
+	maxCons := 10
+
+	// Create a temporary user because on some installations the default user & pass
+	// are empty and for testing -agent-mysql-user & -agent-mysql-pass, we need non-empty
+	// user & pass parameters
+	grantQuery := fmt.Sprintf("GRANT SUPER, PROCESS, USAGE, SELECT ON *.* TO '%s'@'%s' IDENTIFIED BY '%s' WITH MAX_USER_CONNECTIONS %d", user, host, pass, maxCons)
+	s.rootConn.Exec(grantQuery)
+
+	basedir, err := ioutil.TempDir("/tmp", "agent-installer-test-basedir-")
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+basedir,
+		"-api-host="+s.fakeApi.URL(),
+		"-agent-mysql-user="+user,
+		"-agent-mysql-pass="+pass,
+		"-interactive=false",
+		"-api-key="+s.apiKey,
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, "Using provided user/pass for mysql-agent user. DSN: some-user:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n")
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, "")
+
+	err = cmd.Wait()
+	t.Assert(err, IsNil)
+
+	// Remove the user we just created for this test
+	s.rootConn.Exec(fmt.Sprintf("DROP USER '%s'@'%s'", user, host))
+}
+
+func (s *MainTestSuite) TestInstall(t *C) {
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.mysqlInstance, http.StatusCreated, 0),
+	}
+	s.fakeApi.AppendInstances(nil, queueInstances) // GET instance first, POST instances UUIDs second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
+	s.fakeApi.AppendInstancesUUID(s.agent)
+	s.fakeApi.AppendInstancesUUID(s.mysqlInstance)
+	s.fakeApi.AppendSystemTree(s.osInstance)
+	s.fakeApi.AppendConfigsMmDefaultOS()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendConfigsQanDefault()
+
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+pct.Basedir.Path(),
+		"-api-host="+s.fakeApi.URL(),
+		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
+	cmdTest.Write(s.apiKey + "\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
+	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Assert(err, IsNil)
+
+	s.expectConfigs(
+		[]string{
+			"agent.conf",
+			"data.conf",
+			"log.conf",
+			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
+			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
+			"qan.conf",
+			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
+			"system-tree.json",
+		},
+		t,
+	)
+
+	s.expectDefaultAgentConfig(t)
+	s.expectDefaultDataConfig(t)
+	s.expectDefaultLogConfig(t)
+	s.expectDefaultMmMysqlConfig(t)
+	s.expectDefaultMmOSConfig(t)
+	s.expectDefaultQanConfig(t)
+	s.expectDefaultSysconfigMysqlConfig(t)
+	// Should create percona-agent user with grants on *.* and performance_schema.*.
+	s.expectMysqlUserExists(t)
+}
+
+func (s *MainTestSuite) TestInstallFailsOnAgentsLimit(t *C) {
+	var agentLimit uint = 5
+
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	// Installer will create OS instance first then fail hitting agent limit
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusForbidden, agentLimit),
+	}
+	s.fakeApi.AppendInstances(nil, queueInstances) // GET instance first, POST instances UUIDs second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
+
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+pct.Basedir.Path(),
+		"-api-host="+s.fakeApi.URL(),
+		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
+	cmdTest.Write(s.apiKey + "\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Maximum number of %d agents exceeded.\n", agentLimit))
+	t.Check(cmdTest.ReadLine(), Equals, "Go to https://cloud.percona.com/agents and remove unused agents or contact Percona to increase limit.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Check(err, ErrorMatches, "exit status 1")
+
+	s.expectConfigs([]string{}, t)
+	s.expectMysqlUserNotExists(t)
+}
+
+func (s *MainTestSuite) TestInstallsWithExistingMySQLInstanceAndInstanceIsUpdated(t *C) {
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.mysqlInstance, http.StatusConflict, 0),
+	}
+
+	s.fakeApi.AppendInstances(s.osInstance, queueInstances) // GET instance first, POST instances UUIDs second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
+	s.fakeApi.AppendInstancesUUID(s.agent)
+	s.fakeApi.AppendInstancesUUID(s.mysqlInstance)
+	s.fakeApi.AppendSystemTree(s.osInstance)
+	s.fakeApi.AppendConfigsMmDefaultOS()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendConfigsQanDefault()
+
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+pct.Basedir.Path(),
+		"-api-host="+s.fakeApi.URL(),
+		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
+	cmdTest.Write(s.apiKey + "\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
+	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Assert(err, IsNil)
+
+	s.expectConfigs(
+		[]string{
+			"agent.conf",
+			"data.conf",
+			"log.conf",
+			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
+			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
+			"qan.conf",
+			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
+			"system-tree.json",
+		},
+		t,
+	)
+
+	s.expectDefaultAgentConfig(t)
+	s.expectDefaultDataConfig(t)
+	s.expectDefaultLogConfig(t)
+	s.expectDefaultMmMysqlConfig(t)
+	s.expectDefaultMmOSConfig(t)
+	s.expectDefaultQanConfig(t)
+	s.expectDefaultSysconfigMysqlConfig(t)
+	// Should create percona-agent user with grants on *.* and performance_schema.*.
+	s.expectMysqlUserExists(t)
+}
+
+func (s *MainTestSuite) TestInstallFailsOnUpdatingMySQLInstance(t *C) {
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.mysqlInstance, http.StatusConflict, 0),
+	}
+	s.fakeApi.AppendInstances(s.osInstance, queueInstances) // GET tree instance first, POST instances second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
+	s.fakeApi.AppendInstancesUUID(s.agent)
+	s.fakeApi.AppendSystemTree(s.osInstance)
+	s.fakeApi.AppendConfigsMmDefaultOS()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendConfigsQanDefault()
+
+	s.fakeApi.Append(fmt.Sprintf("/instances/%s", s.mysqlInstance.UUID), func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case "PUT":
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			w.WriteHeader(600)
+		}
+	})
+
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+pct.Basedir.Path(),
+		"-api-host="+s.fakeApi.URL(),
+		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
+	cmdTest.Write(s.apiKey + "\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
+	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Failed to update MySQL instance (status code 500)\n")
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Assert(err, ErrorMatches, "exit status 1")
+
+	s.expectConfigs([]string{}, t)
+	s.expectMysqlUserExists(t) // @todo this is wrong
+}
+
+func (s *MainTestSuite) TestInstallWithWrongApiKey(t *C) {
+	s.fakeApi.Append("/ping", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+pct.Basedir.Path(),
+		"-api-host="+s.fakeApi.URL(),
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
+
+	apiKey := "WrongApiKey"
+	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
+	t.Assert(cmdTest.ReadLine(), Equals, "API key: ")
+	cmdTest.Write(apiKey + "\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+apiKey+"...\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Sorry, there's an API problem (status code 500). Please try to install again. If the problem continues, contact Percona.\n")
+
+	t.Assert(cmdTest.ReadLine(), Equals, "Try again? (Y): ")
+	cmdTest.Write("N\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Failed to verify API key\n")
+
+	t.Assert(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Assert(err, ErrorMatches, "exit status 1")
+
+	s.expectConfigs([]string{}, t)
+	s.expectMysqlUserNotExists(t)
+}
+
+func (s *MainTestSuite) TestInstallWithFlagOldPasswordsTrue(t *C) {
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.mysqlInstance, http.StatusCreated, 0),
+	}
+	s.fakeApi.AppendInstances(nil, queueInstances) // GET instance first, POST instances UUIDs second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
+	s.fakeApi.AppendInstancesUUID(s.agent)
+	s.fakeApi.AppendInstancesUUID(s.mysqlInstance)
+	s.fakeApi.AppendSystemTree(s.osInstance)
+	s.fakeApi.AppendConfigsMmDefaultOS()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendConfigsQanDefault()
+
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+pct.Basedir.Path(),
+		"-api-host="+s.fakeApi.URL(),
+		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
+		"-old-passwords=true",
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
+	cmdTest.Write(s.apiKey + "\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
+	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true&allowOldPasswords=true\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Assert(err, IsNil)
+
+	s.expectConfigs(
+		[]string{
+			"agent.conf",
+			"data.conf",
+			"log.conf",
+			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
+			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
+			"qan.conf",
+			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
+			"system-tree.json",
+		},
+		t,
+	)
+	s.expectDefaultAgentConfig(t)
+	s.expectDefaultDataConfig(t)
+	s.expectDefaultLogConfig(t)
+	s.expectDefaultMmMysqlConfig(t)
+	s.expectDefaultMmOSConfig(t)
+	s.expectDefaultQanConfig(t)
+	s.expectDefaultSysconfigMysqlConfig(t)
+	// Should not create percona-agent user
+	s.expectMysqlUserExists(t)
+}
+
+func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) { // Register required api handlers
+	s.fakeApi.AppendPing()
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.mysqlInstance, http.StatusCreated, 0),
+	}
+	s.fakeApi.AppendInstances(nil, queueInstances) // GET instance first, POST instances UUIDs second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
+	s.fakeApi.AppendInstancesUUID(s.agent)
+	s.fakeApi.AppendInstancesUUID(s.mysqlInstance)
+	s.fakeApi.AppendSystemTree(s.osInstance)
+	s.fakeApi.AppendConfigsMmDefaultOS()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendConfigsQanDefault()
+
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+pct.Basedir.Path(),
+		"-api-host="+s.fakeApi.URL(),
+		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
+		"-api-key="+s.apiKey,
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
+	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Assert(err, IsNil)
+
+	s.expectConfigs(
+		[]string{
+			"agent.conf",
+			"data.conf",
+			"log.conf",
+			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
+			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
+			"qan.conf",
+			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
+			"system-tree.json",
+		},
+		t,
+	)
+	s.expectDefaultAgentConfig(t)
+	s.expectDefaultDataConfig(t)
+	s.expectDefaultLogConfig(t)
+	s.expectDefaultMmMysqlConfig(t)
+	s.expectDefaultMmOSConfig(t)
+	s.expectDefaultQanConfig(t)
+	s.expectDefaultSysconfigMysqlConfig(t)
+	// Should not create percona-agent user
+	s.expectMysqlUserExists(t)
+}
 
 func (s *MainTestSuite) expectConfigs(expectedConfigs []string, t *C) {
 	gotConfigs := []string{}

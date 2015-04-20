@@ -325,7 +325,7 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 	}
 }
 
-// Given a inst proto.Instance this methid will update the instance in API with a PUT request
+// pushInstanceInfo will update the instance in API with a PUT request
 func (m *Manager) pushInstanceInfo(inst proto.Instance) error {
 	// Subsystems will be ignored, don't send them
 	inst.Subsystems = make([]proto.Instance, 0)

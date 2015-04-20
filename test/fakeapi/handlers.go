@@ -56,6 +56,18 @@ var (
 	}
 )
 
+type InstanceStatus struct {
+	instance  *proto.Instance
+	status    int
+	maxAgents uint
+}
+
+func NewInstanceStatus(inst *proto.Instance, status int, maxAgents uint) *InstanceStatus {
+	return &InstanceStatus{instance: inst,
+		status:    status,
+		maxAgents: maxAgents}
+}
+
 func (f *FakeApi) AppendPing() {
 	f.Append("/ping", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -75,16 +87,19 @@ func swapHTTPScheme(url, newScheme string) string {
 	return newScheme + splittedUrl[1]
 }
 
-// /instances will be queried more than once
-func (f *FakeApi) AppendInstances(getInst *proto.Instance, postInsts []*proto.Instance) {
+// Appends handler for /intances.
+// maxAgents != 0 will return HTTP Forbidden status and X-Percona-Agent-Limit in case of an agent instance POST request
+func (f *FakeApi) AppendInstances(treeInst *proto.Instance, postInsts []*InstanceStatus) {
+	// /instances will be queried more than once in case of POSTS, GET is idempotent.
+	// Handlers for URL can only be registered once, handler must handle all cases
 	f.Append("/instances", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
-			if getInst == nil {
+			if treeInst == nil {
 				panic(errors.New("Tried to GET /instances but handler had no data to serve"))
 			}
 			w.WriteHeader(http.StatusOK)
-			data, _ := json.Marshal(&getInst)
+			data, _ := json.Marshal(&treeInst)
 			w.Write(data)
 		case "POST":
 			body, err := ioutil.ReadAll(r.Body)
@@ -96,14 +111,24 @@ func (f *FakeApi) AppendInstances(getInst *proto.Instance, postInsts []*proto.In
 			if err != nil {
 				panic(err)
 			}
+
 			if len(postInsts) == 0 {
 				panic(errors.New("Tried to POST /instances but handler don't have UUIDs to return a valid Location"))
 			}
 
-			newInst := postInsts[0]
+			instStatus := postInsts[0]
 			postInsts = postInsts[1:]
+
+			newInst := instStatus.instance
+
+			if inst.Prefix == AGENT_INST_PREFIX && instStatus.maxAgents != 0 {
+				w.Header().Set("X-Percona-Agents-Limit", fmt.Sprintf("%d", instStatus.maxAgents))
+				w.WriteHeader(instStatus.status)
+				return
+			}
+
 			w.Header().Set("Location", fmt.Sprintf("%s/instances/%s", f.URL(), newInst.UUID))
-			// Links metadata only for agent instances
+			// URL metadata only for agent instances
 			if inst.Prefix == AGENT_INST_PREFIX {
 				ws_url := swapHTTPScheme(f.URL(), WS_SCHEME)
 				// Avoid using Set - it canonicalizes header
@@ -111,9 +136,8 @@ func (f *FakeApi) AppendInstances(getInst *proto.Instance, postInsts []*proto.In
 				w.Header()["X-Percona-Agent-URL-Data"] = []string{fmt.Sprintf("%s/instances/%s/data", ws_url, newInst.UUID)}
 				w.Header()["X-Percona-Agent-URL-Log"] = []string{fmt.Sprintf("%s/instances/%s/log", ws_url, newInst.UUID)}
 				w.Header()["X-Percona-Agent-URL-SystemTree"] = []string{fmt.Sprintf("%s/instances/%s?recursive=true", f.URL(), newInst.ParentUUID)}
-				//fmt.Println(fmt.Sprintf("Returned headers: %s", w.Header()))
 			}
-			w.WriteHeader(http.StatusCreated)
+			w.WriteHeader(instStatus.status)
 		}
 
 	})
@@ -129,9 +153,25 @@ func (f *FakeApi) AppendSystemTree(inst *proto.Instance) {
 
 func (f *FakeApi) AppendInstancesUUID(inst *proto.Instance) {
 	f.Append(fmt.Sprintf("/instances/%s", inst.UUID), func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		data, _ := json.Marshal(&inst)
-		w.Write(data)
+		switch r.Method {
+		case "GET":
+			w.WriteHeader(http.StatusOK)
+			data, _ := json.Marshal(inst)
+			w.Write(data)
+		case "PUT":
+			body, err := ioutil.ReadAll(r.Body)
+			if err != nil {
+				panic(err)
+			}
+			var newInst *proto.Instance
+			err = json.Unmarshal(body, &newInst)
+			if err != nil {
+				panic(err)
+			}
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(600)
+		}
 	})
 }
 
