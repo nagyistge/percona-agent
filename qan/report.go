@@ -103,7 +103,7 @@ func MakeReport(config Config, interval *Interval, result *Result) *Report {
 	report.Class = result.Class[0:config.ReportLimit]
 
 	// Low-ranking Queries
-	lrq := event.NewQueryClass("0", "", false)
+	lrq := event.NewQueryClass("0", "", false, 0*time.Second)
 	for _, query := range result.Class[config.ReportLimit:n] {
 		addQuery(lrq, query)
 	}

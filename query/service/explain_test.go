@@ -218,8 +218,8 @@ func (s *ManagerTestSuite) TestExplainWithoutDb(t *C) {
 
 	cmd := &proto.Cmd{
 		Tool: "query",
-		Cmd:     "Explain",
-		Data:    data,
+		Cmd:  "Explain",
+		Data: data,
 	}
 
 	gotReply := explainService.Handle(cmd)
@@ -324,8 +324,8 @@ func (s *ManagerTestSuite) TestExplainWithDb(t *C) {
 
 	cmd := &proto.Cmd{
 		Tool: "query",
-		Cmd:     "Explain",
-		Data:    data,
+		Cmd:  "Explain",
+		Data: data,
 	}
 
 	gotReply := explainService.Handle(cmd)
@@ -367,7 +367,7 @@ func (s *ManagerTestSuite) TestDMLToSelect(t *C) {
 	t.Assert(selQuery, Equals, `SELECT 1 FROM tabla join tabla2 on tabla.id = tabla2.tabla2_id`)
 
 	selQuery = e.DMLToSelect(`insert into tabla (f1, f2, f3) values (1,2,3)`)
-	t.Assert(selQuery, Equals, `SELECT * FROM tabla  WHERE f1="1" and f2="2" and f3="3"`)
+	t.Assert(selQuery, Equals, `SELECT * FROM tabla  WHERE f1=1 and f2=2 and f3=3`)
 
 	selQuery = e.DMLToSelect(`insert into tabla (f1, f2, f3) values (1,2)`)
 	t.Assert(selQuery, Equals, `SELECT * FROM tabla  LIMIT 1`)
