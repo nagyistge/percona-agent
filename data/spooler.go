@@ -22,8 +22,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/diskv"
 	"github.com/percona/percona-agent/pct"
-	"github.com/peterbourgon/diskv"
 	"os"
 	"path"
 	"strconv"
@@ -45,6 +45,7 @@ type Spooler interface {
 	Status() map[string]string
 	Write(service string, data interface{}) error
 	Files() <-chan string
+	CancelFiles()
 	Read(file string) ([]byte, error)
 	Remove(file string) error
 	Reject(file string) error
@@ -68,6 +69,7 @@ type DiskvSpooler struct {
 	size         uint64
 	oldest       int64
 	fileSize     map[string]int
+	cancelChan   chan struct{}
 }
 
 func NewDiskvSpooler(logger *pct.Logger, dataDir, trashDir, hostname string) *DiskvSpooler {
@@ -120,7 +122,7 @@ func (s *DiskvSpooler) Start(sz Serializer) error {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 	s.oldest = time.Now().UTC().UnixNano()
-	for key := range s.cache.Keys() {
+	for key := range s.Files() {
 		data, err := s.cache.Read(key)
 		if err != nil {
 			s.logger.Error("Cannot read data file", key, ":", err)
@@ -214,7 +216,15 @@ func (s *DiskvSpooler) Write(service string, data interface{}) error {
 }
 
 func (s *DiskvSpooler) Files() <-chan string {
-	return s.cache.Keys()
+	s.cancelChan = make(chan struct{})
+	return s.cache.Keys(s.cancelChan)
+}
+
+func (s *DiskvSpooler) CancelFiles() {
+	// diskv requires this; I don't know why it doesn't just use chan bool.
+	if s.cancelChan != nil {
+		close(s.cancelChan)
+	}
 }
 
 func (s *DiskvSpooler) Read(file string) ([]byte, error) {

@@ -70,6 +70,9 @@ func (s *Spooler) Files() <-chan string {
 	return filesChan
 }
 
+func (s *Spooler) CancelFiles() {
+}
+
 func (s *Spooler) Read(file string) ([]byte, error) {
 	return s.DataOut[file], nil
 }
