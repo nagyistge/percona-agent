@@ -221,7 +221,6 @@ func (s *DiskvSpooler) Files() <-chan string {
 }
 
 func (s *DiskvSpooler) CancelFiles() {
-	// diskv requires this; I don't know why it doesn't just use chan bool.
 	if s.cancelChan != nil {
 		close(s.cancelChan)
 	}
