@@ -1,4 +1,7 @@
 percona-agent Changelog
+v1.0.13 released 2015-04-21
+  * Updated diskv package to avoid potential goroutine leaks
+  * PCT-1619 Support for NULL digests in perf schema events_statements_summary_by_digest table
 
 v1.0.12 released 2015-04-08
 
