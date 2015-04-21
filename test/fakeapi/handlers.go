@@ -33,7 +33,10 @@ import (
 	sysconfigMysql "github.com/percona/percona-agent/sysconfig/mysql"
 )
 
-const AGENT_INST_PREFIX = "agent"
+const (
+	AGENT_INST_PREFIX = "agent"
+	OS_INST_PREFIX    = "os"
+)
 
 var (
 	ConfigMmDefaultMysql = mysql.Config{
@@ -57,15 +60,15 @@ var (
 )
 
 type InstanceStatus struct {
-	instance  *proto.Instance
-	status    int
-	maxAgents uint
+	instance     *proto.Instance
+	status       int
+	maxInstances uint
 }
 
-func NewInstanceStatus(inst *proto.Instance, status int, maxAgents uint) *InstanceStatus {
+func NewInstanceStatus(inst *proto.Instance, status int, maxInstances uint) *InstanceStatus {
 	return &InstanceStatus{instance: inst,
-		status:    status,
-		maxAgents: maxAgents}
+		status:       status,
+		maxInstances: maxInstances}
 }
 
 func (f *FakeApi) AppendPing() {
@@ -121,8 +124,14 @@ func (f *FakeApi) AppendInstances(treeInst *proto.Instance, postInsts []*Instanc
 
 			newInst := instStatus.instance
 
-			if inst.Prefix == AGENT_INST_PREFIX && instStatus.maxAgents != 0 {
-				w.Header().Set("X-Percona-Agents-Limit", fmt.Sprintf("%d", instStatus.maxAgents))
+			if inst.Prefix == AGENT_INST_PREFIX && instStatus.maxInstances != 0 {
+				w.Header().Set("X-Percona-Agents-Limit", fmt.Sprintf("%d", instStatus.maxInstances))
+				w.WriteHeader(instStatus.status)
+				return
+			}
+
+			if inst.Prefix == OS_INST_PREFIX && instStatus.maxInstances != 0 {
+				w.Header().Set("X-Percona-OS-Limit", fmt.Sprintf("%d", instStatus.maxInstances))
 				w.WriteHeader(instStatus.status)
 				return
 			}

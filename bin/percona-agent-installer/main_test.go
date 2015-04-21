@@ -639,7 +639,52 @@ func (s *MainTestSuite) TestInstallFailsOnAgentsLimit(t *C) {
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Maximum number of %d agents exceeded.\n", agentLimit))
-	t.Check(cmdTest.ReadLine(), Equals, "Go to https://cloud.percona.com/agents and remove unused agents or contact Percona to increase limit.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Go to https://cloud.percona.com/ and remove unused agents or contact Percona to increase limit.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Check(err, ErrorMatches, "exit status 1")
+
+	s.expectConfigs([]string{}, t)
+	s.expectMysqlUserNotExists(t)
+}
+
+func (s *MainTestSuite) TestInstallFailsOnOSLimit(t *C) {
+	var instanceLimit uint = 5
+
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	// Installer will create OS instance first then fail hitting agent limit
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusForbidden, instanceLimit),
+	}
+	s.fakeApi.AppendInstances(nil, queueInstances) // GET instance first, POST instances UUIDs second
+
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+pct.Basedir.Path(),
+		"-api-host="+s.fakeApi.URL(),
+		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
+	cmdTest.Write(s.apiKey + "\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Maximum number of %d OS instances exceeded.\n", instanceLimit))
+	t.Check(cmdTest.ReadLine(), Equals, "Go to https://cloud.percona.com/ and remove unused OS instances or contact Percona to increase limit.\n")
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()

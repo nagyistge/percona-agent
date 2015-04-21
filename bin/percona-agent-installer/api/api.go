@@ -78,8 +78,14 @@ func (a *Api) CreateInstance(it *proto.Instance) (newIt *proto.Instance, metadat
 	} else if resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-Percona-Agents-Limit") != "" {
 		return nil, metadata, fmt.Errorf(
 			"Maximum number of %s agents exceeded.\n"+
-				"Go to https://cloud.percona.com/agents and remove unused agents or contact Percona to increase limit.",
+				"Go to https://cloud.percona.com/ and remove unused agents or contact Percona to increase limit.",
 			resp.Header.Get("X-Percona-Agents-Limit"),
+		)
+	} else if resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-Percona-OS-Limit") != "" {
+		return nil, metadata, fmt.Errorf(
+			"Maximum number of %s OS instances exceeded.\n"+
+				"Go to https://cloud.percona.com/ and remove unused OS instances or contact Percona to increase limit.",
+			resp.Header.Get("X-Percona-OS-Limit"),
 		)
 	} else {
 		return nil, metadata, fmt.Errorf("Failed to create %s instance (status code %d)", it.Type, resp.StatusCode)
