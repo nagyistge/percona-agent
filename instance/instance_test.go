@@ -185,7 +185,7 @@ func (s *RepoTestSuite) TestUpdateTree(t *C) {
 	t.Assert(err, IsNil)
 
 	// Lets modify one instance in our test tree copy
-	// index 1 corresponds to instance c540346a644b404a9d2ae006122fc5a2
+	// index 1 corresponds to instance 00000000000000000000000000000003
 	tree.Subsystems[1].DSN = "other DSN"
 	// Remove leaf of tree
 	_, tree.Subsystems = tree.Subsystems[len(tree.Subsystems)-1], tree.Subsystems[:len(tree.Subsystems)-1]
@@ -326,7 +326,7 @@ func (s *ManagerTestSuite) TestHandleGetInfoMySQL(t *C) {
 	mysqlIt := &proto.Instance{}
 	mysqlIt.Type = "MySQL"
 	mysqlIt.Prefix = "mysql"
-	mysqlIt.UUID = "c540346a644b404a9d2ae006122fc5a2"
+	mysqlIt.UUID = "00000000000000000000000000000003"
 	mysqlIt.Name = "mysql-bm-cloud-0001"
 	mysqlIt.DSN = dsn
 	mysqlIt.Properties = map[string]string{}
@@ -371,7 +371,7 @@ func (s *ManagerTestSuite) TestHandleUpdate(t *C) {
 	mysqlIt1 := proto.Instance{}
 	mysqlIt1.Type = "MySQL"
 	mysqlIt1.Prefix = "mysql"
-	mysqlIt1.UUID = "c540346a644b404a9d2ae006122fc5a2"
+	mysqlIt1.UUID = "00000000000000000000000000000003"
 	mysqlIt1.Name = "mysql-bm-cloud-0001"
 	mysqlIt1.DSN = "test:test@localhost/mysql"
 
@@ -379,8 +379,8 @@ func (s *ManagerTestSuite) TestHandleUpdate(t *C) {
 	mysqlIt2 := proto.Instance{}
 	mysqlIt2.Type = "MySQL"
 	mysqlIt2.Prefix = "mysql"
-	mysqlIt2.ParentUUID = "31dd3b7b602849f8871fd3e7acc8c2e3"
-	mysqlIt2.UUID = "67b6ac9eaace265d3dad87663235eba8"
+	mysqlIt2.ParentUUID = "00000000000000000000000000000001"
+	mysqlIt2.UUID = "00000000000000000000000000000007"
 	mysqlIt2.Name = "mysql-test-0002"
 	mysqlIt2.DSN = "test:test@localhost/otherdsn" // change DSN
 
@@ -390,11 +390,11 @@ func (s *ManagerTestSuite) TestHandleUpdate(t *C) {
 	sync := proto.SystemTreeSync{}
 	sync.Version = 2
 	sync.Added = []string{"916f4c31aaa35d6b867dae9a7f54270d"}
-	sync.Updated = []string{"67b6ac9eaace265d3dad87663235eba8"}
-	sync.Deleted = []string{"31dd3b7b602849f8871fd3e7acc8c2e3", "dc2b15a5400b4c67ab27848255468e65",
-		"c540346a644b404a9d2ae006122fc5a2", "3fc9ebfee2bb401ba5a0158464ea606d",
-		"46488b31c44847239749183d83cbd910", "2b94b61d25614c60a25cbed205e035e8",
-		"2b94b61d25614c60a25cbed205e035e8"}
+	sync.Updated = []string{"00000000000000000000000000000007"}
+	sync.Deleted = []string{"00000000000000000000000000000001", "00000000000000000000000000000002",
+		"00000000000000000000000000000003", "00000000000000000000000000000004",
+		"00000000000000000000000000000005", "00000000000000000000000000000006",
+		"00000000000000000000000000000006"}
 	sync.Tree = osIt
 
 	syncData, err := json.Marshal(&sync)
@@ -417,7 +417,7 @@ func (s *ManagerTestSuite) TestHandleUpdate(t *C) {
 	received := []string{mySQLinsts[0].UUID, mySQLinsts[1].UUID}
 	// We need to sort as order is not stable
 	sort.Strings(received)
-	expected := []string{"67b6ac9eaace265d3dad87663235eba8", "c540346a644b404a9d2ae006122fc5a2"}
+	expected := []string{"00000000000000000000000000000003", "00000000000000000000000000000007"}
 	if same, diff := IsDeeply(received, expected); !same {
 		Dump(received)
 		Dump(expected)
@@ -434,16 +434,16 @@ func (s *ManagerTestSuite) TestHandleUpdateNoOS(t *C) {
 	mysqlIt := proto.Instance{}
 	mysqlIt.Type = "MySQL"
 	mysqlIt.Prefix = "mysql"
-	mysqlIt.UUID = "c540346a644b404a9d2ae006122fc5a2"
+	mysqlIt.UUID = "00000000000000000000000000000003"
 
 	sync := proto.SystemTreeSync{}
 	sync.Version = 2
 	sync.Added = []string{"916f4c31aaa35d6b867dae9a7f54270d"}
-	sync.Updated = []string{"67b6ac9eaace265d3dad87663235eba8"}
-	sync.Deleted = []string{"31dd3b7b602849f8871fd3e7acc8c2e3", "dc2b15a5400b4c67ab27848255468e65",
-		"c540346a644b404a9d2ae006122fc5a2", "3fc9ebfee2bb401ba5a0158464ea606d",
-		"46488b31c44847239749183d83cbd910", "2b94b61d25614c60a25cbed205e035e8",
-		"2b94b61d25614c60a25cbed205e035e8"}
+	sync.Updated = []string{"00000000000000000000000000000007"}
+	sync.Deleted = []string{"00000000000000000000000000000001", "00000000000000000000000000000002",
+		"00000000000000000000000000000003", "00000000000000000000000000000004",
+		"00000000000000000000000000000005", "00000000000000000000000000000006",
+		"00000000000000000000000000000006"}
 	sync.Tree = mysqlIt
 
 	syncData, err := json.Marshal(&sync)

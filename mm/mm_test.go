@@ -539,8 +539,8 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.mysqlMonitor = mock.NewMmMonitor()
 	s.systemMonitor = mock.NewMmMonitor()
 	s.factory = mock.NewMmMonitorFactory(map[string]mm.Monitor{
-		"31dd3b7b602849f8871fd3e7acc8c2e3": s.systemMonitor, // corresponds to OS instance in test data
-		"c540346a644b404a9d2ae006122fc5a2": s.mysqlMonitor,  // corresponds to first MySQL instance in test data
+		"00000000000000000000000000000001": s.systemMonitor, // corresponds to OS instance in test data
+		"00000000000000000000000000000003": s.mysqlMonitor,  // corresponds to first MySQL instance in test data
 	})
 
 	systemTreeFile := filepath.Join(s.configDir, instance.SYSTEM_TREE_FILE)
@@ -598,7 +598,7 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 
 	// First the API marshals an mm.Config.
 	config := &mm.Config{
-		UUID:    "c540346a644b404a9d2ae006122fc5a2",
+		UUID:    "00000000000000000000000000000003",
 		Collect: 1,
 		Report:  60,
 		// No monitor-specific config
@@ -653,7 +653,7 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	// This is the config in test/mm/config/mm-mysql-1.conf.
 	mmConfig := &mysql.Config{
 		Config: mm.Config{
-			UUID:    "c540346a644b404a9d2ae006122fc5a2",
+			UUID:    "00000000000000000000000000000003",
 			Collect: 1,
 			Report:  60,
 		},
@@ -693,7 +693,7 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	// After starting a monitor, mm should write its config to the dir
 	// it learned when mm.LoadConfig() was called.  Next time agent starts,
 	// it will have mm start the monitor with this config.
-	configFile := "mm-c540346a644b404a9d2ae006122fc5a2.conf"
+	configFile := "mm-00000000000000000000000000000003.conf"
 	data, err := ioutil.ReadFile(filepath.Join(s.configDir, configFile))
 	t.Check(err, IsNil)
 	gotConfig := &mysql.Config{}
@@ -808,7 +808,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	 */
 	mysqlMonitorConfig := &mysql.Config{
 		Config: mm.Config{
-			UUID:    "c540346a644b404a9d2ae006122fc5a2",
+			UUID:    "00000000000000000000000000000003",
 			Collect: 1,
 			Report:  60,
 		},
@@ -835,7 +835,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	 */
 	systemMonitorConfig := &system.Config{
 		Config: mm.Config{
-			UUID:    "31dd3b7b602849f8871fd3e7acc8c2e3",
+			UUID:    "00000000000000000000000000000001",
 			Collect: 10,
 			Report:  60,
 		},
@@ -871,13 +871,13 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	expectConfig := []proto.AgentConfig{
 		{
 			Tool:    "mm",
-			UUID:    "c540346a644b404a9d2ae006122fc5a2",
+			UUID:    "00000000000000000000000000000003",
 			Config:  string(mysqlData),
 			Running: true,
 		},
 		{
 			Tool:    "mm",
-			UUID:    "31dd3b7b602849f8871fd3e7acc8c2e3",
+			UUID:    "00000000000000000000000000000001",
 			Config:  string(systemData),
 			Running: true,
 		},

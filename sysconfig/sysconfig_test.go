@@ -98,7 +98,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	t.Assert(s.ir, NotNil)
 	err = s.ir.Init()
 	t.Assert(err, IsNil)
-	s.mysqlInstance, err = s.ir.Get("c540346a644b404a9d2ae006122fc5a2")
+	s.mysqlInstance, err = s.ir.Get("00000000000000000000000000000003")
 	t.Assert(err, IsNil)
 }
 

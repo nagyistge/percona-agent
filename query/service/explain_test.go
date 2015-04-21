@@ -103,7 +103,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	err = s.rir.Init()
 	t.Assert(err, IsNil)
 	// This is our MySQL instance with DSN = s.dsn
-	s.mysqlInstance, err = s.rir.Get("c540346a644b404a9d2ae006122fc5a2")
+	s.mysqlInstance, err = s.rir.Get("00000000000000000000000000000003")
 	t.Assert(err, IsNil)
 	s.mysqlInstance.DSN = s.dsn
 }

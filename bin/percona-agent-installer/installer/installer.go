@@ -145,8 +145,8 @@ func (i *Installer) Run() (err error) {
 		return fmt.Errorf("Failed to get system tree from API: %s", err)
 	}
 	// Update system tree on repository and save the tree to disk (second parameter)
-	// This is our very first system tree - version 1
-	if err = i.instanceRepo.UpdateSystemTree(*tree, 1, true); err != nil {
+	// This is our very first system tree - version 0
+	if err = i.instanceRepo.UpdateSystemTree(*tree, 0, true); err != nil {
 		return fmt.Errorf("Failed to write instances: %s", err)
 	}
 
@@ -349,7 +349,7 @@ func (i *Installer) InstallerGetDefaultConfigs(oi, mi *proto.Instance) (configs 
 	configs = append(configs, *dataConfig)
 
 	if i.flags.Bool["start-services"] {
-		// Server metrics monitor
+		// OS metrics monitor
 		config, err := i.api.GetMmOSConfig(oi)
 		if err != nil {
 			fmt.Println(err)

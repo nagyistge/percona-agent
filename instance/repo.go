@@ -253,7 +253,7 @@ func (r *Repo) updateTree(tree proto.Instance, version uint, writeToDisk bool) e
 	r.logger.Debug("update:call")
 	defer r.logger.Debug("update:return")
 
-	if version <= r.treeVersion {
+	if version <= r.treeVersion && r.tree != nil {
 		err := errors.New("Discarding tree update because its version is lower than current one")
 		// Error to the update process but the user should only receive a warning in log
 		r.logger.Warn(err)
