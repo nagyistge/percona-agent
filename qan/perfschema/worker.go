@@ -328,9 +328,9 @@ ROW_LOOP:
 			// setting the digest to NULL and will only compute a summary under that
 			// null digest.
 			// http://dev.mysql.com/doc/refman/5.6/en/statement-summary-tables.html#idm140190647360848
-			// In that case, we set the digest to the string NULL to support this
-			// summary in PCT
-			classId := "NULL"
+			// In that case, we set the digest to the string "2" (1 if for LRQ) to support
+			// this summary in PCT
+			classId := "2"
 			if len(row.Digest) >= 32 {
 				classId = strings.ToUpper(row.Digest[16:32])
 			}
@@ -350,9 +350,9 @@ ROW_LOOP:
 					// Have never seen class before, so get digext text from perf schema.
 					var err error
 					digestText, err = w.getText(row.Digest)
-					if classId == "NULL" && digestText == "" {
+					if classId == "2" && digestText == "" {
 						// To make explains works
-						digestText = `SELECT "perf_schema_tables_are_full"`
+						digestText = `-- performance_schema.events_statements_summary_by_digest is full`
 					}
 					if err != nil {
 						w.logger.Error(err)
