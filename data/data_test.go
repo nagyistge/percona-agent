@@ -323,7 +323,8 @@ func (s *DiskvSpoolerTestSuite) TestRejectData(t *C) {
 		Service: "mm",
 		Msg:     "hello world",
 	}
-	spool.Write("log", logEntry)
+	err = spool.Write("log", logEntry)
+	t.Check(err, IsNil)
 
 	// Wait for spooler to write data to disk.
 	files := test.WaitFiles(s.dataDir, 1)
