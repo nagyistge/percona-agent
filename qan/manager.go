@@ -194,14 +194,14 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 			return cmd.Reply(nil, pct.ServiceIsNotRunningError{Service: "qan"})
 		}
 		errs := []error{}
-		for instanceId := range m.analyzers {
-			if err := m.stopAnalyzer(instanceId); err != nil {
+		for UUID := range m.analyzers {
+			if err := m.stopAnalyzer(UUID); err != nil {
 				errs = append(errs, err)
 			}
-		}
-		// Remove qan.conf from disk so agent doesn't run qan on restart.
-		if err := pct.Basedir.RemoveConfig("qan"); err != nil {
-			errs = append(errs, err)
+			// Remove qan-<uuid>.conf from disk so agent doesn't run qan on restart.
+			if err := pct.Basedir.RemoveInstanceConfig("qan", UUID); err != nil {
+				errs = append(errs, err)
+			}
 		}
 		return cmd.Reply(nil, errs...)
 	case "GetConfig":
@@ -230,8 +230,8 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 			continue
 		}
 		configs = append(configs, proto.AgentConfig{
-			Tool: "qan",
-			// no external service
+			Tool:    "qan",
+			UUID:    a.analyzer.Config().UUID,
 			Config:  string(bytes),
 			Running: true,
 		})
@@ -302,7 +302,6 @@ func (m *Manager) startAnalyzer(config Config) error {
 	if err != nil {
 		return fmt.Errorf("Cannot get MySQL instance from repo: %s", err)
 	}
-	// This should use properties
 	mysqlConn := m.mysqlFactory.Make(mysqlInstance.DSN)
 
 	// Add the MySQL DSN to the MySQL restart monitor. If MySQL restarts,

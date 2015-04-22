@@ -300,6 +300,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	expect := []proto.AgentConfig{
 		{
 			Tool:    "qan",
+			UUID:    mysqlUUID,
 			Config:  string(qanConfig),
 			Running: true,
 		},
@@ -479,7 +480,7 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 
 	// And the manager has removed the qan config from disk so next time
 	// the agent starts the analyzer is not started.
-	t.Check(test.FileExists(pct.Basedir.ConfigFile("qan")), Equals, false)
+	t.Check(test.FileExists(pct.Basedir.InstanceConfigFile("qan", mysqlUUID)), Equals, false)
 
 	// StopService should be idempotent, so send it again and expect no error.
 	reply = m.Handle(cmd)
