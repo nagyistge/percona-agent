@@ -78,7 +78,6 @@ func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Conn
 // Interface
 /////////////////////////////////////////////////////////////////////////////
 
-// @goroutine[0]
 func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collection) error {
 	m.logger.Debug("Start:call")
 	defer m.logger.Debug("Start:return")
@@ -97,7 +96,6 @@ func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collect
 	return nil
 }
 
-// @goroutine[0]
 func (m *Monitor) Stop() error {
 	m.logger.Debug("Stop:call")
 	defer m.logger.Debug("Stop:return")
@@ -120,17 +118,14 @@ func (m *Monitor) Stop() error {
 	return nil
 }
 
-// @goroutine[0]
 func (m *Monitor) Status() map[string]string {
 	return m.status.All()
 }
 
-// @goroutine[0]
 func (m *Monitor) TickChan() chan time.Time {
 	return m.tickChan
 }
 
-// @goroutine[0]
 func (m *Monitor) Config() interface{} {
 	return m.config
 }
@@ -139,7 +134,6 @@ func (m *Monitor) Config() interface{} {
 // Implementation
 /////////////////////////////////////////////////////////////////////////////
 
-// run:@goroutine[3]
 func (m *Monitor) connect(err error) {
 	m.logger.Debug("connect:call")
 	defer func() {
@@ -214,7 +208,6 @@ func (m *Monitor) setGlobalVars() {
 	}
 }
 
-// @goroutine[2]
 func (m *Monitor) run() {
 	m.logger.Debug("run:call")
 	defer func() {
@@ -359,7 +352,6 @@ func (m *Monitor) run() {
 // SHOW STATUS
 // --------------------------------------------------------------------------
 
-// @goroutine[2]
 func (m *Monitor) GetShowStatusMetrics(conn *sql.DB, c *mm.Collection) error {
 	m.logger.Debug("GetShowStatusMetrics:call")
 	defer m.logger.Debug("GetShowStatusMetrics:return")
@@ -392,7 +384,8 @@ func (m *Monitor) GetShowStatusMetrics(conn *sql.DB, c *mm.Collection) error {
 
 		metricValue, err := strconv.ParseFloat(statValue, 64)
 		if err != nil {
-			m.logger.Warn(fmt.Sprintf("%s: strconv.ParseFloat('%s', 64): %s", statName, statValue, err))
+			m.logger.Warn(fmt.Sprintf("Cannot convert '%s' value '%s' to float: %s", statName, statValue, err))
+			delete(m.config.Status, statName) // stop collecting it
 			continue
 		}
 
@@ -411,7 +404,6 @@ func (m *Monitor) GetShowStatusMetrics(conn *sql.DB, c *mm.Collection) error {
 // https://blogs.oracle.com/mysqlinnodb/entry/get_started_with_innodb_metrics
 // --------------------------------------------------------------------------
 
-// @goroutine[2]
 func (m *Monitor) GetInnoDBMetrics(conn *sql.DB, c *mm.Collection) error {
 	m.logger.Debug("GetInnoDBMetrics:call")
 	defer m.logger.Debug("GetInnoDBMetrics:return")
@@ -436,7 +428,7 @@ func (m *Monitor) GetInnoDBMetrics(conn *sql.DB, c *mm.Collection) error {
 		metricName := "mysql/innodb/" + strings.ToLower(statSubsystem) + "/" + strings.ToLower(statName)
 		metricValue, err := strconv.ParseFloat(statCount, 64)
 		if err != nil {
-			m.logger.Warn("strconv.ParseFloat('%s', 64): %s", statCount, err)
+			m.logger.Warn(fmt.Sprintf("Cannot convert '%s' value '%s' to float: %s", metricName, metricValue, err))
 			metricValue = 0.0
 		}
 		var metricType string
@@ -459,7 +451,6 @@ func (m *Monitor) GetInnoDBMetrics(conn *sql.DB, c *mm.Collection) error {
 // http://www.percona.com/doc/percona-server/5.5/diagnostics/user_stats.html
 // --------------------------------------------------------------------------
 
-// @goroutine[2]
 func (m *Monitor) getTableUserStats(conn *sql.DB, c *mm.Collection, ignoreDb string) error {
 	m.logger.Debug("getTableUserStats:call")
 	defer m.logger.Debug("getTableUserStats:return")
@@ -515,7 +506,6 @@ func (m *Monitor) getTableUserStats(conn *sql.DB, c *mm.Collection, ignoreDb str
 	return nil
 }
 
-// @goroutine[2]
 func (m *Monitor) getIndexUserStats(conn *sql.DB, c *mm.Collection, ignoreDb string) error {
 	m.logger.Debug("getIndexUserStats:call")
 	defer m.logger.Debug("getIndexUserStats:return")
