@@ -68,7 +68,7 @@ func (m *Manager) Start() error {
 	defer m.mux.Unlock()
 
 	if m.config != nil {
-		return pct.ServiceIsRunningError{Service: "data"}
+		return pct.ToolIsRunningError{Tool: "data"}
 	}
 
 	m.status.Update("data", "Starting")

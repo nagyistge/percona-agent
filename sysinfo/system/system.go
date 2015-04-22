@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	SERVICE_NAME     = "system"
+	TOOL_NAME     = "system"
 	PT_SLEEP_SECONDS = "4"
 )
 

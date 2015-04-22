@@ -21,32 +21,40 @@ import (
 	"fmt"
 )
 
-type ServiceIsRunningError struct {
-	Service string
+type ToolIsRunningError struct {
+	Tool string
+	//	InstName string
 }
 
-func (e ServiceIsRunningError) Error() string {
-	return e.Service + " service is running"
-}
-
-/////////////////////////////////////////////////////////////////////////////
-
-type ServiceIsNotRunningError struct {
-	Service string
-}
-
-func (e ServiceIsNotRunningError) Error() string {
-	return e.Service + " service is not running"
+func (e ToolIsRunningError) Error() string {
+	//	if e.InstName == "" {
+	return e.Tool + " tool is running"
+	//	}
+	//	return fmt.Sprintf("%s tool for instance %s is running", e.Tool, e.InstName)
 }
 
 /////////////////////////////////////////////////////////////////////////////
 
-type UnknownServiceError struct {
-	Service string
+type ToolIsNotRunningError struct {
+	Tool     string
+	InstName string
 }
 
-func (e UnknownServiceError) Error() string {
-	return "Unknown service: " + e.Service
+func (e ToolIsNotRunningError) Error() string {
+	if e.InstName == "" {
+		return e.Tool + " tool is not running"
+	}
+	return fmt.Sprintf("%s tool for instance %s is not running", e.Tool, e.InstName)
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+type UnknownToolError struct {
+	Tool string
+}
+
+func (e UnknownToolError) Error() string {
+	return "Unknown tool: " + e.Tool
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -96,44 +104,44 @@ func (e CmdRejectedError) Error() string {
 
 /////////////////////////////////////////////////////////////////////////////
 
-type UnknownServiceInstanceError struct {
-	Service string
-	Id      uint
+type UnknownToolInstanceError struct {
+	Tool string
+	UUID string
 }
 
-func (e UnknownServiceInstanceError) Error() string {
-	return fmt.Sprintf("Unknown %s instance: %d", e.Service, e.Id)
-}
-
-/////////////////////////////////////////////////////////////////////////////
-
-type InvalidServiceInstanceError struct {
-	Service string
-	Id      uint
-}
-
-func (e InvalidServiceInstanceError) Error() string {
-	return fmt.Sprintf("Invalid %s instance: %d", e.Service, e.Id)
+func (e UnknownToolInstanceError) Error() string {
+	return fmt.Sprintf("Unknown %s instance: %d", e.Tool, e.UUID)
 }
 
 /////////////////////////////////////////////////////////////////////////////
 
-type DuplicateServiceInstanceError struct {
-	Service string
-	Id      uint
+type InvalidToolInstanceError struct {
+	Tool string
+	UUID string
 }
 
-func (e DuplicateServiceInstanceError) Error() string {
-	return fmt.Sprintf("Duplicate %s instance: %d", e.Service, e.Id)
+func (e InvalidToolInstanceError) Error() string {
+	return fmt.Sprintf("Invalid %s instance: %d", e.Tool, e.UUID)
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+type DuplicateToolInstanceError struct {
+	Tool string
+	UUID string
+}
+
+func (e DuplicateToolInstanceError) Error() string {
+	return fmt.Sprintf("Duplicate %s instance: %d", e.Tool, e.UUID)
 }
 
 // Refactor New
 ////////////////////////////////////////////////////////////////////////////
 
 type InvalidInstanceError struct {
-	Id string
+	UUID string
 }
 
 func (e InvalidInstanceError) Error() string {
-	return fmt.Sprintf("Ivalid instance: %s", e.Id)
+	return fmt.Sprintf("Invalid instance: %s", e.UUID)
 }

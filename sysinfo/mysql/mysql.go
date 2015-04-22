@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	SERVICE_NAME     = "mysql"
+	TOOL_NAME     = "mysql"
 	PT_SLEEP_SECONDS = "4"
 )
 
@@ -93,11 +93,11 @@ func (m *MySQL) Handle(protoCmd *proto.Cmd) *proto.Reply {
 
 func getToolInstance(protoCmd *proto.Cmd) (toolInstance *proto.ToolInstance, err error) {
 	if protoCmd.Data == nil {
-		return nil, fmt.Errorf("%s.getMySQLInstance:cmd.Data is empty", SERVICE_NAME)
+		return nil, fmt.Errorf("%s.getMySQLInstance:cmd.Data is empty", TOOL_NAME)
 	}
 
 	if err := json.Unmarshal(protoCmd.Data, &toolInstance); err != nil {
-		return nil, fmt.Errorf("%s.getMySQLInstance:json.Unmarshal:%s", SERVICE_NAME, err)
+		return nil, fmt.Errorf("%s.getMySQLInstance:json.Unmarshal:%s", TOOL_NAME, err)
 	}
 
 	return toolInstance, nil

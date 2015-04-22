@@ -58,6 +58,7 @@ type Monitor struct {
 }
 
 func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Connector, mrm mrms.Monitor) *Monitor {
+	name = "mm-" + config.UUID // Granted, not the best name
 	m := &Monitor{
 		name:   name,
 		config: config,
@@ -84,7 +85,7 @@ func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collect
 	defer m.logger.Debug("Start:return")
 
 	if m.running {
-		return pct.ServiceIsRunningError{m.name}
+		return pct.ToolIsRunningError{m.name}
 	}
 
 	m.tickChan = tickChan

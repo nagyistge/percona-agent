@@ -72,9 +72,8 @@ func (s *TestSuite) SetUpSuite(t *C) {
 	s.logger = pct.NewLogger(s.logChan, "mm-manager-test")
 	s.tickChan = make(chan time.Time)
 	s.collectionChan = make(chan *mm.Collection, 1)
-	s.name = "mm-mysql-db1"
+	s.name = "mm-1" // Name is mm-<uuid>
 	s.mrm = mock.NewMrmsMonitor()
-
 }
 
 func (s *TestSuite) TearDownSuite(t *C) {

@@ -91,7 +91,7 @@ func (m *Manager) Start() error {
 	defer m.mux.Unlock()
 
 	if m.running {
-		return pct.ServiceIsRunningError{Service: "qan"}
+		return pct.ToolIsRunningError{"qan"}
 	}
 
 	// Manager ("qan" in status) runs independent from qan-parser.
@@ -140,8 +140,8 @@ func (m *Manager) Stop() error {
 		return nil
 	}
 
-	for instanceId := range m.analyzers {
-		if err := m.stopAnalyzer(instanceId); err != nil {
+	for UUID := range m.analyzers {
+		if err := m.stopAnalyzer(UUID); err != nil {
 			m.logger.Error(err)
 		}
 	}
@@ -173,7 +173,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		m.mux.Lock()
 		defer m.mux.Unlock()
 		if !m.running {
-			return cmd.Reply(nil, pct.ServiceIsNotRunningError{Service: "qan"})
+			return cmd.Reply(nil, pct.ToolIsNotRunningError{Tool: "qan"})
 		}
 		config := Config{}
 		if err := json.Unmarshal(cmd.Data, &config); err != nil {
@@ -191,7 +191,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		m.mux.Lock()
 		defer m.mux.Unlock()
 		if !m.running {
-			return cmd.Reply(nil, pct.ServiceIsNotRunningError{Service: "qan"})
+			return cmd.Reply(nil, pct.ToolIsNotRunningError{Tool: "qan"})
 		}
 		errs := []error{}
 		for UUID := range m.analyzers {
@@ -291,17 +291,18 @@ func (m *Manager) startAnalyzer(config Config) error {
 		return fmt.Errorf("Invalid qan.Config: %s", err)
 	}
 
-	// Check if an analyzer for this MySQL instance already exists.
-	if a, ok := m.analyzers[config.UUID]; ok {
-		return pct.ServiceIsRunningError{Service: a.analyzer.String()}
-
-	}
-
-	// Get the MySQL DSN and create a MySQL connection.
+	// Get the MySQL instance from repo.
 	mysqlInstance, err := m.im.Get(config.UUID)
 	if err != nil {
 		return fmt.Errorf("Cannot get MySQL instance from repo: %s", err)
 	}
+
+	// Check if an analyzer for this MySQL instance already exists.
+	if a, ok := m.analyzers[config.UUID]; ok {
+		return pct.ToolIsRunningError{Tool: a.analyzer.String()}
+
+	}
+	// Create a MySQL connection.
 	mysqlConn := m.mysqlFactory.Make(mysqlInstance.DSN)
 
 	// Add the MySQL DSN to the MySQL restart monitor. If MySQL restarts,
@@ -321,7 +322,7 @@ func (m *Manager) startAnalyzer(config Config) error {
 	// for each interval.
 	analyzer := m.analyzerFactory.Make(
 		config,
-		"qan-analyzer", // todo-1.1: append instance name
+		"qan-analyzer-"+mysqlInstance.Name,
 		mysqlConn,
 		restartChan,
 		tickChan,

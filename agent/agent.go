@@ -376,7 +376,7 @@ func (agent *Agent) cmdHandler() {
 					if manager, ok := agent.tools[cmd.Tool]; ok {
 						reply = manager.Handle(cmd)
 					} else {
-						reply = cmd.Reply(nil, pct.UnknownServiceError{Service: cmd.Tool})
+						reply = cmd.Reply(nil, pct.UnknownToolError{Tool: cmd.Tool})
 					}
 				}
 			}()
@@ -491,7 +491,7 @@ func (agent *Agent) handleStartService(cmd *proto.Cmd) (interface{}, error) {
 	// Check if we have a manager for the service.
 	m, ok := agent.tools[s.Name]
 	if !ok {
-		return nil, pct.UnknownServiceError{Service: s.Name}
+		return nil, pct.UnknownToolError{Tool: s.Name}
 	}
 
 	// Start the service.
@@ -517,7 +517,7 @@ func (agent *Agent) handleStopService(cmd *proto.Cmd) (interface{}, error) {
 	// just return because the service can't be running if we don't have it.
 	m, ok := agent.tools[s.Name]
 	if !ok {
-		return nil, pct.UnknownServiceError{Service: s.Name}
+		return nil, pct.UnknownToolError{Tool: s.Name}
 	}
 
 	// Stop the service.
@@ -667,7 +667,7 @@ func (agent *Agent) statusHandler() {
 				if manager, ok := agent.tools[cmd.Tool]; ok {
 					replyChan <- cmd.Reply(manager.Status())
 				} else {
-					replyChan <- cmd.Reply(nil, pct.UnknownServiceError{Service: cmd.Tool})
+					replyChan <- cmd.Reply(nil, pct.UnknownToolError{Tool: cmd.Tool})
 				}
 			}
 		case <-agent.statusHandlerSync.StopChan:

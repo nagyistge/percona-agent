@@ -56,7 +56,7 @@ func (m *Manager) Start() error {
 	defer m.mux.Unlock()
 
 	if m.config != nil {
-		return pct.ServiceIsRunningError{Service: "log"}
+		return pct.ToolIsRunningError{Tool: "log"}
 	}
 
 	// Load config from disk.

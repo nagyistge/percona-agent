@@ -62,7 +62,7 @@ func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Conn
 // @goroutine[0]
 func (m *Monitor) Start(tickChan chan time.Time, reportChan chan *sysconfig.Report) error {
 	if m.running {
-		return pct.ServiceIsRunningError{m.name}
+		return pct.ToolIsRunningError{Tool: m.name}
 	}
 
 	m.status.Update(m.name, "Starting")

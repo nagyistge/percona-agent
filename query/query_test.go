@@ -43,7 +43,7 @@ var _ = Suite(&ManagerTestSuite{})
 
 func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.logChan = make(chan *proto.LogEntry, 10)
-	s.logger = pct.NewLogger(s.logChan, query.SERVICE_NAME+"-manager-test")
+	s.logger = pct.NewLogger(s.logChan, query.TOOL_NAME+"-manager-test")
 }
 
 func (s *ManagerTestSuite) SetUpTest(t *C) {
@@ -70,11 +70,11 @@ func (s *ManagerTestSuite) TestStartStopHandleManager(t *C) {
 
 	// Its status should be "Running".
 	status := m.Status()
-	t.Check(status[query.SERVICE_NAME], Equals, "Running")
+	t.Check(status[query.TOOL_NAME], Equals, "Running")
 
 	// Can't start manager twice.
 	err = m.Start()
-	t.Check(err, FitsTypeOf, pct.ServiceIsRunningError{})
+	t.Check(err, FitsTypeOf, pct.ToolIsRunningError{})
 
 	// Test known cmd
 	cmd := &proto.Cmd{
@@ -98,5 +98,5 @@ func (s *ManagerTestSuite) TestStartStopHandleManager(t *C) {
 	err = m.Stop()
 	t.Check(err, IsNil)
 	status = m.Status()
-	t.Check(status[query.SERVICE_NAME], Equals, "Running")
+	t.Check(status[query.TOOL_NAME], Equals, "Running")
 }

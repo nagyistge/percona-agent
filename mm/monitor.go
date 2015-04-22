@@ -29,7 +29,7 @@ import "time"
  * in a Report and sent to the Spooler (data/spooler.go).
  */
 
-// Collect metrics when tickChan ticks, send to collecitonChan.
+// Collect metrics when tickChan ticks, send to collectionChan.
 type Monitor interface {
 	Start(tickChan chan time.Time, collectionChan chan *Collection) error
 	Stop() error

@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	SERVICE_NAME = "sysinfo"
+	TOOL_NAME = "sysinfo"
 )
 
 type Manager struct {
@@ -43,7 +43,7 @@ func NewManager(logger *pct.Logger) *Manager {
 		logger: logger,
 		// --
 		service: make(map[string]Service),
-		status:  pct.NewStatus([]string{SERVICE_NAME}),
+		status:  pct.NewStatus([]string{TOOL_NAME}),
 	}
 	return m
 }
@@ -57,12 +57,12 @@ func (m *Manager) Start() error {
 	defer m.Unlock()
 
 	if m.running {
-		return pct.ServiceIsRunningError{Service: SERVICE_NAME}
+		return pct.ToolIsRunningError{Tool: TOOL_NAME}
 	}
 
 	m.running = true
 	m.logger.Info("Started")
-	m.status.Update(SERVICE_NAME, "Running")
+	m.status.Update(TOOL_NAME, "Running")
 	return nil
 }
 
@@ -76,11 +76,11 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	defer m.Unlock()
 
 	if !m.running {
-		return cmd.Reply(nil, pct.ServiceIsNotRunningError{Service: SERVICE_NAME})
+		return cmd.Reply(nil, pct.ToolIsNotRunningError{Tool: TOOL_NAME})
 	}
 
-	m.status.UpdateRe(SERVICE_NAME, "Handling", cmd)
-	defer m.status.Update(SERVICE_NAME, "Running")
+	m.status.UpdateRe(TOOL_NAME, "Handling", cmd)
+	defer m.status.Update(TOOL_NAME, "Running")
 
 	serviceName := cmd.Cmd
 	service, registered := m.service[serviceName]
@@ -88,7 +88,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
 
-	m.status.UpdateRe(SERVICE_NAME, fmt.Sprintf("Running %s", serviceName), cmd)
+	m.status.UpdateRe(TOOL_NAME, fmt.Sprintf("Running %s", serviceName), cmd)
 	return service.Handle(cmd)
 }
 

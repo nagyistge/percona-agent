@@ -19,6 +19,7 @@ package qan_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -124,7 +125,7 @@ func (s ByUUID) Less(i, j int) bool {
 func (s *ManagerTestSuite) TestStarNoConfig(t *C) {
 	// Make a qan.Manager with mock factories.
 	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
-	a := mock.NewQanAnalyzer()
+	a := mock.NewQanAnalyzer("qan-analizer-1")
 	f := mock.NewQanAnalyzerFactory(a)
 	m := qan.NewManager(s.logger, s.clock, s.im, s.mrmsMonitor, mockConnFactory, f)
 	t.Assert(m, NotNil)
@@ -160,15 +161,17 @@ func (s *ManagerTestSuite) TestStarNoConfig(t *C) {
 }
 
 func (s *ManagerTestSuite) TestStartWithConfig(t *C) {
+	// Get MYySQL instances
+	mysqlInstances := s.im.GetMySQLInstances()
+	t.Assert(len(mysqlInstances), Equals, 2)
+
 	// Make a qan.Manager with mock factories.
-	a1 := mock.NewQanAnalyzer()
-	a2 := mock.NewQanAnalyzer()
+	a1 := mock.NewQanAnalyzer(fmt.Sprintf("qan-analyzer-%s", mysqlInstances[0].Name))
+	a2 := mock.NewQanAnalyzer(fmt.Sprintf("qan-analyzer-%s", mysqlInstances[1].Name))
 	f := mock.NewQanAnalyzerFactory(a1, a2)
 	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
 	m := qan.NewManager(s.logger, s.clock, s.im, s.mrmsMonitor, mockConnFactory, f)
 	t.Assert(m, NotNil)
-	mysqlInstances := s.im.GetMySQLInstances()
-	t.Assert(len(mysqlInstances), Equals, 2)
 	configs := make([]qan.Config, 0)
 	for i, analyzerType := range []string{"slowlog", "perfschema"} {
 		// We have two analyzerTypes and two MySQL instances in fixture, lets re-use the index
@@ -223,8 +226,8 @@ func (s *ManagerTestSuite) TestStartWithConfig(t *C) {
 		sort.Sort(ByUUID(argConfigs))
 		sort.Sort(ByUUID(configs))
 		t.Check(argConfigs, DeepEquals, configs)
-		t.Check(f.Args[0].Name, Equals, "qan-analyzer")
-		t.Check(f.Args[1].Name, Equals, "qan-analyzer")
+		t.Check(f.Args[0].Name, Equals, a1.String())
+		t.Check(f.Args[1].Name, Equals, a2.String())
 	}
 
 	// qan.Stop() stops the analyzer and leaves qan.conf on disk.
@@ -256,7 +259,7 @@ func (s *ManagerTestSuite) TestStartWithConfig(t *C) {
 func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	// Make a qan.Manager with mock factories.
 	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
-	a := mock.NewQanAnalyzer()
+	a := mock.NewQanAnalyzer("qan-analizer-1")
 	f := mock.NewQanAnalyzerFactory(a)
 	m := qan.NewManager(s.logger, s.clock, s.im, s.mrmsMonitor, mockConnFactory, f)
 	t.Assert(m, NotNil)
@@ -393,7 +396,7 @@ func (s *ManagerTestSuite) TestValidateConfig(t *C) {
 func (s *ManagerTestSuite) TestStartService(t *C) {
 	// Make and start a qan.Manager with mock factories, no analyzer yet.
 	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
-	a := mock.NewQanAnalyzer()
+	a := mock.NewQanAnalyzer("qan-analizer-1")
 	f := mock.NewQanAnalyzerFactory(a)
 	m := qan.NewManager(s.logger, s.clock, s.im, s.mrmsMonitor, mockConnFactory, f)
 	t.Assert(m, NotNil)
@@ -459,7 +462,7 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	// Try to start the same analyzer again. It results in an error because
 	// double tooling is not allowed.
 	reply = m.Handle(cmd)
-	t.Check(reply.Error, Equals, "qan-analyzer service is running")
+	t.Check(reply.Error, Equals, a.String()+" tool is running")
 
 	// Send a StopService cmd to stop the analyzer.
 	// todo-1.1: send Data with analyzer instance to stop.
@@ -493,7 +496,7 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 
 func (s *ManagerTestSuite) TestBadCmd(t *C) {
 	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
-	a := mock.NewQanAnalyzer()
+	a := mock.NewQanAnalyzer("qan-analizer-1")
 	f := mock.NewQanAnalyzerFactory(a)
 	m := qan.NewManager(s.logger, s.clock, s.im, s.mrmsMonitor, mockConnFactory, f)
 	t.Assert(m, NotNil)

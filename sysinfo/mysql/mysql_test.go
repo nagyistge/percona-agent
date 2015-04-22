@@ -64,7 +64,7 @@ func (s *TestSuite) SetUpSuite(t *C) {
 	}
 
 	s.logChan = make(chan *proto.LogEntry, 10)
-	s.logger = pct.NewLogger(s.logChan, mysql.SERVICE_NAME+"-manager-test")
+	s.logger = pct.NewLogger(s.logChan, mysql.TOOL_NAME+"-manager-test")
 
 	var err error
 	s.tmpDir, err = ioutil.TempDir("/tmp", "agent-test")

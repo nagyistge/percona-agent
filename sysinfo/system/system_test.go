@@ -50,7 +50,7 @@ var _ = Suite(&TestSuite{})
 
 func (s *TestSuite) SetUpSuite(t *C) {
 	s.logChan = make(chan *proto.LogEntry, 10)
-	s.logger = pct.NewLogger(s.logChan, system.SERVICE_NAME+"-manager-test")
+	s.logger = pct.NewLogger(s.logChan, system.TOOL_NAME+"-manager-test")
 
 	var err error
 	s.tmpDir, err = ioutil.TempDir("/tmp", "agent-test")

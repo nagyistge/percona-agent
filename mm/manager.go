@@ -93,7 +93,7 @@ func (m *Manager) Start() error {
 	//defer m.mux.Unlock()
 
 	if m.running {
-		return pct.ServiceIsRunningError{Service: "mm"}
+		return pct.ToolIsRunningError{Tool: "mm"}
 	}
 
 	// Start all metric monitors.

@@ -66,7 +66,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	}
 
 	s.logChan = make(chan *proto.LogEntry, 10)
-	s.logger = pct.NewLogger(s.logChan, query.SERVICE_NAME+"-explain-test")
+	s.logger = pct.NewLogger(s.logChan, query.TOOL_NAME+"-explain-test")
 
 	var err error
 	s.tmpDir, err = ioutil.TempDir("/tmp", "agent-test-")

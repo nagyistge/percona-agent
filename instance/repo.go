@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"sync"
 
 	"github.com/percona/cloud-protocol/proto/v2"
@@ -68,6 +69,22 @@ func NewRepo(logger *pct.Logger, configDir string, api pct.APIConnector) *Repo {
 		mux:           &sync.RWMutex{},
 	}
 	return m
+}
+
+/* To be able to do a lexicographically sort of proto.Instance slice by UUID */
+
+type ByUUID []proto.Instance
+
+func (s ByUUID) Len() int {
+	return len(s)
+}
+
+func (s ByUUID) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s ByUUID) Less(i, j int) bool {
+	return s[i].UUID < s[j].UUID
 }
 
 // Function used by all components to check if and instance is an OS one
@@ -295,7 +312,7 @@ func (r *Repo) get(uuid string) (proto.Instance, error) {
 	defer r.logger.Debug("get:return")
 
 	if !r.valid(uuid) {
-		return proto.Instance{}, pct.InvalidInstanceError{Id: uuid}
+		return proto.Instance{}, pct.InvalidInstanceError{UUID: uuid}
 	}
 
 	// We do full tree syncs, if we can't find an instance UUID download
@@ -321,6 +338,7 @@ func (r *Repo) valid(uuid string) bool {
 }
 
 // Returns a flat list of instances copies in the tree, notice that these are efectively the subtrees on each instance
+// The list will be lexicographically ordered by instance UUID
 func (r *Repo) List() []proto.Instance {
 	r.mux.Lock()
 	defer r.mux.Unlock()
@@ -333,6 +351,7 @@ func (r *Repo) List() []proto.Instance {
 		}
 		instances = append(instances, *instCopy)
 	}
+	sort.Sort(ByUUID(instances))
 	return instances
 }
 

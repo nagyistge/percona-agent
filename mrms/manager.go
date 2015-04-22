@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	SERVICE_NAME     = "mrms"
+	TOOL_NAME     = "mrms"
 	MONITOR_INTERVAL = 50 * time.Second
 )
 
@@ -44,30 +44,30 @@ func NewManager(logger *pct.Logger, monitor Monitor) *Manager {
 		logger:  logger,
 		monitor: monitor,
 		// --
-		status: pct.NewStatus([]string{SERVICE_NAME}),
+		status: pct.NewStatus([]string{TOOL_NAME}),
 	}
 	return m
 }
 
 func (m *Manager) Start() error {
-	m.status.Update(SERVICE_NAME, "Starting")
+	m.status.Update(TOOL_NAME, "Starting")
 	if err := m.monitor.Start(MONITOR_INTERVAL); err != nil {
-		m.logger.Warn("Failed to start %s: %s", SERVICE_NAME, err)
+		m.logger.Warn("Failed to start %s: %s", TOOL_NAME, err)
 		return err
 	}
 	m.logger.Info("Started")
-	m.status.Update(SERVICE_NAME, "Running")
+	m.status.Update(TOOL_NAME, "Running")
 	return nil
 }
 
 func (m *Manager) Stop() error {
-	m.status.Update(SERVICE_NAME, "Stopping")
+	m.status.Update(TOOL_NAME, "Stopping")
 	if err := m.monitor.Stop(); err != nil {
-		m.logger.Warn("Failed to stop %s: %s", SERVICE_NAME, err)
+		m.logger.Warn("Failed to stop %s: %s", TOOL_NAME, err)
 		return err
 	}
 	m.logger.Info("Stopped")
-	m.status.Update(SERVICE_NAME, "Stopped")
+	m.status.Update(TOOL_NAME, "Stopped")
 	return nil
 }
 
