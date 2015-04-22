@@ -392,7 +392,8 @@ func (m *Monitor) GetShowStatusMetrics(conn *sql.DB, c *mm.Collection) error {
 
 		metricValue, err := strconv.ParseFloat(statValue, 64)
 		if err != nil {
-			m.logger.Warn(fmt.Sprintf("%s: strconv.ParseFloat('%s', 64): %s", statName, statValue, err))
+			m.logger.Warn(fmt.Sprintf("Cannot convert '%s' value '%s' to float: %s", statName, statValue, err))
+			delete(m.config.Status, statName) // stop collecting it
 			continue
 		}
 
@@ -436,7 +437,7 @@ func (m *Monitor) GetInnoDBMetrics(conn *sql.DB, c *mm.Collection) error {
 		metricName := "mysql/innodb/" + strings.ToLower(statSubsystem) + "/" + strings.ToLower(statName)
 		metricValue, err := strconv.ParseFloat(statCount, 64)
 		if err != nil {
-			m.logger.Warn("strconv.ParseFloat('%s', 64): %s", statCount, err)
+			m.logger.Warn(fmt.Sprintf("Cannot convert '%s' value '%s' to float: %s", metricName, metricValue, err))
 			metricValue = 0.0
 		}
 		var metricType string
