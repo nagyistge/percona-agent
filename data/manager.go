@@ -32,7 +32,7 @@ type Manager struct {
 	logger   *pct.Logger
 	dataDir  string
 	trashDir string
-	OSUUID   string
+	hostName string
 	client   pct.WebsocketClient
 	// --
 	config  *Config
@@ -44,12 +44,12 @@ type Manager struct {
 	status  *pct.Status
 }
 
-func NewManager(logger *pct.Logger, dataDir, trashDir, OSUUID string, client pct.WebsocketClient) *Manager {
+func NewManager(logger *pct.Logger, dataDir, trashDir, hostName string, client pct.WebsocketClient) *Manager {
 	m := &Manager{
 		logger:   logger,
 		dataDir:  dataDir,
 		trashDir: trashDir,
-		OSUUID:   OSUUID,
+		hostName: hostName,
 		client:   client,
 		// --
 		status: pct.NewStatus([]string{"data"}),
@@ -104,7 +104,7 @@ func (m *Manager) Start() error {
 		pct.NewLogger(m.logger.LogChan(), "data-spooler"),
 		m.dataDir,
 		m.trashDir,
-		m.OSUUID,
+		m.hostName,
 	)
 	if err := spooler.Start(sz); err != nil {
 		return err

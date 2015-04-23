@@ -58,7 +58,7 @@ type DiskvSpooler struct {
 	logger   *pct.Logger
 	dataDir  string
 	trashDir string
-	OSUUID   string
+	hostName string
 	// --
 	sz           Serializer
 	dataChan     chan *proto.Data
@@ -74,12 +74,12 @@ type DiskvSpooler struct {
 	cancelChan   chan struct{}
 }
 
-func NewDiskvSpooler(logger *pct.Logger, dataDir, trashDir, OSUUID string) *DiskvSpooler {
+func NewDiskvSpooler(logger *pct.Logger, dataDir, trashDir, hostName string) *DiskvSpooler {
 	s := &DiskvSpooler{
 		logger:   logger,
 		dataDir:  dataDir,
 		trashDir: trashDir,
-		OSUUID:   OSUUID,
+		hostName: hostName,
 		// --
 		dataChan: make(chan *proto.Data, WRITE_BUFFER),
 		sync:     pct.NewSyncChan(),
@@ -198,7 +198,7 @@ func (s *DiskvSpooler) Write(tool string, data interface{}) error {
 	// Wrap data in proto.Data with metadata to allow API to handle it properly.
 	protoData := &proto.Data{
 		Created:         time.Now().UTC(),
-		OSUUID:          s.OSUUID,
+		Hostname:        s.hostName,
 		Tool:            tool,
 		ContentType:     "application/json",
 		ContentEncoding: s.sz.Encoding(),
