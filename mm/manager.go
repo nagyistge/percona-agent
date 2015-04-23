@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -80,6 +81,21 @@ func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager
 		mrm:         mrm,
 	}
 	return m
+}
+
+// For sorting proto.AgentConfig slices
+type ByUUID []proto.AgentConfig
+
+func (s ByUUID) Len() int {
+	return len(s)
+}
+
+func (s ByUUID) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s ByUUID) Less(i, j int) bool {
+	return s[i].UUID < s[j].UUID
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -294,7 +310,7 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 			errs = append(errs, err)
 			continue
 		}
-		// Just the monitor's ServiceInstance, aka ExternalService.
+		// Just the monitor's tool instance
 		mmConfig := &Config{}
 		if err := json.Unmarshal(bytes, mmConfig); err != nil {
 			errs = append(errs, err)
@@ -308,7 +324,8 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 		}
 		configs = append(configs, config)
 	}
-
+	// configs order is not stable, make it so by lexicographically ordering the configs slice by UUID
+	sort.Sort(ByUUID(configs))
 	return configs, errs
 }
 

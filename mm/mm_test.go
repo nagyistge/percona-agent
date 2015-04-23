@@ -871,38 +871,21 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	expectConfig := []proto.AgentConfig{
 		{
 			Tool:    "mm",
-			UUID:    "00000000000000000000000000000003",
-			Config:  string(mysqlData),
-			Running: true,
-		},
-		{
-			Tool:    "mm",
 			UUID:    "00000000000000000000000000000001",
 			Config:  string(systemData),
 			Running: true,
 		},
+		{
+			Tool:    "mm",
+			UUID:    "00000000000000000000000000000003",
+			Config:  string(mysqlData),
+			Running: true,
+		},
 	}
-	// Sort, slice order is not stable
-	sort.Sort(ByUUID(gotConfig))
-	sort.Sort(ByUUID(expectConfig))
 	if same, diff := IsDeeply(gotConfig, expectConfig); !same {
 		Dump(gotConfig)
 		t.Error(diff)
 	}
-}
-
-type ByUUID []proto.AgentConfig
-
-func (s ByUUID) Len() int {
-	return len(s)
-}
-
-func (s ByUUID) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
-}
-
-func (s ByUUID) Less(i, j int) bool {
-	return s[i].UUID < s[j].UUID
 }
 
 /////////////////////////////////////////////////////////////////////////////

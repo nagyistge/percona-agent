@@ -23,7 +23,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
 	. "github.com/go-test/test"
@@ -100,20 +99,6 @@ func (s *ManagerTestSuite) TearDownSuite(t *C) {
 	if err := os.RemoveAll(s.tmpDir); err != nil {
 		t.Error(err)
 	}
-}
-
-type ByUUID []qan.Config
-
-func (s ByUUID) Len() int {
-	return len(s)
-}
-
-func (s ByUUID) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
-}
-
-func (s ByUUID) Less(i, j int) bool {
-	return s[i].UUID < s[j].UUID
 }
 
 // --------------------------------------------------------------------------
@@ -223,8 +208,6 @@ func (s *ManagerTestSuite) TestStartWithConfig(t *C) {
 		t.Check(f.Args, HasLen, 2)
 
 		argConfigs := []qan.Config{f.Args[0].Config, f.Args[1].Config}
-		sort.Sort(ByUUID(argConfigs))
-		sort.Sort(ByUUID(configs))
 		t.Check(argConfigs, DeepEquals, configs)
 		t.Check(f.Args[0].Name, Equals, a1.String())
 		t.Check(f.Args[1].Name, Equals, a2.String())
