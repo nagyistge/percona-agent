@@ -40,6 +40,7 @@ var REVISION string = "0"
 var VERSION string = "1.1.0"
 var REL string = ""
 var MIN_SUPPORTED_MYSQL_VERSION = "5.1.0"
+var CLOUD_PROTOCOL_VERSION = "2.0"
 
 const (
 	CMD_QUEUE_SIZE    = 10

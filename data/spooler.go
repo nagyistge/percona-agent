@@ -197,12 +197,12 @@ func (s *DiskvSpooler) Write(tool string, data interface{}) error {
 
 	// Wrap data in proto.Data with metadata to allow API to handle it properly.
 	protoData := &proto.Data{
+		ProtocolVersion: agent.CLOUD_PROTOCOL_VERSION,
 		Created:         time.Now().UTC(),
 		Hostname:        s.hostName,
 		Tool:            tool,
 		ContentType:     "application/json",
 		ContentEncoding: s.sz.Encoding(),
-		AgentVersion:    agent.VERSION,
 		Data:            encodedData,
 	}
 
