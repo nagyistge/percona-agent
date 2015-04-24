@@ -4,7 +4,7 @@
 	[
 		{
 			"Pkg": "code.google.com/p/go.net",
-			"Rev": "c17ad62118ea511e1051721b429779fa40bddc74"
+			"Rev": "937a34c9de13c766c814510f76bca091dee06028"
 		},
 		{
 			"Pkg": "github.com/mewpkg/gopass",
@@ -12,7 +12,7 @@
 		},
 		{
 			"Pkg": "github.com/go-sql-driver/mysql",
-			"Rev": "0b000424e546f305e0bd47856d5fcb904c1a0eb4"
+			"Rev": "a197e5d40516f2e9f74dcee085a5f2d4604e94df"
 		},
 		{
 			"Pkg": "github.com/percona/cloud-protocol",
@@ -20,15 +20,15 @@
 		},
 		{
 			"Pkg": "github.com/percona/go-mysql",
-			"Rev": "bbb5030e6dbe065b0c34a924e024f4329c8ba750"
+			"Rev": "9664d65fe2a4c04da75d5a240b0459775ce87072"
 		},
 		{
 			"Pkg": "github.com/petar/GoLLRB",
 			"Rev": "53be0d36a84c2a886ca057d34b6aa4468df9ccb4"
 		},
 		{
-			"Pkg": "github.com/peterbourgon/diskv",
-			"Rev": "76403dd2469f77ad100a10d955a73592066a2660"
+			"Pkg": "github.com/percona/diskv",
+			"Rev": "0cf225ba947bc0cebf3cf579b6612260061fe3ea"
 		},
 		{
 			"Pkg": "gopkg.in/check.v1",

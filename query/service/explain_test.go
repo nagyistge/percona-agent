@@ -20,6 +20,12 @@ package service_test
 import (
 	"database/sql"
 	"encoding/json"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
 	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/mysql"
@@ -28,11 +34,6 @@ import (
 	"github.com/percona/percona-agent/query/service"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
-	"io/ioutil"
-	"os"
-	"path/filepath"
-	"testing"
-	"time"
 )
 
 // Hook up gocheck into the "go test" runner.
@@ -351,7 +352,7 @@ func (s *ManagerTestSuite) TestDMLToSelect(t *C) {
 	t.Assert(selQuery, Equals, `SELECT 1 FROM tabla join tabla2 on tabla.id = tabla2.tabla2_id`)
 
 	selQuery = e.DMLToSelect(`insert into tabla (f1, f2, f3) values (1,2,3)`)
-	t.Assert(selQuery, Equals, `SELECT * FROM tabla  WHERE f1="1" and f2="2" and f3="3"`)
+	t.Assert(selQuery, Equals, `SELECT * FROM tabla  WHERE f1=1 and f2=2 and f3=3`)
 
 	selQuery = e.DMLToSelect(`insert into tabla (f1, f2, f3) values (1,2)`)
 	t.Assert(selQuery, Equals, `SELECT * FROM tabla  LIMIT 1`)
