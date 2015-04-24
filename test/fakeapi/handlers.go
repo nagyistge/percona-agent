@@ -25,7 +25,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/jagregory/halgo"
 	"github.com/percona/cloud-protocol/proto/v2"
+	"github.com/percona/percona-agent/bin/percona-agent-installer/api"
 	"github.com/percona/percona-agent/mm"
 	"github.com/percona/percona-agent/mm/mysql"
 	"github.com/percona/percona-agent/mm/system"
@@ -91,10 +93,11 @@ func swapHTTPScheme(url, newScheme string) string {
 }
 
 // Appends handler for /intances.
-// maxAgents != 0 will return HTTP Forbidden status and X-Percona-Agent-Limit in case of an agent instance POST request
+// If maxAgents != 0 this method will return HTTP Forbidden and X-Percona-Agent-Limit header in case of an agent
+// instance POST request
 func (f *FakeApi) AppendInstances(treeInst *proto.Instance, postInsts []*InstanceStatus) {
-	// /instances will be queried more than once in case of POSTS, GET is idempotent.
-	// Handlers for URL can only be registered once, handler must handle all cases
+	// POST /instances will be sent more than once, handlers for URL can only be registered once, hence the need of
+	// a queue
 	f.Append("/instances", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
@@ -116,9 +119,10 @@ func (f *FakeApi) AppendInstances(treeInst *proto.Instance, postInsts []*Instanc
 			}
 
 			if len(postInsts) == 0 {
-				panic(errors.New("Tried to POST /instances but handler don't have UUIDs to return a valid Location"))
+				panic(errors.New("Tried to POST /instances but handler doesn't have queued instances to return a valid Location"))
 			}
 
+			// Dequeue one instance
 			instStatus := postInsts[0]
 			postInsts = postInsts[1:]
 
@@ -135,17 +139,7 @@ func (f *FakeApi) AppendInstances(treeInst *proto.Instance, postInsts []*Instanc
 				w.WriteHeader(instStatus.status)
 				return
 			}
-
 			w.Header().Set("Location", fmt.Sprintf("%s/instances/%s", f.URL(), newInst.UUID))
-			// URL metadata only for agent instances
-			if inst.Prefix == AGENT_INST_PREFIX {
-				ws_url := swapHTTPScheme(f.URL(), WS_SCHEME)
-				// Avoid using Set - it canonicalizes header
-				w.Header()["X-Percona-Agent-URL-Cmd"] = []string{fmt.Sprintf("%s/instances/%s/cmd", ws_url, newInst.UUID)}
-				w.Header()["X-Percona-Agent-URL-Data"] = []string{fmt.Sprintf("%s/instances/%s/data", ws_url, newInst.UUID)}
-				w.Header()["X-Percona-Agent-URL-Log"] = []string{fmt.Sprintf("%s/instances/%s/log", ws_url, newInst.UUID)}
-				w.Header()["X-Percona-Agent-URL-SystemTree"] = []string{fmt.Sprintf("%s/instances/%s?recursive=true", f.URL(), newInst.ParentUUID)}
-			}
 			w.WriteHeader(instStatus.status)
 		}
 
@@ -165,7 +159,19 @@ func (f *FakeApi) AppendInstancesUUID(inst *proto.Instance) {
 		switch r.Method {
 		case "GET":
 			w.WriteHeader(http.StatusOK)
-			data, _ := json.Marshal(inst)
+			selfURI := fmt.Sprintf("%s/instances/%s", f.URL(), inst.UUID)
+			// Build our HAL-ready instance (with self URI)
+			links := halgo.Links{}.Self(selfURI)
+			// Other links only for agent instances
+			if inst.Prefix == AGENT_INST_PREFIX {
+				ws_url := swapHTTPScheme(f.URL(), WS_SCHEME)
+				links = links.Link("cmd", "%s/instances/%s/cmd", ws_url, inst.UUID)
+				links = links.Link("data", "%s/instances/%s/data", ws_url, inst.UUID)
+				links = links.Link("log", "%s/instances/%s/log", ws_url, inst.UUID)
+				links = links.Link("system_tree", "%s/instances/%s?recursive=true", f.URL(), inst.ParentUUID)
+			}
+			newInstHAL := api.InstanceHAL{Links: links, Instance: *inst}
+			data, _ := json.Marshal(newInstHAL)
 			w.Write(data)
 		case "PUT":
 			body, err := ioutil.ReadAll(r.Body)

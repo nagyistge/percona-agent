@@ -48,20 +48,17 @@ func (a *Api) Init(hostname, apiKey string, headers map[string]string) (code int
 	return a.apiConnector.Init(hostname, apiKey, headers)
 }
 
-// CreateInstance will POST the instance and make sure the request was successful by GET-ing and returning the new
-// resource. Metadata associated with the resource will be returned as a string map of string maps, for now only
-// metadata for agent resources links are returned when provided by API.
-//
-// metadata["links"]["self"]        - URL of resource, present in all resources
-// metadata["links"]["data"]        - URL for data endpoint
-// metadata["links"]["log"]         - URL for log endpoint
-// metadata["links"]["cmd"]         - URL for command endpoint
-// metadata["links"]["system_tree"] - URL for obtaining System Tree of agent
-func (a *Api) CreateInstance(it *proto.Instance) (newIt *proto.Instance, metadata map[string]map[string]string, err error) {
-	metadata = make(map[string]map[string]string)
+// CreateInstance will POST the instance and if successful it will GET the newly created resource, parsing and
+// returning link metadata provided with the resource as a map[string]string.
+// links["self"]        - URL of resource, present in all resources
+// links["data"]        - URL of data endpoint
+// links["log"]         - URL of log endpoint
+// links["cmd"]         - URL of command endpoint
+// links["system_tree"] - URL of obtaining System Tree of agent
+func (a *Api) CreateInstance(it *proto.Instance) (newIt *proto.Instance, links map[string]string, err error) {
 	data, err := json.Marshal(it)
 	if err != nil {
-		return nil, metadata, err
+		return nil, nil, err
 	}
 	url := a.apiConnector.URL("/instances")
 	resp, _, err := a.apiConnector.Post(a.apiConnector.ApiKey(), url, data)
@@ -70,31 +67,31 @@ func (a *Api) CreateInstance(it *proto.Instance) (newIt *proto.Instance, metadat
 		log.Printf("err=%s\n", err)
 	}
 	if err != nil {
-		return nil, metadata, err
+		return nil, nil, err
 	}
 
 	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusConflict {
 		// agent was created or already exist - either is ok, continue
 	} else if resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-Percona-Agents-Limit") != "" {
-		return nil, metadata, fmt.Errorf(
+		return nil, nil, fmt.Errorf(
 			"Maximum number of %s agents exceeded.\n"+
 				"Go to https://cloud.percona.com/ and remove unused agents or contact Percona to increase limit.",
 			resp.Header.Get("X-Percona-Agents-Limit"),
 		)
 	} else if resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-Percona-OS-Limit") != "" {
-		return nil, metadata, fmt.Errorf(
+		return nil, nil, fmt.Errorf(
 			"Maximum number of %s OS instances exceeded.\n"+
 				"Go to https://cloud.percona.com/ and remove unused OS instances or contact Percona to increase limit.",
 			resp.Header.Get("X-Percona-OS-Limit"),
 		)
 	} else {
-		return nil, metadata, fmt.Errorf("Failed to create %s instance (status code %d)", it.Type, resp.StatusCode)
+		return nil, nil, fmt.Errorf("Failed to create %s instance (status code %d)", it.Type, resp.StatusCode)
 	}
 
 	// API returns URI of new resource in Location header
 	uri := resp.Header.Get("Location")
 	if uri == "" {
-		return nil, metadata, fmt.Errorf("API did not return location of new %s instance", it.Type)
+		return nil, nil, fmt.Errorf("API did not return location of new %s instance", it.Type)
 	}
 
 	if resp.StatusCode == http.StatusConflict {
@@ -104,34 +101,10 @@ func (a *Api) CreateInstance(it *proto.Instance) (newIt *proto.Instance, metadat
 			log.Printf("err=%s\n", err)
 		}
 		if err != nil {
-			return nil, metadata, err
+			return nil, nil, err
 		}
 		if resp.StatusCode != http.StatusOK {
-			return nil, metadata, fmt.Errorf("Failed to update %s instance (status code %d)", it.Type, resp.StatusCode)
-		}
-	}
-
-	// Collect metadata
-	metadata["links"] = make(map[string]string) // initialize links map
-	metadata["links"]["self"] = uri             //Location applies to all instances
-
-	// Get the rest of interesting metadata
-	// For now we only want some links associated with agent instances
-	for header, _ := range resp.Header {
-		url := resp.Header.Get(header)
-		if url == "" {
-			continue
-		}
-		// Headers are canonicalized
-		switch header {
-		case "X-Percona-Agent-Url-Cmd":
-			metadata["links"]["cmd"] = url
-		case "X-Percona-Agent-Url-Data":
-			metadata["links"]["data"] = url
-		case "X-Percona-Agent-Url-Log":
-			metadata["links"]["log"] = url
-		case "X-Percona-Agent-Url-Systemtree":
-			metadata["links"]["system_tree"] = url
+			return nil, nil, fmt.Errorf("Failed to update %s instance (status code %d)", it.Type, resp.StatusCode)
 		}
 	}
 
@@ -142,15 +115,30 @@ func (a *Api) CreateInstance(it *proto.Instance) (newIt *proto.Instance, metadat
 		log.Printf("err=%s\n", err)
 	}
 	if err != nil {
-		return nil, metadata, err
+		return nil, nil, err
 	}
 	if code != http.StatusOK {
-		return nil, metadata, fmt.Errorf("Failed to get new instance (status code %d)", code)
+		return nil, nil, fmt.Errorf("Failed to get new instance (status code %d)", code)
 	}
-	if err := json.Unmarshal(data, &newIt); err != nil {
-		return nil, metadata, fmt.Errorf("Failed to parse instance entity: %s", err)
+	var newInstHAL *InstanceHAL
+	if err := json.Unmarshal(data, &newInstHAL); err != nil {
+		return nil, nil, fmt.Errorf("Failed to parse instance entity: %s", err)
 	}
-	return newIt, metadata, nil
+
+	/*
+	* Collect links
+	 */
+	links = map[string]string{}
+	// Relationships that may appear in _links section of instance JSON
+	wantedLinks := []string{"self", "cmd", "data", "log", "system_tree"}
+	for _, rel := range wantedLinks {
+		if uri, err := newInstHAL.Links.Href(rel); err == nil {
+			links[rel] = uri
+		}
+	}
+
+	newIt = &newInstHAL.Instance
+	return newIt, links, nil
 }
 
 // Gets System Tree from API and deserializes it to proto.Instance

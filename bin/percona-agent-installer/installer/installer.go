@@ -411,13 +411,12 @@ func (i *Installer) InstallerCreateAgentWithInitialToolConfigs() (protoAgentInst
 	protoAgentInst.Name = i.osInstance.Name
 	protoAgentInst.Properties = map[string]string{"version": agent.VERSION}
 
-	protoAgentInst, metadata, err := i.api.CreateInstance(protoAgentInst)
+	protoAgentInst, links, err = i.api.CreateInstance(protoAgentInst)
 	if err != nil {
 		return nil, links, err
 	}
 
-	links, ok := metadata["links"]
-	if !ok {
+	if len(links) == 0 {
 		return nil, links, errors.New("No agent links provided by API")
 	}
 	requiredLinks := []string{"self", "cmd", "log", "data", "system_tree"}
