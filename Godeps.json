@@ -45,6 +45,10 @@
 		{
 			"Pkg": "github.com/jagregory/halgo",
 			"Rev": "d1d6fd6cbc6ff4df35f82b03bf93fdade591985d"
+		},
+		{
+			"Pkg": "github.com/jtacoma/uritemplates",
+			"Rev": "0a85813ecac22e3cbe916ab9480b33f2f4a06b2e",
 		}
 	]
 }
