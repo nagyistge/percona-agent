@@ -4,7 +4,7 @@
 	[
 		{
 			"Pkg": "code.google.com/p/go.net",
-			"Rev": "c17ad62118ea511e1051721b429779fa40bddc74"
+			"Rev": "937a34c9de13c766c814510f76bca091dee06028"
 		},
 		{
 			"Pkg": "github.com/mewpkg/gopass",
@@ -12,7 +12,7 @@
 		},
 		{
 			"Pkg": "github.com/go-sql-driver/mysql",
-			"Rev": "0b000424e546f305e0bd47856d5fcb904c1a0eb4"
+			"Rev": "a197e5d40516f2e9f74dcee085a5f2d4604e94df"
 		},
 		{
 			"Pkg": "github.com/percona/cloud-protocol",
