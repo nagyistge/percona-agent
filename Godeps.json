@@ -38,9 +38,13 @@
 			"Pkg": "github.com/go-test/test",
 			"Rev": "65f3771e91669a6e4251fafcc6d93ffe5e2ff03f"
 		},
-        {
-            "Pkg": "github.com/hashicorp/go-version",
-            "Rev": "bb92dddfa9792e738a631f04ada52858a139bcf7"
-        }
+        	{
+            		"Pkg": "github.com/hashicorp/go-version",
+            		"Rev": "bb92dddfa9792e738a631f04ada52858a139bcf7"
+        	},
+		{
+			"Pkg": "github.com/jagregory/halgo",
+			"Rev": "d1d6fd6cbc6ff4df35f82b03bf93fdade591985d"
+		}
 	]
 }
