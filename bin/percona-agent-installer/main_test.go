@@ -1029,6 +1029,67 @@ func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) { // Register required a
 	s.expectMysqlUserExists(t)
 }
 
+func (s *MainTestSuite) TestInstallWithFlagMysqlFalse(t *C) {
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusCreated, 0),
+	}
+	s.fakeApi.AppendInstances(nil, queueInstances) // GET instance first, POST instances UUIDs second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
+	s.fakeApi.AppendInstancesUUID(s.agent)
+	s.fakeApi.AppendSystemTree(s.osInstance)
+	s.fakeApi.AppendConfigsMmDefaultOS()
+	s.fakeApi.AppendConfigsQanDefault()
+
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+pct.Basedir.Path(),
+		"-api-host="+s.fakeApi.URL(),
+		"-api-key="+s.apiKey,
+		"-mysql=false", // We are testing this flag
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
+
+	t.Check(cmdTest.ReadLine(), Equals, "Not starting MySQL services (-start-mysql-services=false)\n")
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Assert(err, IsNil)
+
+	s.expectConfigs(
+		[]string{
+			"agent.conf",
+			"data.conf",
+			"log.conf",
+			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
+			"system-tree.json",
+		},
+		t,
+	)
+
+	s.expectDefaultAgentConfig(t)
+	s.expectDefaultDataConfig(t)
+	s.expectDefaultLogConfig(t)
+	s.expectDefaultMmOSConfig(t)
+
+	// Should NOT create percona-agent user with grants on *.* and performance_schema.*.
+	s.expectMysqlUserNotExists(t)
+}
+
 func (s *MainTestSuite) expectConfigs(expectedConfigs []string, t *C) {
 	gotConfigs := []string{}
 	fileinfos, err := ioutil.ReadDir(pct.Basedir.Dir("config"))
