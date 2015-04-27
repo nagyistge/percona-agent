@@ -72,18 +72,24 @@ func (a *Api) CreateInstance(it *proto.Instance) (newIt *proto.Instance, links m
 
 	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusConflict {
 		// agent was created or already exist - either is ok, continue
-	} else if resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-Percona-Agents-Limit") != "" {
-		return nil, nil, fmt.Errorf(
-			"Maximum number of %s agents exceeded.\n"+
+	} else if resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-Percona-Limit-Err") != "" {
+		var err error
+		switch it.Prefix {
+		case "agent":
+			err = fmt.Errorf("Maximum number of %s agents exceeded.\n"+
 				"Go to https://cloud.percona.com/ and remove unused agents or contact Percona to increase limit.",
-			resp.Header.Get("X-Percona-Agents-Limit"),
-		)
-	} else if resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-Percona-OS-Limit") != "" {
-		return nil, nil, fmt.Errorf(
-			"Maximum number of %s OS instances exceeded.\n"+
+				resp.Header.Get("X-Percona-Limit-Err"))
+		case "os":
+			err = fmt.Errorf("Maximum number of %s OS instances exceeded.\n"+
 				"Go to https://cloud.percona.com/ and remove unused OS instances or contact Percona to increase limit.",
-			resp.Header.Get("X-Percona-OS-Limit"),
-		)
+				resp.Header.Get("X-Percona-Limit-Err"))
+		default:
+			// This should never happen, but we must handle it
+			err = fmt.Errorf("Maximum number of %s %s instances exceeded.\n"+
+				"Go to https://cloud.percona.com/ and remove unused %s instances or contact Percona to increase limit.",
+				it.Type, resp.Header.Get("X-Percona-Limit-Err"))
+		}
+		return nil, nil, err
 	} else {
 		return nil, nil, fmt.Errorf("Failed to create %s instance (status code %d)", it.Type, resp.StatusCode)
 	}

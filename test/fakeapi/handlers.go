@@ -128,14 +128,8 @@ func (f *FakeApi) AppendInstances(treeInst *proto.Instance, postInsts []*Instanc
 
 			newInst := instStatus.instance
 
-			if inst.Prefix == AGENT_INST_PREFIX && instStatus.maxInstances != 0 {
-				w.Header().Set("X-Percona-Agents-Limit", fmt.Sprintf("%d", instStatus.maxInstances))
-				w.WriteHeader(instStatus.status)
-				return
-			}
-
-			if inst.Prefix == OS_INST_PREFIX && instStatus.maxInstances != 0 {
-				w.Header().Set("X-Percona-OS-Limit", fmt.Sprintf("%d", instStatus.maxInstances))
+			if instStatus.maxInstances != 0 {
+				w.Header().Set("X-Percona-Limit-Err", fmt.Sprintf("%d", instStatus.maxInstances))
 				w.WriteHeader(instStatus.status)
 				return
 			}
