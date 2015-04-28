@@ -257,8 +257,8 @@ func (r *Repo) treeToDisk(filepath string) error {
 // deleted or updated instances. If writeToDisk = true the tree will be
 // dumped to disk if update is successfull.
 func (r *Repo) UpdateSystemTree(tree proto.Instance, version uint, writeToDisk bool) error {
-	r.logger.Debug("UpdateTree:call")
-	defer r.logger.Debug("UpdateTree:return")
+	r.logger.Debug("UpdateSystemTree:call")
+	defer r.logger.Debug("UpdateSystemTree:return")
 	r.mux.Lock()
 	defer r.mux.Unlock()
 
