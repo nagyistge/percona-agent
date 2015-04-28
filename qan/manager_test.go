@@ -203,7 +203,98 @@ func (s *ManagerTestSuite) TestStartWithConfig(t *C) {
 
 	// Check the args passed by the manager to the analyzer factory.
 	if len(f.Args) == 0 {
-		t.Error("len(f.Args) == 0, expected 1")
+		t.Error("len(f.Args) == 0, expected 2")
+	} else {
+		t.Check(f.Args, HasLen, 2)
+
+		argConfigs := []qan.Config{f.Args[0].Config, f.Args[1].Config}
+		t.Check(argConfigs, DeepEquals, configs)
+		t.Check(f.Args[0].Name, Equals, a1.String())
+		t.Check(f.Args[1].Name, Equals, a2.String())
+	}
+
+	// qan.Stop() stops the analyzer and leaves qan.conf on disk.
+	err = m.Stop()
+	t.Assert(err, IsNil)
+
+	// Wait until qan.Stop() calls analyzer.Stop().
+	if !test.WaitState(a1.StopChan) {
+		t.Fatal("Timeout waiting for <-a.StopChan")
+	}
+
+	// Wait until qan.Stop() calls analyzer.Stop().
+	if !test.WaitState(a2.StopChan) {
+		t.Fatal("Timeout waiting for <-a.StopChan")
+	}
+
+	// qan.conf still exists after qan.Stop().
+	for _, mysqlInstance := range s.im.GetMySQLInstances() {
+		t.Check(test.FileExists(pct.Basedir.InstanceConfigFile("qan", mysqlInstance.UUID)), Equals, true)
+	}
+
+	// The analyzer is no longer reported in the status because it was stopped
+	// and removed when the manager was stopped.
+	status = m.Status()
+	t.Check(status["qan"], Equals, "Stopped")
+
+}
+
+func (s *ManagerTestSuite) TestStart2RemoteQAN(t *C) {
+	// Get MYySQL instances
+	mysqlInstances := s.im.GetMySQLInstances()
+	t.Assert(len(mysqlInstances), Equals, 2)
+
+	// Make a qan.Manager with mock factories.
+	a1 := mock.NewQanAnalyzer(fmt.Sprintf("qan-analyzer-%s", mysqlInstances[0].Name))
+	a2 := mock.NewQanAnalyzer(fmt.Sprintf("qan-analyzer-%s", mysqlInstances[1].Name))
+	f := mock.NewQanAnalyzerFactory(a1, a2)
+	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
+	m := qan.NewManager(s.logger, s.clock, s.im, s.mrmsMonitor, mockConnFactory, f)
+	t.Assert(m, NotNil)
+	configs := make([]qan.Config, 0)
+	for _, mysqlInstance := range mysqlInstances {
+		// Write a realistic qan.conf config to disk.
+		config := qan.Config{
+			UUID:          mysqlInstance.UUID,
+			CollectFrom:   "perfschema",
+			Interval:      300,
+			MaxWorkers:    1,
+			WorkerRunTime: 600,
+			Start: []mysql.Query{
+				mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+				mysql.Query{Set: "SET GLOBAL long_query_time=0.456"},
+				mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+			},
+			Stop: []mysql.Query{
+				mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+				mysql.Query{Set: "SET GLOBAL long_query_time=10"},
+			},
+		}
+		err := pct.Basedir.WriteInstanceConfig("qan", mysqlInstance.UUID, &config)
+		t.Assert(err, IsNil)
+		configs = append(configs, config)
+	}
+	// qan.Start() reads qan configs from disk and starts an analyzer for each one.
+	err := m.Start()
+	t.Check(err, IsNil)
+
+	// Wait until qan.Start() calls analyzer.Start().
+	if !test.WaitState(a1.StartChan) {
+		t.Fatal("Timeout waiting for <-a1.StartChan")
+	}
+	if !test.WaitState(a2.StartChan) {
+		t.Fatal("Timeout waiting for <-a2.StartChan")
+	}
+
+	// After starting, the manager's status should be Running and the analyzer's
+	// status should be reported too.
+	status := m.Status()
+	t.Check(status["qan"], Equals, "Running")
+	t.Check(status["qan-analyzer"], Equals, "ok")
+
+	// Check the args passed by the manager to the analyzer factory.
+	if len(f.Args) == 0 {
+		t.Error("len(f.Args) == 0, expected 2")
 	} else {
 		t.Check(f.Args, HasLen, 2)
 
