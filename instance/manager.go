@@ -124,6 +124,7 @@ func (m *Manager) addMRMInstance(inst proto.Instance) error {
 	m.status.Update("instance", "Getting info "+safeDSN)
 	if err := GetMySQLInfo(inst); err != nil {
 		m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
+		return err
 	}
 	m.status.Update("instance", "Updating info "+safeDSN)
 	err = m.pushInstanceInfo(inst)
