@@ -58,7 +58,7 @@ type DiskvSpooler struct {
 	logger   *pct.Logger
 	dataDir  string
 	trashDir string
-	hostName string
+	hostname string
 	// --
 	sz           Serializer
 	dataChan     chan *proto.Data
@@ -74,12 +74,12 @@ type DiskvSpooler struct {
 	cancelChan   chan struct{}
 }
 
-func NewDiskvSpooler(logger *pct.Logger, dataDir, trashDir, hostName string) *DiskvSpooler {
+func NewDiskvSpooler(logger *pct.Logger, dataDir, trashDir, hostname string) *DiskvSpooler {
 	s := &DiskvSpooler{
 		logger:   logger,
 		dataDir:  dataDir,
 		trashDir: trashDir,
-		hostName: hostName,
+		hostname: hostname,
 		// --
 		dataChan: make(chan *proto.Data, WRITE_BUFFER),
 		sync:     pct.NewSyncChan(),
@@ -199,7 +199,7 @@ func (s *DiskvSpooler) Write(tool string, data interface{}) error {
 	protoData := &proto.Data{
 		ProtocolVersion: agent.CLOUD_PROTOCOL_VERSION,
 		Created:         time.Now().UTC(),
-		Hostname:        s.hostName,
+		Hostname:        s.hostname,
 		Tool:            tool,
 		ContentType:     "application/json",
 		ContentEncoding: s.sz.Encoding(),
