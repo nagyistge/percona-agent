@@ -106,7 +106,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	case "mysql":
 		return m.handleMySQLQuery(cmd, si)
 	default:
-		return cmd.Reply(nil, pct.UnknownCmdError{si.Service})
+		return cmd.Reply(nil, pct.UnknownServiceInstanceError{si.Service, si.Id})
 	}
 }
 
