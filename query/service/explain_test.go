@@ -76,14 +76,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 		t.Fatal(err)
 	}
 	s.configDir = pct.Basedir.Dir("config")
-
-	links := map[string]string{
-		"instances":   "http://localhost/instances",
-		"system_tree": "http://localhost/systemtree",
-	}
-
-	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
-	s.rir = instance.NewRepo(s.logger, s.configDir, s.api)
+	s.rir = instance.NewRepo(s.logger, s.configDir)
 	t.Assert(s.rir, NotNil)
 
 	// Load test data to set correct DSN for MySQL instance

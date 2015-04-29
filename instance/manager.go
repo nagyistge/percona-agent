@@ -46,9 +46,8 @@ type Manager struct {
 	agentConfig    *agent.Config
 }
 
-func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm mrms.Monitor, systemTreeURL string) *Manager {
-	repo := NewRepo(pct.NewLogger(logger.LogChan(), "instance-repo"), configDir, api)
-	repo.SetSystemTreeURL(systemTreeURL)
+func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm mrms.Monitor) *Manager {
+	repo := NewRepo(pct.NewLogger(logger.LogChan(), "instance-repo"), configDir)
 	m := &Manager{
 		logger:    logger,
 		configDir: configDir,
@@ -70,9 +69,10 @@ func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm 
 // @goroutine[0]
 func (m *Manager) Start() error {
 	m.status.Update("instance", "Starting")
-	if err := m.repo.Init(); err != nil {
+	if err := m.repo.Init(); err != nil && err != pct.ErrNoSystemTree {
 		return err
 	}
+
 	m.logger.Info("Started")
 	m.status.Update("instance", "Running")
 
@@ -118,6 +118,8 @@ func (m *Manager) addMRMInstance(inst proto.Instance) error {
 	if err != nil {
 		return err
 	}
+	// We need to store the channel because we need to provide it on the call to the removal of the DSN from MRM
+	// This needs to be addressed later on MRM manager.
 	m.mrmChans[inst.DSN] = ch
 
 	safeDSN := mysql.HideDSNPassword(inst.DSN)
@@ -148,6 +150,7 @@ func (m *Manager) mrmAddMySQL(added []proto.Instance) {
 func (m *Manager) mrmDeleteMySQL(deleted []proto.Instance) {
 	for _, dltIt := range deleted {
 		m.mrm.Remove(dltIt.DSN, m.mrmChans[dltIt.DSN])
+		delete(m.mrmChans, dltIt.DSN)
 	}
 }
 
@@ -164,9 +167,9 @@ func (m *Manager) getInstances(uuids []string) []proto.Instance {
 	for _, uuid := range uuids {
 		it, err := m.repo.Get(uuid)
 		if err != nil {
-			// This should never happen, this reflects a bug in the API code that builds the proto.SystemTreeSync document with
-			// instances UUIDs in either added, deleted or updated slices that are not present in the tree.
-			// Log the error and keep going, we need to fulfill as much operations as possible.
+			// This should never happen, this reflects a bug in the API code that builds the proto.SystemTreeSync
+			// document with instances UUIDs in either added, deleted or updated slices that are not present in the
+			// tree. Log the error and keep going, we need to fulfill as much operations as possible.
 			m.logger.Error(fmt.Sprintf("Could not find UUID '%s' in local registry", uuid))
 			continue
 		}
@@ -186,7 +189,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		if err := json.Unmarshal(cmd.Data, &sync); err != nil {
 			return cmd.Reply(nil, err)
 		}
-		err := m.repo.UpdateSystemTree(sync.Tree, sync.Version, true) // true = write to disk
+		err := m.repo.UpdateSystemTree(sync.Tree, sync.Version)
 		if err != nil {
 			return cmd.Reply(nil, err)
 		}
@@ -198,13 +201,13 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		m.mrmUpdateMySQL(onlyMySQLInsts(m.getInstances(sync.Updated)))
 		return cmd.Reply(nil, nil)
 	case "GetSystemTree":
-		// GetTree will return the tree plus its version in a proto.proto.SystemTreeSync
-		sync := proto.SystemTreeSync{}
+		// GetTree will return the tree plus its version in a proto.SystemTreeSync
 		tree, err := m.repo.GetSystemTree()
 		if err != nil {
 			return cmd.Reply(nil, err)
 		}
 		version := m.repo.GetTreeVersion()
+		sync := proto.SystemTreeSync{}
 		sync.Tree = tree
 		sync.Version = version
 		return cmd.Reply(sync, nil)

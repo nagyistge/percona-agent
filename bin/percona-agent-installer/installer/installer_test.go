@@ -50,7 +50,7 @@ func (i *InstallerTestSuite) TestIsSupportedMySQLVersion(t *C) {
 	api := api.New(apiConnector, false)
 	logChan := make(chan *proto.LogEntry, 100)
 	logger := pct.NewLogger(logChan, "instance-repo")
-	instanceRepo := instance.NewRepo(logger, pct.Basedir.Dir("config"), apiConnector)
+	instanceRepo := instance.NewRepo(logger, pct.Basedir.Dir("config"))
 	terminal := term.NewTerminal(os.Stdin, false, true)
 	inst, err := installer.NewInstaller(terminal, "", api, instanceRepo, agentConfig, flags)
 	t.Assert(err, IsNil)

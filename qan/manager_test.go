@@ -73,11 +73,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 		t.Fatal(err)
 	}
 	s.configDir = pct.Basedir.Dir("config")
-
-	links := map[string]string{}
-	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
-
-	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "manager-test"), s.configDir, s.api)
+	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "manager-test"), s.configDir)
 	err = test.CopyFile(test.RootDir+"/instance/system-tree-1.json", filepath.Join(s.configDir, "system-tree.json"))
 	t.Assert(err, IsNil)
 	err = s.im.Init()

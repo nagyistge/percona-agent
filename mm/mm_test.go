@@ -514,7 +514,6 @@ type ManagerTestSuite struct {
 	mysqlMonitor  *mock.MmMonitor
 	systemMonitor *mock.MmMonitor
 	factory       *mock.MmMonitorFactory
-	api           *mock.API
 }
 
 var _ = Suite(&ManagerTestSuite{})
@@ -547,13 +546,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	err = test.CopyFile(test.RootDir+"/instance/system-tree-1.json", systemTreeFile)
 	t.Assert(err, IsNil)
 
-	links := map[string]string{
-		"agent":       "http://localhost/agent",
-		"instances":   "http://localhost/instances",
-		"system_tree": "http://localhost/systemtree",
-	}
-	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
-	s.im = instance.NewRepo(s.logger, s.configDir, s.api)
+	s.im = instance.NewRepo(s.logger, s.configDir)
 	t.Assert(s.im, NotNil)
 	err = s.im.Init()
 	t.Assert(err, IsNil)

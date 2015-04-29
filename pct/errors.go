@@ -18,6 +18,7 @@
 package pct
 
 import (
+	"errors"
 	"fmt"
 )
 
@@ -145,3 +146,7 @@ type InvalidInstanceError struct {
 func (e InvalidInstanceError) Error() string {
 	return fmt.Sprintf("Invalid instance: %s", e.UUID)
 }
+
+// Error variables
+////////////////////////////////////////////////////////////////////////////
+var ErrNoSystemTree error = errors.New("No local system tree file")

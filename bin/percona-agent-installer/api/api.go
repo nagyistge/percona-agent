@@ -54,7 +54,6 @@ func (a *Api) Init(hostname, apiKey string, headers map[string]string) (code int
 // links["data"]        - URL of data endpoint
 // links["log"]         - URL of log endpoint
 // links["cmd"]         - URL of command endpoint
-// links["system_tree"] - URL of obtaining System Tree of agent
 func (a *Api) CreateInstance(it *proto.Instance) (newIt *proto.Instance, links map[string]string, err error) {
 	data, err := json.Marshal(it)
 	if err != nil {
@@ -126,7 +125,7 @@ func (a *Api) CreateInstance(it *proto.Instance) (newIt *proto.Instance, links m
 	if code != http.StatusOK {
 		return nil, nil, fmt.Errorf("Failed to get new instance (status code %d)", code)
 	}
-	var newInstHAL *InstanceHAL
+	var newInstHAL *pct.InstanceHAL
 	if err := json.Unmarshal(data, &newInstHAL); err != nil {
 		return nil, nil, fmt.Errorf("Failed to parse instance entity: %s", err)
 	}
@@ -135,8 +134,7 @@ func (a *Api) CreateInstance(it *proto.Instance) (newIt *proto.Instance, links m
 	* Collect links
 	 */
 	links = map[string]string{}
-	// Relationships that may appear in _links section of instance JSON
-	wantedLinks := []string{"self", "cmd", "data", "log", "system_tree"}
+	wantedLinks := []string{"self", "cmd", "data", "log"} // links that may appear in _links section of instance JSON
 	for _, rel := range wantedLinks {
 		if uri, err := newInstHAL.Links.Href(rel); err == nil {
 			links[rel] = uri
@@ -145,27 +143,6 @@ func (a *Api) CreateInstance(it *proto.Instance) (newIt *proto.Instance, links m
 
 	newIt = &newInstHAL.Instance
 	return newIt, links, nil
-}
-
-// Gets System Tree from API and deserializes it to proto.Instance
-func (a *Api) GetSystemTree(systemTreeURL string) (it *proto.Instance, err error) {
-	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), systemTreeURL)
-	if a.debug {
-		log.Printf("code=%#d\n", code)
-		log.Printf("err=%s\n", err)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	if code != http.StatusOK {
-		return nil, fmt.Errorf("Failed to get System Tree via API (status code %d)", code)
-	}
-	if err := json.Unmarshal(data, &it); err != nil {
-		return nil, err
-	}
-
-	return it, nil
 }
 
 // Gets the default OS MM config from API

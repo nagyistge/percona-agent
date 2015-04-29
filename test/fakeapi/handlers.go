@@ -27,7 +27,6 @@ import (
 
 	"github.com/jagregory/halgo"
 	"github.com/percona/cloud-protocol/proto/v2"
-	"github.com/percona/percona-agent/bin/percona-agent-installer/api"
 	"github.com/percona/percona-agent/mm"
 	"github.com/percona/percona-agent/mm/mysql"
 	"github.com/percona/percona-agent/mm/system"
@@ -162,7 +161,6 @@ func (f *FakeApi) AppendInstancesUUID(inst *proto.Instance) {
 				links = links.Link("cmd", "%s/instances/%s/cmd", ws_url, inst.UUID)
 				links = links.Link("data", "%s/instances/%s/data", ws_url, inst.UUID)
 				links = links.Link("log", "%s/instances/%s/log", ws_url, inst.UUID)
-				links = links.Link("system_tree", "%s/instances/%s?recursive=true", f.URL(), inst.ParentUUID)
 			}
 			newInstHAL := api.InstanceHAL{Links: links, Instance: *inst}
 			data, _ := json.Marshal(newInstHAL)

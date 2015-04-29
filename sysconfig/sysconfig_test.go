@@ -88,13 +88,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	err = test.CopyFile(test.RootDir+"/instance/system-tree-1.json", systemTreeFile)
 	t.Assert(err, IsNil)
 
-	links := map[string]string{
-		"agent":       "http://localhost/agent",
-		"instances":   "http://localhost/instances",
-		"system_tree": "http://localhost/systemtree",
-	}
-	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
-	s.ir = instance.NewRepo(s.logger, s.configDir, s.api)
+	s.ir = instance.NewRepo(s.logger, s.configDir)
 	t.Assert(s.ir, NotNil)
 	err = s.ir.Init()
 	t.Assert(err, IsNil)

@@ -160,7 +160,7 @@ func main() {
 	api := api.New(apiConnector, flagDebug)
 	logChan := make(chan *proto.LogEntry, 100)
 	logger := pct.NewLogger(logChan, "instance-repo")
-	instanceRepo := instance.NewRepo(logger, pct.Basedir.Dir("config"), apiConnector)
+	instanceRepo := instance.NewRepo(logger, pct.Basedir.Dir("config"))
 	terminal := term.NewTerminal(os.Stdin, flagInteractive, flagDebug)
 	agentInstaller, err := installer.NewInstaller(terminal, flagBasedir, api, instanceRepo, agentConfig, flags)
 	if err != nil {

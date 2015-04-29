@@ -40,11 +40,11 @@ import (
 func Test(t *testing.T) { TestingT(t) }
 
 type RepoTestSuite struct {
-	tmpDir         string
-	logChan        chan *proto.LogEntry
-	logger         *pct.Logger
-	configDir      string
-	api            *mock.API
+	tmpDir    string
+	logChan   chan *proto.LogEntry
+	logger    *pct.Logger
+	configDir string
+	//api            *mock.API
 	systemTree     proto.Instance
 	systemTreeFile string
 	ir             *instance.Repo
@@ -74,9 +74,9 @@ func (s *RepoTestSuite) SetUpTest(t *C) {
 		}
 	}
 
-	links := map[string]string{}
-	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
-	s.ir = instance.NewRepo(s.logger, s.configDir, s.api)
+	//links := map[string]string{}
+	//s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
+	s.ir = instance.NewRepo(s.logger, s.configDir)
 	t.Assert(s.ir, NotNil)
 
 	s.systemTreeFile = filepath.Join(s.configDir, instance.SYSTEM_TREE_FILE)
@@ -113,35 +113,13 @@ func (s *RepoTestSuite) TestInit(t *C) {
 	t.Assert(len(s.ir.List()), Equals, 7)
 }
 
-func (s *RepoTestSuite) TestInitDownload(t *C) {
-	bin, err := ioutil.ReadFile(s.systemTreeFile)
-	t.Assert(err, IsNil)
-	s.api.GetData = [][]byte{bin}
-	s.api.GetCode = []int{http.StatusOK}
-
-	// Remove our local test config file, so Init will download it and place it there
-	err = os.Remove(s.systemTreeFile)
+func (s *RepoTestSuite) TestInitNoSystemTreeFile(t *C) {
+	// Remove our local test system tree file so Init will start without it
+	err := os.Remove(s.systemTreeFile)
 	t.Assert(err, IsNil)
 
-	s.ir.SetSystemTreeURL("http://some-fake-system-tree-url")
 	err = s.ir.Init()
-	t.Assert(err, IsNil)
-
-	t.Assert(pct.FileExists(s.systemTreeFile), Equals, true)
-	downloadedFile, err := ioutil.ReadFile(s.systemTreeFile)
-	t.Assert(err, IsNil)
-
-	var original, saved *proto.Instance
-	err = json.Unmarshal(bin, &original)
-	t.Assert(err, IsNil)
-	err = json.Unmarshal(downloadedFile, &saved)
-	t.Assert(err, IsNil)
-
-	if same, diff := IsDeeply(original, saved); !same {
-		Dump(original)
-		Dump(saved)
-		t.Error(diff)
-	}
+	t.Assert(err, Equals, pct.ErrNoSystemTree)
 }
 
 func (s *RepoTestSuite) TestUpdateTreeWrongRoot(t *C) {
@@ -159,7 +137,7 @@ func (s *RepoTestSuite) TestUpdateTreeWrongRoot(t *C) {
 	tree = tree.Subsystems[0]
 	var treeVersion uint = 2
 
-	err = s.ir.UpdateSystemTree(tree, treeVersion, true)
+	err = s.ir.UpdateSystemTree(tree, treeVersion)
 	t.Assert(err, NotNil)
 
 	// Check if saved instance config was not modified
@@ -200,7 +178,7 @@ func (s *RepoTestSuite) TestUpdateTree(t *C) {
 	tree.Subsystems = append(tree.Subsystems, *mysqlIt)
 
 	var treeVersion uint = 2
-	err = s.ir.UpdateSystemTree(tree, treeVersion, true)
+	err = s.ir.UpdateSystemTree(tree, treeVersion)
 	t.Assert(err, IsNil)
 
 	// Check if saved file has the same modified tree structure
@@ -246,8 +224,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	s.logger = pct.NewLogger(s.logChan, "pct-it-test")
 
 	links := map[string]string{
-		"system_tree": "http://localhost/systemtree",
-		"instances":   "http://localhost/instances",
+		"instances": "http://localhost/instances",
 	}
 	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
 }
@@ -313,7 +290,7 @@ func (s *ManagerTestSuite) TestHandleGetInfoMySQL(t *C) {
 
 	// Create an instance manager.
 	mrm := mock.NewMrmsMonitor()
-	m := instance.NewManager(s.logger, s.configDir, s.api, mrm, "http://some-fake-system-tree-url")
+	m := instance.NewManager(s.logger, s.configDir, s.api, mrm)
 	t.Assert(m, NotNil)
 
 	err = m.Start()
@@ -357,7 +334,7 @@ func (s *ManagerTestSuite) TestHandleGetInfoMySQL(t *C) {
 func (s *ManagerTestSuite) TestHandleUpdate(t *C) {
 	// Create an instance manager.
 	mrm := mock.NewMrmsMonitor()
-	m := instance.NewManager(s.logger, s.configDir, s.api, mrm, "http://some-fake-system-tree-url")
+	m := instance.NewManager(s.logger, s.configDir, s.api, mrm)
 	t.Assert(m, NotNil)
 
 	// New OS instance
@@ -428,7 +405,7 @@ func (s *ManagerTestSuite) TestHandleUpdate(t *C) {
 func (s *ManagerTestSuite) TestHandleUpdateNoOS(t *C) {
 	// Create an instance manager.
 	mrm := mock.NewMrmsMonitor()
-	m := instance.NewManager(s.logger, s.configDir, s.api, mrm, "http://some-fake-system-tree-url")
+	m := instance.NewManager(s.logger, s.configDir, s.api, mrm)
 	t.Assert(m, NotNil)
 
 	mysqlIt := proto.Instance{}
@@ -467,7 +444,7 @@ func (s *ManagerTestSuite) TestGetTree(t *C) {
 
 	// Create an instance manager.
 	mrm := mock.NewMrmsMonitor()
-	m := instance.NewManager(s.logger, s.configDir, s.api, mrm, "http://some-fake-system-tree-url")
+	m := instance.NewManager(s.logger, s.configDir, s.api, mrm)
 	t.Assert(m, NotNil)
 	err = m.Start()
 	t.Assert(err, IsNil)

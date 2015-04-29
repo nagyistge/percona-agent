@@ -24,7 +24,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"net/http"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -35,14 +34,12 @@ import (
 )
 
 type Repo struct {
-	logger        *pct.Logger
-	configDir     string
-	api           pct.APIConnector
-	it            map[string]*proto.Instance
-	tree          *proto.Instance
-	treeVersion   uint
-	systemTreeURL string
-	mux           *sync.RWMutex
+	logger      *pct.Logger
+	configDir   string
+	it          map[string]*proto.Instance
+	tree        *proto.Instance
+	treeVersion uint
+	mux         *sync.RWMutex
 }
 
 const (
@@ -57,16 +54,14 @@ const (
 var UUID_RE = regexp.MustCompile("^[0-9A-Fa-f]{32}$")
 
 // Creates a new instance repository and returns a pointer to it
-func NewRepo(logger *pct.Logger, configDir string, api pct.APIConnector) *Repo {
+func NewRepo(logger *pct.Logger, configDir string) *Repo {
 	m := &Repo{
 		logger:    logger,
 		configDir: configDir,
-		api:       api,
 		// --
-		it:            make(map[string]*proto.Instance),
-		tree:          nil,
-		systemTreeURL: "",
-		mux:           &sync.RWMutex{},
+		it:   make(map[string]*proto.Instance),
+		tree: nil,
+		mux:  &sync.RWMutex{},
 	}
 	return m
 }
@@ -97,6 +92,7 @@ func IsMySQLInstance(it proto.Instance) bool {
 	return it.Prefix == MYSQL_PREFIX
 }
 
+// Returns a new slice containing only the MySQL instances present in the slice parameter
 func onlyMySQLInsts(slice []proto.Instance) []proto.Instance {
 	var onlyMySQL []proto.Instance
 	for _, it := range slice {
@@ -107,11 +103,13 @@ func onlyMySQLInsts(slice []proto.Instance) []proto.Instance {
 	return onlyMySQL
 }
 
-func (r *Repo) configFilePath() string {
+func (r *Repo) systemTreeFilePath() string {
 	return filepath.Join(r.configDir, SYSTEM_TREE_FILE)
 }
 
-func (r *Repo) loadConfig(data []byte) error {
+func (r *Repo) loadSystemTree(data []byte) error {
+	r.logger.Debug("loadSystemTree:call")
+	defer r.logger.Debug("loadSystemTree:return")
 	var newTree *proto.Instance
 	if err := json.Unmarshal(data, &newTree); err != nil {
 		return errors.New("instance.Repo:json.Unmarshal:" + err.Error())
@@ -120,25 +118,10 @@ func (r *Repo) loadConfig(data []byte) error {
 	return r.updateInstanceIndex()
 }
 
-// Downloads and returns the system tree data from API.
-func (r *Repo) downloadInstances() (data []byte, err error) {
-	data = make([]byte, 0)
-	r.logger.Info("GET", r.systemTreeURL)
-	code, data, err := r.api.Get(r.api.ApiKey(), r.systemTreeURL)
-	if err != nil {
-		return data, err
-	}
-	if code != http.StatusOK {
-		return data, fmt.Errorf("Failed to get system tree, API returned HTTP status code %d", code)
-	}
-	if data == nil {
-		return data, errors.New("API returned an empty system tree data")
-	}
-	return data, nil
-}
-
 // Updates the local instance UUID index
 func (r *Repo) updateInstanceIndex() error {
+	r.logger.Debug("updateInstanceIndex:call")
+	defer r.logger.Debug("updateInstanceIndex:return")
 	if r.tree != nil {
 		// Lets forget about our former index, parse the current tree
 		r.it = make(map[string]*proto.Instance)
@@ -173,48 +156,31 @@ func (r *Repo) updateInstanceIndex() error {
 	}
 }
 
-func (r *Repo) SetSystemTreeURL(u string) {
-	// Not all users of this repo will have the System Tree URL, this method is for the ones that do.
+// Initializes the instance repository by reading system tree from local file
+func (r *Repo) Init() (err error) {
+	r.logger.Debug("Init:call")
+	defer r.logger.Debug("Init:return")
 	r.mux.Lock()
 	defer r.mux.Unlock()
-	r.systemTreeURL = u
-}
-
-// Initializes the instance repository by reading system tree from local file and if not found pulling it from API.
-// System Tree URL must be set using SetSystemTreeURL prior calling Init if the user expects the repo to download it.
-func (r *Repo) Init() error {
-	r.mux.Lock()
-	defer r.mux.Unlock()
-	file := r.configFilePath()
+	file := r.systemTreeFilePath()
 	var data []byte
-	var err error
+
 	if !pct.FileExists(file) {
-		r.logger.Info(fmt.Sprintf("System tree file (%s) does not exist, downloading", file))
-		data, err = r.downloadInstances()
-		if err != nil {
-			r.logger.Error(err)
-			return err
-		}
-	} else {
-		r.logger.Debug("Reading " + file)
-		data, err = ioutil.ReadFile(file)
-		if err != nil {
-			r.logger.Error("Could not read system tree file: " + file)
-			return err
-		}
+		r.logger.Error(fmt.Sprintf("System tree file (%s) does not exist", file))
+		return pct.ErrNoSystemTree
 	}
 
-	r.logger.Debug("Loading system tree data")
-	if err := r.loadConfig(data); err != nil {
+	r.logger.Debug("Reading " + file)
+	data, err = ioutil.ReadFile(file)
+	if err != nil {
+		r.logger.Error("Could not read system tree file: " + file)
+		return err
+	}
+
+	if err = r.loadSystemTree(data); err != nil {
 		r.logger.Error(fmt.Sprintf("Error loading instances config file: %v", err))
 		return err
 	}
-	r.logger.Debug("Saving system tree data to file")
-	if err := r.treeToDisk(file); err != nil {
-		r.logger.Error(fmt.Sprintf("Error saving system tree to file: %v", err))
-		return err
-	}
-	r.logger.Info("Loaded " + file)
 	return nil
 }
 
@@ -254,17 +220,16 @@ func (r *Repo) treeToDisk(filepath string) error {
 
 // Substitute local repo instances with provided tree parameter.
 // The method will populate the provided proto.Instance slices with added,
-// deleted or updated instances. If writeToDisk = true the tree will be
-// dumped to disk if update is successfull.
-func (r *Repo) UpdateSystemTree(tree proto.Instance, version uint, writeToDisk bool) error {
+// deleted or updated instances. The tree will be saved to disk if update is successfull.
+func (r *Repo) UpdateSystemTree(tree proto.Instance, version uint) error {
 	r.logger.Debug("UpdateSystemTree:call")
 	defer r.logger.Debug("UpdateSystemTree:return")
 	r.mux.Lock()
 	defer r.mux.Unlock()
 
 	if version <= r.treeVersion && r.tree != nil {
-		err := errors.New("Discarding tree update because its version is lower than current one")
-		// Error to the update process but the user should only receive a warning in log
+		err := fmt.Errorf("Discarding tree version %d update because its version is lower or equal to current %d version", version, r.treeVersion)
+		// Error out but user should only receive a warning in log
 		r.logger.Warn(err)
 		return err
 	}
@@ -285,8 +250,8 @@ func (r *Repo) UpdateSystemTree(tree proto.Instance, version uint, writeToDisk b
 	r.updateInstanceIndex()
 	r.treeVersion = version
 
-	if writeToDisk {
-		return r.treeToDisk(r.configFilePath())
+	if err := r.treeToDisk(r.systemTreeFilePath()); err != nil {
+		return err
 	}
 	return nil
 }
@@ -296,33 +261,32 @@ func (r *Repo) Get(uuid string) (proto.Instance, error) {
 	defer r.logger.Debug("Get:return")
 	r.mux.Lock()
 	defer r.mux.Unlock()
-	return r.get(uuid)
+
+	newInstance := proto.Instance{}
+	got, err := r.get(uuid)
+	if err != nil {
+		return newInstance, err
+	}
+	// Every instance is a branch, we need to copy
+	if err := cloneTree(got, &newInstance); err != nil {
+		return newInstance, err
+	}
+
+	return newInstance, nil
 }
 
-func (r *Repo) get(uuid string) (proto.Instance, error) {
+func (r *Repo) get(uuid string) (*proto.Instance, error) {
 	r.logger.Debug("get:call")
 	defer r.logger.Debug("get:return")
 
 	if !r.valid(uuid) {
-		return proto.Instance{}, pct.InvalidInstanceError{UUID: uuid}
+		return nil, pct.InvalidInstanceError{UUID: uuid}
 	}
 
-	// We do full tree syncs, if we can't find an instance UUID download
-	// everything and query again.
 	if _, ok := r.it[uuid]; !ok {
-		r.logger.Info("Downloading system tree from API")
-		data, err := r.downloadInstances()
-		if err != nil {
-			return proto.Instance{}, err
-		}
-		if err := r.loadConfig(data); err != nil {
-			return proto.Instance{}, err
-		}
-		if err := r.treeToDisk(r.configFilePath()); err != nil {
-			return proto.Instance{}, err
-		}
+		return nil, fmt.Errorf("Instance UUID %s not found in local system tree", uuid)
 	}
-	return *r.it[uuid], nil
+	return r.it[uuid], nil
 }
 
 func (r *Repo) valid(uuid string) bool {
@@ -349,6 +313,8 @@ func (r *Repo) List() []proto.Instance {
 
 // Returns a copy of the tree
 func (r *Repo) GetSystemTree() (proto.Instance, error) {
+	r.logger.Debug("GetSystemTree:call")
+	defer r.logger.Debug("GetSystemTree:return")
 	r.mux.Lock()
 	defer r.mux.Unlock()
 
@@ -356,31 +322,37 @@ func (r *Repo) GetSystemTree() (proto.Instance, error) {
 		return proto.Instance{}, errors.New("Repository has no local system tree")
 	}
 
-	var newTree *proto.Instance
+	newTree := proto.Instance{}
 	if err := cloneTree(&r.tree, &newTree); err != nil {
 		longErr := fmt.Errorf("Couldn't clone local tree: %v", err)
 		r.logger.Error(longErr)
 		return proto.Instance{}, longErr
 	}
-	return *newTree, nil
+	return newTree, nil
 }
 
 func (r *Repo) GetTreeVersion() uint {
+	r.logger.Debug("GetTreeVersion:call")
+	defer r.logger.Debug("GetTreeVersion:return")
 	r.mux.Lock()
 	defer r.mux.Unlock()
 	return r.treeVersion
 }
 
 func (r *Repo) Name(uuid string) (string, error) {
+	r.logger.Debug("Name:call")
+	defer r.logger.Debug("Name:return")
 	r.mux.Lock()
 	defer r.mux.Unlock()
 	inst, ok := r.it[uuid]
 	if !ok {
-		return "", fmt.Errorf("Instance %s is not registered in agent", uuid)
+		return "", fmt.Errorf("Unknown instance %s", uuid)
 	}
 	return inst.Name, nil
 }
 
 func (r *Repo) GetMySQLInstances() []proto.Instance {
+	r.logger.Debug("GetMySQLInstances:call")
+	defer r.logger.Debug("GetMySQLInstances:return")
 	return onlyMySQLInsts(r.List())
 }

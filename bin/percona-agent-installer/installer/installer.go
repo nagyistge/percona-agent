@@ -122,6 +122,7 @@ func (i *Installer) Run() (err error) {
 		return err
 	}
 
+	i.osInstance.Subsystems = append(i.osInstance.Subsystems, *ai)
 	// To save data we need agent config with uuid and links
 	i.agentConfig.AgentUUID = ai.UUID
 	i.agentConfig.Links = links
@@ -138,15 +139,12 @@ func (i *Installer) Run() (err error) {
 				fmt.Printf("Failed to set up MySQL (ignoring because interactive=false): %s\n", err)
 			}
 		}
+		i.osInstance.Subsystems = append(i.osInstance.Subsystems, *mi)
 	}
 
-	tree, err := i.api.GetSystemTree(links["system_tree"])
-	if err != nil {
-		return fmt.Errorf("Failed to get system tree from API: %s", err)
-	}
-	// Update system tree on repository and save the tree to disk (second parameter)
+	// Update system tree on repository and save the tree to disk
 	// This is our very first system tree - version 0
-	if err = i.instanceRepo.UpdateSystemTree(*tree, 0, true); err != nil {
+	if err = i.instanceRepo.UpdateSystemTree(*i.osInstance, 0); err != nil {
 		return fmt.Errorf("Failed to write instances: %s", err)
 	}
 
@@ -419,7 +417,7 @@ func (i *Installer) InstallerCreateAgentWithInitialToolConfigs() (protoAgentInst
 	if len(links) == 0 {
 		return nil, links, errors.New("No agent links provided by API")
 	}
-	requiredLinks := []string{"self", "cmd", "log", "data", "system_tree"}
+	requiredLinks := []string{"self"} // only "self" for now
 	for _, link := range requiredLinks {
 		if _, ok := links[link]; !ok {
 			return nil, links, fmt.Errorf("No agent %s link provided by API", link)

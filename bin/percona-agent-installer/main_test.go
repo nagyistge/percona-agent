@@ -131,11 +131,10 @@ func (s *MainTestSuite) SetUpTest(t *C) {
 	s.fakeApi = fakeapi.NewFakeApi()
 	// Expected agent links
 	s.agentLinks = map[string]string{
-		"log":         s.fakeApi.WSURL() + "/instances/" + s.agent.UUID + "/log",
-		"self":        s.fakeApi.URL() + "/instances/" + s.agent.UUID,
-		"system_tree": s.fakeApi.URL() + "/instances/" + s.osInstance.UUID + "?recursive=true",
-		"cmd":         s.fakeApi.WSURL() + "/instances/" + s.agent.UUID + "/cmd",
-		"data":        s.fakeApi.WSURL() + "/instances/" + s.agent.UUID + "/data",
+		"log":  s.fakeApi.WSURL() + "/instances/" + s.agent.UUID + "/log",
+		"self": s.fakeApi.URL() + "/instances/" + s.agent.UUID,
+		"cmd":  s.fakeApi.WSURL() + "/instances/" + s.agent.UUID + "/cmd",
+		"data": s.fakeApi.WSURL() + "/instances/" + s.agent.UUID + "/data",
 	}
 
 	_, err := s.rootConn.Exec("DELETE FROM mysql.user WHERE user='percona-agent'")

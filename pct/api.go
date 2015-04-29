@@ -32,16 +32,21 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jagregory/halgo"
 	"github.com/percona/cloud-protocol/proto/v2"
 )
 
 var requiredEntryLinks = []string{"instances", "download"}
 
-// This must go as in PCTv3 everything is metadata of resources
 var requiredAgentLinks = []string{"cmd", "log", "data", "self"}
 var timeoutClientConfig = &TimeoutClientConfig{
 	ConnectTimeout:   10 * time.Second,
 	ReadWriteTimeout: 10 * time.Second,
+}
+
+type InstanceHAL struct {
+	halgo.Links
+	proto.Instance
 }
 
 type APIConnector interface {
@@ -52,7 +57,6 @@ type APIConnector interface {
 	Put(apiKey, url string, data []byte) (*http.Response, []byte, error)
 	EntryLink(resource string) string
 	AgentLink(resource string) string
-	//	AgentLinks() map[string]string
 	Origin() string
 	Hostname() string
 	ApiKey() string
@@ -170,7 +174,7 @@ func (a *API) Connect(hostname, apiKey, agentUuid string) error {
 	a.apiKey = apiKey
 	a.agentUuid = agentUuid
 	a.entryLinks = entryLinks
-	//a.agentLinks = agentLinks
+	a.agentLinks = agentLinks
 	return nil
 }
 
@@ -255,7 +259,6 @@ func (a *API) EntryLink(resource string) string {
 	return a.entryLinks[resource]
 }
 
-// TODO: Remove
 func (a *API) AgentLink(resource string) string {
 	a.mux.RLock()
 	defer a.mux.RUnlock()

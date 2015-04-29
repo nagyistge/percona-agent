@@ -238,16 +238,11 @@ func run() error {
 	/**
 	 * Instance manager
 	 */
-	systemTreeURL, ok := agentConfig.Links["system_tree"]
-	if !ok {
-		return fmt.Errorf("Error starting instance manager: No system tree URL found in agent config\n")
-	}
 	itManager := instance.NewManager(
 		pct.NewLogger(logChan, "instance-manager"),
 		pct.Basedir.Dir("config"),
 		api,
 		mrm,
-		systemTreeURL,
 	)
 	if err := itManager.Start(); err != nil {
 		return fmt.Errorf("Error starting instance manager: %s\n", err)

@@ -81,12 +81,7 @@ func (s *AnalyzerTestSuite) SetUpSuite(t *C) {
 	}
 	s.configDir = pct.Basedir.Dir("config")
 
-	links := map[string]string{
-		"system_tree": "http://localhost/insts",
-	}
-	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
-
-	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "analizer-test"), s.configDir, s.api)
+	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "analizer-test"), s.configDir)
 	s.mysqlUUID = "00000000000000000000000000000003"
 	err = test.CopyFile(test.RootDir+"/instance/system-tree-1.json", filepath.Join(s.configDir, "system-tree.json"))
 	t.Assert(err, IsNil)
