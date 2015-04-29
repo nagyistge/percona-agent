@@ -24,6 +24,7 @@ import (
 	"net/http"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/jagregory/halgo"
 	"github.com/percona/cloud-protocol/proto/v2"
 	mmMySQL "github.com/percona/percona-agent/mm/mysql"
 	mmOS "github.com/percona/percona-agent/mm/system"
@@ -35,6 +36,11 @@ import (
 type Api struct {
 	apiConnector pct.APIConnector
 	debug        bool
+}
+
+type InstanceHAL struct {
+	halgo.Links
+	proto.Instance
 }
 
 func New(apiConnector pct.APIConnector, debug bool) *Api {
@@ -125,7 +131,7 @@ func (a *Api) CreateInstance(it *proto.Instance) (newIt *proto.Instance, links m
 	if code != http.StatusOK {
 		return nil, nil, fmt.Errorf("Failed to get new instance (status code %d)", code)
 	}
-	var newInstHAL *pct.InstanceHAL
+	var newInstHAL *InstanceHAL
 	if err := json.Unmarshal(data, &newInstHAL); err != nil {
 		return nil, nil, fmt.Errorf("Failed to parse instance entity: %s", err)
 	}

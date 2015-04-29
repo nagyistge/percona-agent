@@ -33,7 +33,6 @@ import (
 	"time"
 
 	"github.com/jagregory/halgo"
-	"github.com/percona/cloud-protocol/proto/v2"
 )
 
 var requiredEntryLinks = []string{"instances", "download"}
@@ -42,11 +41,6 @@ var requiredAgentLinks = []string{"cmd", "log", "data", "self"}
 var timeoutClientConfig = &TimeoutClientConfig{
 	ConnectTimeout:   10 * time.Second,
 	ReadWriteTimeout: 10 * time.Second,
-}
-
-type InstanceHAL struct {
-	halgo.Links
-	proto.Instance
 }
 
 type APIConnector interface {
@@ -159,10 +153,12 @@ func (a *API) Connect(hostname, apiKey, agentUuid string) error {
 	}
 
 	// Get agent links: <API hostname>/agents/
+	// TODO: probably we should use RFC 6570 for URI template and send that as part of entry links
 	agentLinks, err := a.getLinks(apiKey, entryLinks["instances"]+"/"+agentUuid)
 	if err != nil {
 		return err
 	}
+
 	if err := a.checkLinks(agentLinks, requiredAgentLinks...); err != nil {
 		return err
 	}
@@ -211,12 +207,19 @@ func (a *API) getLinks(apiKey, url string) (map[string]string, error) {
 		return nil, fmt.Errorf("OK response from %s but no content", url)
 	}
 
-	links := &proto.Links{}
-	if err := json.Unmarshal(data, links); err != nil {
+	halLinks := &halgo.Links{}
+	if err := json.Unmarshal(data, halLinks); err != nil {
 		return nil, fmt.Errorf("GET %s error: json.Unmarshal: %s: %s", url, err, string(data))
 	}
+	links := map[string]string{}
 
-	return links.Links, nil
+	for key, _ := range halLinks.Items {
+		if uri, err := halLinks.Href(key); err == nil {
+			links[key] = uri
+		}
+	}
+
+	return links, nil
 }
 
 func (a *API) Get(apiKey, url string) (int, []byte, error) {

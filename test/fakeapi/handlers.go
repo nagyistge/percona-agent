@@ -27,6 +27,7 @@ import (
 
 	"github.com/jagregory/halgo"
 	"github.com/percona/cloud-protocol/proto/v2"
+	"github.com/percona/percona-agent/bin/percona-agent-installer/api"
 	"github.com/percona/percona-agent/mm"
 	"github.com/percona/percona-agent/mm/mysql"
 	"github.com/percona/percona-agent/mm/system"
@@ -136,14 +137,6 @@ func (f *FakeApi) AppendInstances(treeInst *proto.Instance, postInsts []*Instanc
 			w.WriteHeader(instStatus.status)
 		}
 
-	})
-}
-
-func (f *FakeApi) AppendSystemTree(inst *proto.Instance) {
-	f.Append(fmt.Sprintf("/instances/%s?recursive=true", inst.UUID), func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		data, _ := json.Marshal(&inst)
-		w.Write(data)
 	})
 }
 
