@@ -23,7 +23,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"testing"
 
 	. "github.com/go-test/test"
@@ -311,9 +310,9 @@ func (s *ManagerTestSuite) TestHandleGetInfoMySQL(t *C) {
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
-		Cmd:  "GetInfo",
+		Cmd:     "GetInfo",
 		Service: "instance",
-		Data: mysqlData,
+		Data:    mysqlData,
 	}
 
 	reply := m.Handle(cmd)
@@ -378,9 +377,9 @@ func (s *ManagerTestSuite) TestHandleUpdate(t *C) {
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
-		Cmd:  "UpdateSystemTree",
+		Cmd:     "UpdateSystemTree",
 		Service: "instance",
-		Data: syncData,
+		Data:    syncData,
 	}
 
 	reply := m.Handle(cmd)
@@ -392,8 +391,6 @@ func (s *ManagerTestSuite) TestHandleUpdate(t *C) {
 	t.Assert(len(mySQLinsts), Equals, 2)
 
 	received := []string{mySQLinsts[0].UUID, mySQLinsts[1].UUID}
-	// We need to sort as order is not stable
-	sort.Strings(received)
 	expected := []string{"00000000000000000000000000000003", "00000000000000000000000000000007"}
 	if same, diff := IsDeeply(received, expected); !same {
 		Dump(received)
@@ -427,9 +424,9 @@ func (s *ManagerTestSuite) TestHandleUpdateNoOS(t *C) {
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
-		Cmd:  "UpdateSystemTree",
+		Cmd:     "UpdateSystemTree",
 		Service: "instance",
-		Data: syncData,
+		Data:    syncData,
 	}
 
 	reply := m.Handle(cmd)
@@ -450,9 +447,9 @@ func (s *ManagerTestSuite) TestGetTree(t *C) {
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
-		Cmd:  "GetSystemTree",
+		Cmd:     "GetSystemTree",
 		Service: "instance",
-		Data: nil,
+		Data:    nil,
 	}
 
 	reply := m.Handle(cmd)
