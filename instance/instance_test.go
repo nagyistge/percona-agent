@@ -20,7 +20,6 @@ package instance_test
 import (
 	"encoding/json"
 	"io/ioutil"
-	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -39,11 +38,10 @@ import (
 func Test(t *testing.T) { TestingT(t) }
 
 type RepoTestSuite struct {
-	tmpDir    string
-	logChan   chan *proto.LogEntry
-	logger    *pct.Logger
-	configDir string
-	//api            *mock.API
+	tmpDir         string
+	logChan        chan *proto.LogEntry
+	logger         *pct.Logger
+	configDir      string
 	systemTree     proto.Instance
 	systemTreeFile string
 	ir             *instance.Repo
@@ -73,8 +71,6 @@ func (s *RepoTestSuite) SetUpTest(t *C) {
 		}
 	}
 
-	//links := map[string]string{}
-	//s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
 	s.ir = instance.NewRepo(s.logger, s.configDir)
 	t.Assert(s.ir, NotNil)
 
@@ -139,7 +135,7 @@ func (s *RepoTestSuite) TestUpdateTreeWrongRoot(t *C) {
 	err = s.ir.UpdateSystemTree(tree, treeVersion)
 	t.Assert(err, NotNil)
 
-	// Check if saved instance config was not modified
+	// Check if saved system tree was not modified
 	savedTreeData, err := ioutil.ReadFile(s.systemTreeFile)
 	t.Assert(err, IsNil)
 	var savedTree *proto.Instance
@@ -198,13 +194,13 @@ func (s *RepoTestSuite) TestUpdateTree(t *C) {
 ///////////////////////////////////////////////////////////////////////////////
 
 type ManagerTestSuite struct {
-	tmpDir        string
-	logChan       chan *proto.LogEntry
-	logger        *pct.Logger
-	configDir     string
-	instancesFile string
-	instances     proto.Instance
-	api           *mock.API
+	tmpDir         string
+	logChan        chan *proto.LogEntry
+	logger         *pct.Logger
+	configDir      string
+	systemTreeFile string
+	systemTree     proto.Instance
+	api            *mock.API
 }
 
 var _ = Suite(&ManagerTestSuite{})
@@ -235,14 +231,14 @@ func (s *ManagerTestSuite) SetUpTest(t *C) {
 			t.Error(err)
 		}
 	}
-	s.instancesFile = filepath.Join(s.configDir, "system-tree.json")
-	err := test.CopyFile(test.RootDir+"/instance/system-tree-1.json", s.instancesFile)
+	s.systemTreeFile = filepath.Join(s.configDir, "system-tree.json")
+	err := test.CopyFile(test.RootDir+"/instance/system-tree-1.json", s.systemTreeFile)
 	t.Assert(err, IsNil)
 
-	data, err := ioutil.ReadFile(s.instancesFile)
+	data, err := ioutil.ReadFile(s.systemTreeFile)
 	t.Assert(err, IsNil)
 
-	err = json.Unmarshal(data, &s.instances)
+	err = json.Unmarshal(data, &s.systemTree)
 	t.Assert(err, IsNil)
 }
 
@@ -257,11 +253,6 @@ var dsn = os.Getenv("PCT_TEST_MYSQL_DSN")
 //// --------------------------------------------------------------------------
 
 func (s *ManagerTestSuite) TestHandleGetInfoMySQL(t *C) {
-	bin, err := ioutil.ReadFile(s.instancesFile)
-	t.Assert(err, IsNil)
-	s.api.GetData = [][]byte{bin}
-	s.api.GetCode = []int{http.StatusOK}
-
 	if dsn == "" {
 		t.Fatal("PCT_TEST_MYSQL_DSN is not set")
 	}
@@ -292,7 +283,7 @@ func (s *ManagerTestSuite) TestHandleGetInfoMySQL(t *C) {
 	m := instance.NewManager(s.logger, s.configDir, s.api, mrm)
 	t.Assert(m, NotNil)
 
-	err = m.Start()
+	err := m.Start()
 	t.Assert(err, IsNil)
 
 	// API sends Cmd[Service:"instance", Cmd:"GetInfo",
@@ -385,7 +376,7 @@ func (s *ManagerTestSuite) TestHandleUpdate(t *C) {
 	reply := m.Handle(cmd)
 	t.Assert(reply.Error, Equals, "")
 
-	// Test GetMySQLInstances here because we already have a Repo with instances
+	// Test GetMySQLInstances here because we already have a repository with instances
 	mySQLinsts := m.GetMySQLInstances()
 	t.Assert(mySQLinsts, NotNil)
 	t.Assert(len(mySQLinsts), Equals, 2)
@@ -434,34 +425,31 @@ func (s *ManagerTestSuite) TestHandleUpdateNoOS(t *C) {
 }
 
 func (s *ManagerTestSuite) TestGetTree(t *C) {
-	bin, err := ioutil.ReadFile(s.instancesFile)
-	t.Assert(err, IsNil)
-	s.api.GetData = [][]byte{bin}
-	s.api.GetCode = []int{http.StatusOK}
-
 	// Create an instance manager.
 	mrm := mock.NewMrmsMonitor()
 	m := instance.NewManager(s.logger, s.configDir, s.api, mrm)
 	t.Assert(m, NotNil)
-	err = m.Start()
+	err := m.Start()
 	t.Assert(err, IsNil)
 
+	// Create cmd
 	cmd := &proto.Cmd{
 		Cmd:     "GetSystemTree",
 		Service: "instance",
 		Data:    nil,
 	}
 
+	// Send cmd
 	reply := m.Handle(cmd)
 	t.Assert(reply.Error, Equals, "")
 
+	// Check response
 	var sync *proto.SystemTreeSync
-
 	json.Unmarshal(reply.Data, &sync)
 	t.Assert(sync.Version, Equals, uint(0))
-	if same, diff := IsDeeply(sync.Tree, s.instances); !same {
+	if same, diff := IsDeeply(sync.Tree, s.systemTree); !same {
 		Dump(sync.Tree)
-		Dump(s.instances)
+		Dump(s.systemTree)
 		t.Error(diff)
 	}
 }
