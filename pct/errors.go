@@ -97,39 +97,6 @@ func (e CmdRejectedError) Error() string {
 
 /////////////////////////////////////////////////////////////////////////////
 
-type UnknownToolInstanceError struct {
-	Tool string
-	UUID string
-}
-
-func (e UnknownToolInstanceError) Error() string {
-	return fmt.Sprintf("Unknown %s instance: %d", e.Tool, e.UUID)
-}
-
-/////////////////////////////////////////////////////////////////////////////
-
-type InvalidToolInstanceError struct {
-	Tool string
-	UUID string
-}
-
-func (e InvalidToolInstanceError) Error() string {
-	return fmt.Sprintf("Invalid %s instance: %d", e.Tool, e.UUID)
-}
-
-/////////////////////////////////////////////////////////////////////////////
-
-type DuplicateToolInstanceError struct {
-	Tool string
-	UUID string
-}
-
-func (e DuplicateToolInstanceError) Error() string {
-	return fmt.Sprintf("Duplicate %s instance: %d", e.Tool, e.UUID)
-}
-
-////////////////////////////////////////////////////////////////////////////
-
 type InvalidInstanceError struct {
 	UUID string
 }
@@ -138,17 +105,7 @@ func (e InvalidInstanceError) Error() string {
 	return fmt.Sprintf("Invalid instance: %s", e.UUID)
 }
 
-/////////////////////////////////////////////////////////////////////////////
-
-type ToolIsNotRunningError struct {
-	Tool     string
-	InstName string
-}
-
-func (e ToolIsNotRunningError) Error() string {
-	return fmt.Sprintf("%s tool for instance %s is not running", e.Tool, e.InstName)
-}
-
 // Error variables
 ////////////////////////////////////////////////////////////////////////////
+
 var ErrNoSystemTree error = errors.New("No local system tree file")
