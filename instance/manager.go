@@ -20,7 +20,6 @@ package instance
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/percona/percona-agent/agent"
 
@@ -69,8 +68,16 @@ func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm 
 // @goroutine[0]
 func (m *Manager) Start() error {
 	m.status.Update("instance", "Starting")
-	if err := m.repo.Init(); err != nil && err != pct.ErrNoSystemTree {
+	err := m.repo.Init()
+	if err != nil && err != pct.ErrNoSystemTree {
+		m.logger.Error("Cannot initialize instance repository:", err)
+		m.status.Update("instance-repo", "Failed to initialize")
 		return err
+	}
+	if err == pct.ErrNoSystemTree {
+		m.status.Update("instance-repo", "Idle: empty repository")
+	} else {
+		m.status.Update("instance-repo", "Idle")
 	}
 
 	m.logger.Info("Started")
@@ -106,6 +113,59 @@ func (m *Manager) Start() error {
 func (m *Manager) Stop() error {
 	// Can't stop the instance manager.
 	return nil
+}
+
+func (m *Manager) Status() map[string]string {
+	return m.status.All()
+}
+
+// @goroutine[0]
+func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
+	m.status.UpdateRe("instance", "Handling", cmd)
+	defer m.status.Update("instance", "Running")
+
+	switch cmd.Cmd {
+	case "UpdateSystemTree":
+		var sync *proto.SystemTreeSync
+		if err := json.Unmarshal(cmd.Data, &sync); err != nil {
+			return cmd.Reply(nil, err)
+		}
+		err := m.repo.UpdateSystemTree(sync.Tree, sync.Version)
+		if err != nil {
+			return cmd.Reply(nil, err)
+		}
+		// For the following block segment we only care about MySQL instances
+		// From former code logic, we don't actually care about if there was an error
+		// while updating MRM. TODO: really?
+		m.mrmAddMySQL(onlyMySQLInsts(m.getInstances(sync.Added)))
+		m.mrmDeleteMySQL(onlyMySQLInsts(m.getInstances(sync.Deleted)))
+		m.mrmUpdateMySQL(onlyMySQLInsts(m.getInstances(sync.Updated)))
+		return cmd.Reply(nil, nil)
+	case "GetSystemTree":
+		// GetTree will return the tree plus its version in a proto.SystemTreeSync
+		tree, err := m.repo.GetSystemTree()
+		if err != nil {
+			return cmd.Reply(nil, err)
+		}
+		version := m.repo.GetTreeVersion()
+		sync := proto.SystemTreeSync{}
+		sync.Tree = tree
+		sync.Version = version
+		return cmd.Reply(sync, nil)
+	case "GetInfo":
+		var it *proto.Instance
+		if err := json.Unmarshal(cmd.Data, &it); err != nil {
+			return cmd.Reply(nil, err)
+		}
+		err := m.handleGetInfo(*it)
+		return cmd.Reply(it, err)
+	default:
+		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
+	}
+}
+
+func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
+	return nil, nil
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -176,65 +236,6 @@ func (m *Manager) getInstances(uuids []string) []proto.Instance {
 		insts = append(insts, it)
 	}
 	return insts
-}
-
-// @goroutine[0]
-func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
-	m.status.UpdateRe("instance", "Handling", cmd)
-	defer m.status.Update("instance", "Running")
-
-	switch cmd.Cmd {
-	case "UpdateSystemTree":
-		var sync *proto.SystemTreeSync
-		if err := json.Unmarshal(cmd.Data, &sync); err != nil {
-			return cmd.Reply(nil, err)
-		}
-		err := m.repo.UpdateSystemTree(sync.Tree, sync.Version)
-		if err != nil {
-			return cmd.Reply(nil, err)
-		}
-		// For the following block segment we only care about MySQL instances
-		// From former code logic, we don't actually care about if there was an error
-		// while updating MRM. TODO: really?
-		m.mrmAddMySQL(onlyMySQLInsts(m.getInstances(sync.Added)))
-		m.mrmDeleteMySQL(onlyMySQLInsts(m.getInstances(sync.Deleted)))
-		m.mrmUpdateMySQL(onlyMySQLInsts(m.getInstances(sync.Updated)))
-		return cmd.Reply(nil, nil)
-	case "GetSystemTree":
-		// GetTree will return the tree plus its version in a proto.SystemTreeSync
-		tree, err := m.repo.GetSystemTree()
-		if err != nil {
-			return cmd.Reply(nil, err)
-		}
-		version := m.repo.GetTreeVersion()
-		sync := proto.SystemTreeSync{}
-		sync.Tree = tree
-		sync.Version = version
-		return cmd.Reply(sync, nil)
-	case "GetInfo":
-		var it *proto.Instance
-		if err := json.Unmarshal(cmd.Data, &it); err != nil {
-			return cmd.Reply(nil, err)
-		}
-		err := m.handleGetInfo(*it)
-		return cmd.Reply(it, err)
-	default:
-		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
-	}
-}
-
-func (m *Manager) Status() map[string]string {
-	list := m.repo.List()
-	uuids := make([]string, len(list))
-	for _, it := range list {
-		uuids = append(uuids, it.UUID)
-	}
-	m.status.Update("instance-repo", strings.Join(uuids, " "))
-	return m.status.All()
-}
-
-func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
-	return nil, nil
 }
 
 func (m *Manager) Repo() *Repo {
