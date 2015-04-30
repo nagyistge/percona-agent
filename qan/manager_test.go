@@ -372,7 +372,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	t.Assert(got, HasLen, 1)
 	expect := []proto.AgentConfig{
 		{
-			Tool:    "qan",
+			Service: "qan",
 			UUID:    mysqlUUID,
 			Config:  string(qanConfig),
 			Running: true,
@@ -506,7 +506,7 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 		User:      "daniel",
 		Ts:        now,
 		AgentUUID: "123",
-		Tool:      "agent",
+		Service:   "agent",
 		Cmd:       "StartService",
 		Data:      qanConfig,
 	}
@@ -532,7 +532,7 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	// Try to start the same analyzer again. It results in an error because
 	// double tooling is not allowed.
 	reply = m.Handle(cmd)
-	t.Check(reply.Error, Equals, a.String()+" tool is running")
+	t.Check(reply.Error, Equals, a.String()+" service is running")
 
 	// Send a StopService cmd to stop the analyzer.
 	// todo-1.1: send Data with analyzer instance to stop.
@@ -541,7 +541,7 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 		User:      "daniel",
 		Ts:        now,
 		AgentUUID: "123",
-		Tool:      "qan",
+		Service:   "qan",
 		Cmd:       "StopService",
 	}
 	reply = m.Handle(cmd)
@@ -578,7 +578,7 @@ func (s *ManagerTestSuite) TestBadCmd(t *C) {
 		User:      "daniel",
 		Ts:        time.Now(),
 		AgentUUID: "123",
-		Tool:      "qan",
+		Service:   "qan",
 		Cmd:       "foo", // bad cmd
 	}
 	reply := m.Handle(cmd)

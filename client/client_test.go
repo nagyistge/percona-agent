@@ -117,9 +117,9 @@ func (s *TestSuite) TestSend(t *C) {
 
 	// Send a log entry.
 	logEntry := &proto.LogEntry{
-		Level: 2,
-		Tool:  "qan",
-		Msg:   "Hello",
+		Level:   2,
+		Service: "qan",
+		Msg:     "Hello",
 	}
 	err = ws.Send(logEntry, 5)
 	t.Assert(err, IsNil)
@@ -131,7 +131,7 @@ func (s *TestSuite) TestSend(t *C) {
 	// We're dealing with generic data.
 	m := got[0].(map[string]interface{})
 	t.Check(m["Level"], Equals, float64(2))
-	t.Check(m["Tool"], Equals, "qan")
+	t.Check(m["Service"], Equals, "qan")
 	t.Check(m["Msg"], Equals, "Hello")
 
 	// Quick check that Conn() works.
@@ -459,9 +459,9 @@ func (s *TestSuite) TestWssConnection(t *C) {
 
 	// Send a log entry.
 	logEntry := &proto.LogEntry{
-		Level: 2,
-		Tool:  "qan",
-		Msg:   "Hello",
+		Level:   2,
+		Service: "qan",
+		Msg:     "Hello",
 	}
 	err = ws.Send(logEntry, 5)
 	t.Assert(err, IsNil)
@@ -515,9 +515,9 @@ func (s *TestSuite) TestCloseTimeout(t *C) {
 
 	// Send a log entry.
 	logEntry := &proto.LogEntry{
-		Level: 2,
-		Tool:  "qan",
-		Msg:   "Hello",
+		Level:   2,
+		Service: "qan",
+		Msg:     "Hello",
 	}
 	err = ws.Send(logEntry, 1)
 	t.Assert(err, IsNil)

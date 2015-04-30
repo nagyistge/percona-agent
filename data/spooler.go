@@ -45,7 +45,7 @@ type Spooler interface {
 	Start(Serializer) error
 	Stop() error
 	Status() map[string]string
-	Write(tool string, data interface{}) error
+	Write(service string, data interface{}) error
 	Files() <-chan string
 	CancelFiles()
 	Read(file string) ([]byte, error)
@@ -131,7 +131,7 @@ func (s *DiskvSpooler) Start(sz Serializer) error {
 			s.cache.Erase(key)
 			continue
 		}
-		parts := strings.Split(key, "_") // tool_nanoUnixTs
+		parts := strings.Split(key, "_") // service_nanoUnixTs
 		if len(parts) != 2 {
 			s.logger.Error("Invalid data file name:", key)
 			s.cache.Erase(key)
@@ -174,7 +174,7 @@ func (s *DiskvSpooler) Status() map[string]string {
 	return s.status.All()
 }
 
-func (s *DiskvSpooler) Write(tool string, data interface{}) error {
+func (s *DiskvSpooler) Write(service string, data interface{}) error {
 	/**
 	 * This method is shared: multiple goroutines call it to write data.
 	 * If the data serializer (sz) is not concurrent, then we serialize
@@ -200,7 +200,7 @@ func (s *DiskvSpooler) Write(tool string, data interface{}) error {
 		ProtocolVersion: agent.CLOUD_PROTOCOL_VERSION,
 		Created:         time.Now().UTC(),
 		Hostname:        s.hostname,
-		Tool:            tool,
+		Service:         service,
 		ContentType:     "application/json",
 		ContentEncoding: s.sz.Encoding(),
 		Data:            encodedData,
@@ -295,7 +295,7 @@ func (s *DiskvSpooler) run() {
 		select {
 		case protoData := <-s.dataChan:
 			ts := protoData.Created.UnixNano()
-			key := fmt.Sprintf("%s_%d", protoData.Tool, ts)
+			key := fmt.Sprintf("%s_%d", protoData.Service, ts)
 			s.logger.Debug("run:spool:" + key)
 			s.status.Update("data-spooler", "Spooling "+key)
 

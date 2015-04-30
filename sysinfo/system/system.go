@@ -19,13 +19,14 @@ package system
 
 import (
 	"fmt"
+
 	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/pct/cmd"
 )
 
 const (
-	TOOL_NAME     = "system"
+	SERVICE_NAME     = "system"
 	PT_SLEEP_SECONDS = "4"
 )
 

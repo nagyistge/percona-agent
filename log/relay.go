@@ -116,7 +116,7 @@ func (r *Relay) Run() {
 
 			// Write to file if there's a file (usually there isn't).
 			if r.logger != nil {
-				r.logger.Printf("%s: %s: %s\n", entry.Tool, proto.LogLevelName[entry.Level], entry.Msg)
+				r.logger.Printf("%s: %s: %s\n", entry.Service, proto.LogLevelName[entry.Level], entry.Msg)
 			}
 
 			// Send to API if we have a websocket client, and not in offline mode.
@@ -150,7 +150,7 @@ func (r *Relay) Run() {
 func (r *Relay) internal(msg string, level byte) {
 	logEntry := &proto.LogEntry{
 		Ts:      time.Now().UTC(),
-		Tool: "log",
+		Service: "log",
 		Level:   level,
 		Msg:     msg,
 	}
@@ -240,7 +240,7 @@ func (r *Relay) resend() {
 		logEntry := &proto.LogEntry{
 			Ts:      time.Now().UTC(),
 			Level:   proto.LOG_WARNING,
-			Tool: "log",
+			Service: "log",
 			Msg:     fmt.Sprintf("Lost %d log entries", r.lost),
 		}
 		// If the lost message warning fails to send, do not rebuffer it to avoid

@@ -176,7 +176,7 @@ func (a *Api) GetMmOSConfig(oi *proto.Instance) (*proto.AgentConfig, error) {
 		return nil, err
 	}
 	agentConfig := &proto.AgentConfig{
-		Tool:    "mm",
+		Service: "mm",
 		UUID:    oi.UUID,
 		Config:  string(bytes),
 		Running: true,
@@ -209,7 +209,7 @@ func (a *Api) GetMmMySQLConfig(mi *proto.Instance) (*proto.AgentConfig, error) {
 		return nil, err
 	}
 	agentConfig := &proto.AgentConfig{
-		Tool:    "mm",
+		Service: "mm",
 		UUID:    mi.UUID,
 		Config:  string(bytes),
 		Running: true,
@@ -242,7 +242,7 @@ func (a *Api) GetSysconfigMySQLConfig(mi *proto.Instance) (*proto.AgentConfig, e
 		return nil, err
 	}
 	agentConfig := &proto.AgentConfig{
-		Tool:    "sysconfig",
+		Service: "sysconfig",
 		UUID:    mi.UUID,
 		Config:  string(bytes),
 		Running: true,
@@ -275,7 +275,7 @@ func (a *Api) GetQanConfig(mi *proto.Instance) (*proto.AgentConfig, error) {
 		return nil, err
 	}
 	agentConfig := &proto.AgentConfig{
-		Tool:    "qan",
+		Service: "qan",
 		UUID:    mi.UUID,
 		Config:  string(bytes),
 		Running: true,

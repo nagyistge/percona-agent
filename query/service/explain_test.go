@@ -66,7 +66,7 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	}
 
 	s.logChan = make(chan *proto.LogEntry, 10)
-	s.logger = pct.NewLogger(s.logChan, query.TOOL_NAME+"-explain-test")
+	s.logger = pct.NewLogger(s.logChan, query.SERVICE_NAME+"-explain-test")
 
 	var err error
 	s.tmpDir, err = ioutil.TempDir("/tmp", "agent-test-")
@@ -210,9 +210,9 @@ func (s *ManagerTestSuite) TestExplainWithoutDb(t *C) {
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
-		Tool: "query",
-		Cmd:  "Explain",
-		Data: data,
+		Service: "query",
+		Cmd:     "Explain",
+		Data:    data,
 	}
 
 	gotReply := explainService.Handle(cmd)
@@ -316,9 +316,9 @@ func (s *ManagerTestSuite) TestExplainWithDb(t *C) {
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
-		Tool: "query",
-		Cmd:  "Explain",
-		Data: data,
+		Service: "query",
+		Cmd:     "Explain",
+		Data:    data,
 	}
 
 	gotReply := explainService.Handle(cmd)

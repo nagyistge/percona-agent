@@ -184,7 +184,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 
 	cmd := &proto.Cmd{
 		User: "daniel",
-		Tool: "sysconfig",
+		Service: "sysconfig",
 		Cmd:  "StartService",
 		Data: sysconfigConfigData,
 	}
@@ -230,7 +230,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 
 	cmd = &proto.Cmd{
 		User: "daniel",
-		Tool: "sysconfig",
+		Service: "sysconfig",
 		Cmd:  "StopService",
 		Data: sysconfigConfigData,
 	}
@@ -263,7 +263,7 @@ func (s *ManagerTestSuite) TestStartStopMonitor(t *C) {
 
 	cmd = &proto.Cmd{
 		User: "daniel",
-		Tool: "sysconfig",
+		Service: "sysconfig",
 		Cmd:  "Pontificate",
 		Data: sysconfigConfigData,
 	}
@@ -300,7 +300,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 
 	cmd := &proto.Cmd{
 		User: "daniel",
-		Tool: "sysconfig",
+		Service: "sysconfig",
 		Cmd:  "StartService",
 		Data: sysconfigConfigData,
 	}
@@ -314,7 +314,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	 */
 	cmd = &proto.Cmd{
 		Cmd:  "GetConfig",
-		Tool: "sysconfig",
+		Service: "sysconfig",
 	}
 	reply = m.Handle(cmd)
 	t.Assert(reply, NotNil)
@@ -326,7 +326,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	}
 	expectConfig := []proto.AgentConfig{
 		{
-			Tool:    "sysconfig",
+			Service:    "sysconfig",
 			UUID:    s.mysqlInstance.UUID,
 			Config:  string(sysconfigConfigData),
 			Running: true,

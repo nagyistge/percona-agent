@@ -50,7 +50,7 @@ var _ = Suite(&TestSuite{})
 
 func (s *TestSuite) SetUpSuite(t *C) {
 	s.logChan = make(chan *proto.LogEntry, 10)
-	s.logger = pct.NewLogger(s.logChan, system.TOOL_NAME+"-manager-test")
+	s.logger = pct.NewLogger(s.logChan, system.SERVICE_NAME+"-manager-test")
 
 	var err error
 	s.tmpDir, err = ioutil.TempDir("/tmp", "agent-test")
@@ -93,7 +93,7 @@ func (s *TestSuite) TestService(t *C) {
 	service := system.NewSystem(s.logger)
 
 	cmd := &proto.Cmd{
-		Tool: "Summary",
+		Service: "Summary",
 		Cmd:  "system",
 	}
 
@@ -135,7 +135,7 @@ func (s *TestSuite) TestExecutableNotFound(t *C) {
 	service.CmdName = "unknown-executable"
 
 	cmd := &proto.Cmd{
-		Tool: "Summary",
+		Service: "Summary",
 		Cmd:  "system",
 	}
 

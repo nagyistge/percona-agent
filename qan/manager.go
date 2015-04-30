@@ -91,7 +91,7 @@ func (m *Manager) Start() error {
 	defer m.mux.Unlock()
 
 	if m.running {
-		return pct.ToolIsRunningError{"qan"}
+		return pct.ServiceIsRunningError{"qan"}
 	}
 
 	// Manager ("qan" in status) runs independent from qan-parser.
@@ -173,7 +173,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		m.mux.Lock()
 		defer m.mux.Unlock()
 		if !m.running {
-			return cmd.Reply(nil, pct.ToolIsNotRunningError{Tool: "qan"})
+			return cmd.Reply(nil, pct.ServiceIsNotRunningError{Service: "qan"})
 		}
 		config := Config{}
 		if err := json.Unmarshal(cmd.Data, &config); err != nil {
@@ -191,7 +191,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		m.mux.Lock()
 		defer m.mux.Unlock()
 		if !m.running {
-			return cmd.Reply(nil, pct.ToolIsNotRunningError{Tool: "qan"})
+			return cmd.Reply(nil, pct.ServiceIsNotRunningError{Service: "qan"})
 		}
 		errs := []error{}
 		for UUID := range m.analyzers {
@@ -230,7 +230,7 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 			continue
 		}
 		configs = append(configs, proto.AgentConfig{
-			Tool:    "qan",
+			Service: "qan",
 			UUID:    a.analyzer.Config().UUID,
 			Config:  string(bytes),
 			Running: true,
@@ -299,7 +299,7 @@ func (m *Manager) startAnalyzer(config Config) error {
 
 	// Check if an analyzer for this MySQL instance already exists.
 	if a, ok := m.analyzers[config.UUID]; ok {
-		return pct.ToolIsRunningError{Tool: a.analyzer.String()}
+		return pct.ServiceIsRunningError{Service: a.analyzer.String()}
 
 	}
 	// Create a MySQL connection.
@@ -359,11 +359,11 @@ func (m *Manager) stopAnalyzer(uuid string) error {
 	m.status.Update("qan", fmt.Sprintf("Stopping %s", a.analyzer))
 	m.logger.Info(fmt.Sprintf("Stopping %s", a.analyzer))
 
-	// Stop ticking on this tickChan. Other tools receiving ticks at the same
+	// Stop ticking on this tickChan. Other services receiving ticks at the same
 	// interval are not affected.
 	m.clock.Remove(a.tickChan)
 
-	// Stop watching this MySQL instance. Other tools watching this MySQL
+	// Stop watching this MySQL instance. Other services watching this MySQL
 	// instance are not affected.
 	m.mrm.Remove(a.mysqlConn.DSN(), a.restartChan)
 

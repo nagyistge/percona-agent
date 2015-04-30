@@ -62,7 +62,7 @@ func (f *Factory) Make(uuid string, data []byte) (sysconfig.Monitor, error) {
 		return nil, err
 	}
 
-	// The user-friendly name of the tool, e.g. sysconfig-mysql-db101:
+	// The user-friendly name of the service, e.g. sysconfig-mysql-db101:
 	alias := "sysconfig-mysql-" + mysqlIt.Name
 
 	// Make a MySQL sysconfig monitor.

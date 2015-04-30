@@ -112,11 +112,11 @@ func (s *RelayTestSuite) TestLogLevel(t *C) {
 	l.Fatal("fatal")
 	got := test.WaitLog(s.recvChan, 5)
 	expect := []proto.LogEntry{
-		{Ts: test.Ts, Level: proto.LOG_DEBUG, Tool: "test", Msg: "debug"},
-		{Ts: test.Ts, Level: proto.LOG_INFO, Tool: "test", Msg: "info"},
-		{Ts: test.Ts, Level: proto.LOG_WARNING, Tool: "test", Msg: "warning"},
-		{Ts: test.Ts, Level: proto.LOG_ERROR, Tool: "test", Msg: "error"},
-		{Ts: test.Ts, Level: proto.LOG_CRITICAL, Tool: "test", Msg: "fatal"},
+		{Ts: test.Ts, Level: proto.LOG_DEBUG, Service: "test", Msg: "debug"},
+		{Ts: test.Ts, Level: proto.LOG_INFO, Service: "test", Msg: "info"},
+		{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "test", Msg: "warning"},
+		{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: "error"},
+		{Ts: test.Ts, Level: proto.LOG_CRITICAL, Service: "test", Msg: "fatal"},
 	}
 	t.Check(got, DeepEquals, expect)
 
@@ -128,9 +128,9 @@ func (s *RelayTestSuite) TestLogLevel(t *C) {
 	l.Fatal("fatal")
 	got = test.WaitLog(s.recvChan, 3)
 	expect = []proto.LogEntry{
-		{Ts: test.Ts, Level: proto.LOG_WARNING, Tool: "test", Msg: "warning"},
-		{Ts: test.Ts, Level: proto.LOG_ERROR, Tool: "test", Msg: "error"},
-		{Ts: test.Ts, Level: proto.LOG_CRITICAL, Tool: "test", Msg: "fatal"},
+		{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "test", Msg: "warning"},
+		{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: "error"},
+		{Ts: test.Ts, Level: proto.LOG_CRITICAL, Service: "test", Msg: "fatal"},
 	}
 	t.Check(got, DeepEquals, expect)
 }
@@ -149,7 +149,7 @@ func (s *RelayTestSuite) TestLogFile(t *C) {
 	l.Warn("It's a trap!")
 	got := test.WaitLog(s.recvChan, 1)
 	expect := []proto.LogEntry{
-		{Ts: test.Ts, Level: proto.LOG_WARNING, Tool: "test", Msg: "It's a trap!"},
+		{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "test", Msg: "It's a trap!"},
 	}
 	t.Check(got, DeepEquals, expect)
 
@@ -165,7 +165,7 @@ func (s *RelayTestSuite) TestLogFile(t *C) {
 	l.Warn("It's another trap!")
 	got = test.WaitLog(s.recvChan, 1)
 	expect = []proto.LogEntry{
-		{Ts: test.Ts, Level: proto.LOG_WARNING, Tool: "test", Msg: "It's another trap!"},
+		{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "test", Msg: "It's another trap!"},
 	}
 	t.Check(got, DeepEquals, expect)
 
@@ -256,7 +256,7 @@ func (s *RelayTestSuite) TestOfflineBuffering(t *C) {
 	l.Error("err1")
 	l.Error("err2")
 	got := test.WaitLog(s.recvChan, -1)
-	if len(got) > 0 && got[0].Tool != "log" {
+	if len(got) > 0 && got[0].Service != "log" {
 		t.Errorf("Log entries are not sent while offline: %+v", got)
 	}
 
@@ -269,11 +269,11 @@ func (s *RelayTestSuite) TestOfflineBuffering(t *C) {
 	// Wait for the relay resend what it had ^ buffered.
 	got = test.WaitLog(s.recvChan, 5)
 	expect := []proto.LogEntry{
-		{Ts: test.Ts, Level: proto.LOG_INFO, Tool: "test", Msg: "I get the Send error"},
-		{Ts: test.Ts, Level: proto.LOG_WARNING, Tool: "log", Msg: "Lost connection to API"},
-		{Ts: test.Ts, Level: proto.LOG_ERROR, Tool: "test", Msg: "err1"},
-		{Ts: test.Ts, Level: proto.LOG_ERROR, Tool: "test", Msg: "err2"},
-		{Ts: test.Ts, Level: proto.LOG_INFO, Tool: "log", Msg: "Connected to API"},
+		{Ts: test.Ts, Level: proto.LOG_INFO, Service: "test", Msg: "I get the Send error"},
+		{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: "Lost connection to API"},
+		{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: "err1"},
+		{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: "err2"},
+		{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log", Msg: "Connected to API"},
 	}
 	if same, diff := IsDeeply(got, expect); !same {
 		Dump(got)
@@ -334,14 +334,14 @@ func (s *RelayTestSuite) TestOffline1stBufferOverflow(t *C) {
 	// Check that we still get all log entries.
 	expect := make([]proto.LogEntry, log.BUFFER_SIZE+4)
 	// First two msgs (+1 and +2):
-	expect[0] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_INFO, Tool: "test", Msg: "I get the Send error"}
-	expect[1] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Tool: "log", Msg: "Lost connection to API"}
+	expect[0] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_INFO, Service: "test", Msg: "I get the Send error"}
+	expect[1] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: "Lost connection to API"}
 	// The overflow (buf size and +3):
 	for i, n := 1, 2; i <= log.BUFFER_SIZE+1; i, n = i+1, n+1 {
-		expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_ERROR, Tool: "test", Msg: fmt.Sprintf("a:%d", i)}
+		expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: fmt.Sprintf("a:%d", i)}
 	}
 	// Last msg (+4):
-	expect[len(expect)-1] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_INFO, Tool: "log", Msg: "Connected to API"}
+	expect[len(expect)-1] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log", Msg: "Connected to API"}
 	if same, diff := IsDeeply(got, expect); !same {
 		t.Error(diff)
 	}
@@ -435,25 +435,25 @@ func (s *RelayTestSuite) TestOffline2ndBufferOverflow(t *C) {
 	 * ---		Connected to API (+4)
 	 */
 	expect := make([]proto.LogEntry, nSum)
-	expect[0] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_INFO, Tool: "test", Msg: "I get the Send error"}
-	expect[1] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Tool: "log", Msg: "Lost connection to API"}
+	expect[0] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_INFO, Service: "test", Msg: "I get the Send error"}
+	expect[1] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: "Lost connection to API"}
 	n := 2
 	// entries 1-8 (buf size 10 - 2 = 8)
 	for i := 1; i <= log.BUFFER_SIZE-2; i++ {
-		expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_ERROR, Tool: "test", Msg: fmt.Sprintf("b:%d", i)}
+		expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: fmt.Sprintf("b:%d", i)}
 		n++
 	}
 	// n=10 (buf2[0] if buf size = 10)
 	// This is logged after resending buf1 and before resending buf2:
-	expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Tool: "log", Msg: fmt.Sprintf("Lost %d log entries", log.BUFFER_SIZE)}
+	expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: fmt.Sprintf("Lost %d log entries", log.BUFFER_SIZE)}
 	n++
 	// buf2:
 	for i := log.BUFFER_SIZE*2 - 1; n < len(expect)-1; i++ {
-		expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_ERROR, Tool: "test", Msg: fmt.Sprintf("b:%d", i)}
+		expect[n] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: fmt.Sprintf("b:%d", i)}
 		n++
 	}
 	// Last msg (+4):
-	expect[len(expect)-1] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_INFO, Tool: "log", Msg: "Connected to API"}
+	expect[len(expect)-1] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log", Msg: "Connected to API"}
 
 	if same, diff := IsDeeply(got, expect); !same {
 		Dump(got)
@@ -526,13 +526,13 @@ func (s *ManagerTestSuite) TestLogService(t *C) {
 	}
 	var gotLog proto.LogEntry
 	for _, l := range got {
-		if l.Tool == "log-svc-test" {
+		if l.Service == "log-svc-test" {
 			gotLog = l
 			break
 		}
 	}
 	t.Assert(gotLog, NotNil)
-	expectLog := proto.LogEntry{Ts: test.Ts, Level: proto.LOG_INFO, Tool: "log-svc-test", Msg: "i'm a log entry"}
+	expectLog := proto.LogEntry{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log-svc-test", Msg: "i'm a log entry"}
 	if same, diff := IsDeeply(gotLog, expectLog); !same {
 		t.Logf("%+v", got)
 		t.Error(diff)
@@ -569,7 +569,7 @@ func (s *ManagerTestSuite) TestLogService(t *C) {
 
 	cmd := &proto.Cmd{
 		User: "daniel",
-		Tool: "log",
+		Service: "log",
 		Cmd:  "SetConfig",
 		Data: configData,
 	}
@@ -593,12 +593,12 @@ func (s *ManagerTestSuite) TestLogService(t *C) {
 	got = test.WaitLog(s.recvChan, 3)
 	gotLog = proto.LogEntry{}
 	for _, l := range got {
-		if l.Tool == "log-svc-test" {
+		if l.Service == "log-svc-test" {
 			gotLog = l
 			break
 		}
 	}
-	expectLog = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Tool: "log-svc-test", Msg: "blah"}
+	expectLog = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log-svc-test", Msg: "blah"}
 	if same, diff := IsDeeply(gotLog, expectLog); !same {
 		t.Logf("%+v", got)
 		t.Error(diff)
@@ -631,7 +631,7 @@ func (s *ManagerTestSuite) TestLogService(t *C) {
 
 	cmd = &proto.Cmd{
 		User: "daniel",
-		Tool: "log",
+		Service: "log",
 		Cmd:  "GetConfig",
 	}
 	reply := m.Handle(cmd)
@@ -643,7 +643,7 @@ func (s *ManagerTestSuite) TestLogService(t *C) {
 	}
 	expectConfigRes := []proto.AgentConfig{
 		{
-			Tool:    "log",
+			Service:    "log",
 			Config:  string(configData),
 			Running: true,
 		},
@@ -677,8 +677,8 @@ func (s *ManagerTestSuite) TestReconnect(t *C) {
 	// Wait for relay to start and connect.
 	got := test.WaitLog(s.recvChan, 2)
 	expect := []proto.LogEntry{
-		{Ts: test.Ts, Level: proto.LOG_INFO, Tool: "log", Msg: "Started"},
-		{Ts: test.Ts, Level: proto.LOG_INFO, Tool: "log", Msg: "Connected to API"},
+		{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log", Msg: "Started"},
+		{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log", Msg: "Connected to API"},
 	}
 	if same, diff := IsDeeply(got, expect); !same {
 		Dump(got)
@@ -695,7 +695,7 @@ func (s *ManagerTestSuite) TestReconnect(t *C) {
 
 	cmd := &proto.Cmd{
 		User: "daniel",
-		Tool: "log",
+		Service: "log",
 		Cmd:  "Reconnect",
 	}
 	reply := m.Handle(cmd)
@@ -718,10 +718,10 @@ func (s *ManagerTestSuite) TestReconnect(t *C) {
 
 	got = test.WaitLog(s.recvChan, 4)
 	expect = []proto.LogEntry{
-		{Ts: test.Ts, Level: proto.LOG_INFO, Tool: "log-svc-test", Msg: "before reconnect"},
-		{Ts: test.Ts, Level: proto.LOG_WARNING, Tool: "log", Msg: "Lost connection to API"},
-		{Ts: test.Ts, Level: proto.LOG_INFO, Tool: "log", Msg: "Connected to API"},
-		{Ts: test.Ts, Level: proto.LOG_INFO, Tool: "log-svc-test", Msg: "after reconnect"},
+		{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log-svc-test", Msg: "before reconnect"},
+		{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log", Msg: "Lost connection to API"},
+		{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log", Msg: "Connected to API"},
+		{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log-svc-test", Msg: "after reconnect"},
 	}
 	if same, diff := IsDeeply(got, expect); !same {
 		Dump(got)

@@ -18,15 +18,16 @@
 package client
 
 import (
-	"code.google.com/p/go.net/websocket"
 	"crypto/tls"
 	"fmt"
-	"github.com/percona/cloud-protocol/proto/v2"
-	"github.com/percona/percona-agent/pct"
 	"log"
 	"net"
 	"sync"
 	"time"
+
+	"code.google.com/p/go.net/websocket"
+	"github.com/percona/cloud-protocol/proto/v2"
+	"github.com/percona/percona-agent/pct"
 )
 
 const (
@@ -57,7 +58,7 @@ type WebsocketClient struct {
 }
 
 func NewWebsocketClient(logger *pct.Logger, api pct.APIConnector, link string, headers map[string]string) (*WebsocketClient, error) {
-	name := logger.Tool()
+	name := logger.Service()
 	c := &WebsocketClient{
 		logger:  logger,
 		api:     api,

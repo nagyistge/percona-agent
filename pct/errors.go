@@ -22,40 +22,32 @@ import (
 	"fmt"
 )
 
-type ToolIsRunningError struct {
-	Tool string
-	//	InstName string
+type ServiceIsRunningError struct {
+	Service string
 }
 
-func (e ToolIsRunningError) Error() string {
-	//	if e.InstName == "" {
-	return e.Tool + " tool is running"
-	//	}
-	//	return fmt.Sprintf("%s tool for instance %s is running", e.Tool, e.InstName)
+func (e ServiceIsRunningError) Error() string {
+	return e.Service + " service is running"
 }
 
 /////////////////////////////////////////////////////////////////////////////
 
-type ToolIsNotRunningError struct {
-	Tool     string
-	InstName string
+type ServiceIsNotRunningError struct {
+	Service string
 }
 
-func (e ToolIsNotRunningError) Error() string {
-	if e.InstName == "" {
-		return e.Tool + " tool is not running"
-	}
-	return fmt.Sprintf("%s tool for instance %s is not running", e.Tool, e.InstName)
+func (e ServiceIsNotRunningError) Error() string {
+	return e.Service + " service is not running"
 }
 
 /////////////////////////////////////////////////////////////////////////////
 
-type UnknownToolError struct {
-	Tool string
+type UnknownServiceError struct {
+	Service string
 }
 
-func (e UnknownToolError) Error() string {
-	return "Unknown tool: " + e.Tool
+func (e UnknownServiceError) Error() string {
+	return "Unknown service: " + e.Service
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -136,7 +128,6 @@ func (e DuplicateToolInstanceError) Error() string {
 	return fmt.Sprintf("Duplicate %s instance: %d", e.Tool, e.UUID)
 }
 
-// Refactor New
 ////////////////////////////////////////////////////////////////////////////
 
 type InvalidInstanceError struct {
@@ -145,6 +136,17 @@ type InvalidInstanceError struct {
 
 func (e InvalidInstanceError) Error() string {
 	return fmt.Sprintf("Invalid instance: %s", e.UUID)
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+type ToolIsNotRunningError struct {
+	Tool     string
+	InstName string
+}
+
+func (e ToolIsNotRunningError) Error() string {
+	return fmt.Sprintf("%s tool for instance %s is not running", e.Tool, e.InstName)
 }
 
 // Error variables

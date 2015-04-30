@@ -26,20 +26,20 @@ import (
 
 type Logger struct {
 	logChan chan *proto.LogEntry
-	tool    string
+	service string
 	cmd     *proto.Cmd
 }
 
-func NewLogger(logChan chan *proto.LogEntry, tool string) *Logger {
+func NewLogger(logChan chan *proto.LogEntry, service string) *Logger {
 	l := &Logger{
 		logChan: logChan,
-		tool:    tool,
+		service: service,
 	}
 	return l
 }
 
-func (l *Logger) Tool() string {
-	return l.tool
+func (l *Logger) Service() string {
+	return l.service
 }
 
 func (l *Logger) LogChan() chan *proto.LogEntry {
@@ -82,7 +82,7 @@ func (l *Logger) log(offline bool, level byte, entry []interface{}) {
 	logEntry := &proto.LogEntry{
 		Ts:      time.Now().UTC(),
 		Level:   level,
-		Tool:    l.tool,
+		Service: l.service,
 		Msg:     fullMsg,
 		Offline: offline,
 	}

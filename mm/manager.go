@@ -40,7 +40,7 @@ import (
 	"github.com/percona/percona-agent/ticker"
 )
 
-const TOOL_NAME = "mm"
+const SERVICE_NAME = "mm"
 
 // We use one binding per unique mm.Report interval.  For example, if some monitors
 // report every 60s and others every 10s, then there are two bindings.  All monitors
@@ -109,11 +109,11 @@ func (m *Manager) Start() error {
 	//defer m.mux.Unlock()
 
 	if m.running {
-		return pct.ToolIsRunningError{Tool: "mm"}
+		return pct.ServiceIsRunningError{Service: SERVICE_NAME}
 	}
 
 	// Start all metric monitors.
-	glob := filepath.Join(pct.Basedir.Dir("config"), "mm-*.conf")
+	glob := filepath.Join(pct.Basedir.Dir("config"), SERVICE_NAME+"-*.conf")
 	configFiles, err := filepath.Glob(glob)
 	if err != nil {
 		return err
@@ -155,7 +155,7 @@ func (m *Manager) Stop() error {
 	m.mux.Lock()
 	defer m.mux.Unlock()
 	for name, monitor := range m.monitors {
-		m.status.Update("mm", "Stopping "+name)
+		m.status.Update(SERVICE_NAME, "Stopping "+name)
 		if err := monitor.Stop(); err != nil {
 			m.logger.Warn("Failed to stop " + name + ": " + err.Error())
 			continue
@@ -171,8 +171,8 @@ func (m *Manager) Stop() error {
 
 // @goroutine[0]
 func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
-	m.status.UpdateRe("mm", "Handling", cmd)
-	defer m.status.Update("mm", "Running")
+	m.status.UpdateRe(SERVICE_NAME, "Handling", cmd)
+	defer m.status.Update(SERVICE_NAME, "Running")
 
 	switch cmd.Cmd {
 	case "StartService":
@@ -184,7 +184,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		if err != nil {
 			return cmd.Reply(nil, err)
 		}
-		m.status.UpdateRe("mm", "Starting "+name, cmd)
+		m.status.UpdateRe(SERVICE_NAME, "Starting "+name, cmd)
 		m.logger.Info("Start", name, cmd)
 
 		// Monitors names must be unique.
@@ -237,7 +237,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 		// Save the monitor-specific config to disk so agent starts on restart.
 		monitorConfig := monitor.Config()
-		if err := pct.Basedir.WriteInstanceConfig(TOOL_NAME, uuid, monitorConfig); err != nil {
+		if err := pct.Basedir.WriteInstanceConfig(SERVICE_NAME, uuid, monitorConfig); err != nil {
 			return cmd.Reply(nil, errors.New("Write "+uuid+" config:"+err.Error()))
 		}
 
@@ -247,7 +247,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		if err != nil {
 			return cmd.Reply(nil, err)
 		}
-		m.status.UpdateRe("mm", "Stopping "+name, cmd)
+		m.status.UpdateRe(SERVICE_NAME, "Stopping "+name, cmd)
 		m.logger.Info("Stop", name, cmd)
 		m.mux.RLock()
 		monitor, ok := m.monitors[name]
@@ -310,14 +310,14 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 			errs = append(errs, err)
 			continue
 		}
-		// Just the monitor's tool instance
+		// Just the monitor's service instance
 		mmConfig := &Config{}
 		if err := json.Unmarshal(bytes, mmConfig); err != nil {
 			errs = append(errs, err)
 			continue
 		}
 		config := proto.AgentConfig{
-			Tool:    "mm",
+			Service: SERVICE_NAME,
 			UUID:    mmConfig.UUID,
 			Config:  string(bytes),
 			Running: true, // config removed if stopped, so it must be running

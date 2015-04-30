@@ -117,7 +117,7 @@ func (i *Installer) Run() (err error) {
 		return err
 	}
 
-	ai, links, err := i.InstallerCreateAgentWithInitialToolConfigs()
+	ai, links, err := i.InstallerCreateAgentWithInitialServiceConfigs()
 	if err != nil {
 		return err
 	}
@@ -401,7 +401,7 @@ func (i *Installer) InstallerGetDefaultConfigs(oi, mi *proto.Instance) (configs 
 	return configs, nil
 }
 
-func (i *Installer) InstallerCreateAgentWithInitialToolConfigs() (protoAgentInst *proto.Instance, links map[string]string, err error) {
+func (i *Installer) InstallerCreateAgentWithInitialServiceConfigs() (protoAgentInst *proto.Instance, links map[string]string, err error) {
 	protoAgentInst = &proto.Instance{}
 	protoAgentInst.Type = "Percona Agent"
 	protoAgentInst.Prefix = "agent"

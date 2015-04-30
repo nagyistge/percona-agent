@@ -28,7 +28,7 @@ import (
 
 func (i *Installer) writeConfigs(configs []proto.AgentConfig) error {
 	for _, config := range configs {
-		name := config.Tool
+		name := config.Service
 		switch name {
 		case "agent", "log", "data", "qan":
 		default:
@@ -53,8 +53,8 @@ func (i *Installer) getLogConfig() (*proto.AgentConfig, error) {
 		return nil, err
 	}
 	agentConfig := &proto.AgentConfig{
-		Tool:   "log",
-		Config: string(configJson),
+		Service: "log",
+		Config:  string(configJson),
 	}
 
 	return agentConfig, nil
@@ -70,8 +70,8 @@ func (i *Installer) getDataConfig() (*proto.AgentConfig, error) {
 		return nil, err
 	}
 	agentConfig := &proto.AgentConfig{
-		Tool:   "data",
-		Config: string(configJson),
+		Service: "data",
+		Config:  string(configJson),
 	}
 
 	return agentConfig, nil
@@ -83,8 +83,8 @@ func (i *Installer) getAgentConfig() (*proto.AgentConfig, error) {
 		return nil, err
 	}
 	agentConfig := &proto.AgentConfig{
-		Tool:   "agent",
-		Config: string(configJson),
+		Service: "agent",
+		Config:  string(configJson),
 	}
 
 	return agentConfig, nil

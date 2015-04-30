@@ -96,7 +96,7 @@ func NewWorker(logger *pct.Logger, config qan.Config, mysqlConn mysql.Connector)
 	if err != nil {
 		logger.Warn(err.Error())
 	}
-	name := logger.Tool()
+	name := logger.Service()
 
 	w := &Worker{
 		logger:    logger,

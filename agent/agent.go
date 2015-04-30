@@ -55,7 +55,7 @@ type Agent struct {
 	logger    *pct.Logger
 	client    pct.WebsocketClient
 	api       pct.APIConnector
-	tools     map[string]pct.ToolManager
+	services  map[string]pct.ServiceManager
 	updater   *pct.Updater
 	keepalive *time.Ticker
 	// --
@@ -69,14 +69,14 @@ type Agent struct {
 	statusHandlerSync *pct.SyncChan
 }
 
-func NewAgent(config *Config, logger *pct.Logger, api pct.APIConnector, client pct.WebsocketClient, tools map[string]pct.ToolManager) *Agent {
+func NewAgent(config *Config, logger *pct.Logger, api pct.APIConnector, client pct.WebsocketClient, services map[string]pct.ServiceManager) *Agent {
 	agent := &Agent{
 		config:    config,
 		api:       api,
 		configMux: &sync.RWMutex{},
 		logger:    logger,
 		client:    client,
-		tools:     tools,
+		services:  services,
 		updater:   pct.NewUpdater(logger, api, pct.PublicKey, os.Args[0], VERSION),
 		// --
 		status:     pct.NewStatus([]string{"agent", "agent-cmd-handler"}),
@@ -268,7 +268,7 @@ func (agent *Agent) stop() {
 	agent.cmdHandlerSync.Stop()
 	agent.cmdHandlerSync.Wait()
 
-	for service, manager := range agent.tools {
+	for service, manager := range agent.services {
 		if service == "log" {
 			continue
 		}
@@ -330,7 +330,7 @@ func (agent *Agent) GetConfig() ([]proto.AgentConfig, []error) {
 
 	// Configs are always returned as array of AgentConfig resources.
 	agentConfig := proto.AgentConfig{
-		Tool: "agent",
+		Service: "agent",
 		// no external service
 		Config:  string(bytes),
 		Running: true,
@@ -371,13 +371,13 @@ func (agent *Agent) cmdHandler() {
 					}
 					cmdReply <- reply
 				}()
-				if cmd.Tool == "agent" {
+				if cmd.Service == "agent" {
 					reply = agent.Handle(cmd)
 				} else {
-					if manager, ok := agent.tools[cmd.Tool]; ok {
+					if manager, ok := agent.services[cmd.Service]; ok {
 						reply = manager.Handle(cmd)
 					} else {
-						reply = cmd.Reply(nil, pct.UnknownToolError{Tool: cmd.Tool})
+						reply = cmd.Reply(nil, pct.UnknownServiceError{Service: cmd.Service})
 					}
 				}
 			}()
@@ -484,15 +484,15 @@ func (agent *Agent) handleStartService(cmd *proto.Cmd) (interface{}, error) {
 	agent.logger.Info(cmd)
 
 	// Unmarshal the data to get the service name and config.
-	s := &proto.ToolData{}
+	s := &proto.ServiceData{}
 	if err := json.Unmarshal(cmd.Data, s); err != nil {
 		return nil, err
 	}
 
 	// Check if we have a manager for the service.
-	m, ok := agent.tools[s.Name]
+	m, ok := agent.services[s.Name]
 	if !ok {
-		return nil, pct.UnknownToolError{Tool: s.Name}
+		return nil, pct.UnknownServiceError{Service: s.Name}
 	}
 
 	// Start the service.
@@ -509,16 +509,16 @@ func (agent *Agent) handleStopService(cmd *proto.Cmd) (interface{}, error) {
 	agent.logger.Info(cmd)
 
 	// Unmarshal the data to get the service name.
-	s := new(proto.ToolData)
+	s := new(proto.ServiceData)
 	if err := json.Unmarshal(cmd.Data, s); err != nil {
 		return nil, err
 	}
 
 	// Check if we have a manager for the service.  If not, that's ok,
 	// just return because the service can't be running if we don't have it.
-	m, ok := agent.tools[s.Name]
+	m, ok := agent.services[s.Name]
 	if !ok {
-		return nil, pct.UnknownToolError{Tool: s.Name}
+		return nil, pct.UnknownServiceError{Service: s.Name}
 	}
 
 	// Stop the service.
@@ -536,7 +536,7 @@ func (agent *Agent) handleGetConfig(cmd *proto.Cmd) (interface{}, []error) {
 // Handle:@goroutine[3]
 func (agent *Agent) handleGetAllConfigs(cmd *proto.Cmd) (interface{}, []error) {
 	configs, errs := agent.GetConfig()
-	for service, manager := range agent.tools {
+	for service, manager := range agent.services {
 		if manager == nil { // should not happen
 			agent.logger.Error("Nil manager:", service)
 			continue
@@ -659,16 +659,16 @@ func (agent *Agent) statusHandler() {
 	for {
 		select {
 		case cmd := <-agent.statusChan:
-			switch cmd.Tool {
+			switch cmd.Service {
 			case "":
 				replyChan <- cmd.Reply(agent.AllStatus())
 			case "agent":
 				replyChan <- cmd.Reply(agent.Status())
 			default:
-				if manager, ok := agent.tools[cmd.Tool]; ok {
+				if manager, ok := agent.services[cmd.Service]; ok {
 					replyChan <- cmd.Reply(manager.Status())
 				} else {
-					replyChan <- cmd.Reply(nil, pct.UnknownToolError{Tool: cmd.Tool})
+					replyChan <- cmd.Reply(nil, pct.UnknownServiceError{Service: cmd.Service})
 				}
 			}
 		case <-agent.statusHandlerSync.StopChan:
@@ -686,7 +686,7 @@ func (agent *Agent) Status() map[string]string {
 // statusHandler:@goroutine[2]
 func (agent *Agent) AllStatus() map[string]string {
 	status := agent.Status()
-	for service, manager := range agent.tools {
+	for service, manager := range agent.services {
 		if manager == nil { // should not happen
 			status[service] = fmt.Sprintf("ERROR: %s service manager is nil", service)
 			continue

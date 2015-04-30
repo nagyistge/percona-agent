@@ -84,7 +84,7 @@ type RealAnalyzer struct {
 }
 
 func NewRealAnalyzer(logger *pct.Logger, config Config, iter IntervalIter, mysqlConn mysql.Connector, restartChan <-chan bool, worker Worker, clock ticker.Manager, spool data.Spooler) *RealAnalyzer {
-	name := logger.Tool()
+	name := logger.Service()
 	a := &RealAnalyzer{
 		logger:      logger,
 		config:      config,

@@ -248,7 +248,7 @@ func (cli *Cli) send(args []string) {
 		User:      "percona-agent-cli",
 		AgentUUID: cli.agentUuid,
 		Cmd:       args[1],
-		Tool:   args[2],
+		Service:   args[2],
 	}
 	if len(args) == 4 {
 		switch args[1] {
@@ -301,7 +301,7 @@ func (cli *Cli) info(args []string) {
 		User:      "percona-agent-cli",
 		AgentUUID: cli.agentUuid,
 		Cmd:       "GetInfo",
-		Tool:   "instance",
+		Service:   "instance",
 	}
 	if len(args) == 3 {
 		switch args[1] {
@@ -315,7 +315,7 @@ func (cli *Cli) info(args []string) {
 				return
 			}
 			si := &proto.ServiceInstance{
-				Tool:  "mysql",
+				Service:  "mysql",
 				Instance: bytes,
 			}
 			bytes, err = json.Marshal(si)
@@ -334,7 +334,7 @@ func (cli *Cli) info(args []string) {
 				return
 			}
 			si := &proto.ServiceInstance{
-				Tool:  "server",
+				Service:  "server",
 				Instance: bytes,
 			}
 			bytes, err = json.Marshal(si)

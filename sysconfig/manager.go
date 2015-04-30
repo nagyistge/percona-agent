@@ -39,7 +39,7 @@ import (
 	"github.com/percona/percona-agent/ticker"
 )
 
-const TOOL_NAME = "sysconfig"
+const SERVICE_NAME = "sysconfig"
 
 type Manager struct {
 	logger  *pct.Logger
@@ -66,7 +66,7 @@ func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager
 		// --
 		reportChan: make(chan *Report, 3),
 		monitors:   make(map[string]Monitor),
-		status:     pct.NewStatus([]string{TOOL_NAME, "sysconfig-spooler"}),
+		status:     pct.NewStatus([]string{SERVICE_NAME, "sysconfig-spooler"}),
 		mux:        &sync.RWMutex{},
 	}
 	return m
@@ -78,7 +78,7 @@ func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager
 
 func (m *Manager) Start() error {
 	if m.running {
-		return pct.ToolIsRunningError{Tool: "sysconfig"}
+		return pct.ServiceIsRunningError{Service: "sysconfig"}
 	}
 
 	if !m.spoolerRunning {
@@ -87,7 +87,7 @@ func (m *Manager) Start() error {
 	}
 
 	// Start all sysconfig monitors.
-	glob := filepath.Join(pct.Basedir.Dir("config"), TOOL_NAME+"-*.conf")
+	glob := filepath.Join(pct.Basedir.Dir("config"), SERVICE_NAME+"-*.conf")
 	configFiles, err := filepath.Glob(glob)
 	if err != nil {
 		return err
@@ -129,7 +129,7 @@ func (m *Manager) Stop() error {
 	m.mux.Lock()
 	defer m.mux.Unlock()
 	for name, monitor := range m.monitors {
-		m.status.Update(TOOL_NAME, "Stopping "+name)
+		m.status.Update(SERVICE_NAME, "Stopping "+name)
 		if err := monitor.Stop(); err != nil {
 			m.logger.Warn("Failed to stop " + name + ": " + err.Error())
 			continue
@@ -145,7 +145,7 @@ func (m *Manager) Stop() error {
 
 // @goroutine[0]
 func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
-	m.status.UpdateRe(TOOL_NAME, "Handling", cmd)
+	m.status.UpdateRe(SERVICE_NAME, "Handling", cmd)
 	defer m.status.Update("sysconfig", "Running")
 
 	switch cmd.Cmd {
@@ -159,7 +159,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 			return cmd.Reply(nil, err)
 		}
 
-		m.status.UpdateRe(TOOL_NAME, "Starting "+name, cmd)
+		m.status.UpdateRe(SERVICE_NAME, "Starting "+name, cmd)
 		m.logger.Info("Start", name, cmd)
 
 		m.mux.RLock()
@@ -192,7 +192,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 		// Save the monitor-specific config to disk so agent starts on restart.
 		monitorConfig := monitor.Config()
-		if err = pct.Basedir.WriteInstanceConfig(TOOL_NAME, c.UUID, monitorConfig); err != nil {
+		if err = pct.Basedir.WriteInstanceConfig(SERVICE_NAME, c.UUID, monitorConfig); err != nil {
 			return cmd.Reply(nil, fmt.Errorf("Write %s config: %v", name, err))
 		}
 		return cmd.Reply(nil) // success
@@ -205,7 +205,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		if err != nil {
 			return cmd.Reply(nil, err)
 		}
-		m.status.UpdateRe(TOOL_NAME, "Stopping "+name, cmd)
+		m.status.UpdateRe(SERVICE_NAME, "Stopping "+name, cmd)
 		m.logger.Info("Stop", name, cmd)
 		m.mux.RLock()
 		monitor, ok := m.monitors[c.UUID]
@@ -217,7 +217,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 			return cmd.Reply(nil, fmt.Errorf("Stop %s: %v", name, err))
 		}
 		m.clock.Remove(monitor.TickChan())
-		if err := pct.Basedir.RemoveInstanceConfig(TOOL_NAME, c.UUID); err != nil {
+		if err := pct.Basedir.RemoveInstanceConfig(SERVICE_NAME, c.UUID); err != nil {
 			return cmd.Reply(nil, fmt.Errorf("Remove %s: %v", name, err))
 		}
 		m.mux.Lock()
@@ -275,10 +275,10 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 			continue
 		}
 		config := proto.AgentConfig{
-			Tool: TOOL_NAME,
-			UUID:            mmConfig.UUID,
-			Config:          string(bytes),
-			Running:         true, // config removed if stopped, so it must be running
+			Service: SERVICE_NAME,
+			UUID:    mmConfig.UUID,
+			Config:  string(bytes),
+			Running: true, // config removed if stopped, so it must be running
 		}
 		configs = append(configs, config)
 	}

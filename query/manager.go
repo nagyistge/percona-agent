@@ -18,13 +18,14 @@
 package query
 
 import (
+	"sync"
+
 	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/pct"
-	"sync"
 )
 
 const (
-	TOOL_NAME = "query"
+	SERVICE_NAME = "query"
 )
 
 type Manager struct {
@@ -42,7 +43,7 @@ func NewManager(logger *pct.Logger, explain Service) *Manager {
 		logger:  logger,
 		explain: explain,
 		// --
-		status: pct.NewStatus([]string{TOOL_NAME}),
+		status: pct.NewStatus([]string{SERVICE_NAME}),
 	}
 	return m
 }
@@ -56,12 +57,12 @@ func (m *Manager) Start() error {
 	defer m.Unlock()
 
 	if m.running {
-		return pct.ToolIsRunningError{Tool: TOOL_NAME}
+		return pct.ServiceIsRunningError{Service: SERVICE_NAME}
 	}
 
 	m.running = true
 	m.logger.Info("Started")
-	m.status.Update(TOOL_NAME, "Running")
+	m.status.Update(SERVICE_NAME, "Running")
 	return nil
 }
 
@@ -74,12 +75,12 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	m.Lock()
 	defer m.Unlock()
 
-	m.status.UpdateRe(TOOL_NAME, "Handling", cmd)
-	defer m.status.Update(TOOL_NAME, "Running")
+	m.status.UpdateRe(SERVICE_NAME, "Handling", cmd)
+	defer m.status.Update(SERVICE_NAME, "Running")
 
 	switch cmd.Cmd {
 	case "Explain":
-		m.status.UpdateRe(TOOL_NAME, "Running explain", cmd)
+		m.status.UpdateRe(SERVICE_NAME, "Running explain", cmd)
 		return m.explain.Handle(cmd)
 	default:
 		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})

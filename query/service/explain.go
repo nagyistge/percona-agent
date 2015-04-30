@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	TOOL_NAME = "explain"
+	SERVICE_NAME = "explain"
 )
 
 var (
@@ -127,11 +127,11 @@ func (e *Explain) createConn(uuid string) (conn mysql.Connector, err error) {
 
 func (e *Explain) getExplainQuery(cmd *proto.Cmd) (explainQuery *proto.ExplainQuery, err error) {
 	if cmd.Data == nil {
-		return nil, fmt.Errorf("%s.getExplainQuery:cmd.Data is empty", TOOL_NAME)
+		return nil, fmt.Errorf("%s.getExplainQuery:cmd.Data is empty", SERVICE_NAME)
 	}
 
 	if err := json.Unmarshal(cmd.Data, &explainQuery); err != nil {
-		return nil, fmt.Errorf("%s.getExplainQuery:json.Unmarshal:%s", TOOL_NAME, err)
+		return nil, fmt.Errorf("%s.getExplainQuery:json.Unmarshal:%s", SERVICE_NAME, err)
 	}
 
 	return explainQuery, nil

@@ -1138,14 +1138,14 @@ func (s *MainTestSuite) expectDefaultLogConfig(t *C) {
 }
 
 func (s *MainTestSuite) expectDefaultMmMysqlConfig(t *C) {
-	tool := "mm"
+	service := "mm"
 	instanceUUID := s.mysqlInstance.UUID
 	expectedConfig := fakeapi.ConfigMmDefaultMysql
 	expectedConfig.UUID = instanceUUID
 
 	gotConfig := mmMysql.Config{}
-	if err := pct.Basedir.ReadInstanceConfig(tool, instanceUUID, &gotConfig); err != nil {
-		t.Errorf("Read %s-%s config: %v", tool, instanceUUID, err)
+	if err := pct.Basedir.ReadInstanceConfig(service, instanceUUID, &gotConfig); err != nil {
+		t.Errorf("Read %s-%s config: %v", service, instanceUUID, err)
 	}
 
 	t.Check(gotConfig, DeepEquals, expectedConfig)
@@ -1190,9 +1190,9 @@ func (s *MainTestSuite) expectDefaultSysconfigMysqlConfig(t *C) {
 	expectedConfig := fakeapi.ConfigSysconfigDefaultMysql
 	expectedConfig.UUID = instanceUUID
 	gotConfig := sysconfigMysql.Config{}
-	tool := "sysconfig"
-	if err := pct.Basedir.ReadInstanceConfig(tool, instanceUUID, &gotConfig); err != nil {
-		t.Errorf("Read sysconfig-%s config: %s", tool, instanceUUID, err)
+	service := "sysconfig"
+	if err := pct.Basedir.ReadInstanceConfig(service, instanceUUID, &gotConfig); err != nil {
+		t.Errorf("Read sysconfig-%s config: %s", service, instanceUUID, err)
 	}
 
 	t.Check(gotConfig, DeepEquals, expectedConfig)

@@ -665,7 +665,7 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	// The agent calls mm.Handle() with the cmd (for logging and status) and the config data.
 	cmd := &proto.Cmd{
 		User: "daniel",
-		Tool: "mm",
+		Service: "mm",
 		Cmd:  "StartService",
 		Data: mmConfigData,
 	}
@@ -703,7 +703,7 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 
 	cmd = &proto.Cmd{
 		User: "daniel",
-		Tool: "mm",
+		Service: "mm",
 		Cmd:  "StopService",
 		Data: mmConfigData,
 	}
@@ -734,7 +734,7 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	 */
 	cmd = &proto.Cmd{
 		User: "daniel",
-		Tool: "mm",
+		Service: "mm",
 		Cmd:  "StartService",
 		Data: mmConfigData,
 	}
@@ -778,7 +778,7 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 
 	cmd = &proto.Cmd{
 		User: "daniel",
-		Tool: "mm",
+		Service: "mm",
 		Cmd:  "Pontificate",
 		Data: mmConfigData,
 	}
@@ -814,7 +814,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	t.Assert(err, IsNil)
 	cmd := &proto.Cmd{
 		User: "daniel",
-		Tool: "mm",
+		Service: "mm",
 		Cmd:  "StartService",
 		Data: mysqlData,
 	}
@@ -837,7 +837,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	t.Assert(err, IsNil)
 	cmd = &proto.Cmd{
 		User: "daniel",
-		Tool: "mm",
+		Service: "mm",
 		Cmd:  "StartService",
 		Data: systemData,
 	}
@@ -851,7 +851,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	 */
 	cmd = &proto.Cmd{
 		Cmd:  "GetConfig",
-		Tool: "mm",
+		Service: "mm",
 	}
 	reply = m.Handle(cmd)
 	t.Assert(reply, NotNil)
@@ -863,13 +863,13 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	}
 	expectConfig := []proto.AgentConfig{
 		{
-			Tool:    "mm",
+			Service:    "mm",
 			UUID:    "00000000000000000000000000000001",
 			Config:  string(systemData),
 			Running: true,
 		},
 		{
-			Tool:    "mm",
+			Service:    "mm",
 			UUID:    "00000000000000000000000000000003",
 			Config:  string(mysqlData),
 			Running: true,

@@ -68,7 +68,7 @@ func (m *Manager) Start() error {
 	defer m.mux.Unlock()
 
 	if m.config != nil {
-		return pct.ToolIsRunningError{Tool: "data"}
+		return pct.ServiceIsRunningError{Service: "data"}
 	}
 
 	m.status.Update("data", "Starting")
@@ -183,7 +183,7 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 	}
 	// Configs are always returned as array of AgentConfig resources.
 	config := proto.AgentConfig{
-		Tool: "data",
+		Service: "data",
 		// no external service
 		Config:  string(bytes),
 		Running: m.running,

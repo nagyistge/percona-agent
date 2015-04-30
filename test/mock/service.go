@@ -24,7 +24,7 @@ import (
 	"github.com/percona/percona-agent/pct"
 )
 
-type MockToolManager struct {
+type MockServiceManager struct {
 	name         string
 	traceChan    chan string
 	readyChan    chan bool
@@ -35,8 +35,8 @@ type MockToolManager struct {
 	Cmds         []*proto.Cmd
 }
 
-func NewMockToolManager(name string, readyChan chan bool, traceChan chan string) *MockToolManager {
-	m := &MockToolManager{
+func NewMockServiceManager(name string, readyChan chan bool, traceChan chan string) *MockServiceManager {
+	m := &MockServiceManager{
 		name:      name,
 		readyChan: readyChan,
 		traceChan: traceChan,
@@ -46,7 +46,7 @@ func NewMockToolManager(name string, readyChan chan bool, traceChan chan string)
 	return m
 }
 
-func (m *MockToolManager) Start() error {
+func (m *MockServiceManager) Start() error {
 	m.traceChan <- fmt.Sprintf("Start %s", m.name)
 	// Return when caller is ready.  This allows us to simulate slow starts.
 	m.status.Update(m.name, "Starting")
@@ -56,7 +56,7 @@ func (m *MockToolManager) Start() error {
 	return m.StartErr
 }
 
-func (m *MockToolManager) Stop() error {
+func (m *MockServiceManager) Stop() error {
 	m.traceChan <- "Stop " + m.name
 	// Return when caller is ready.  This allows us to simulate slow stops.
 	m.status.Update(m.name, "Stopping")
@@ -66,15 +66,15 @@ func (m *MockToolManager) Stop() error {
 	return m.StopErr
 }
 
-func (m *MockToolManager) Status() map[string]string {
+func (m *MockServiceManager) Status() map[string]string {
 	m.traceChan <- "Status " + m.name
 	return m.status.All()
 }
 
-func (m *MockToolManager) GetConfig() ([]proto.AgentConfig, []error) {
+func (m *MockServiceManager) GetConfig() ([]proto.AgentConfig, []error) {
 	configs := []proto.AgentConfig{
 		{
-			Tool:    m.name,
+			Service: m.name,
 			Config:  `{"Foo":"bar"}`,
 			Running: m.IsRunningVal,
 		},
@@ -82,16 +82,16 @@ func (m *MockToolManager) GetConfig() ([]proto.AgentConfig, []error) {
 	return configs, nil
 }
 
-func (m *MockToolManager) IsRunning() bool {
+func (m *MockServiceManager) IsRunning() bool {
 	m.traceChan <- "IsRunning " + m.name
 	return m.IsRunningVal
 }
 
-func (m *MockToolManager) Handle(cmd *proto.Cmd) *proto.Reply {
+func (m *MockServiceManager) Handle(cmd *proto.Cmd) *proto.Reply {
 	m.Cmds = append(m.Cmds, cmd)
 	return cmd.Reply(nil)
 }
 
-func (m *MockToolManager) Reset() {
+func (m *MockServiceManager) Reset() {
 	m.status.Update(m.name, "")
 }
