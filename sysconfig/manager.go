@@ -111,7 +111,7 @@ func (m *Manager) Start() error {
 		}
 		reply := m.Handle(cmd)
 		if reply.Error != "" {
-			m.logger.Error("Start " + configFile + ": " + err.Error())
+			m.logger.Error("Start " + configFile + ": " + reply.Error)
 			continue
 		}
 		m.logger.Info("Started " + configFile)

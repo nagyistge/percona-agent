@@ -35,7 +35,11 @@ import (
 	"github.com/jagregory/halgo"
 )
 
-var requiredEntryLinks = []string{"instances", "download"}
+// TODO: Once demo is over this variable along with code that uses it must be removed
+var LegacyV2 = true
+
+// TODO once LegacyV2 code is removed, agents entry link MUST also be removed, its not needed in v3
+var requiredEntryLinks = []string{"agents", "instances", "download"}
 
 var requiredAgentLinks = []string{"cmd", "log", "data", "self"}
 var timeoutClientConfig = &TimeoutClientConfig{
@@ -154,7 +158,16 @@ func (a *API) Connect(hostname, apiKey, agentUuid string) error {
 
 	// Get agent links: <API hostname>/agents/
 	// TODO: probably we should use RFC 6570 for URI template and send that as part of entry links
-	agentLinks, err := a.getLinks(apiKey, entryLinks["instances"]+"/"+agentUuid)
+	var entry string
+
+	// TODO remove this when LegacyV2 is not used anymore
+	if LegacyV2 {
+		entry = "agents"
+	} else {
+		entry = "instances"
+	}
+
+	agentLinks, err := a.getLinks(apiKey, entryLinks[entry]+"/"+agentUuid)
 	if err != nil {
 		return err
 	}
@@ -206,6 +219,20 @@ func (a *API) getLinks(apiKey, url string) (map[string]string, error) {
 	} else if len(data) == 0 {
 		return nil, fmt.Errorf("OK response from %s but no content", url)
 	}
+
+	// Hack to be able to demo percona-agent
+	//////////////////////////////////////////////////////////////////////////////
+	if LegacyV2 {
+		type Links struct {
+			Links map[string]string
+		}
+		links := Links{}
+		if err := json.Unmarshal(data, &links); err != nil {
+			return nil, fmt.Errorf("GET %s error: json.Unmarshal: %s: %s", url, err, string(data))
+		}
+		return links.Links, nil
+	}
+	//////////////////////////////////////////////////////////////////////////////
 
 	halLinks := &halgo.Links{}
 	if err := json.Unmarshal(data, halLinks); err != nil {

@@ -269,6 +269,10 @@ func GetMySQLInfo(it proto.Instance) error {
 	if err != nil {
 		return err
 	}
+	if it.Properties == nil {
+		// Properties may not be initialized
+		it.Properties = map[string]string{}
+	}
 	it.Properties["hostname"] = hostname
 	it.Properties["distro"] = distro
 	it.Properties["version"] = version

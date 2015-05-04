@@ -187,7 +187,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		m.status.UpdateRe(SERVICE_NAME, "Starting "+name, cmd)
 		m.logger.Info("Start", name, cmd)
 
-		// Monitors names must be unique.
+		// Monitors must be unique.
 		m.mux.RLock()
 		_, haveMonitor := m.monitors[uuid]
 		m.mux.RUnlock()
