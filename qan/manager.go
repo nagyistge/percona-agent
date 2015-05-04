@@ -140,8 +140,8 @@ func (m *Manager) Stop() error {
 		return nil
 	}
 
-	for UUID := range m.analyzers {
-		if err := m.stopAnalyzer(UUID); err != nil {
+	for uuid := range m.analyzers {
+		if err := m.stopAnalyzer(uuid); err != nil {
 			m.logger.Error(err)
 		}
 	}
