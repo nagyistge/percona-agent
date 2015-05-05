@@ -163,7 +163,6 @@ func (s *ManagerTestSuite) TestStartWithConfig(t *C) {
 			UUID:          mysqlInstance.UUID,
 			CollectFrom:   analyzerType,
 			Interval:      300,
-			MaxWorkers:    1,
 			WorkerRunTime: 600,
 			Start: []mysql.Query{
 				mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
@@ -254,7 +253,6 @@ func (s *ManagerTestSuite) TestStart2RemoteQAN(t *C) {
 			UUID:          mysqlInstance.UUID,
 			CollectFrom:   "perfschema",
 			Interval:      300,
-			MaxWorkers:    1,
 			WorkerRunTime: 600,
 			Start: []mysql.Query{
 				mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
@@ -342,7 +340,6 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 		UUID:          mysqlUUID,
 		CollectFrom:   "slowlog",
 		Interval:      300,
-		MaxWorkers:    1,
 		WorkerRunTime: 600,
 		Start: []mysql.Query{
 			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
@@ -408,34 +405,11 @@ func (s *ManagerTestSuite) TestValidateConfig(t *C) {
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
 		ExampleQueries:    true,
-		MaxWorkers:        2,
 		WorkerRunTime:     600, // 10 min
 		CollectFrom:       "slowlog",
 	}
 	err := qan.ValidateConfig(&config)
 	t.Check(err, IsNil)
-
-	config = qan.Config{
-		UUID: mysqlUUID,
-		Start: []mysql.Query{
-			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-			mysql.Query{Set: "SET GLOBAL long_query_time=0.123"},
-			mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
-		},
-		Stop: []mysql.Query{
-			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
-		},
-		Interval:          300,        // 5 min
-		MaxSlowLogSize:    1073741824, // 1 GiB
-		RemoveOldSlowLogs: true,
-		ExampleQueries:    true,
-		MaxWorkers:        0,
-		WorkerRunTime:     600, // 10 min
-		CollectFrom:       "slowlog",
-	}
-	err = qan.ValidateConfig(&config)
-	t.Check(err, NotNil)
 
 	// CollectFrom is empty in old versions; it should default to "slowlog".
 	config = qan.Config{
@@ -446,11 +420,10 @@ func (s *ManagerTestSuite) TestValidateConfig(t *C) {
 		Stop: []mysql.Query{
 			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
 		},
-		Interval:          300,        // 5 min
+		Interval:          0,
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
 		ExampleQueries:    true,
-		MaxWorkers:        0,
 		WorkerRunTime:     600, // 10 min
 		CollectFrom:       "",
 	}
@@ -494,7 +467,6 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
 		ExampleQueries:    true,
-		MaxWorkers:        2,
 		WorkerRunTime:     600, // 10 min
 		CollectFrom:       "slowlog",
 	}

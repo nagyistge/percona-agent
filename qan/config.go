@@ -25,7 +25,6 @@ type Config struct {
 	CollectFrom       string // "slowlog" or "perfschema"
 	Start             []mysql.Query
 	Stop              []mysql.Query
-	MaxWorkers        int
 	Interval          uint  // minutes, "How often to report"
 	MaxSlowLogSize    int64 // bytes, 0 = no max
 	RemoveOldSlowLogs bool  // after rotating for MaxSlowLogSize

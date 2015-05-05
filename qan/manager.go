@@ -254,12 +254,6 @@ func ValidateConfig(config *Config) error {
 	if config.Stop == nil || len(config.Stop) == 0 {
 		return errors.New("qan.Config.Stop array is empty")
 	}
-	if config.MaxWorkers < 1 {
-		return errors.New("MaxWorkers must be > 0")
-	}
-	if config.MaxWorkers > 4 {
-		return errors.New("MaxWorkers must be < 4")
-	}
 	if config.Interval == 0 {
 		return errors.New("Interval must be > 0")
 	}

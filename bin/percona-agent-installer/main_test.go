@@ -1168,7 +1168,6 @@ func (s *MainTestSuite) expectDefaultQanConfig(t *C) {
 	expectedConfig := qan.Config{
 		UUID:              s.mysqlInstance.UUID,
 		CollectFrom:       "",
-		MaxWorkers:        0,
 		Interval:          60,
 		MaxSlowLogSize:    0,
 		RemoveOldSlowLogs: false,

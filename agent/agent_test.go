@@ -278,7 +278,6 @@ func (s *AgentTestSuite) TestStartStopService(t *C) {
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
 		ExampleQueries:    true,
-		MaxWorkers:        2,
 		WorkerRunTime:     120, // seconds
 	}
 
@@ -385,7 +384,6 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
 		ExampleQueries:    true,
-		MaxWorkers:        2,
 		WorkerRunTime:     120, // seconds
 	}
 	qanConfigData, _ := json.Marshal(qanConfig)
