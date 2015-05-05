@@ -224,17 +224,26 @@ func GetMySQLInfo(it *proto.MySQLInstance) error {
 		return err
 	}
 	defer conn.Close()
-	sql := "SELECT /* percona-agent */" +
-		" CONCAT_WS('.', @@hostname, IF(@@port='3306',NULL,@@port)) AS Hostname," +
+	q := "SELECT /* percona-agent */" +
+		" @@hostname AS Hostname," +
 		" @@version_comment AS Distro," +
 		" @@version AS Version"
-	err := conn.DB().QueryRow(sql).Scan(
+	err := conn.DB().QueryRow(q).Scan(
 		&it.Hostname,
 		&it.Distro,
 		&it.Version,
 	)
 	if err != nil {
 		return err
+	}
+	varName := "" // don't need it, but can't get rid of it
+	port := ""
+	err = conn.DB().QueryRow("SHOW VARIABLES LIKE 'port'").Scan(&varName, &port)
+	if err != nil {
+		return err
+	}
+	if port != "3306" {
+		it.Hostname += "." + port
 	}
 	return nil
 }
