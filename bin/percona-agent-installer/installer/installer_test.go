@@ -19,7 +19,10 @@ package installer_test
 
 import (
 	"fmt"
-	"github.com/percona/cloud-protocol/proto"
+	"os"
+	"testing"
+
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/api"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/installer"
@@ -28,8 +31,6 @@ import (
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
-	"os"
-	"testing"
 )
 
 func Test(t *testing.T) { TestingT(t) }
@@ -49,9 +50,10 @@ func (i *InstallerTestSuite) TestIsSupportedMySQLVersion(t *C) {
 	api := api.New(apiConnector, false)
 	logChan := make(chan *proto.LogEntry, 100)
 	logger := pct.NewLogger(logChan, "instance-repo")
-	instanceRepo := instance.NewRepo(logger, pct.Basedir.Dir("config"), apiConnector)
+	instanceRepo := instance.NewRepo(logger, pct.Basedir.Dir("config"))
 	terminal := term.NewTerminal(os.Stdin, false, true)
-	inst := installer.NewInstaller(terminal, "", api, instanceRepo, agentConfig, flags)
+	inst, err := installer.NewInstaller(terminal, "", api, instanceRepo, agentConfig, flags)
+	t.Assert(err, IsNil)
 	conn := mock.NewNullMySQL()
 	errSomethingWentWrong := fmt.Errorf("Something went wrong")
 

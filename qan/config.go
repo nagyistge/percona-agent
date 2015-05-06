@@ -17,18 +17,14 @@
 
 package qan
 
-import (
-	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/percona-agent/mysql"
-)
+import "github.com/percona/percona-agent/mysql"
 
 type Config struct {
-	proto.ServiceInstance
+	UUID string
 	// Manager
 	CollectFrom       string // "slowlog" or "perfschema"
 	Start             []mysql.Query
 	Stop              []mysql.Query
-	MaxWorkers        int
 	Interval          uint  // minutes, "How often to report"
 	MaxSlowLogSize    int64 // bytes, 0 = no max
 	RemoveOldSlowLogs bool  // after rotating for MaxSlowLogSize

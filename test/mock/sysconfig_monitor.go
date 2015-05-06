@@ -18,9 +18,9 @@
 package mock
 
 import (
-	"fmt"
-	"github.com/percona/percona-agent/sysconfig"
 	"time"
+
+	"github.com/percona/percona-agent/sysconfig"
 )
 
 type SysconfigMonitorFactory struct {
@@ -37,8 +37,8 @@ func NewSysconfigMonitorFactory(monitors []sysconfig.Monitor) *SysconfigMonitorF
 	return f
 }
 
-func (f *SysconfigMonitorFactory) Make(service string, id uint, data []byte) (sysconfig.Monitor, error) {
-	f.Made = append(f.Made, fmt.Sprintf("%s-%d", service, id))
+func (f *SysconfigMonitorFactory) Make(uuid string, data []byte) (sysconfig.Monitor, error) {
+	f.Made = append(f.Made, uuid)
 	if f.monitorNo > len(f.monitors) {
 		return f.monitors[f.monitorNo-1], nil
 	}

@@ -25,7 +25,8 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 
-	"github.com/percona/cloud-protocol/proto"
+	. "github.com/go-test/test"
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/mm"
 	"github.com/percona/percona-agent/mm/mysql"
 	mysqlConn "github.com/percona/percona-agent/mysql"
@@ -71,9 +72,8 @@ func (s *TestSuite) SetUpSuite(t *C) {
 	s.logger = pct.NewLogger(s.logChan, "mm-manager-test")
 	s.tickChan = make(chan time.Time)
 	s.collectionChan = make(chan *mm.Collection, 1)
-	s.name = "mm-mysql-db1"
+	s.name = "mm-1" // Name is mm-<uuid>
 	s.mrm = mock.NewMrmsMonitor()
-
 }
 
 func (s *TestSuite) TearDownSuite(t *C) {
@@ -96,10 +96,7 @@ func (s *TestSuite) TestStartCollectStop(t *C) {
 	// embed a mm.Config which embed an instance.Config:
 	config := &mysql.Config{
 		Config: mm.Config{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
+			UUID:    "1",
 			Collect: 1,
 			Report:  60,
 		},
@@ -199,10 +196,7 @@ func (s *TestSuite) TestCollectInnoDBStats(t *C) {
 
 	config := &mysql.Config{
 		Config: mm.Config{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
+			UUID:    "1",
 			Collect: 1,
 			Report:  60,
 		},
@@ -257,7 +251,7 @@ func (s *TestSuite) TestCollectInnoDBStats(t *C) {
 		{Name: "mysql/innodb/dml/dml_deletes", Type: "counter", Number: 0},
 		{Name: "mysql/innodb/dml/dml_updates", Type: "counter", Number: 0},
 	}
-	if ok, diff := test.IsDeeply(c.Metrics, expect); !ok {
+	if ok, diff := IsDeeply(c.Metrics, expect); !ok {
 		t.Error(diff)
 	}
 
@@ -281,10 +275,7 @@ func (s *TestSuite) TestCollectUserstats(t *C) {
 
 	config := &mysql.Config{
 		Config: mm.Config{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
+			UUID:    "1",
 			Collect: 1,
 			Report:  60,
 		},
@@ -382,10 +373,7 @@ func (s *TestSuite) TestHandleMySQLRestarts(t *C) {
 
 	config := &mysql.Config{
 		Config: mm.Config{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
+			UUID:    "1",
 			Collect: 1,
 			Report:  60,
 		},
@@ -456,7 +444,7 @@ func (s *TestSuite) TestHandleMySQLRestarts(t *C) {
 		{Name: "mysql/innodb/dml/dml_deletes", Type: "counter", Number: 0},
 		{Name: "mysql/innodb/dml/dml_updates", Type: "counter", Number: 0},
 	}
-	if ok, diff := test.IsDeeply(c.Metrics, expect); !ok {
+	if ok, diff := IsDeeply(c.Metrics, expect); !ok {
 		t.Error(diff)
 	}
 
@@ -468,10 +456,7 @@ func (s *TestSuite) TestSlowResponse(t *C) {
 	// https://jira.percona.com/browse/PCT-565
 	config := &mysql.Config{
 		Config: mm.Config{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
+			UUID:    "1",
 			Collect: 1,
 			Report:  60,
 		},
@@ -509,10 +494,7 @@ func (s *TestSuite) TestSlowResponse(t *C) {
 func (s *TestSuite) TestStartWithInvalidDSN(t *C) {
 	config := &mysql.Config{
 		Config: mm.Config{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
+			UUID:    "1",
 			Collect: 1,
 			Report:  60,
 		},

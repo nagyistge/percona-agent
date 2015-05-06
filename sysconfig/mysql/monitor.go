@@ -20,13 +20,13 @@ package mysql
 import (
 	"database/sql"
 	"fmt"
+	"strings"
+	"time"
+
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/sysconfig"
-	"strings"
-	"time"
 )
 
 type Monitor struct {
@@ -62,7 +62,7 @@ func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Conn
 // @goroutine[0]
 func (m *Monitor) Start(tickChan chan time.Time, reportChan chan *sysconfig.Report) error {
 	if m.running {
-		return pct.ServiceIsRunningError{m.name}
+		return pct.ServiceIsRunningError{Service: m.name}
 	}
 
 	m.status.Update(m.name, "Starting")
@@ -140,10 +140,7 @@ func (m *Monitor) run() {
 			m.status.Update(m.name+"-mysql", "Connected")
 
 			c := &sysconfig.Report{
-				ServiceInstance: proto.ServiceInstance{
-					Service:    m.config.Service,
-					InstanceId: m.config.InstanceId,
-				},
+				UUID:     m.config.UUID,
 				Ts:       now.UTC().Unix(),
 				System:   "mysql global variables",
 				Settings: []sysconfig.Setting{},

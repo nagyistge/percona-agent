@@ -19,15 +19,11 @@ package instance
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/percona/percona-agent/agent"
 
-	"strconv"
-
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/mrms"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
@@ -50,7 +46,7 @@ type Manager struct {
 }
 
 func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm mrms.Monitor) *Manager {
-	repo := NewRepo(pct.NewLogger(logger.LogChan(), "instance-repo"), configDir, api)
+	repo := NewRepo(pct.NewLogger(logger.LogChan(), "instance-repo"), configDir)
 	m := &Manager{
 		logger:    logger,
 		configDir: configDir,
@@ -72,9 +68,18 @@ func NewManager(logger *pct.Logger, configDir string, api pct.APIConnector, mrm 
 // @goroutine[0]
 func (m *Manager) Start() error {
 	m.status.Update("instance", "Starting")
-	if err := m.repo.Init(); err != nil {
+	err := m.repo.Init()
+	if err != nil && err != pct.ErrNoSystemTree {
+		m.logger.Error("Cannot initialize instance repository:", err)
+		m.status.Update("instance-repo", "Failed to initialize")
 		return err
 	}
+	if err == pct.ErrNoSystemTree {
+		m.status.Update("instance-repo", "Idle: empty repository")
+	} else {
+		m.status.Update("instance-repo", "Idle")
+	}
+
 	m.logger.Info("Started")
 	m.status.Update("instance", "Running")
 
@@ -110,115 +115,141 @@ func (m *Manager) Stop() error {
 	return nil
 }
 
+func (m *Manager) Status() map[string]string {
+	return m.status.All()
+}
+
 // @goroutine[0]
 func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	m.status.UpdateRe("instance", "Handling", cmd)
 	defer m.status.Update("instance", "Running")
 
-	it := &proto.ServiceInstance{}
-	if err := json.Unmarshal(cmd.Data, it); err != nil {
-		return cmd.Reply(nil, err)
-	}
-
 	switch cmd.Cmd {
-	case "Add":
-		err := m.repo.Add(it.Service, it.InstanceId, it.Instance, true) // true = write to disk
+	case "UpdateSystemTree":
+		var sync *proto.SystemTreeSync
+		if err := json.Unmarshal(cmd.Data, &sync); err != nil {
+			return cmd.Reply(nil, err)
+		}
+		err := m.repo.UpdateSystemTree(sync.Tree, sync.Version)
 		if err != nil {
 			return cmd.Reply(nil, err)
 		}
-		if it.Service == "mysql" {
-			// Get the instance as type proto.MySQLInstance instead of proto.ServiceInstance
-			// because we need the dsn field
-			// We only return errors for repo.Add, not for mrm so all returns within this block
-			// will return nil, nil
-			iit := &proto.MySQLInstance{}
-			err := m.repo.Get(it.Service, it.InstanceId, iit)
-			if err != nil {
-				m.logger.Error(err)
-				return cmd.Reply(nil, nil)
-			}
-			ch, err := m.mrm.Add(iit.DSN)
-			if err != nil {
-				m.logger.Error(err)
-				return cmd.Reply(nil, nil)
-			}
-			m.mrmChans[iit.DSN] = ch
-
-			safeDSN := mysql.HideDSNPassword(iit.DSN)
-			m.status.Update("instance", "Getting info "+safeDSN)
-			if err := GetMySQLInfo(iit); err != nil {
-				m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
-				return cmd.Reply(nil, nil)
-			}
-
-			m.status.Update("instance", "Updating info "+safeDSN)
-			err = m.pushInstanceInfo(iit)
-			if err != nil {
-				m.logger.Error(err)
-				return cmd.Reply(nil, nil)
-			}
-		}
+		// For the following block segment we only care about MySQL instances
+		// From former code logic, we don't actually care about if there was an error
+		// while updating MRM. TODO: really?
+		m.mrmAddMySQL(onlyMySQLInsts(m.getInstances(sync.Added)))
+		m.mrmDeleteMySQL(onlyMySQLInsts(m.getInstances(sync.Deleted)))
+		m.mrmUpdateMySQL(onlyMySQLInsts(m.getInstances(sync.Updated)))
 		return cmd.Reply(nil, nil)
-	case "Remove":
-		if it.Service == "mysql" {
-			// Get the instance as type proto.MySQLInstance instead of proto.ServiceInstance
-			// because we need the dsn field
-			iit := &proto.MySQLInstance{}
-			err := m.repo.Get(it.Service, it.InstanceId, iit)
-			// Don't return an error. This is just a remove from mrms
-			if err != nil {
-				m.logger.Error(err)
-			} else {
-				m.mrm.Remove(iit.DSN, m.mrmChans[iit.DSN])
-			}
+	case "GetSystemTree":
+		// GetTree will return the tree plus its version in a proto.SystemTreeSync
+		tree, err := m.repo.GetSystemTree()
+		if err != nil {
+			return cmd.Reply(nil, err)
 		}
-		err := m.repo.Remove(it.Service, it.InstanceId)
-		return cmd.Reply(nil, err)
+		version := m.repo.GetTreeVersion()
+		sync := proto.SystemTreeSync{}
+		sync.Tree = tree
+		sync.Version = version
+		return cmd.Reply(sync, nil)
 	case "GetInfo":
-		info, err := m.handleGetInfo(it.Service, it.Instance)
-		return cmd.Reply(info, err)
+		var it *proto.Instance
+		if err := json.Unmarshal(cmd.Data, &it); err != nil {
+			return cmd.Reply(nil, err)
+		}
+		err := m.handleGetInfo(*it)
+		return cmd.Reply(it, err)
 	default:
 		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
-}
-
-func (m *Manager) Status() map[string]string {
-	m.status.Update("instance-repo", strings.Join(m.repo.List(), " "))
-	return m.status.All()
 }
 
 func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 	return nil, nil
 }
 
-func (m *Manager) Repo() *Repo {
-	return m.repo
-}
-
 /////////////////////////////////////////////////////////////////////////////
 // Implementation
 /////////////////////////////////////////////////////////////////////////////
 
-func (m *Manager) handleGetInfo(service string, data []byte) (interface{}, error) {
-	switch service {
-	case "mysql":
-		it := &proto.MySQLInstance{}
-		if err := json.Unmarshal(data, it); err != nil {
-			return nil, errors.New("instance.Repo:json.Unmarshal:" + err.Error())
+// Adds a MySQL instance to MRM
+func (m *Manager) addMRMInstance(inst proto.Instance) error {
+	ch, err := m.mrm.Add(inst.DSN)
+	if err != nil {
+		return err
+	}
+	// We need to store the channel because we need to provide it on the call to the removal of the DSN from MRM
+	// This needs to be addressed later on MRM manager.
+	m.mrmChans[inst.DSN] = ch
+
+	safeDSN := mysql.HideDSNPassword(inst.DSN)
+	m.status.Update("instance", "Getting info "+safeDSN)
+	if err := GetMySQLInfo(inst); err != nil {
+		m.logger.Warn(fmt.Sprintf("Failed to get MySQL info %s: %s", safeDSN, err))
+		return err
+	}
+	m.status.Update("instance", "Updating info "+safeDSN)
+	err = m.pushInstanceInfo(inst)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// Auxiliary function to add MySQL instances on MRM
+func (m *Manager) mrmAddMySQL(added []proto.Instance) {
+	// Process added instances
+	for _, addIt := range added {
+		if err := m.addMRMInstance(addIt); err != nil {
+			m.logger.Error(err)
 		}
-		if it.DSN == "" {
-			return nil, fmt.Errorf("MySQL instance DSN is not set")
-		}
-		if err := GetMySQLInfo(it); err != nil {
-			return nil, err
-		}
-		return it, nil
-	default:
-		return nil, fmt.Errorf("Don't know how to get info for %s service", service)
 	}
 }
 
-func GetMySQLInfo(it *proto.MySQLInstance) error {
+// Auxiliary function to remove deleted MySQL instances from MRM
+func (m *Manager) mrmDeleteMySQL(deleted []proto.Instance) {
+	for _, dltIt := range deleted {
+		m.mrm.Remove(dltIt.DSN, m.mrmChans[dltIt.DSN])
+		delete(m.mrmChans, dltIt.DSN)
+	}
+}
+
+// Auxiliary function to update MySQL instances on MRM
+func (m *Manager) mrmUpdateMySQL(updated []proto.Instance) {
+	// For now updates means deleting and then adding DSN to MRM
+	m.mrmDeleteMySQL(updated)
+	m.mrmAddMySQL(updated)
+}
+
+// Auxiliary function that will take a slice of uuids and return a new slice with its corresponding proto.Instances
+func (m *Manager) getInstances(uuids []string) []proto.Instance {
+	var insts []proto.Instance
+	for _, uuid := range uuids {
+		it, err := m.repo.Get(uuid)
+		if err != nil {
+			// This should never happen, this reflects a bug in the API code that builds the proto.SystemTreeSync
+			// document with instances UUIDs in either added, deleted or updated slices that are not present in the
+			// tree. Log the error and keep going, we need to fulfill as much operations as possible.
+			m.logger.Error(fmt.Sprintf("Could not find UUID '%s' in local registry", uuid))
+			continue
+		}
+		insts = append(insts, it)
+	}
+	return insts
+}
+
+func (m *Manager) Repo() *Repo {
+	return m.repo
+}
+
+func (m *Manager) handleGetInfo(it proto.Instance) error {
+	if !IsMySQLInstance(it) {
+		return fmt.Errorf("Don't know how to get info for %s instance", it.UUID)
+	}
+	return GetMySQLInfo(it)
+}
+
+func GetMySQLInfo(it proto.Instance) error {
 	conn := mysql.NewConnection(it.DSN)
 	if err := conn.Connect(1); err != nil {
 		return err
@@ -228,43 +259,31 @@ func GetMySQLInfo(it *proto.MySQLInstance) error {
 		" CONCAT_WS('.', @@hostname, IF(@@port='3306',NULL,@@port)) AS Hostname," +
 		" @@version_comment AS Distro," +
 		" @@version AS Version"
+	// Need auxiliary vars because can't get map attribute addresses
+	var hostname, distro, version string
 	err := conn.DB().QueryRow(sql).Scan(
-		&it.Hostname,
-		&it.Distro,
-		&it.Version,
+		&hostname,
+		&distro,
+		&version,
 	)
 	if err != nil {
 		return err
 	}
+	if it.Properties == nil {
+		// Properties may not be initialized
+		it.Properties = map[string]string{}
+	}
+	it.Properties["hostname"] = hostname
+	it.Properties["distro"] = distro
+	it.Properties["version"] = version
 	return nil
 }
 
-func (m *Manager) GetMySQLInstances() []*proto.MySQLInstance {
-	m.logger.Debug("getMySQLInstances:call")
-	defer m.logger.Debug("getMySQLInstances:return")
-
-	var instances []*proto.MySQLInstance
-	for _, name := range m.Repo().List() {
-		parts := strings.Split(name, "-") // mysql-1 or server-12
-		if len(parts) != 2 {
-			m.logger.Error("Invalid instance name: %s: expected 2 parts, got %d", name, len(parts))
-			continue
-		}
-		if parts[0] == "mysql" {
-			id, err := strconv.ParseInt(parts[1], 10, 64)
-			if err != nil {
-				m.logger.Error("Invalid instance ID: %s: %s", name, err)
-				continue
-			}
-			it := &proto.MySQLInstance{}
-			if err := m.Repo().Get(parts[0], uint(id), it); err != nil {
-				m.logger.Error("Failed to get instance %s: %s", name, err)
-				continue
-			}
-			instances = append(instances, it)
-		}
-	}
-	return instances
+// Returns a slice of all MySQL proto.Instances in the system
+func (m *Manager) GetMySQLInstances() []proto.Instance {
+	m.logger.Debug("GetMySQLInstances:call")
+	defer m.logger.Debug("GetMySQLInstances:return")
+	return m.Repo().GetMySQLInstances()
 }
 
 func (m *Manager) monitorInstancesRestart(ch chan string) {
@@ -315,10 +334,12 @@ func (m *Manager) monitorInstancesRestart(ch chan string) {
 	}
 }
 
-func (m *Manager) pushInstanceInfo(instance *proto.MySQLInstance) error {
-
-	uri := fmt.Sprintf("%s/%s/%d", m.api.EntryLink("instances"), "mysql", instance.Id)
-	data, err := json.Marshal(instance)
+// pushInstanceInfo will update the instance in API with a PUT request
+func (m *Manager) pushInstanceInfo(inst proto.Instance) error {
+	// Subsystems will be ignored, don't send them
+	inst.Subsystems = make([]proto.Instance, 0)
+	uri := fmt.Sprintf("%s/%s", m.api.EntryLink("instances"), inst.UUID)
+	data, err := json.Marshal(&inst)
 	if err != nil {
 		m.logger.Error(err)
 		return err

@@ -26,12 +26,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/query"
 	"github.com/percona/percona-agent/query/service"
+	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
 )
@@ -52,7 +53,7 @@ type ManagerTestSuite struct {
 	tmpDir        string
 	dsn           string
 	rir           *instance.Repo
-	mysqlInstance proto.ServiceInstance
+	mysqlInstance proto.Instance
 	api           *mock.API
 }
 
@@ -65,32 +66,39 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	}
 
 	s.logChan = make(chan *proto.LogEntry, 10)
-	s.logger = pct.NewLogger(s.logChan, query.SERVICE_NAME+"-manager-test")
+	s.logger = pct.NewLogger(s.logChan, query.SERVICE_NAME+"-explain-test")
 
 	var err error
-	s.tmpDir, err = ioutil.TempDir("/tmp", "agent-test")
+	s.tmpDir, err = ioutil.TempDir("/tmp", "agent-test-")
 	t.Assert(err, IsNil)
 
 	if err := pct.Basedir.Init(s.tmpDir); err != nil {
 		t.Fatal(err)
 	}
 	s.configDir = pct.Basedir.Dir("config")
+	s.rir = instance.NewRepo(s.logger, s.configDir)
+	t.Assert(s.rir, NotNil)
 
-	// Real instance repo
-	s.rir = instance.NewRepo(pct.NewLogger(s.logChan, "im-test"), s.configDir, s.api)
-	data, err := json.Marshal(&proto.MySQLInstance{
-		Hostname: "db1",
-		DSN:      s.dsn,
-	})
+	// Load test data to set correct DSN for MySQL instance
+	data, err := ioutil.ReadFile(test.RootDir + "/instance/system-tree-1.json")
+	var systemTree *proto.Instance
+	err = json.Unmarshal(data, &systemTree)
 	t.Assert(err, IsNil)
-	s.rir.Add("mysql", 1, data, false)
-	s.mysqlInstance = proto.ServiceInstance{Service: "mysql", InstanceId: 1}
-
-	links := map[string]string{
-		"agent":     "http://localhost/agent",
-		"instances": "http://localhost/instances",
-	}
-	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
+	// Set DSN in our first MySQL instance of test data
+	systemTree.Subsystems[1].DSN = s.dsn
+	data, err = json.Marshal(systemTree)
+	t.Assert(err, IsNil)
+	// Save system tree file
+	systemTreeFile := filepath.Join(s.configDir, instance.SYSTEM_TREE_FILE)
+	err = ioutil.WriteFile(systemTreeFile, data, 0660)
+	t.Assert(err, IsNil)
+	// Initialize instance repository
+	err = s.rir.Init()
+	t.Assert(err, IsNil)
+	// This is our MySQL instance with DSN = s.dsn
+	s.mysqlInstance, err = s.rir.Get("00000000000000000000000000000003")
+	t.Assert(err, IsNil)
+	s.mysqlInstance.DSN = s.dsn
 }
 
 func (s *ManagerTestSuite) SetUpTest(t *C) {
@@ -195,8 +203,8 @@ func (s *ManagerTestSuite) TestExplainWithoutDb(t *C) {
 	}
 
 	explainQuery := &proto.ExplainQuery{
-		ServiceInstance: s.mysqlInstance,
-		Query:           query,
+		UUID:  s.mysqlInstance.UUID,
+		Query: query,
 	}
 	data, err := json.Marshal(&explainQuery)
 	t.Assert(err, IsNil)
@@ -300,9 +308,9 @@ func (s *ManagerTestSuite) TestExplainWithDb(t *C) {
 	}
 
 	explainQuery := &proto.ExplainQuery{
-		ServiceInstance: s.mysqlInstance,
-		Db:              db,
-		Query:           query,
+		UUID:  s.mysqlInstance.UUID,
+		Db:    db,
+		Query: query,
 	}
 	data, err := json.Marshal(&explainQuery)
 	t.Assert(err, IsNil)

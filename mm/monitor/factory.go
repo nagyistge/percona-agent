@@ -20,7 +20,8 @@ package monitor
 import (
 	"encoding/json"
 	"errors"
-	"github.com/percona/cloud-protocol/proto"
+
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/mm"
 	"github.com/percona/percona-agent/mm/mysql"
@@ -45,51 +46,50 @@ func NewFactory(logChan chan *proto.LogEntry, ir *instance.Repo, mrm mrms.Monito
 	return f
 }
 
-func (f *Factory) Make(service string, instanceId uint, data []byte) (mm.Monitor, error) {
+func (f *Factory) Make(uuid string, data []byte) (mm.Monitor, error) {
 	var monitor mm.Monitor
-	switch service {
+	it, err := f.ir.Get(uuid)
+	if err != nil {
+		return nil, err
+	}
+	switch it.Prefix {
 	case "mysql":
 		// Load the MySQL instance info (DSN, name, etc.).
-		mysqlIt := &proto.MySQLInstance{}
-		if err := f.ir.Get(service, instanceId, mysqlIt); err != nil {
-			return nil, err
-		}
-
 		// Parse the MySQL sysconfig config.
 		config := &mysql.Config{}
 		if err := json.Unmarshal(data, config); err != nil {
 			return nil, err
 		}
 
-		// The user-friendly name of the service, e.g. sysconfig-mysql-db101:
-		alias := "mm-mysql-" + mysqlIt.Hostname
+		// The user-friendly name of the service instance, e.g. mm-mysql-db101:
+		alias := "mm-mysql-" + it.Name
 
 		// Make a MySQL metrics monitor.
 		monitor = mysql.NewMonitor(
-			alias,
+			uuid,
 			config,
 			pct.NewLogger(f.logChan, alias),
-			mysqlConn.NewConnection(mysqlIt.DSN),
+			mysqlConn.NewConnection(it.DSN),
 			f.mrm,
 		)
-	case "server":
+	case "os":
 		// Parse the system mm config.
 		config := &system.Config{}
 		if err := json.Unmarshal(data, config); err != nil {
 			return nil, err
 		}
 
-		// Only one system for now, so no SystemInstance and no  "-instanceName" suffix.
-		alias := "mm-system"
+		// Only one os for now, so no "-instanceName" suffix.
+		alias := "mm-os"
 
 		// Make a MySQL metrics monitor.
 		monitor = system.NewMonitor(
-			alias,
+			uuid,
 			config,
 			pct.NewLogger(f.logChan, alias),
 		)
 	default:
-		return nil, errors.New("Unknown metrics monitor type: " + service)
+		return nil, errors.New("Unknown metrics monitor for instance prefix: " + it.Prefix)
 	}
 	return monitor, nil
 }

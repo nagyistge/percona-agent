@@ -27,7 +27,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/percona/cloud-protocol/proto"
+	. "github.com/go-test/test"
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/mm"
@@ -128,9 +129,9 @@ func (s *AggregatorTestSuite) TestC001(t *C) {
 		t.Fatal(err)
 	}
 	t.Check(got.Ts, Equals, t1)
-	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
-		test.Dump(got.Stats)
-		test.Dump(expect.Stats)
+	if ok, diff := IsDeeply(got.Stats, expect.Stats); !ok {
+		Dump(got.Stats)
+		Dump(expect.Stats)
 		t.Fatal(diff)
 	}
 }
@@ -165,7 +166,7 @@ func (s *AggregatorTestSuite) TestC002(t *C) {
 	if err := test.LoadMmReport(sample+"/c002r.json", expect); err != nil {
 		t.Fatal("c002r.json ", err)
 	}
-	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
+	if ok, diff := IsDeeply(got.Stats, expect.Stats); !ok {
 		t.Fatal(diff)
 	}
 }
@@ -198,7 +199,7 @@ func (s *AggregatorTestSuite) TestC000(t *C) {
 	if err := test.LoadMmReport(sample+"/c000r.json", expect); err != nil {
 		t.Fatal("c000r.json ", err)
 	}
-	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
+	if ok, diff := IsDeeply(got.Stats, expect.Stats); !ok {
 		t.Fatal(diff)
 	}
 }
@@ -245,7 +246,7 @@ func (s *AggregatorTestSuite) TestC003(t *C) {
 	if err := test.LoadMmReport(sample+"/c003r.json", expect); err != nil {
 		t.Fatal("c003r.json ", err)
 	}
-	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
+	if ok, diff := IsDeeply(got.Stats, expect.Stats); !ok {
 		t.Fatal(diff)
 	}
 
@@ -282,7 +283,7 @@ func (s *AggregatorTestSuite) TestC003(t *C) {
 	if err := test.LoadMmReport(sample+"/c003r2.json", expect); err != nil {
 		t.Fatal("c003r2.json ", err)
 	}
-	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
+	if ok, diff := IsDeeply(got.Stats, expect.Stats); !ok {
 		t.Fatal(diff)
 	}
 }
@@ -325,9 +326,9 @@ func (s *AggregatorTestSuite) TestC003Lost(t *C) {
 	if err := test.LoadMmReport(sample+"/c003rlost.json", expect); err != nil {
 		t.Fatal("c003r.json ", err)
 	}
-	if ok, diff := test.IsDeeply(got.Stats, expect.Stats); !ok {
-		test.Dump(got.Stats)
-		test.Dump(expect.Stats)
+	if ok, diff := IsDeeply(got.Stats, expect.Stats); !ok {
+		Dump(got.Stats)
+		Dump(expect.Stats)
 		t.Fatal(diff)
 	}
 }
@@ -355,7 +356,7 @@ func (s *AggregatorTestSuite) TestBadMetric(t *C) {
 
 	got := test.WaitMmReport(s.dataChan)
 	if got != nil {
-		test.Dump(got)
+		Dump(got)
 		t.Error("Got a bad metric")
 	}
 }
@@ -513,7 +514,6 @@ type ManagerTestSuite struct {
 	mysqlMonitor  *mock.MmMonitor
 	systemMonitor *mock.MmMonitor
 	factory       *mock.MmMonitorFactory
-	api           *mock.API
 }
 
 var _ = Suite(&ManagerTestSuite{})
@@ -535,43 +535,32 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 	}
 	s.configDir = pct.Basedir.Dir("config")
 
-	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im"), s.configDir, s.api)
-	data, err := json.Marshal(&proto.MySQLInstance{
-		Hostname: "db1",
-		DSN:      "user:host@tcp:(127.0.0.1:3306)",
-	})
-	t.Assert(err, IsNil)
-	s.im.Add("mysql", 1, data, false)
-	data, err = json.Marshal(&proto.ServerInstance{Hostname: "host1"})
-	t.Assert(err, IsNil)
-	s.im.Add("server", 1, data, false)
-
 	s.mysqlMonitor = mock.NewMmMonitor()
 	s.systemMonitor = mock.NewMmMonitor()
 	s.factory = mock.NewMmMonitorFactory(map[string]mm.Monitor{
-		"mysql-1":  s.mysqlMonitor,
-		"server-1": s.systemMonitor,
+		"00000000000000000000000000000001": s.systemMonitor, // corresponds to OS instance in test data
+		"00000000000000000000000000000003": s.mysqlMonitor,  // corresponds to first MySQL instance in test data
 	})
 
-	links := map[string]string{
-		"agent":     "http://localhost/agent",
-		"instances": "http://localhost/instances",
-	}
-	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
+	systemTreeFile := filepath.Join(s.configDir, instance.SYSTEM_TREE_FILE)
+	err = test.CopyFile(test.RootDir+"/instance/system-tree-1.json", systemTreeFile)
+	t.Assert(err, IsNil)
+
+	s.im = instance.NewRepo(s.logger, s.configDir)
+	t.Assert(s.im, NotNil)
+	err = s.im.Init()
+	t.Assert(err, IsNil)
 }
 
 func (s *ManagerTestSuite) SetUpTest(t *C) {
 	s.clock = mock.NewClock()
-	glob := filepath.Join(pct.Basedir.Dir("config"), "*")
-	files, err := filepath.Glob(glob)
-	if err != nil {
-		t.Fatal(err)
-	}
+	files, _ := filepath.Glob(s.configDir + "/*")
 	for _, file := range files {
 		if err := os.Remove(file); err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 	}
+
 }
 
 func (s *ManagerTestSuite) TearDownSuite(t *C) {
@@ -602,10 +591,7 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 
 	// First the API marshals an mm.Config.
 	config := &mm.Config{
-		ServiceInstance: proto.ServiceInstance{
-			Service:    "mysql",
-			InstanceId: 1,
-		},
+		UUID:    "00000000000000000000000000000003",
 		Collect: 1,
 		Report:  60,
 		// No monitor-specific config
@@ -618,8 +604,8 @@ func (s *ManagerTestSuite) TestStartStopManager(t *C) {
 	t.Assert(err, IsNil)
 
 	// There is a monitor so there should be tickers.
-	if ok, diff := test.IsDeeply(s.clock.Added, []uint{1}); !ok {
-		test.Dump(s.clock.Added)
+	if ok, diff := IsDeeply(s.clock.Added, []uint{1}); !ok {
+		Dump(s.clock.Added)
 		t.Errorf("Does not add tickChan, got %#v", diff)
 	}
 
@@ -660,10 +646,7 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	// This is the config in test/mm/config/mm-mysql-1.conf.
 	mmConfig := &mysql.Config{
 		Config: mm.Config{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
+			UUID:    "00000000000000000000000000000003",
 			Collect: 1,
 			Report:  60,
 		},
@@ -681,10 +664,10 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 
 	// The agent calls mm.Handle() with the cmd (for logging and status) and the config data.
 	cmd := &proto.Cmd{
-		User:    "daniel",
+		User: "daniel",
 		Service: "mm",
-		Cmd:     "StartService",
-		Data:    mmConfigData,
+		Cmd:  "StartService",
+		Data: mmConfigData,
 	}
 	reply := m.Handle(cmd)
 	t.Assert(reply, NotNil)
@@ -696,20 +679,21 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	t.Check(status["monitor"], Equals, "Running")
 
 	// There should be a 1s collect ticker for the monitor.
-	if ok, diff := test.IsDeeply(s.clock.Added, []uint{1}); !ok {
+	if ok, diff := IsDeeply(s.clock.Added, []uint{1}); !ok {
 		t.Errorf("Make 1s ticker for collect interval\n%s", diff)
 	}
 
 	// After starting a monitor, mm should write its config to the dir
 	// it learned when mm.LoadConfig() was called.  Next time agent starts,
 	// it will have mm start the monitor with this config.
-	data, err := ioutil.ReadFile(s.configDir + "/mm-mysql-1.conf")
+	configFile := "mm-00000000000000000000000000000003.conf"
+	data, err := ioutil.ReadFile(filepath.Join(s.configDir, configFile))
 	t.Check(err, IsNil)
 	gotConfig := &mysql.Config{}
 	err = json.Unmarshal(data, gotConfig)
 	t.Check(err, IsNil)
-	if same, diff := test.IsDeeply(gotConfig, mmConfig); !same {
-		test.Dump(gotConfig)
+	if same, diff := IsDeeply(gotConfig, mmConfig); !same {
+		Dump(gotConfig)
 		t.Error(diff)
 	}
 
@@ -718,10 +702,10 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	 */
 
 	cmd = &proto.Cmd{
-		User:    "daniel",
+		User: "daniel",
 		Service: "mm",
-		Cmd:     "StopService",
-		Data:    mmConfigData,
+		Cmd:  "StopService",
+		Data: mmConfigData,
 	}
 
 	// Handles StopService without error.
@@ -741,19 +725,18 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 
 	// After stopping a monitor, mm should remove its config file so agent
 	// doesn't start it on restart.
-	file := s.configDir + "/mm-mysql-1.conf"
-	if pct.FileExists(file) {
-		t.Error("Stopping monitor removes its config; ", file, " exists")
+	if pct.FileExists(configFile) {
+		t.Error("Stopping monitor removes its config; ", configFile, " exists")
 	}
 
 	/**
 	 * Start the monitor again (restarting monitor).
 	 */
 	cmd = &proto.Cmd{
-		User:    "daniel",
+		User: "daniel",
 		Service: "mm",
-		Cmd:     "StartService",
-		Data:    mmConfigData,
+		Cmd:  "StartService",
+		Data: mmConfigData,
 	}
 
 	// If this were a real monitor, it would decode and set its own config.
@@ -772,19 +755,19 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 
 	// There should be a 1s collect ticker for the monitor.
 	// (Actually two in s.clock.Added, as this is mock and we started monitor twice)
-	if ok, diff := test.IsDeeply(s.clock.Added, []uint{1, 1}); !ok {
+	if ok, diff := IsDeeply(s.clock.Added, []uint{1, 1}); !ok {
 		t.Errorf("Make 1s ticker for collect interval\n%s", diff)
 	}
 
 	// After starting a monitor, mm should write its config to the dir
 	// it learned when mm.LoadConfig() was called.  Next time agent starts,
 	// it will have mm start the monitor with this config.
-	data, err = ioutil.ReadFile(s.configDir + "/mm-mysql-1.conf")
+	data, err = ioutil.ReadFile(filepath.Join(s.configDir, configFile))
 	t.Check(err, IsNil)
 	gotConfig = &mysql.Config{}
 	err = json.Unmarshal(data, gotConfig)
 	t.Check(err, IsNil)
-	if same, diff := test.IsDeeply(gotConfig, mmConfig); !same {
+	if same, diff := IsDeeply(gotConfig, mmConfig); !same {
 		t.Logf("%+v", gotConfig)
 		t.Error(diff)
 	}
@@ -794,10 +777,10 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	 */
 
 	cmd = &proto.Cmd{
-		User:    "daniel",
+		User: "daniel",
 		Service: "mm",
-		Cmd:     "Pontificate",
-		Data:    mmConfigData,
+		Cmd:  "Pontificate",
+		Data: mmConfigData,
 	}
 
 	// Unknown cmd causes error.
@@ -818,10 +801,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	 */
 	mysqlMonitorConfig := &mysql.Config{
 		Config: mm.Config{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
+			UUID:    "00000000000000000000000000000003",
 			Collect: 1,
 			Report:  60,
 		},
@@ -833,10 +813,10 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	mysqlData, err := json.Marshal(mysqlMonitorConfig)
 	t.Assert(err, IsNil)
 	cmd := &proto.Cmd{
-		User:    "daniel",
+		User: "daniel",
 		Service: "mm",
-		Cmd:     "StartService",
-		Data:    mysqlData,
+		Cmd:  "StartService",
+		Data: mysqlData,
 	}
 	s.mysqlMonitor.SetConfig(mysqlMonitorConfig)
 	reply := m.Handle(cmd)
@@ -848,10 +828,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	 */
 	systemMonitorConfig := &system.Config{
 		Config: mm.Config{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    "server",
-				InstanceId: 1,
-			},
+			UUID:    "00000000000000000000000000000001",
 			Collect: 10,
 			Report:  60,
 		},
@@ -859,10 +836,10 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	systemData, err := json.Marshal(systemMonitorConfig)
 	t.Assert(err, IsNil)
 	cmd = &proto.Cmd{
-		User:    "daniel",
+		User: "daniel",
 		Service: "mm",
-		Cmd:     "StartService",
-		Data:    systemData,
+		Cmd:  "StartService",
+		Data: systemData,
 	}
 	s.systemMonitor.SetConfig(systemMonitorConfig)
 	reply = m.Handle(cmd)
@@ -873,7 +850,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	 * GetConfig from mm which should return all monitors' configs.
 	 */
 	cmd = &proto.Cmd{
-		Cmd:     "GetConfig",
+		Cmd:  "GetConfig",
 		Service: "mm",
 	}
 	reply = m.Handle(cmd)
@@ -886,26 +863,20 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	}
 	expectConfig := []proto.AgentConfig{
 		{
-			InternalService: "mm",
-			ExternalService: proto.ServiceInstance{
-				Service:    "mysql",
-				InstanceId: 1,
-			},
-			Config:  string(mysqlData),
-			Running: true,
-		},
-		{
-			InternalService: "mm",
-			ExternalService: proto.ServiceInstance{
-				Service:    "server",
-				InstanceId: 1,
-			},
+			Service:    "mm",
+			UUID:    "00000000000000000000000000000001",
 			Config:  string(systemData),
 			Running: true,
 		},
+		{
+			Service:    "mm",
+			UUID:    "00000000000000000000000000000003",
+			Config:  string(mysqlData),
+			Running: true,
+		},
 	}
-	if same, diff := test.IsDeeply(gotConfig, expectConfig); !same {
-		test.Dump(gotConfig)
+	if same, diff := IsDeeply(gotConfig, expectConfig); !same {
+		Dump(gotConfig)
 		t.Error(diff)
 	}
 }
@@ -1027,6 +998,6 @@ func (s *StatsTestSuite) TestPCT939(t *C) {
 		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99590}, 57)
 		stats.Add(&mm.Metric{Name: "foo", Type: "counter", Number: 99600}, 58)
 		got := stats.Finalize()
-		test.Dump(got)
+		Dump(got)
 	*/
 }

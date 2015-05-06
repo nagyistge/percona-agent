@@ -29,7 +29,7 @@ import (
 	"time"
 
 	. "github.com/go-test/test"
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/go-mysql/event"
 	"github.com/percona/go-mysql/log"
 	gomysql "github.com/percona/go-mysql/test"
@@ -64,7 +64,7 @@ type WorkerTestSuite struct {
 	logChan       chan *proto.LogEntry
 	logger        *pct.Logger
 	now           time.Time
-	mysqlInstance proto.ServiceInstance
+	mysqlInstance proto.Instance
 	config        qan.Config
 	mysqlConn     mysql.Connector
 	worker        *slowlog.Worker
@@ -79,9 +79,9 @@ func (s *WorkerTestSuite) SetUpSuite(t *C) {
 	s.logChan = make(chan *proto.LogEntry, 100)
 	s.logger = pct.NewLogger(s.logChan, "qan-worker")
 	s.now = time.Now()
-	s.mysqlInstance = proto.ServiceInstance{Service: "mysql", InstanceId: 1}
+	s.mysqlInstance = proto.Instance{UUID: "1", Name: "mysql1"}
 	s.config = qan.Config{
-		ServiceInstance: s.mysqlInstance,
+		UUID: s.mysqlInstance.UUID,
 		Start: []mysql.Query{
 			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
 			mysql.Query{Set: "SET GLOBAL long_query_time=0.123"},
@@ -303,7 +303,7 @@ func (s *WorkerTestSuite) TestRotateAndRemoveSlowLog(t *C) {
 
 	// See TestStartService() for description of these startup tasks.
 	config := qan.Config{
-		ServiceInstance:   s.mysqlInstance,
+		UUID:              s.mysqlInstance.UUID,
 		Interval:          300,
 		MaxSlowLogSize:    1000, // <-- HERE
 		RemoveOldSlowLogs: true, // <-- HERE too
@@ -415,7 +415,7 @@ func (s *WorkerTestSuite) TestRotateSlowLog(t *C) {
 
 	// See TestStartService() for description of these startup tasks.
 	config := qan.Config{
-		ServiceInstance:   s.mysqlInstance,
+		UUID:              s.mysqlInstance.UUID,
 		Interval:          300,
 		MaxSlowLogSize:    1000,
 		RemoveOldSlowLogs: false, // <-- HERE
@@ -515,7 +515,7 @@ func (s *WorkerTestSuite) TestRotateSlowLog(t *C) {
 
 func (s *WorkerTestSuite) TestStop(t *C) {
 	config := qan.Config{
-		ServiceInstance:   s.mysqlInstance,
+		UUID:              s.mysqlInstance.UUID,
 		Interval:          300,
 		MaxSlowLogSize:    1024 * 1024 * 1024,
 		RemoveOldSlowLogs: true,
@@ -658,7 +658,7 @@ func (s *IterTestSuite) TestIterFile(t *C) {
 		StartOffset: 3,
 		EndOffset:   6,
 	}
-	t.Check(got, test.DeepEquals, expect)
+	t.Check(got, DeepEquals, expect)
 
 	/**
 	 * Rename the file, then re-create it.  The file change should be detected.
@@ -689,7 +689,7 @@ func (s *IterTestSuite) TestIterFile(t *C) {
 		StartOffset: 0,
 		EndOffset:   10,
 	}
-	t.Check(got, test.DeepEquals, expect)
+	t.Check(got, DeepEquals, expect)
 
 	// Iter should no longer detect file change.
 	_ = ioutil.WriteFile(fileName, []byte("123456789ABCDEF"), 0777)
@@ -706,7 +706,7 @@ func (s *IterTestSuite) TestIterFile(t *C) {
 		StartOffset: 10,
 		EndOffset:   15,
 	}
-	t.Check(got, test.DeepEquals, expect)
+	t.Check(got, DeepEquals, expect)
 
 	i.Stop()
 }

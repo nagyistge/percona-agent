@@ -21,11 +21,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/mrms"
 	"github.com/percona/percona-agent/mysql"
@@ -53,7 +52,7 @@ type Manager struct {
 	// --
 	mux       *sync.RWMutex
 	running   bool
-	analyzers map[uint]AnalyzerInstance
+	analyzers map[string]AnalyzerInstance
 	status    *pct.Status
 }
 
@@ -74,7 +73,7 @@ func NewManager(
 		analyzerFactory: analyzerFactory,
 		// --
 		mux:       &sync.RWMutex{},
-		analyzers: make(map[uint]AnalyzerInstance),
+		analyzers: make(map[string]AnalyzerInstance),
 		status:    pct.NewStatus([]string{"qan"}),
 	}
 	return m
@@ -92,7 +91,7 @@ func (m *Manager) Start() error {
 	defer m.mux.Unlock()
 
 	if m.running {
-		return pct.ServiceIsRunningError{Service: "qan"}
+		return pct.ServiceIsRunningError{"qan"}
 	}
 
 	// Manager ("qan" in status) runs independent from qan-parser.
@@ -103,31 +102,31 @@ func (m *Manager) Start() error {
 		m.status.Update("qan", "Running")
 	}()
 
-	// Load qan config from disk.
-	// todo-1.1: get and start all qan-*.conf
-	config := Config{}
-	if err := pct.Basedir.ReadConfig("qan", &config); err != nil {
-		if os.IsNotExist(err) {
-			m.logger.Info("Not enabled")
-			return nil
+	it, err := pct.Basedir.NewConfigIterator("qan")
+	if err != nil {
+		m.logger.Error(fmt.Sprintf("Cannot read Query Analytics config files: %v", err))
+		return nil
+	}
+
+	for it.Next() {
+		config := new(Config)
+		if err := it.Read(config); err != nil {
+			m.logger.Error(fmt.Sprintf("Cannot read Query Analytics config for %s: %v", config.UUID, err))
+			continue
 		}
-		m.logger.Error("Read qan config:", err)
-		return nil
+		// Start the slow log or perf schema analyzer. If it fails that's ok for
+		// the qan manager itself (i.e. don't fail this func) because user can fix
+		// or reconfigure this analyzer instance later and have qan manager try
+		// again to start it.
+		// todo: this fails if agent starts before MySQL is running because MRMS
+		//       fails to connect to MySQL in mrms/monitor/instance.NewMysqlInstance();
+		//       it should succeed and retry until MySQL is online.
+		if err := m.startAnalyzer(*config); err != nil {
+			m.logger.Error(fmt.Sprintf("Cannot start Query Analytics for %s: %v. Verify that MySQL is running, "+
+				"then try again.", config.UUID, err))
+			continue
+		}
 	}
-
-	// Start the slow log or perf schema analyzer. If it fails that's ok for
-	// the qan manager itself (i.e. don't fail this func) because user can fix
-	// or reconfigure this analyzer instance later and have qan manager try
-	// again to start it.
-	// todo: this fails if agent starts before MySQL is running because MRMS
-	//       fails to connect to MySQL in mrms/monitor/instance.NewMysqlInstance();
-	//       it should succeed and retry until MySQL is online.
-	if err := m.startAnalyzer(config); err != nil {
-		m.logger.Error(fmt.Sprintf("Cannot start Query Analytics: %s. Verify that MySQL is running, "+
-			"then try again.", err))
-		return nil
-	}
-
 	return nil // success
 }
 
@@ -141,8 +140,8 @@ func (m *Manager) Stop() error {
 		return nil
 	}
 
-	for instanceId := range m.analyzers {
-		if err := m.stopAnalyzer(instanceId); err != nil {
+	for uuid := range m.analyzers {
+		if err := m.stopAnalyzer(uuid); err != nil {
 			m.logger.Error(err)
 		}
 	}
@@ -183,9 +182,8 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		if err := m.startAnalyzer(config); err != nil {
 			return cmd.Reply(nil, err)
 		}
-		// Write qan.conf to disk so agent runs qan on restart.
-
-		if err := pct.Basedir.WriteConfig("qan", config); err != nil {
+		// Write instance qan config to disk so agent runs qan on restart.
+		if err := pct.Basedir.WriteInstanceConfig("qan", config.UUID, config); err != nil {
 			return cmd.Reply(nil, err)
 		}
 		return cmd.Reply(nil) // success
@@ -196,14 +194,14 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 			return cmd.Reply(nil, pct.ServiceIsNotRunningError{Service: "qan"})
 		}
 		errs := []error{}
-		for instanceId := range m.analyzers {
-			if err := m.stopAnalyzer(instanceId); err != nil {
+		for UUID := range m.analyzers {
+			if err := m.stopAnalyzer(UUID); err != nil {
 				errs = append(errs, err)
 			}
-		}
-		// Remove qan.conf from disk so agent doesn't run qan on restart.
-		if err := pct.Basedir.RemoveConfig("qan"); err != nil {
-			errs = append(errs, err)
+			// Remove qan-<uuid>.conf from disk so agent doesn't run qan on restart.
+			if err := pct.Basedir.RemoveInstanceConfig("qan", UUID); err != nil {
+				errs = append(errs, err)
+			}
 		}
 		return cmd.Reply(nil, errs...)
 	case "GetConfig":
@@ -232,8 +230,8 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 			continue
 		}
 		configs = append(configs, proto.AgentConfig{
-			InternalService: "qan",
-			// no external service
+			Service: "qan",
+			UUID:    a.analyzer.Config().UUID,
 			Config:  string(bytes),
 			Running: true,
 		})
@@ -255,12 +253,6 @@ func ValidateConfig(config *Config) error {
 	}
 	if config.Stop == nil || len(config.Stop) == 0 {
 		return errors.New("qan.Config.Stop array is empty")
-	}
-	if config.MaxWorkers < 1 {
-		return errors.New("MaxWorkers must be > 0")
-	}
-	if config.MaxWorkers > 4 {
-		return errors.New("MaxWorkers must be < 4")
 	}
 	if config.Interval == 0 {
 		return errors.New("Interval must be > 0")
@@ -285,7 +277,6 @@ func (m *Manager) startAnalyzer(config Config) error {
 	/*
 		XXX Assume caller has locked m.mux.
 	*/
-
 	m.logger.Debug("startAnalyzer:call")
 	defer m.logger.Debug("startAnalyzer:return")
 
@@ -294,17 +285,18 @@ func (m *Manager) startAnalyzer(config Config) error {
 		return fmt.Errorf("Invalid qan.Config: %s", err)
 	}
 
+	// Get the MySQL instance from repo.
+	mysqlInstance, err := m.im.Get(config.UUID)
+	if err != nil {
+		return fmt.Errorf("Cannot get MySQL instance from repo: %s", err)
+	}
+
 	// Check if an analyzer for this MySQL instance already exists.
-	if a, ok := m.analyzers[config.InstanceId]; ok {
+	if a, ok := m.analyzers[config.UUID]; ok {
 		return pct.ServiceIsRunningError{Service: a.analyzer.String()}
 
 	}
-
-	// Get the MySQL DSN and create a MySQL connection.
-	mysqlInstance := proto.MySQLInstance{}
-	if err := m.im.Get(config.Service, config.InstanceId, &mysqlInstance); err != nil {
-		return fmt.Errorf("Cannot get MySQL instance from repo: %s", err)
-	}
+	// Create a MySQL connection.
 	mysqlConn := m.mysqlFactory.Make(mysqlInstance.DSN)
 
 	// Add the MySQL DSN to the MySQL restart monitor. If MySQL restarts,
@@ -324,7 +316,7 @@ func (m *Manager) startAnalyzer(config Config) error {
 	// for each interval.
 	analyzer := m.analyzerFactory.Make(
 		config,
-		"qan-analyzer", // todo-1.1: append instance name
+		"qan-analyzer-"+mysqlInstance.Name,
 		mysqlConn,
 		restartChan,
 		tickChan,
@@ -334,7 +326,7 @@ func (m *Manager) startAnalyzer(config Config) error {
 	}
 
 	// Save the new analyzer and its associated parts.
-	m.analyzers[config.InstanceId] = AnalyzerInstance{
+	m.analyzers[config.UUID] = AnalyzerInstance{
 		mysqlConn:   mysqlConn,
 		restartChan: restartChan,
 		tickChan:    tickChan,
@@ -344,7 +336,7 @@ func (m *Manager) startAnalyzer(config Config) error {
 	return nil // success
 }
 
-func (m *Manager) stopAnalyzer(instanceId uint) error {
+func (m *Manager) stopAnalyzer(uuid string) error {
 	/*
 		XXX Assume caller has locked m.mux.
 	*/
@@ -352,20 +344,20 @@ func (m *Manager) stopAnalyzer(instanceId uint) error {
 	m.logger.Debug("stopAnalyzer:call")
 	defer m.logger.Debug("stopAnalyzer:return")
 
-	a, ok := m.analyzers[instanceId]
+	a, ok := m.analyzers[uuid]
 	if !ok {
-		m.logger.Debug("stopAnalyzer:na", instanceId)
+		m.logger.Debug("stopAnalyzer:na", uuid)
 		return nil
 	}
 
 	m.status.Update("qan", fmt.Sprintf("Stopping %s", a.analyzer))
 	m.logger.Info(fmt.Sprintf("Stopping %s", a.analyzer))
 
-	// Stop ticking on this tickChan. Other tools receiving ticks at the same
+	// Stop ticking on this tickChan. Other services receiving ticks at the same
 	// interval are not affected.
 	m.clock.Remove(a.tickChan)
 
-	// Stop watching this MySQL instance. Other tools watching this MySQL
+	// Stop watching this MySQL instance. Other services watching this MySQL
 	// instance are not affected.
 	m.mrm.Remove(a.mysqlConn.DSN(), a.restartChan)
 
@@ -375,9 +367,6 @@ func (m *Manager) stopAnalyzer(instanceId uint) error {
 	}
 
 	// Stop managing this analyzer.
-	delete(m.analyzers, instanceId)
-
-	// todo-1.1: remove the analyzer's config file?
-
+	delete(m.analyzers, uuid)
 	return nil // success
 }

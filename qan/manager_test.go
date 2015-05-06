@@ -19,12 +19,14 @@ package qan_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"time"
 
 	. "github.com/go-test/test"
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
@@ -43,12 +45,11 @@ type ManagerTestSuite struct {
 	dataChan     chan interface{}
 	spool        *mock.Spooler
 	//workerFactory qan.WorkerFactory
-	clock         *mock.Clock
-	tmpDir        string
-	configDir     string
-	im            *instance.Repo
-	mysqlInstance proto.ServiceInstance
-	api           *mock.API
+	clock     *mock.Clock
+	tmpDir    string
+	configDir string
+	im        *instance.Repo
+	api       *mock.API
 }
 
 var _ = Suite(&ManagerTestSuite{})
@@ -72,22 +73,11 @@ func (s *ManagerTestSuite) SetUpSuite(t *C) {
 		t.Fatal(err)
 	}
 	s.configDir = pct.Basedir.Dir("config")
-
-	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "im-test"), s.configDir, s.api)
-	data, err := json.Marshal(&proto.MySQLInstance{
-		Hostname: "bm-cloud-db01",
-		Alias:    "db01",
-		DSN:      "user:pass@tcp/",
-	})
+	s.im = instance.NewRepo(pct.NewLogger(s.logChan, "manager-test"), s.configDir)
+	err = test.CopyFile(test.RootDir+"/instance/system-tree-1.json", filepath.Join(s.configDir, "system-tree.json"))
 	t.Assert(err, IsNil)
-	s.im.Add("mysql", 1, data, false)
-	s.mysqlInstance = proto.ServiceInstance{Service: "mysql", InstanceId: 1}
-
-	links := map[string]string{
-		"agent":     "http://localhost/agent",
-		"instances": "http://localhost/instances",
-	}
-	s.api = mock.NewAPI("http://localhost", "http://localhost", "123", "abc-123-def", links)
+	err = s.im.Init()
+	t.Assert(err, IsNil)
 }
 
 func (s *ManagerTestSuite) SetUpTest(t *C) {
@@ -116,7 +106,7 @@ func (s *ManagerTestSuite) TearDownSuite(t *C) {
 func (s *ManagerTestSuite) TestStarNoConfig(t *C) {
 	// Make a qan.Manager with mock factories.
 	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
-	a := mock.NewQanAnalyzer()
+	a := mock.NewQanAnalyzer("qan-analizer-1")
 	f := mock.NewQanAnalyzerFactory(a)
 	m := qan.NewManager(s.logger, s.clock, s.im, s.mrmsMonitor, mockConnFactory, f)
 	t.Assert(m, NotNil)
@@ -152,21 +142,28 @@ func (s *ManagerTestSuite) TestStarNoConfig(t *C) {
 }
 
 func (s *ManagerTestSuite) TestStartWithConfig(t *C) {
-	for _, analyzerType := range []string{"slowlog", "perfschema"} {
-		// Make a qan.Manager with mock factories.
-		mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
-		a := mock.NewQanAnalyzer()
-		f := mock.NewQanAnalyzerFactory(a)
-		m := qan.NewManager(s.logger, s.clock, s.im, s.mrmsMonitor, mockConnFactory, f)
-		t.Assert(m, NotNil)
+	// Get MYySQL instances
+	mysqlInstances := s.im.GetMySQLInstances()
+	t.Assert(len(mysqlInstances), Equals, 2)
 
+	// Make a qan.Manager with mock factories.
+	a1 := mock.NewQanAnalyzer(fmt.Sprintf("qan-analyzer-%s", mysqlInstances[0].Name))
+	a2 := mock.NewQanAnalyzer(fmt.Sprintf("qan-analyzer-%s", mysqlInstances[1].Name))
+	f := mock.NewQanAnalyzerFactory(a1, a2)
+	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
+	m := qan.NewManager(s.logger, s.clock, s.im, s.mrmsMonitor, mockConnFactory, f)
+	t.Assert(m, NotNil)
+	configs := make([]qan.Config, 0)
+	for i, analyzerType := range []string{"slowlog", "perfschema"} {
+		// We have two analyzerTypes and two MySQL instances in fixture, lets re-use the index
+		// as we only need one of each analizer type and they need to be different instances.
+		mysqlInstance := mysqlInstances[i]
 		// Write a realistic qan.conf config to disk.
 		config := qan.Config{
-			ServiceInstance: s.mysqlInstance,
-			CollectFrom:     analyzerType,
-			Interval:        300,
-			MaxWorkers:      1,
-			WorkerRunTime:   600,
+			UUID:          mysqlInstance.UUID,
+			CollectFrom:   analyzerType,
+			Interval:      300,
+			WorkerRunTime: 600,
 			Start: []mysql.Query{
 				mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
 				mysql.Query{Set: "SET GLOBAL long_query_time=0.456"},
@@ -177,67 +174,173 @@ func (s *ManagerTestSuite) TestStartWithConfig(t *C) {
 				mysql.Query{Set: "SET GLOBAL long_query_time=10"},
 			},
 		}
-		err := pct.Basedir.WriteConfig("qan", &config)
+		err := pct.Basedir.WriteInstanceConfig("qan", mysqlInstance.UUID, &config)
 		t.Assert(err, IsNil)
-
-		// qan.Start() reads qan.conf from disk and starts an analyzer for it.
-		err = m.Start()
-		t.Check(err, IsNil)
-
-		// Wait until qan.Start() calls analyzer.Start().
-		if !test.WaitState(a.StartChan) {
-			t.Fatal("Timeout waiting for <-a.StartChan")
-		}
-
-		// After starting, the manager's status should be Running and the analyzer's
-		// status should be reported too.
-		status := m.Status()
-		t.Check(status["qan"], Equals, "Running")
-		t.Check(status["qan-analyzer"], Equals, "ok")
-
-		// Check the args passed by the manager to the analyzer factory.
-		if len(f.Args) == 0 {
-			t.Error("len(f.Args) == 0, expected 1")
-		} else {
-			t.Check(f.Args, HasLen, 1)
-			t.Check(f.Args[0].Config, DeepEquals, config)
-			t.Check(f.Args[0].Name, Equals, "qan-analyzer")
-		}
-
-		// qan.Stop() stops the analyzer and leaves qan.conf on disk.
-		err = m.Stop()
-		t.Assert(err, IsNil)
-
-		// Wait until qan.Stop() calls analyzer.Stop().
-		if !test.WaitState(a.StopChan) {
-			t.Fatal("Timeout waiting for <-a.StopChan")
-		}
-
-		// qan.conf still exists after qan.Stop().
-		t.Check(test.FileExists(pct.Basedir.ConfigFile("qan")), Equals, true)
-
-		// The analyzer is no longer reported in the status because it was stopped
-		// and removed when the manager was stopped.
-		status = m.Status()
-		t.Check(status["qan"], Equals, "Stopped")
+		configs = append(configs, config)
 	}
+	// qan.Start() reads qan configs from disk and starts an analyzer for each one.
+	err := m.Start()
+	t.Check(err, IsNil)
+
+	// Wait until qan.Start() calls analyzer.Start().
+	if !test.WaitState(a1.StartChan) {
+		t.Fatal("Timeout waiting for <-a1.StartChan")
+	}
+	if !test.WaitState(a2.StartChan) {
+		t.Fatal("Timeout waiting for <-a2.StartChan")
+	}
+
+	// After starting, the manager's status should be Running and the analyzer's
+	// status should be reported too.
+	status := m.Status()
+	t.Check(status["qan"], Equals, "Running")
+	t.Check(status["qan-analyzer"], Equals, "ok")
+
+	// Check the args passed by the manager to the analyzer factory.
+	if len(f.Args) == 0 {
+		t.Error("len(f.Args) == 0, expected 2")
+	} else {
+		t.Check(f.Args, HasLen, 2)
+
+		argConfigs := []qan.Config{f.Args[0].Config, f.Args[1].Config}
+		t.Check(argConfigs, DeepEquals, configs)
+		t.Check(f.Args[0].Name, Equals, a1.String())
+		t.Check(f.Args[1].Name, Equals, a2.String())
+	}
+
+	// qan.Stop() stops the analyzer and leaves qan.conf on disk.
+	err = m.Stop()
+	t.Assert(err, IsNil)
+
+	// Wait until qan.Stop() calls analyzer.Stop().
+	if !test.WaitState(a1.StopChan) {
+		t.Fatal("Timeout waiting for <-a.StopChan")
+	}
+
+	// Wait until qan.Stop() calls analyzer.Stop().
+	if !test.WaitState(a2.StopChan) {
+		t.Fatal("Timeout waiting for <-a.StopChan")
+	}
+
+	// qan.conf still exists after qan.Stop().
+	for _, mysqlInstance := range s.im.GetMySQLInstances() {
+		t.Check(test.FileExists(pct.Basedir.InstanceConfigFile("qan", mysqlInstance.UUID)), Equals, true)
+	}
+
+	// The analyzer is no longer reported in the status because it was stopped
+	// and removed when the manager was stopped.
+	status = m.Status()
+	t.Check(status["qan"], Equals, "Stopped")
+
+}
+
+func (s *ManagerTestSuite) TestStart2RemoteQAN(t *C) {
+	// Get MYySQL instances
+	mysqlInstances := s.im.GetMySQLInstances()
+	t.Assert(len(mysqlInstances), Equals, 2)
+
+	// Make a qan.Manager with mock factories.
+	a1 := mock.NewQanAnalyzer(fmt.Sprintf("qan-analyzer-%s", mysqlInstances[0].Name))
+	a2 := mock.NewQanAnalyzer(fmt.Sprintf("qan-analyzer-%s", mysqlInstances[1].Name))
+	f := mock.NewQanAnalyzerFactory(a1, a2)
+	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
+	m := qan.NewManager(s.logger, s.clock, s.im, s.mrmsMonitor, mockConnFactory, f)
+	t.Assert(m, NotNil)
+	configs := make([]qan.Config, 0)
+	for _, mysqlInstance := range mysqlInstances {
+		// Write a realistic qan.conf config to disk.
+		config := qan.Config{
+			UUID:          mysqlInstance.UUID,
+			CollectFrom:   "perfschema",
+			Interval:      300,
+			WorkerRunTime: 600,
+			Start: []mysql.Query{
+				mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+				mysql.Query{Set: "SET GLOBAL long_query_time=0.456"},
+				mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+			},
+			Stop: []mysql.Query{
+				mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+				mysql.Query{Set: "SET GLOBAL long_query_time=10"},
+			},
+		}
+		err := pct.Basedir.WriteInstanceConfig("qan", mysqlInstance.UUID, &config)
+		t.Assert(err, IsNil)
+		configs = append(configs, config)
+	}
+	// qan.Start() reads qan configs from disk and starts an analyzer for each one.
+	err := m.Start()
+	t.Check(err, IsNil)
+
+	// Wait until qan.Start() calls analyzer.Start().
+	if !test.WaitState(a1.StartChan) {
+		t.Fatal("Timeout waiting for <-a1.StartChan")
+	}
+	if !test.WaitState(a2.StartChan) {
+		t.Fatal("Timeout waiting for <-a2.StartChan")
+	}
+
+	// After starting, the manager's status should be Running and the analyzer's
+	// status should be reported too.
+	status := m.Status()
+	t.Check(status["qan"], Equals, "Running")
+	t.Check(status["qan-analyzer"], Equals, "ok")
+
+	// Check the args passed by the manager to the analyzer factory.
+	if len(f.Args) == 0 {
+		t.Error("len(f.Args) == 0, expected 2")
+	} else {
+		t.Check(f.Args, HasLen, 2)
+
+		argConfigs := []qan.Config{f.Args[0].Config, f.Args[1].Config}
+		t.Check(argConfigs, DeepEquals, configs)
+		t.Check(f.Args[0].Name, Equals, a1.String())
+		t.Check(f.Args[1].Name, Equals, a2.String())
+	}
+
+	// qan.Stop() stops the analyzer and leaves qan.conf on disk.
+	err = m.Stop()
+	t.Assert(err, IsNil)
+
+	// Wait until qan.Stop() calls analyzer.Stop().
+	if !test.WaitState(a1.StopChan) {
+		t.Fatal("Timeout waiting for <-a.StopChan")
+	}
+
+	// Wait until qan.Stop() calls analyzer.Stop().
+	if !test.WaitState(a2.StopChan) {
+		t.Fatal("Timeout waiting for <-a.StopChan")
+	}
+
+	// qan.conf still exists after qan.Stop().
+	for _, mysqlInstance := range s.im.GetMySQLInstances() {
+		t.Check(test.FileExists(pct.Basedir.InstanceConfigFile("qan", mysqlInstance.UUID)), Equals, true)
+	}
+
+	// The analyzer is no longer reported in the status because it was stopped
+	// and removed when the manager was stopped.
+	status = m.Status()
+	t.Check(status["qan"], Equals, "Stopped")
+
 }
 
 func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	// Make a qan.Manager with mock factories.
 	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
-	a := mock.NewQanAnalyzer()
+	a := mock.NewQanAnalyzer("qan-analizer-1")
 	f := mock.NewQanAnalyzerFactory(a)
 	m := qan.NewManager(s.logger, s.clock, s.im, s.mrmsMonitor, mockConnFactory, f)
 	t.Assert(m, NotNil)
 
+	mysqlInstances := s.im.GetMySQLInstances()
+	t.Assert(len(mysqlInstances), Equals, 2)
+	mysqlUUID := mysqlInstances[0].UUID
 	// Write a realistic qan.conf config to disk.
 	config := qan.Config{
-		ServiceInstance: s.mysqlInstance,
-		CollectFrom:     "slowlog",
-		Interval:        300,
-		MaxWorkers:      1,
-		WorkerRunTime:   600,
+		UUID:          mysqlUUID,
+		CollectFrom:   "slowlog",
+		Interval:      300,
+		WorkerRunTime: 600,
 		Start: []mysql.Query{
 			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
 			mysql.Query{Set: "SET GLOBAL long_query_time=0.456"},
@@ -248,7 +351,8 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
 		},
 	}
-	err := pct.Basedir.WriteConfig("qan", &config)
+	err := pct.Basedir.WriteInstanceConfig("qan", mysqlUUID, &config)
+
 	t.Assert(err, IsNil)
 
 	qanConfig, err := json.Marshal(config)
@@ -265,9 +369,10 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	t.Assert(got, HasLen, 1)
 	expect := []proto.AgentConfig{
 		{
-			InternalService: "qan",
-			Config:          string(qanConfig),
-			Running:         true,
+			Service: "qan",
+			UUID:    mysqlUUID,
+			Config:  string(qanConfig),
+			Running: true,
 		},
 	}
 	if same, diff := IsDeeply(got, expect); !same {
@@ -281,8 +386,12 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 }
 
 func (s *ManagerTestSuite) TestValidateConfig(t *C) {
+	mysqlInstances := s.im.GetMySQLInstances()
+	t.Assert(len(mysqlInstances), Equals, 2)
+	mysqlUUID := mysqlInstances[0].UUID
+
 	config := qan.Config{
-		ServiceInstance: proto.ServiceInstance{Service: "mysql", InstanceId: 1},
+		UUID: mysqlUUID,
 		Start: []mysql.Query{
 			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
 			mysql.Query{Set: "SET GLOBAL long_query_time=0.123"},
@@ -296,49 +405,25 @@ func (s *ManagerTestSuite) TestValidateConfig(t *C) {
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
 		ExampleQueries:    true,
-		MaxWorkers:        2,
 		WorkerRunTime:     600, // 10 min
 		CollectFrom:       "slowlog",
 	}
 	err := qan.ValidateConfig(&config)
 	t.Check(err, IsNil)
 
-	config = qan.Config{
-		ServiceInstance: proto.ServiceInstance{Service: "mysql", InstanceId: 1},
-		Start: []mysql.Query{
-			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-			mysql.Query{Set: "SET GLOBAL long_query_time=0.123"},
-			mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
-		},
-		Stop: []mysql.Query{
-			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
-		},
-		Interval:          300,        // 5 min
-		MaxSlowLogSize:    1073741824, // 1 GiB
-		RemoveOldSlowLogs: true,
-		ExampleQueries:    true,
-		MaxWorkers:        0,
-		WorkerRunTime:     600, // 10 min
-		CollectFrom:       "slowlog",
-	}
-	err = qan.ValidateConfig(&config)
-	t.Check(err, NotNil)
-
 	// CollectFrom is empty in old versions; it should default to "slowlog".
 	config = qan.Config{
-		ServiceInstance: proto.ServiceInstance{Service: "mysql", InstanceId: 1},
+		UUID: mysqlUUID,
 		Start: []mysql.Query{
 			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
 		},
 		Stop: []mysql.Query{
 			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
 		},
-		Interval:          300,        // 5 min
+		Interval:          0,
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
 		ExampleQueries:    true,
-		MaxWorkers:        0,
 		WorkerRunTime:     600, // 10 min
 		CollectFrom:       "",
 	}
@@ -354,7 +439,7 @@ func (s *ManagerTestSuite) TestValidateConfig(t *C) {
 func (s *ManagerTestSuite) TestStartService(t *C) {
 	// Make and start a qan.Manager with mock factories, no analyzer yet.
 	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
-	a := mock.NewQanAnalyzer()
+	a := mock.NewQanAnalyzer("qan-analizer-1")
 	f := mock.NewQanAnalyzerFactory(a)
 	m := qan.NewManager(s.logger, s.clock, s.im, s.mrmsMonitor, mockConnFactory, f)
 	t.Assert(m, NotNil)
@@ -362,9 +447,13 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	t.Check(err, IsNil)
 	test.WaitStatus(1, m, "qan", "Running")
 
+	mysqlInstances := s.im.GetMySQLInstances()
+	t.Assert(len(mysqlInstances), Equals, 2)
+	mysqlUUID := mysqlInstances[0].UUID
+
 	// Create the qan config.
 	config := &qan.Config{
-		ServiceInstance: s.mysqlInstance,
+		UUID: mysqlUUID,
 		Start: []mysql.Query{
 			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
 			mysql.Query{Set: "SET GLOBAL long_query_time=0.123"},
@@ -378,7 +467,6 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
 		ExampleQueries:    true,
-		MaxWorkers:        2,
 		WorkerRunTime:     600, // 10 min
 		CollectFrom:       "slowlog",
 	}
@@ -389,7 +477,7 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	cmd := &proto.Cmd{
 		User:      "daniel",
 		Ts:        now,
-		AgentUuid: "123",
+		AgentUUID: "123",
 		Service:   "agent",
 		Cmd:       "StartService",
 		Data:      qanConfig,
@@ -398,7 +486,7 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	t.Assert(reply.Error, Equals, "")
 
 	// The manager writes the qan config to disk.
-	data, err := ioutil.ReadFile(pct.Basedir.ConfigFile("qan"))
+	data, err := ioutil.ReadFile(pct.Basedir.InstanceConfigFile("qan", mysqlUUID))
 	t.Check(err, IsNil)
 	gotConfig := &qan.Config{}
 	err = json.Unmarshal(data, gotConfig)
@@ -416,7 +504,7 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	// Try to start the same analyzer again. It results in an error because
 	// double tooling is not allowed.
 	reply = m.Handle(cmd)
-	t.Check(reply.Error, Equals, "qan-analyzer service is running")
+	t.Check(reply.Error, Equals, a.String()+" service is running")
 
 	// Send a StopService cmd to stop the analyzer.
 	// todo-1.1: send Data with analyzer instance to stop.
@@ -424,7 +512,7 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	cmd = &proto.Cmd{
 		User:      "daniel",
 		Ts:        now,
-		AgentUuid: "123",
+		AgentUUID: "123",
 		Service:   "qan",
 		Cmd:       "StopService",
 	}
@@ -437,7 +525,7 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 
 	// And the manager has removed the qan config from disk so next time
 	// the agent starts the analyzer is not started.
-	t.Check(test.FileExists(pct.Basedir.ConfigFile("qan")), Equals, false)
+	t.Check(test.FileExists(pct.Basedir.InstanceConfigFile("qan", mysqlUUID)), Equals, false)
 
 	// StopService should be idempotent, so send it again and expect no error.
 	reply = m.Handle(cmd)
@@ -450,7 +538,7 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 
 func (s *ManagerTestSuite) TestBadCmd(t *C) {
 	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
-	a := mock.NewQanAnalyzer()
+	a := mock.NewQanAnalyzer("qan-analizer-1")
 	f := mock.NewQanAnalyzerFactory(a)
 	m := qan.NewManager(s.logger, s.clock, s.im, s.mrmsMonitor, mockConnFactory, f)
 	t.Assert(m, NotNil)
@@ -461,7 +549,7 @@ func (s *ManagerTestSuite) TestBadCmd(t *C) {
 	cmd := &proto.Cmd{
 		User:      "daniel",
 		Ts:        time.Now(),
-		AgentUuid: "123",
+		AgentUUID: "123",
 		Service:   "qan",
 		Cmd:       "foo", // bad cmd
 	}

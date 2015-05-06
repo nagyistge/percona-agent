@@ -24,7 +24,7 @@ const (
 )
 
 type Config struct {
-	AgentUuid   string
+	AgentUUID   string
 	ApiHostname string
 	ApiKey      string
 	Keepalive   uint

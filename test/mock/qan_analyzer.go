@@ -30,15 +30,17 @@ type QanAnalyzer struct {
 	ErrorChan chan error
 	CrashChan chan bool
 	config    qan.Config
+	name      string
 }
 
-func NewQanAnalyzer() *QanAnalyzer {
+func NewQanAnalyzer(name string) *QanAnalyzer {
 	a := &QanAnalyzer{
 		StartChan: make(chan bool, 1),
 		StopChan:  make(chan bool, 1),
 		ErrorChan: make(chan error, 1),
 		CrashChan: make(chan bool, 1),
 		config:    qan.Config{},
+		name:      name,
 	}
 	return a
 }
@@ -60,7 +62,7 @@ func (a *QanAnalyzer) Status() map[string]string {
 }
 
 func (a *QanAnalyzer) String() string {
-	return "qan-analyzer"
+	return a.name
 }
 
 func (a *QanAnalyzer) Config() qan.Config {

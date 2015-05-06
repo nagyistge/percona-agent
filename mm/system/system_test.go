@@ -18,16 +18,18 @@
 package system_test
 
 import (
-	"github.com/percona/cloud-protocol/proto"
+	"io/ioutil"
+	"path/filepath"
+	"testing"
+	"time"
+
+	. "github.com/go-test/test"
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/mm"
 	"github.com/percona/percona-agent/mm/system"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test"
 	. "gopkg.in/check.v1"
-	"io/ioutil"
-	"path/filepath"
-	"testing"
-	"time"
 )
 
 func Test(t *testing.T) { TestingT(t) }
@@ -167,8 +169,8 @@ func (s *ProcStatTestSuite) TestProcStat001(t *C) {
 		{Name: "cpu-ext/procs_blocked", Type: "gauge", Number: 0},    // ok
 	}
 
-	if same, diff := test.IsDeeply(metrics, expect); !same {
-		test.Dump(metrics)
+	if same, diff := IsDeeply(metrics, expect); !same {
+		Dump(metrics)
 		t.Error(diff)
 	}
 }
@@ -215,8 +217,8 @@ func (s *ProcMeminfoTestSuite) TestProcMeminfo001(t *C) {
 		{Name: "memory/SwapFree", Type: "gauge", Number: 8253436},  // ok
 		{Name: "memory/Dirty", Type: "gauge", Number: 0},           // ok
 	}
-	if same, diff := test.IsDeeply(got, expect); !same {
-		test.Dump(got)
+	if same, diff := IsDeeply(got, expect); !same {
+		Dump(got)
 		t.Error(diff)
 	}
 }
@@ -263,8 +265,8 @@ func (s *ProcVmstatTestSuite) TestProcVmstat001(t *C) {
 		{Name: "vmstat/pswpin", Type: "counter", Number: 0},             // ok
 		{Name: "vmstat/pswpout", Type: "counter", Number: 0},            // ok
 	}
-	if same, diff := test.IsDeeply(got, expect); !same {
-		test.Dump(got)
+	if same, diff := IsDeeply(got, expect); !same {
+		Dump(got)
 		t.Error(diff)
 	}
 }
@@ -306,8 +308,8 @@ func (s *ProcLoadavgTestSuite) TestProcLoadavg001(t *C) {
 		{Name: "loadavg/running", Type: "gauge", Number: 1},     // ok
 		{Name: "loadavg/processes", Type: "gauge", Number: 598}, // ok
 	}
-	if same, diff := test.IsDeeply(got, expect); !same {
-		test.Dump(got)
+	if same, diff := IsDeeply(got, expect); !same {
+		Dump(got)
 		t.Error(diff)
 	}
 }
@@ -439,7 +441,7 @@ func (s *ProcDiskstatsTestSuite) TestProcDiskstats001(t *C) {
 		{Name: "disk/dm-2/io_time_weighted", Type: "counter", Number: 1126764},
 		{Name: "disk/dm-2/iops", Type: "counter", Number: 12213 + 310480},
 	}
-	if same, diff := test.IsDeeply(got, expect); !same {
+	if same, diff := IsDeeply(got, expect); !same {
 		t.Logf("%+v\n", got)
 		t.Error(diff)
 	}

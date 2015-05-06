@@ -28,7 +28,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 
 	"errors"
-	"github.com/percona/cloud-protocol/proto"
+
 	"github.com/percona/percona-agent/mm"
 	"github.com/percona/percona-agent/mrms"
 	"github.com/percona/percona-agent/mysql"
@@ -58,6 +58,7 @@ type Monitor struct {
 }
 
 func NewMonitor(name string, config *Config, logger *pct.Logger, conn mysql.Connector, mrm mrms.Monitor) *Monitor {
+	name = "mm-" + config.UUID // Granted, not the best name
 	m := &Monitor{
 		name:   name,
 		config: config,
@@ -246,10 +247,7 @@ func (m *Monitor) run() {
 
 			m.status.Update(m.name, "Running")
 			c := &mm.Collection{
-				ServiceInstance: proto.ServiceInstance{
-					Service:    m.config.Service,
-					InstanceId: m.config.InstanceId,
-				},
+				UUID:    m.config.UUID,
 				Ts:      now.UTC().Unix(),
 				Metrics: []mm.Metric{},
 			}

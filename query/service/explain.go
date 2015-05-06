@@ -23,7 +23,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
@@ -66,13 +66,14 @@ func (e *Explain) Handle(cmd *proto.Cmd) *proto.Reply {
 		return cmd.Reply(nil, err)
 	}
 
-	// The real name of the internal service, e.g. query-mysql-1:
-	name := e.getInstanceName(explainQuery.Service, explainQuery.InstanceId)
+	e.logger.Info("Running explain", explainQuery.UUID, cmd)
 
-	e.logger.Info("Running explain", name, cmd)
-
+	name, err := e.ir.Name(explainQuery.UUID)
+	if err != nil {
+		return cmd.Reply(nil, fmt.Errorf("Unable to find name for instance %s: %v", explainQuery.UUID, err))
+	}
 	// Create connector to MySQL instance
-	conn, err := e.createConn(explainQuery.Service, explainQuery.InstanceId)
+	conn, err := e.createConn(explainQuery.UUID)
 	if err != nil {
 		return cmd.Reply(nil, fmt.Errorf("Unable to create connector for %s: %s", name, err))
 	}
@@ -111,17 +112,10 @@ func (e *Explain) Handle(cmd *proto.Cmd) *proto.Reply {
 // Implementation
 /////////////////////////////////////////////////////////////////////////////
 
-func (e *Explain) getInstanceName(service string, instanceId uint) (name string) {
-	// The real name of the internal service, e.g. query-mysql-1:
-	instanceName := e.ir.Name(service, instanceId)
-	name = fmt.Sprintf("%s-%s", SERVICE_NAME, instanceName)
-	return name
-}
-
-func (e *Explain) createConn(service string, instanceId uint) (conn mysql.Connector, err error) {
-	// Load the MySQL instance info (DSN, name, etc.).
-	mysqlIt := &proto.MySQLInstance{}
-	if err = e.ir.Get(service, instanceId, mysqlIt); err != nil {
+func (e *Explain) createConn(uuid string) (conn mysql.Connector, err error) {
+	// Load the MySQL instance
+	mysqlIt, err := e.ir.Get(uuid)
+	if err != nil {
 		return nil, err
 	}
 

@@ -20,15 +20,16 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/percona/cloud-protocol/proto"
+	"log"
+	"os"
+
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/api"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/installer"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/term"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/pct"
-	"log"
-	"os"
 )
 
 const (
@@ -41,9 +42,7 @@ var (
 	flagBasedir                 string
 	flagDebug                   bool
 	flagCreateMySQLInstance     bool
-	flagCreateServerInstance    bool
 	flagStartServices           bool
-	flagCreateAgent             bool
 	flagStartMySQLServices      bool
 	flagMySQL                   bool
 	flagOldPasswords            bool
@@ -73,10 +72,8 @@ func init() {
 	// --
 	flag.BoolVar(&flagMySQL, "mysql", true, "Install for MySQL")
 	flag.BoolVar(&flagCreateMySQLInstance, "create-mysql-instance", true, "Create MySQL instance")
-	flag.BoolVar(&flagCreateServerInstance, "create-server-instance", true, "Create server instance")
 	flag.BoolVar(&flagStartServices, "start-services", true, "Start all services")
 	flag.BoolVar(&flagStartMySQLServices, "start-mysql-services", true, "Start MySQL services")
-	flag.BoolVar(&flagCreateAgent, "create-agent", true, "Create agent")
 	flag.BoolVar(&flagOldPasswords, "old-passwords", false, "Old passwords")
 	flag.BoolVar(&flagPlainPasswords, "plain-passwords", false, "Plain passwords") // @todo: Workaround used in tests for "stty: standard input: Inappropriate ioctl for device"
 	flag.BoolVar(&flagInteractive, "interactive", true, "Prompt for input on STDIN")
@@ -125,18 +122,16 @@ func main() {
 
 	flags := installer.Flags{
 		Bool: map[string]bool{
-			"debug":                  flagDebug,
-			"create-server-instance": flagCreateServerInstance,
-			"start-services":         flagStartServices,
-			"create-mysql-instance":  flagCreateMySQLInstance,
-			"start-mysql-services":   flagStartMySQLServices,
-			"create-agent":           flagCreateAgent,
-			"old-passwords":          flagOldPasswords,
-			"plain-passwords":        flagPlainPasswords,
-			"interactive":            flagInteractive,
-			"auto-detect-mysql":      flagAutoDetectMySQL,
-			"create-mysql-user":      flagCreateMySQLUser,
-			"mysql":                  flagMySQL,
+			"debug":                 flagDebug,
+			"start-services":        flagStartServices,
+			"create-mysql-instance": flagCreateMySQLInstance,
+			"start-mysql-services":  flagStartMySQLServices,
+			"old-passwords":         flagOldPasswords,
+			"plain-passwords":       flagPlainPasswords,
+			"interactive":           flagInteractive,
+			"auto-detect-mysql":     flagAutoDetectMySQL,
+			"create-mysql-user":     flagCreateMySQLUser,
+			"mysql":                 flagMySQL,
 		},
 		String: map[string]string{
 			"app-host":            DEFAULT_APP_HOSTNAME,
@@ -165,9 +160,13 @@ func main() {
 	api := api.New(apiConnector, flagDebug)
 	logChan := make(chan *proto.LogEntry, 100)
 	logger := pct.NewLogger(logChan, "instance-repo")
-	instanceRepo := instance.NewRepo(logger, pct.Basedir.Dir("config"), apiConnector)
+	instanceRepo := instance.NewRepo(logger, pct.Basedir.Dir("config"))
 	terminal := term.NewTerminal(os.Stdin, flagInteractive, flagDebug)
-	agentInstaller := installer.NewInstaller(terminal, flagBasedir, api, instanceRepo, agentConfig, flags)
+	agentInstaller, err := installer.NewInstaller(terminal, flagBasedir, api, instanceRepo, agentConfig, flags)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 	fmt.Println("CTRL-C at any time to quit")
 	// todo: catch SIGINT and clean up
 	if err := agentInstaller.Run(); err != nil {

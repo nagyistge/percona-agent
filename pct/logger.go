@@ -19,8 +19,9 @@ package pct
 
 import (
 	"fmt"
-	"github.com/percona/cloud-protocol/proto"
 	"time"
+
+	"github.com/percona/cloud-protocol/proto/v2"
 )
 
 type Logger struct {

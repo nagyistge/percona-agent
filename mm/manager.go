@@ -26,17 +26,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/percona/cloud-protocol/proto"
+	"io/ioutil"
+	"path/filepath"
+	"sort"
+	"sync"
+	"time"
+
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/mrms"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/ticker"
-	"io/ioutil"
-	"path/filepath"
-	"sync"
-	"time"
 )
+
+const SERVICE_NAME = "mm"
 
 // We use one binding per unique mm.Report interval.  For example, if some monitors
 // report every 60s and others every 10s, then there are two bindings.  All monitors
@@ -79,6 +83,21 @@ func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager
 	return m
 }
 
+// For sorting proto.AgentConfig slices
+type ByUUID []proto.AgentConfig
+
+func (s ByUUID) Len() int {
+	return len(s)
+}
+
+func (s ByUUID) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s ByUUID) Less(i, j int) bool {
+	return s[i].UUID < s[j].UUID
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // Interface
 /////////////////////////////////////////////////////////////////////////////
@@ -90,11 +109,11 @@ func (m *Manager) Start() error {
 	//defer m.mux.Unlock()
 
 	if m.running {
-		return pct.ServiceIsRunningError{Service: "mm"}
+		return pct.ServiceIsRunningError{Service: SERVICE_NAME}
 	}
 
 	// Start all metric monitors.
-	glob := filepath.Join(pct.Basedir.Dir("config"), "mm-*.conf")
+	glob := filepath.Join(pct.Basedir.Dir("config"), SERVICE_NAME+"-*.conf")
 	configFiles, err := filepath.Glob(glob)
 	if err != nil {
 		return err
@@ -136,7 +155,7 @@ func (m *Manager) Stop() error {
 	m.mux.Lock()
 	defer m.mux.Unlock()
 	for name, monitor := range m.monitors {
-		m.status.Update("mm", "Stopping "+name)
+		m.status.Update(SERVICE_NAME, "Stopping "+name)
 		if err := monitor.Stop(); err != nil {
 			m.logger.Warn("Failed to stop " + name + ": " + err.Error())
 			continue
@@ -152,29 +171,32 @@ func (m *Manager) Stop() error {
 
 // @goroutine[0]
 func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
-	m.status.UpdateRe("mm", "Handling", cmd)
-	defer m.status.Update("mm", "Running")
+	m.status.UpdateRe(SERVICE_NAME, "Handling", cmd)
+	defer m.status.Update(SERVICE_NAME, "Running")
 
 	switch cmd.Cmd {
 	case "StartService":
-		mm, name, err := m.getMonitorConfig(cmd)
+		mm, uuid, err := m.getMonitorConfig(cmd)
 		if err != nil {
 			return cmd.Reply(nil, err)
 		}
-
-		m.status.UpdateRe("mm", "Starting "+name, cmd)
+		name, err := m.im.Name(uuid)
+		if err != nil {
+			return cmd.Reply(nil, err)
+		}
+		m.status.UpdateRe(SERVICE_NAME, "Starting "+name, cmd)
 		m.logger.Info("Start", name, cmd)
 
-		// Monitors names must be unique.
+		// Monitors must be unique.
 		m.mux.RLock()
-		_, haveMonitor := m.monitors[name]
+		_, haveMonitor := m.monitors[uuid]
 		m.mux.RUnlock()
 		if haveMonitor {
-			return cmd.Reply(nil, errors.New("Duplicate monitor: "+name))
+			return cmd.Reply(nil, fmt.Errorf("Duplicate monitor: %s (UUID:%s)", name, uuid))
 		}
 
 		// Create the monitor based on its type.
-		monitor, err := m.factory.Make(mm.Service, mm.InstanceId, cmd.Data)
+		monitor, err := m.factory.Make(mm.UUID, cmd.Data)
 		if err != nil {
 			return cmd.Reply(nil, errors.New("Factory: "+err.Error()))
 		}
@@ -207,16 +229,16 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 		// Start the monitor.
 		if err := monitor.Start(tickChan, a.collectionChan); err != nil {
-			return cmd.Reply(nil, errors.New("Start "+name+": "+err.Error()))
+			return cmd.Reply(nil, errors.New("Start "+uuid+": "+err.Error()))
 		}
 		m.mux.Lock()
-		m.monitors[name] = monitor
+		m.monitors[uuid] = monitor
 		m.mux.Unlock()
 
 		// Save the monitor-specific config to disk so agent starts on restart.
 		monitorConfig := monitor.Config()
-		if err := pct.Basedir.WriteConfig(name, monitorConfig); err != nil {
-			return cmd.Reply(nil, errors.New("Write "+name+" config:"+err.Error()))
+		if err := pct.Basedir.WriteInstanceConfig(SERVICE_NAME, uuid, monitorConfig); err != nil {
+			return cmd.Reply(nil, errors.New("Write "+uuid+" config:"+err.Error()))
 		}
 
 		return cmd.Reply(nil) // success
@@ -225,7 +247,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		if err != nil {
 			return cmd.Reply(nil, err)
 		}
-		m.status.UpdateRe("mm", "Stopping "+name, cmd)
+		m.status.UpdateRe(SERVICE_NAME, "Stopping "+name, cmd)
 		m.logger.Info("Stop", name, cmd)
 		m.mux.RLock()
 		monitor, ok := m.monitors[name]
@@ -288,24 +310,22 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 			errs = append(errs, err)
 			continue
 		}
-		// Just the monitor's ServiceInstance, aka ExternalService.
+		// Just the monitor's service instance
 		mmConfig := &Config{}
 		if err := json.Unmarshal(bytes, mmConfig); err != nil {
 			errs = append(errs, err)
 			continue
 		}
 		config := proto.AgentConfig{
-			InternalService: "mm",
-			ExternalService: proto.ServiceInstance{
-				Service:    mmConfig.Service,
-				InstanceId: mmConfig.InstanceId,
-			},
+			Service: SERVICE_NAME,
+			UUID:    mmConfig.UUID,
 			Config:  string(bytes),
 			Running: true, // config removed if stopped, so it must be running
 		}
 		configs = append(configs, config)
 	}
-
+	// configs order is not stable, make it so by lexicographically ordering the configs slice by UUID
+	sort.Sort(ByUUID(configs))
 	return configs, errs
 }
 
@@ -324,8 +344,5 @@ func (m *Manager) getMonitorConfig(cmd *proto.Cmd) (*Config, string, error) {
 		}
 	}
 
-	// The real name of the internal service, e.g. mm-mysql-1:
-	name := "mm-" + m.im.Name(mm.Service, mm.InstanceId)
-
-	return mm, name, nil
+	return mm, mm.UUID, nil
 }

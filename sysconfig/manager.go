@@ -26,16 +26,20 @@ package sysconfig
 import (
 	"encoding/json"
 	"errors"
-	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/percona-agent/data"
-	"github.com/percona/percona-agent/instance"
-	"github.com/percona/percona-agent/pct"
-	"github.com/percona/percona-agent/ticker"
+	"fmt"
 	"io/ioutil"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/percona/cloud-protocol/proto/v2"
+	"github.com/percona/percona-agent/data"
+	"github.com/percona/percona-agent/instance"
+	"github.com/percona/percona-agent/pct"
+	"github.com/percona/percona-agent/ticker"
 )
+
+const SERVICE_NAME = "sysconfig"
 
 type Manager struct {
 	logger  *pct.Logger
@@ -62,7 +66,7 @@ func NewManager(logger *pct.Logger, factory MonitorFactory, clock ticker.Manager
 		// --
 		reportChan: make(chan *Report, 3),
 		monitors:   make(map[string]Monitor),
-		status:     pct.NewStatus([]string{"sysconfig", "sysconfig-spooler"}),
+		status:     pct.NewStatus([]string{SERVICE_NAME, "sysconfig-spooler"}),
 		mux:        &sync.RWMutex{},
 	}
 	return m
@@ -83,7 +87,7 @@ func (m *Manager) Start() error {
 	}
 
 	// Start all sysconfig monitors.
-	glob := filepath.Join(pct.Basedir.Dir("config"), "sysconfig-*.conf")
+	glob := filepath.Join(pct.Basedir.Dir("config"), SERVICE_NAME+"-*.conf")
 	configFiles, err := filepath.Glob(glob)
 	if err != nil {
 		return err
@@ -107,7 +111,7 @@ func (m *Manager) Start() error {
 		}
 		reply := m.Handle(cmd)
 		if reply.Error != "" {
-			m.logger.Error("Start " + configFile + ": " + err.Error())
+			m.logger.Error("Start " + configFile + ": " + reply.Error)
 			continue
 		}
 		m.logger.Info("Started " + configFile)
@@ -125,7 +129,7 @@ func (m *Manager) Stop() error {
 	m.mux.Lock()
 	defer m.mux.Unlock()
 	for name, monitor := range m.monitors {
-		m.status.Update("sysconfig", "Stopping "+name)
+		m.status.Update(SERVICE_NAME, "Stopping "+name)
 		if err := monitor.Stop(); err != nil {
 			m.logger.Warn("Failed to stop " + name + ": " + err.Error())
 			continue
@@ -141,31 +145,34 @@ func (m *Manager) Stop() error {
 
 // @goroutine[0]
 func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
-	m.status.UpdateRe("sysconfig", "Handling", cmd)
+	m.status.UpdateRe(SERVICE_NAME, "Handling", cmd)
 	defer m.status.Update("sysconfig", "Running")
 
 	switch cmd.Cmd {
 	case "StartService":
-		c, name, err := m.getMonitorConfig(cmd)
+		c, err := m.getMonitorConfig(cmd)
+		if err != nil {
+			return cmd.Reply(nil, err)
+		}
+		name, err := m.im.Name(c.UUID)
 		if err != nil {
 			return cmd.Reply(nil, err)
 		}
 
-		m.status.UpdateRe("sysconfig", "Starting "+name, cmd)
+		m.status.UpdateRe(SERVICE_NAME, "Starting "+name, cmd)
 		m.logger.Info("Start", name, cmd)
 
-		// Monitors names must be unique.
 		m.mux.RLock()
-		_, haveMonitor := m.monitors[name]
+		_, haveMonitor := m.monitors[c.UUID]
 		m.mux.RUnlock()
 		if haveMonitor {
-			return cmd.Reply(nil, errors.New("Duplicate monitor: "+name))
+			return cmd.Reply(nil, errors.New("Duplicate monitor "+name))
 		}
 
 		// Create the monitor based on its type.
 		var monitor Monitor
-		if monitor, err = m.factory.Make(c.Service, c.InstanceId, cmd.Data); err != nil {
-			return cmd.Reply(nil, errors.New("Factory: "+err.Error()))
+		if monitor, err = m.factory.Make(c.UUID, cmd.Data); err != nil {
+			return cmd.Reply(nil, fmt.Errorf("Factory: %v", err))
 		}
 
 		// Make unsynchronized (3rd arg=false) ticker for collect interval,
@@ -177,40 +184,44 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 
 		// Start the monitor.
 		if err = monitor.Start(tickChan, m.reportChan); err != nil {
-			return cmd.Reply(nil, errors.New("Start "+name+": "+err.Error()))
+			return cmd.Reply(nil, fmt.Errorf("Start %s: %v", name, err))
 		}
 		m.mux.Lock()
-		m.monitors[name] = monitor
+		m.monitors[c.UUID] = monitor
 		m.mux.Unlock()
 
 		// Save the monitor-specific config to disk so agent starts on restart.
 		monitorConfig := monitor.Config()
-		if err = pct.Basedir.WriteConfig(name, monitorConfig); err != nil {
-			return cmd.Reply(nil, errors.New("Write "+name+" config:"+err.Error()))
+		if err = pct.Basedir.WriteInstanceConfig(SERVICE_NAME, c.UUID, monitorConfig); err != nil {
+			return cmd.Reply(nil, fmt.Errorf("Write %s config: %v", name, err))
 		}
 		return cmd.Reply(nil) // success
 	case "StopService":
-		_, name, err := m.getMonitorConfig(cmd)
+		c, err := m.getMonitorConfig(cmd)
 		if err != nil {
 			return cmd.Reply(nil, err)
 		}
-		m.status.UpdateRe("sysconfig", "Stopping "+name, cmd)
+		name, err := m.im.Name(c.UUID)
+		if err != nil {
+			return cmd.Reply(nil, err)
+		}
+		m.status.UpdateRe(SERVICE_NAME, "Stopping "+name, cmd)
 		m.logger.Info("Stop", name, cmd)
 		m.mux.RLock()
-		monitor, ok := m.monitors[name]
+		monitor, ok := m.monitors[c.UUID]
 		m.mux.RUnlock()
 		if !ok {
 			return cmd.Reply(nil, errors.New("Unknown monitor: "+name))
 		}
 		if err = monitor.Stop(); err != nil {
-			return cmd.Reply(nil, errors.New("Stop "+name+": "+err.Error()))
+			return cmd.Reply(nil, fmt.Errorf("Stop %s: %v", name, err))
 		}
 		m.clock.Remove(monitor.TickChan())
-		if err := pct.Basedir.RemoveConfig(name); err != nil {
-			return cmd.Reply(nil, errors.New("Remove "+name+": "+err.Error()))
+		if err := pct.Basedir.RemoveInstanceConfig(SERVICE_NAME, c.UUID); err != nil {
+			return cmd.Reply(nil, fmt.Errorf("Remove %s: %v", name, err))
 		}
 		m.mux.Lock()
-		delete(m.monitors, name)
+		delete(m.monitors, c.UUID)
 		m.mux.Unlock()
 		return cmd.Reply(nil) // success
 	case "GetConfig":
@@ -264,11 +275,8 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 			continue
 		}
 		config := proto.AgentConfig{
-			InternalService: "sysconfig",
-			ExternalService: proto.ServiceInstance{
-				Service:    mmConfig.Service,
-				InstanceId: mmConfig.InstanceId,
-			},
+			Service: SERVICE_NAME,
+			UUID:    mmConfig.UUID,
 			Config:  string(bytes),
 			Running: true, // config removed if stopped, so it must be running
 		}
@@ -295,7 +303,7 @@ func (m *Manager) spooler() {
 	}
 }
 
-func (m *Manager) getMonitorConfig(cmd *proto.Cmd) (*Config, string, error) {
+func (m *Manager) getMonitorConfig(cmd *proto.Cmd) (*Config, error) {
 	/**
 	 * cmd.Data is a monitor-specific config, e.g. mysql.Config.  But monitor-specific
 	 * configs embed c.Config, so get that first to determine the monitor's name and
@@ -305,11 +313,8 @@ func (m *Manager) getMonitorConfig(cmd *proto.Cmd) (*Config, string, error) {
 	 */
 	c := &Config{}
 	if err := json.Unmarshal(cmd.Data, c); err != nil {
-		return nil, "", errors.New("sysconfig.Handle:json.Unmarshal:" + err.Error())
+		return nil, errors.New("sysconfig.Handle:json.Unmarshal:" + err.Error())
 	}
 
-	// The real name of the internal service, e.g. sysconfig-mysql-1:
-	name := "sysconfig-" + m.im.Name(c.Service, c.InstanceId)
-
-	return c, name, nil
+	return c, nil
 }

@@ -21,15 +21,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/diskv"
-	"github.com/percona/percona-agent/pct"
 	"os"
 	"path"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/percona/cloud-protocol/proto/v2"
+	"github.com/percona/diskv"
+	"github.com/percona/percona-agent/agent"
+	"github.com/percona/percona-agent/pct"
 )
 
 const (
@@ -195,6 +197,7 @@ func (s *DiskvSpooler) Write(service string, data interface{}) error {
 
 	// Wrap data in proto.Data with metadata to allow API to handle it properly.
 	protoData := &proto.Data{
+		ProtocolVersion: agent.CLOUD_PROTOCOL_VERSION,
 		Created:         time.Now().UTC(),
 		Hostname:        s.hostname,
 		Service:         service,

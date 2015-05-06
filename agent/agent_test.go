@@ -19,7 +19,15 @@ package agent_test
 
 import (
 	"encoding/json"
-	"github.com/percona/cloud-protocol/proto"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"sort"
+	"testing"
+	"time"
+
+	. "github.com/go-test/test"
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/pct"
 	pctCmd "github.com/percona/percona-agent/pct/cmd"
@@ -27,12 +35,6 @@ import (
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
-	"io/ioutil"
-	"os"
-	"path/filepath"
-	"sort"
-	"testing"
-	"time"
 )
 
 // Hook gocheck into the "go test" runner.
@@ -85,7 +87,7 @@ func (s *AgentTestSuite) SetUpSuite(t *C) {
 
 	// Agent
 	s.config = &agent.Config{
-		AgentUuid:   "abc-123-def",
+		AgentUUID:   "abc-123-def",
 		ApiKey:      "789",
 		ApiHostname: agent.DEFAULT_API_HOSTNAME,
 		Keepalive:   1, // don't send while testing
@@ -114,7 +116,7 @@ func (s *AgentTestSuite) SetUpTest(t *C) {
 		"agent":     "http://localhost/agent",
 		"instances": "http://localhost/instances",
 	}
-	s.api = mock.NewAPI("http://localhost", s.config.ApiHostname, s.config.ApiKey, s.config.AgentUuid, links)
+	s.api = mock.NewAPI("http://localhost", s.config.ApiHostname, s.config.ApiKey, s.config.AgentUUID, links)
 
 	s.servicesMap = map[string]pct.ServiceManager{
 		"mm":  s.services["mm"],
@@ -171,7 +173,7 @@ type ByInternalService []proto.AgentConfig
 func (a ByInternalService) Len() int      { return len(a) }
 func (a ByInternalService) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a ByInternalService) Less(i, j int) bool {
-	return a[i].InternalService < a[j].InternalService
+	return a[i].Service < a[j].Service
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -194,8 +196,8 @@ func (s *AgentTestSuite) TestStatus(t *C) {
 	expectStatus := map[string]string{
 		"agent": "Idle",
 	}
-	if ok, diff := test.IsDeeply(got, expectStatus); !ok {
-		test.Dump(got)
+	if ok, diff := IsDeeply(got, expectStatus); !ok {
+		Dump(got)
 		t.Error(diff)
 	}
 
@@ -276,7 +278,6 @@ func (s *AgentTestSuite) TestStartStopService(t *C) {
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
 		ExampleQueries:    true,
-		MaxWorkers:        2,
 		WorkerRunTime:     120, // seconds
 	}
 
@@ -323,7 +324,7 @@ func (s *AgentTestSuite) TestStartStopService(t *C) {
 		"qan":   "Ready",
 		"mm":    "",
 	}
-	if same, diff := test.IsDeeply(status, expectStatus); !same {
+	if same, diff := IsDeeply(status, expectStatus); !same {
 		t.Error(diff)
 	}
 
@@ -383,7 +384,6 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
 		ExampleQueries:    true,
-		MaxWorkers:        2,
 		WorkerRunTime:     120, // seconds
 	}
 	qanConfigData, _ := json.Marshal(qanConfig)
@@ -414,7 +414,7 @@ func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
 	// still starting the service.
 	gotStatus := test.GetStatus(s.sendChan, s.recvChan)
 	if !t.Check(gotStatus["agent"], Equals, "Idle") {
-		test.Dump(gotStatus)
+		Dump(gotStatus)
 	}
 
 	// Make it seem like service has started now.
@@ -482,15 +482,15 @@ func (s *AgentTestSuite) TestLoadConfig(t *C) {
 		t.Fatal(err)
 	}
 	expect := &agent.Config{
-		AgentUuid:   "abc-123-def",
+		AgentUUID:   "abc-123-def",
 		ApiHostname: agent.DEFAULT_API_HOSTNAME,
 		ApiKey:      "123",
 		Keepalive:   agent.DEFAULT_KEEPALIVE,
 		PidFile:     agent.DEFAULT_PIDFILE,
 	}
-	if same, diff := test.IsDeeply(got, expect); !same {
+	if same, diff := IsDeeply(got, expect); !same {
 		// @todo: if expect is not ptr, IsDeeply dies with "got ptr, expected struct"
-		test.Dump(got)
+		Dump(got)
 		t.Error(diff)
 	}
 
@@ -506,12 +506,12 @@ func (s *AgentTestSuite) TestLoadConfig(t *C) {
 	expect = &agent.Config{
 		ApiHostname: "agent hostname",
 		ApiKey:      "api key",
-		AgentUuid:   "agent uuid",
+		AgentUUID:   "agent uuid",
 		Keepalive:   agent.DEFAULT_KEEPALIVE,
 		PidFile:     "pid file",
 	}
-	if same, diff := test.IsDeeply(got, expect); !same {
-		test.Dump(got)
+	if same, diff := IsDeeply(got, expect); !same {
+		Dump(got)
 		t.Error(diff)
 	}
 }
@@ -537,13 +537,13 @@ func (s *AgentTestSuite) TestGetConfig(t *C) {
 	bytes, _ := json.Marshal(config)
 	expect := []proto.AgentConfig{
 		{
-			InternalService: "agent",
-			Config:          string(bytes),
-			Running:         true,
+			Service: "agent",
+			Config:  string(bytes),
+			Running: true,
 		},
 	}
 
-	if ok, diff := test.IsDeeply(gotConfig, expect); !ok {
+	if ok, diff := IsDeeply(gotConfig, expect); !ok {
 		t.Logf("%+v", gotConfig)
 		t.Error(diff)
 	}
@@ -573,23 +573,23 @@ func (s *AgentTestSuite) TestGetAllConfigs(t *C) {
 	sort.Sort(ByInternalService(gotConfigs))
 	expectConfigs := []proto.AgentConfig{
 		{
-			InternalService: "agent",
-			Config:          string(bytes),
-			Running:         true,
+			Service: "agent",
+			Config:  string(bytes),
+			Running: true,
 		},
 		{
-			InternalService: "mm",
-			Config:          `{"Foo":"bar"}`,
-			Running:         false,
+			Service: "mm",
+			Config:  `{"Foo":"bar"}`,
+			Running: false,
 		},
 		{
-			InternalService: "qan",
-			Config:          `{"Foo":"bar"}`,
-			Running:         false,
+			Service: "qan",
+			Config:  `{"Foo":"bar"}`,
+			Running: false,
 		},
 	}
-	if ok, diff := test.IsDeeply(gotConfigs, expectConfigs); !ok {
-		test.Dump(gotConfigs)
+	if ok, diff := IsDeeply(gotConfigs, expectConfigs); !ok {
+		Dump(gotConfigs)
 		t.Error(diff)
 	}
 }
@@ -638,7 +638,7 @@ func (s *AgentTestSuite) TestSetConfigApiKey(t *C) {
 	expect := *s.config
 	expect.ApiKey = "101"
 	expect.Links = nil
-	if ok, diff := test.IsDeeply(gotConfig, &expect); !ok {
+	if ok, diff := IsDeeply(gotConfig, &expect); !ok {
 		t.Logf("%+v", gotConfig)
 		t.Error(diff)
 	}
@@ -658,7 +658,7 @@ func (s *AgentTestSuite) TestSetConfigApiKey(t *C) {
 	if err := json.Unmarshal(data, gotConfig); err != nil {
 		t.Fatal(err)
 	}
-	if same, diff := test.IsDeeply(gotConfig, &expect); !same {
+	if same, diff := IsDeeply(gotConfig, &expect); !same {
 		// @todo: if expect is not ptr, IsDeeply dies with "got ptr, expected struct"
 		t.Logf("%+v", gotConfig)
 		t.Error(diff)
@@ -700,7 +700,7 @@ func (s *AgentTestSuite) TestSetConfigApiHostname(t *C) {
 	expect := *s.config
 	expect.ApiHostname = "http://localhost"
 	expect.Links = nil
-	if ok, diff := test.IsDeeply(gotConfig, &expect); !ok {
+	if ok, diff := IsDeeply(gotConfig, &expect); !ok {
 		t.Logf("%+v", gotConfig)
 		t.Error(diff)
 	}
@@ -720,7 +720,7 @@ func (s *AgentTestSuite) TestSetConfigApiHostname(t *C) {
 	if err := json.Unmarshal(data, gotConfig); err != nil {
 		t.Fatal(err)
 	}
-	if same, diff := test.IsDeeply(gotConfig, &expect); !same {
+	if same, diff := IsDeeply(gotConfig, &expect); !same {
 		// @todo: if expect is not ptr, IsDeeply dies with "got ptr, expected struct"
 		t.Logf("%+v", gotConfig)
 		t.Error(diff)

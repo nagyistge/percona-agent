@@ -22,7 +22,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v2"
 	"io/ioutil"
 	golog "log"
 	"net/http"
@@ -246,7 +246,7 @@ func (cli *Cli) send(args []string) {
 	cmd := &proto.Cmd{
 		Ts:        time.Now(),
 		User:      "percona-agent-cli",
-		AgentUuid: cli.agentUuid,
+		AgentUUID: cli.agentUuid,
 		Cmd:       args[1],
 		Service:   args[2],
 	}
@@ -299,7 +299,7 @@ func (cli *Cli) info(args []string) {
 	cmd := &proto.Cmd{
 		Ts:        time.Now(),
 		User:      "percona-agent-cli",
-		AgentUuid: cli.agentUuid,
+		AgentUUID: cli.agentUuid,
 		Cmd:       "GetInfo",
 		Service:   "instance",
 	}

@@ -18,11 +18,12 @@
 package monitor
 
 import (
+	"sync"
+	"time"
+
 	"github.com/percona/percona-agent/mrms"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
-	"sync"
-	"time"
 )
 
 const (
@@ -104,7 +105,7 @@ func (m *Monitor) Add(dsn string) (c <-chan bool, err error) {
 }
 
 func (m *Monitor) GlobalSubscribe() (chan string, error) {
-	m.logger.Debug("GlobalSusbcribe:call")
+	m.logger.Debug("GlobalSubscribe:call")
 	defer m.logger.Debug("GlobalSubscribe:return")
 
 	m.Lock()

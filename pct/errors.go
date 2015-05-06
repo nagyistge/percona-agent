@@ -18,6 +18,7 @@
 package pct
 
 import (
+	"errors"
 	"fmt"
 )
 
@@ -96,33 +97,15 @@ func (e CmdRejectedError) Error() string {
 
 /////////////////////////////////////////////////////////////////////////////
 
-type UnknownServiceInstanceError struct {
-	Service string
-	Id      uint
+type InvalidInstanceError struct {
+	UUID string
 }
 
-func (e UnknownServiceInstanceError) Error() string {
-	return fmt.Sprintf("Unknown %s instance: %d", e.Service, e.Id)
+func (e InvalidInstanceError) Error() string {
+	return fmt.Sprintf("Invalid instance: %s", e.UUID)
 }
 
-/////////////////////////////////////////////////////////////////////////////
+// Error variables
+////////////////////////////////////////////////////////////////////////////
 
-type InvalidServiceInstanceError struct {
-	Service string
-	Id      uint
-}
-
-func (e InvalidServiceInstanceError) Error() string {
-	return fmt.Sprintf("Invalid %s instance: %d", e.Service, e.Id)
-}
-
-/////////////////////////////////////////////////////////////////////////////
-
-type DuplicateServiceInstanceError struct {
-	Service string
-	Id      uint
-}
-
-func (e DuplicateServiceInstanceError) Error() string {
-	return fmt.Sprintf("Duplicate %s instance: %d", e.Service, e.Id)
-}
+var ErrNoSystemTree error = errors.New("No local system tree file")

@@ -19,11 +19,11 @@ package mm
 
 import (
 	"fmt"
-	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/percona-agent/data"
-	"github.com/percona/percona-agent/pct"
 	"math"
 	"time"
+
+	"github.com/percona/percona-agent/data"
+	"github.com/percona/percona-agent/pct"
 )
 
 type Aggregator struct {
@@ -115,7 +115,7 @@ func (a *Aggregator) run() {
 			// Find the stats for this instance, create if they don't exist.
 			var is *InstanceStats
 			for _, i := range cur {
-				if collection.Service == i.Service && collection.InstanceId == i.InstanceId {
+				if collection.UUID == i.UUID {
 					is = i
 					break
 				}
@@ -124,10 +124,7 @@ func (a *Aggregator) run() {
 			if is == nil {
 				// New service instance, create stats for it.
 				is = &InstanceStats{
-					ServiceInstance: proto.ServiceInstance{
-						Service:    collection.Service,
-						InstanceId: collection.InstanceId,
-					},
+					UUID:  collection.UUID,
 					Stats: make(map[string]*Stats),
 				}
 				cur = append(cur, is)
@@ -197,10 +194,7 @@ func (a *Aggregator) report(startTs time.Time, is []*InstanceStats) {
 
 		// Create a copy of this instance with the copy of its stats.
 		finalInstance := &InstanceStats{
-			ServiceInstance: proto.ServiceInstance{
-				Service:    i.Service,
-				InstanceId: i.InstanceId,
-			},
+			UUID:  i.UUID,
 			Stats: finalMetrics,
 		}
 		finalInstanceStats = append(finalInstanceStats, finalInstance)

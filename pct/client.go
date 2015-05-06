@@ -19,7 +19,7 @@ package pct
 
 import (
 	"code.google.com/p/go.net/websocket"
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v2"
 )
 
 type WebsocketClient interface {

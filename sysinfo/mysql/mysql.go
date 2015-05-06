@@ -20,7 +20,8 @@ package mysql
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/percona/cloud-protocol/proto"
+
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/pct/cmd"
@@ -56,9 +57,9 @@ func (m *MySQL) Handle(protoCmd *proto.Cmd) *proto.Reply {
 		return protoCmd.Reply(nil, err)
 	}
 
-	// Load the MySQL instance info (DSN, name, etc.).
-	mysqlIt := &proto.MySQLInstance{}
-	if err = m.ir.Get(serviceInstance.Service, serviceInstance.InstanceId, mysqlIt); err != nil {
+	// Load the MySQL instance
+	mysqlIt, err := m.ir.Get(serviceInstance.UUID)
+	if err != nil {
 		return protoCmd.Reply(nil, err)
 	}
 
@@ -92,11 +93,11 @@ func (m *MySQL) Handle(protoCmd *proto.Cmd) *proto.Reply {
 
 func getServiceInstance(protoCmd *proto.Cmd) (serviceInstance *proto.ServiceInstance, err error) {
 	if protoCmd.Data == nil {
-		return nil, fmt.Errorf("%s.getMySQLInstance:cmd.Data is empty", SERVICE_NAME)
+		return nil, fmt.Errorf("%s.getServiceInstance:cmd.Data is empty", SERVICE_NAME)
 	}
 
 	if err := json.Unmarshal(protoCmd.Data, &serviceInstance); err != nil {
-		return nil, fmt.Errorf("%s.getMySQLInstance:json.Unmarshal:%s", SERVICE_NAME, err)
+		return nil, fmt.Errorf("%s.getServiceInstance:json.Unmarshal:%s", SERVICE_NAME, err)
 	}
 
 	return serviceInstance, nil

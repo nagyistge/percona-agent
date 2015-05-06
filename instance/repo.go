@@ -18,257 +18,341 @@
 package instance
 
 import (
+	"bytes"
+	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/percona-agent/pct"
 	"io/ioutil"
-	"log"
-	"os"
 	"path/filepath"
-	"reflect"
-	"strconv"
-	"strings"
+	"regexp"
+	"sort"
 	"sync"
+
+	"github.com/percona/cloud-protocol/proto/v2"
+	"github.com/percona/percona-agent/pct"
 )
 
 type Repo struct {
-	logger    *pct.Logger
-	configDir string
-	api       pct.APIConnector
-	// --
-	it  map[string]interface{}
-	mux *sync.RWMutex
+	logger      *pct.Logger
+	configDir   string
+	it          map[string]*proto.Instance
+	tree        *proto.Instance
+	treeVersion uint
+	mux         *sync.RWMutex
 }
 
-func NewRepo(logger *pct.Logger, configDir string, api pct.APIConnector) *Repo {
+const (
+	SYSTEM_TREE_FILE     = "system-tree.json" // relative to Repo.configDir
+	SYSTEM_TREE_FILEMODE = 0660
+
+	// Instance prefixes used to validate
+	MYSQL_PREFIX = "mysql"
+	OS_PREFIX    = "os"
+)
+
+var UUID_RE = regexp.MustCompile("^[0-9A-Fa-f]{32}$")
+
+// Creates a new instance repository and returns a pointer to it
+func NewRepo(logger *pct.Logger, configDir string) *Repo {
 	m := &Repo{
 		logger:    logger,
 		configDir: configDir,
-		api:       api,
 		// --
-		it:  make(map[string]interface{}),
-		mux: &sync.RWMutex{},
+		it:   make(map[string]*proto.Instance),
+		tree: nil,
+		mux:  &sync.RWMutex{},
 	}
 	return m
 }
 
-func (r *Repo) Init() error {
-	for service, _ := range proto.ExternalService {
-		if err := r.loadInstances(service); err != nil {
-			return fmt.Errorf("%s: %s", service, err)
-		}
-	}
-	return nil
+/* To be able to do a lexicographically sort of proto.Instance slice by UUID */
+
+type ByUUID []proto.Instance
+
+func (s ByUUID) Len() int {
+	return len(s)
 }
 
-func (r *Repo) loadInstances(service string) error {
-	files, err := filepath.Glob(r.configDir + "/" + service + "-*.conf")
+func (s ByUUID) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s ByUUID) Less(i, j int) bool {
+	return s[i].UUID < s[j].UUID
+}
+
+// Function used by all components to check if and instance is an OS one
+func IsOSInstance(it proto.Instance) bool {
+	return it.Prefix == OS_PREFIX
+}
+
+// Function used by all components to check if and instance is a MySQL one
+func IsMySQLInstance(it proto.Instance) bool {
+	return it.Prefix == MYSQL_PREFIX
+}
+
+// Returns a new slice containing only the MySQL instances present in the slice parameter
+func onlyMySQLInsts(slice []proto.Instance) []proto.Instance {
+	var onlyMySQL []proto.Instance
+	for _, it := range slice {
+		if IsMySQLInstance(it) {
+			onlyMySQL = append(onlyMySQL, it)
+		}
+	}
+	return onlyMySQL
+}
+
+func (r *Repo) systemTreeFilePath() string {
+	return filepath.Join(r.configDir, SYSTEM_TREE_FILE)
+}
+
+func (r *Repo) loadSystemTree(data []byte) error {
+	r.logger.Debug("loadSystemTree:call")
+	defer r.logger.Debug("loadSystemTree:return")
+	var newTree *proto.Instance
+	if err := json.Unmarshal(data, &newTree); err != nil {
+		return errors.New("instance.Repo:json.Unmarshal:" + err.Error())
+	}
+	r.tree = newTree
+	return r.updateInstanceIndex()
+}
+
+// Updates the local instance UUID index
+func (r *Repo) updateInstanceIndex() error {
+	r.logger.Debug("updateInstanceIndex:call")
+	defer r.logger.Debug("updateInstanceIndex:return")
+	if r.tree != nil {
+		// Lets forget about our former index, parse the current tree
+		r.it = make(map[string]*proto.Instance)
+	}
+	// A recursive method is beautiful but unforgiving without limits or tail recursion
+	// optimization. Lets do this iterating, we don't want to eat all the memory
+	// because a bogus config tree is too deep; also, we don't want to limit
+	// depth now.
+	tovisit := []*proto.Instance{r.tree}
+	for {
+		count := len(tovisit)
+		switch {
+		case count == 0:
+			return nil
+		case count > 0:
+			// Pop element
+			var inst *proto.Instance
+			inst, tovisit = tovisit[len(tovisit)-1], tovisit[:len(tovisit)-1]
+			if _, ok := r.it[inst.UUID]; ok {
+				// Should this be a Fatal error?
+				return fmt.Errorf("Cycle in system tree detected with UUID %s", inst.UUID)
+				// TODO: Avoid cycles and keep going?
+				// continue
+			}
+			// Index our instance with its UUID
+			r.it[inst.UUID] = inst
+			// Queue all our subsystem instances
+			for i := range inst.Subsystems {
+				tovisit = append(tovisit, &inst.Subsystems[i])
+			}
+		}
+	}
+}
+
+// Initializes the instance repository by reading system tree from local file
+func (r *Repo) Init() (err error) {
+	r.logger.Debug("Init:call")
+	defer r.logger.Debug("Init:return")
+	r.mux.Lock()
+	defer r.mux.Unlock()
+	file := r.systemTreeFilePath()
+	var data []byte
+
+	if !pct.FileExists(file) {
+		r.logger.Error(fmt.Sprintf("System tree file (%s) does not exist", file))
+		return pct.ErrNoSystemTree
+	}
+
+	r.logger.Debug("Reading " + file)
+	data, err = ioutil.ReadFile(file)
 	if err != nil {
+		r.logger.Error("Could not read system tree file: " + file)
 		return err
 	}
 
-	for _, file := range files {
-		r.logger.Debug("Reading " + file)
-
-		// 0       1
-		// service-id
-		part := strings.Split(strings.TrimSuffix(filepath.Base(file), ".conf"), "-")
-		if len(part) != 2 {
-			return errors.New("Invalid instance file name: " + file)
-		}
-		service := part[0]
-		id, err := strconv.ParseUint(part[1], 10, 32)
-		if err != nil {
-			return err
-		}
-		if !valid(service, uint(id)) {
-			return pct.InvalidServiceInstanceError{Service: service, Id: uint(id)}
-		}
-
-		data, err := ioutil.ReadFile(file)
-		if err != nil {
-			return errors.New(file + ":" + err.Error())
-		}
-
-		if err := r.Add(service, uint(id), data, false); err != nil {
-			return errors.New(file + ":" + err.Error())
-		}
-
-		r.logger.Info("Loaded " + file)
+	if err = r.loadSystemTree(data); err != nil {
+		r.logger.Error(fmt.Sprintf("Error loading instances config file: %v", err))
+		return err
 	}
 	return nil
 }
 
-func (r *Repo) Add(service string, id uint, data []byte, writeToDisk bool) error {
-	r.logger.Debug("Add:call")
-	defer r.logger.Debug("Add:return")
-
-	if !valid(service, id) {
-		return pct.InvalidServiceInstanceError{Service: service, Id: id}
+// Deep clone data using gob.
+func cloneTree(source, target interface{}) error {
+	// This will basically binary serialize the data from source and deserialize
+	// in target variable creating a fresh copy. This will NOT work with circular
+	// data but that is not a problem with proto.Instances as they don't hold
+	// circular references.
+	// Pulled from: https://groups.google.com/forum/#!topic/golang-nuts/vK6P0dmQI84
+	// TODO: write a specific clone function for proto.Instance?
+	buff := new(bytes.Buffer)
+	enc := gob.NewEncoder(buff)
+	dec := gob.NewDecoder(buff)
+	if err := enc.Encode(source); err != nil {
+		return err
 	}
+	if err := dec.Decode(target); err != nil {
+		return err
+	}
+	return nil
+}
 
+// Saves system tree to disk
+func (r *Repo) treeToDisk(filepath string) error {
+	if r.tree == nil {
+		// Nothing to save to disk, return inmediatly
+		return nil
+	}
+	data, err := json.Marshal(r.tree)
+	if err != nil {
+		r.logger.Error(fmt.Sprintf("Error JSON-marshalling system tree: %v", err))
+		return err
+	}
+	return ioutil.WriteFile(filepath, data, SYSTEM_TREE_FILEMODE)
+}
+
+// Substitute local repo instances with provided tree parameter.
+// The method will populate the provided proto.Instance slices with added,
+// deleted or updated instances. The tree will be saved to disk if update is successfull.
+func (r *Repo) UpdateSystemTree(tree proto.Instance, version uint) error {
+	r.logger.Debug("UpdateSystemTree:call")
+	defer r.logger.Debug("UpdateSystemTree:return")
 	r.mux.Lock()
 	defer r.mux.Unlock()
 
-	return r.add(service, id, data, writeToDisk)
-}
-
-func (r *Repo) add(service string, id uint, data []byte, writeToDisk bool) error {
-	r.logger.Debug("add:call")
-	defer r.logger.Debug("add:return")
-
-	var info interface{}
-	switch service {
-	case "server":
-		it := &proto.ServerInstance{}
-		if err := json.Unmarshal(data, it); err != nil {
-			return errors.New("instance.Repo:json.Unmarshal:" + err.Error())
-		}
-		info = it
-	case "mysql":
-		it := &proto.MySQLInstance{}
-		if err := json.Unmarshal(data, it); err != nil {
-			return errors.New("instance.Repo:json.Unmarshal:" + err.Error())
-		}
-		info = it
-	default:
-		return errors.New(fmt.Sprintf("Invalid service name: %s", service))
+	if version <= r.treeVersion && r.tree != nil {
+		err := fmt.Errorf("Discarding tree version %d update because its version is lower or equal to current %d version", version, r.treeVersion)
+		// Error out but user should only receive a warning in log
+		r.logger.Warn(err)
+		return err
 	}
 
-	name := r.Name(service, id)
-	if _, ok := r.it[name]; ok {
-		return pct.DuplicateServiceInstanceError{Service: service, Id: id}
+	if !IsOSInstance(tree) {
+		// tree instance root is not an OS instance
+		return errors.New("System tree root is not of OS type ('os' prefix)")
 	}
 
-	if writeToDisk {
-		if err := pct.Basedir.WriteConfig(name, info); err != nil {
-			return err
-		}
-		r.logger.Info("Added " + name)
+	// We need to deep copy the provided tree as it keeps references to
+	// proto.Instances in Subsystems slice that are not copied, hence the caller
+	// can modify them without our knowledge
+	var newTree *proto.Instance
+	if err := cloneTree(&tree, &newTree); err != nil {
+		return fmt.Errorf("Couldn't clone provided system tree: %v", err)
 	}
+	r.tree = newTree
+	r.updateInstanceIndex()
+	r.treeVersion = version
 
-	r.it[name] = info
+	if err := r.treeToDisk(r.systemTreeFilePath()); err != nil {
+		return err
+	}
 	return nil
 }
 
-func (r *Repo) Get(service string, id uint, info interface{}) error {
+func (r *Repo) Get(uuid string) (proto.Instance, error) {
 	r.logger.Debug("Get:call")
 	defer r.logger.Debug("Get:return")
-
 	r.mux.Lock()
 	defer r.mux.Unlock()
 
-	return r.get(service, id, info)
+	newInstance := proto.Instance{}
+	got, err := r.get(uuid)
+	if err != nil {
+		return newInstance, err
+	}
+	// Every instance is a branch, we need to copy
+	if err := cloneTree(got, &newInstance); err != nil {
+		return newInstance, err
+	}
+
+	return newInstance, nil
 }
 
-func (r *Repo) get(service string, id uint, info interface{}) error {
+func (r *Repo) get(uuid string) (*proto.Instance, error) {
 	r.logger.Debug("get:call")
 	defer r.logger.Debug("get:return")
 
-	if reflect.ValueOf(info).Kind() != reflect.Ptr {
-		log.Fatal("info arg is not a pointer; need &T{}")
+	if !r.valid(uuid) {
+		return nil, pct.InvalidInstanceError{UUID: uuid}
 	}
 
-	if !valid(service, id) {
-		return pct.InvalidServiceInstanceError{Service: service, Id: id}
+	if _, ok := r.it[uuid]; !ok {
+		return nil, fmt.Errorf("Instance UUID %s not found in local system tree", uuid)
 	}
-
-	// Get instance info locally, from file on disk.
-	name := r.Name(service, id)
-	it, ok := r.it[name]
-	if !ok {
-		// Get instance info from API.
-		link := r.api.EntryLink("instances")
-		if link == "" {
-			r.logger.Warn("No 'instance' API link")
-			return pct.UnknownServiceInstanceError{Service: service, Id: id}
-		}
-		url := fmt.Sprintf("%s/%s/%d", link, service, id)
-		r.logger.Info("GET", url)
-		code, data, err := r.api.Get(r.api.ApiKey(), url)
-		if err != nil {
-			return fmt.Errorf("Failed to get %s instance from %s: %s", name, link, err)
-		} else if code != 200 {
-			return fmt.Errorf("Getting %s instance from %s returned code %d, expected 200", name, link, code)
-		} else if data == nil {
-			return fmt.Errorf("Getting %s instance from %s did not return data")
-		} else {
-			// Save new instance locally.
-			if err := r.add(service, uint(id), data, true); err != nil {
-				return fmt.Errorf("Failed to add new instance: %s", err)
-			}
-			// Recurse to re-get and return new instance.
-			return r.get(service, id, info)
-		}
-	}
-
-	/**
-	 * Yes, we need reflection because "everything in Go is passed by value"
-	 * (http://golang.org/doc/faq#Pointers).  When the caller passes a pointer
-	 * to a struct (*T) as an interface{} arg, the function receives a new
-	 * interface that contains a pointer to the struct.  Therefore, setting
-	 * info = it only sets the new interface, not the underlying struct.
-	 * The only way to access and change the underlying struct of an interface
-	 * is with reflection.  The nex two lines might not make any sense until
-	 * you grok reflection; I leave that to you.
-	 */
-	infoVal := reflect.ValueOf(info).Elem()
-	infoVal.Set(reflect.ValueOf(it).Elem())
-
-	return nil
+	return r.it[uuid], nil
 }
 
-func (r *Repo) Remove(service string, id uint) error {
-	r.logger.Debug("Remove:call")
-	defer r.logger.Debug("Remove:return")
+func (r *Repo) valid(uuid string) bool {
+	return UUID_RE.MatchString(uuid)
+}
 
-	// todo: API --> agent --> side.Remove()
-	// Agent should stop all services using the instance before call this.
-	if !valid(service, id) {
-		return pct.InvalidServiceInstanceError{Service: service, Id: id}
-	}
-
+// Returns a flat list of instances copies in the tree, notice that these are efectively the subtrees on each instance
+// The list will be lexicographically ordered by instance UUID
+func (r *Repo) List() []proto.Instance {
 	r.mux.Lock()
 	defer r.mux.Unlock()
-
-	name := r.Name(service, id)
-	if _, ok := r.it[name]; !ok {
-		return pct.UnknownServiceInstanceError{Service: service, Id: id}
+	var instances []proto.Instance
+	for _, inst := range r.it {
+		var instCopy *proto.Instance
+		if err := cloneTree(&inst, &instCopy); err != nil {
+			longErr := fmt.Errorf("Couldn't clone local tree: %v", err)
+			r.logger.Error(longErr)
+		}
+		instances = append(instances, *instCopy)
 	}
-
-	file := r.configDir + "/" + name + ".conf"
-	r.logger.Info("Removing", file)
-	if err := os.Remove(file); err != nil {
-		return err
-	}
-
-	delete(r.it, name)
-	r.logger.Info("Removed " + name)
-	return nil
-}
-
-func valid(service string, id uint) bool {
-	if _, ok := proto.ExternalService[service]; !ok {
-		return false
-	}
-	if id == 0 {
-		return false
-	}
-	return true
-}
-
-func (r *Repo) Name(service string, id uint) string {
-	return fmt.Sprintf("%s-%d", service, id)
-}
-
-func (r *Repo) List() []string {
-	r.mux.Lock()
-	defer r.mux.Unlock()
-	instances := []string{}
-	for name, _ := range r.it {
-		instances = append(instances, name)
-	}
+	sort.Sort(ByUUID(instances))
 	return instances
+}
+
+// Returns a copy of the tree
+func (r *Repo) GetSystemTree() (proto.Instance, error) {
+	r.logger.Debug("GetSystemTree:call")
+	defer r.logger.Debug("GetSystemTree:return")
+	r.mux.Lock()
+	defer r.mux.Unlock()
+
+	if r.tree == nil {
+		return proto.Instance{}, errors.New("Repository has no local system tree")
+	}
+
+	newTree := proto.Instance{}
+	if err := cloneTree(&r.tree, &newTree); err != nil {
+		longErr := fmt.Errorf("Couldn't clone local tree: %v", err)
+		r.logger.Error(longErr)
+		return proto.Instance{}, longErr
+	}
+	return newTree, nil
+}
+
+func (r *Repo) GetTreeVersion() uint {
+	r.logger.Debug("GetTreeVersion:call")
+	defer r.logger.Debug("GetTreeVersion:return")
+	r.mux.Lock()
+	defer r.mux.Unlock()
+	return r.treeVersion
+}
+
+func (r *Repo) Name(uuid string) (string, error) {
+	r.logger.Debug("Name:call")
+	defer r.logger.Debug("Name:return")
+	r.mux.Lock()
+	defer r.mux.Unlock()
+	inst, ok := r.it[uuid]
+	if !ok {
+		return "", fmt.Errorf("Unknown instance %s", uuid)
+	}
+	return inst.Name, nil
+}
+
+func (r *Repo) GetMySQLInstances() []proto.Instance {
+	r.logger.Debug("GetMySQLInstances:call")
+	defer r.logger.Debug("GetMySQLInstances:return")
+	return onlyMySQLInsts(r.List())
 }

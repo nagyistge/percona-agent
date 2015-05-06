@@ -19,8 +19,9 @@ package mock
 
 import (
 	"fmt"
-	"github.com/percona/percona-agent/mm"
 	"time"
+
+	"github.com/percona/percona-agent/mm"
 )
 
 type MmMonitorFactory struct {
@@ -37,13 +38,12 @@ func NewMmMonitorFactory(monitors map[string]mm.Monitor) *MmMonitorFactory {
 	return f
 }
 
-func (f *MmMonitorFactory) Make(service string, id uint, data []byte) (mm.Monitor, error) {
-	name := fmt.Sprintf("%s-%d", service, id)
-	if monitor, ok := f.monitors[name]; ok {
+func (f *MmMonitorFactory) Make(uuid string, data []byte) (mm.Monitor, error) {
+	if monitor, ok := f.monitors[uuid]; ok {
 		return monitor, nil
 	}
 
-	panic(fmt.Sprintf("Mock factory doesn't have monitor %s. Provide it via NewMmMonitorFactory(...) or Set(...).", name))
+	panic(fmt.Sprintf("Mock factory doesn't have monitor %s. Provide it via NewMmMonitorFactory(...) or Set(...).", uuid))
 }
 
 // --------------------------------------------------------------------------

@@ -19,7 +19,6 @@ package main_test
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -31,7 +30,7 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/data"
 	agentLog "github.com/percona/percona-agent/log"
@@ -53,18 +52,19 @@ const (
 func Test(t *testing.T) { TestingT(t) }
 
 type MainTestSuite struct {
-	username       string
-	bin            string
-	bindir         string
-	apphost        string
-	serverInstance *proto.ServerInstance
-	mysqlInstance  *proto.MySQLInstance
-	agent          *proto.Agent
-	agentUuid      string
-	fakeApi        *fakeapi.FakeApi
-	apiKey         string
-	rootConn       *sql.DB
-	configs        map[string]string
+	username      string
+	bin           string
+	bindir        string
+	apphost       string
+	osInstance    *proto.Instance
+	mysqlInstance *proto.Instance
+	agent         *proto.Instance
+	agentUUID     string
+	agentLinks    map[string]string
+	fakeApi       *fakeapi.FakeApi
+	apiKey        string
+	rootConn      *sql.DB
+	configs       map[string]string
 }
 
 var _ = Suite(&MainTestSuite{})
@@ -100,32 +100,42 @@ func (s *MainTestSuite) SetUpSuite(t *C) {
 	// Hostname must be correct because installer checks that
 	// hostname == mysql hostname to enable QAN.
 	hostname, _ := os.Hostname()
-	s.serverInstance = &proto.ServerInstance{
-		Id:       20,
-		Hostname: hostname,
-	}
-	s.mysqlInstance = &proto.MySQLInstance{
-		Id:       10,
-		Hostname: hostname,
-		DSN:      "",
-	}
-	s.agentUuid = "0001"
-	s.agent = &proto.Agent{
-		Uuid:     s.agentUuid,
-		Hostname: hostname,
-		Version:  agent.VERSION,
-		Links: map[string]string{
-			"self": "http://localhost:8000/agents/" + s.agentUuid,
-			"cmd":  "ws://localhost:8000/agents/" + s.agentUuid + "/cmd",
-			"data": "ws://localhost:8000/agents/" + s.agentUuid + "/data",
-			"log":  "ws://localhost:8000/agents/" + s.agentUuid + "/log",
-		},
-	}
+	s.osInstance = &proto.Instance{}
+	s.osInstance.Type = "OS"
+	s.osInstance.Prefix = "os"
+	s.osInstance.UUID = "1"
+	s.osInstance.Name = hostname
+	s.osInstance.Created = time.Time{}
+	s.osInstance.Deleted = time.Time{}
+
+	s.agent = &proto.Instance{}
+	s.agent.Type = "Percona Agent"
+	s.agent.Prefix = "agent"
+	s.agent.UUID = "2"
+	s.agent.Name = hostname
+	s.agent.ParentUUID = s.osInstance.UUID
+
+	s.mysqlInstance = &proto.Instance{}
+	s.mysqlInstance.UUID = "3"
+	s.mysqlInstance.Name = hostname
+	s.mysqlInstance.DSN = ""
+	s.mysqlInstance.ParentUUID = s.osInstance.UUID
+
+	s.osInstance.Subsystems = []proto.Instance{*s.agent, *s.mysqlInstance}
+
+	s.agent.Properties = map[string]string{"version": agent.VERSION}
 }
 
 func (s *MainTestSuite) SetUpTest(t *C) {
 	// Create fake api server
 	s.fakeApi = fakeapi.NewFakeApi()
+	// Expected agent links
+	s.agentLinks = map[string]string{
+		"log":  s.fakeApi.WSURL() + "/instances/" + s.agent.UUID + "/log",
+		"self": s.fakeApi.URL() + "/instances/" + s.agent.UUID,
+		"cmd":  s.fakeApi.WSURL() + "/instances/" + s.agent.UUID + "/cmd",
+		"data": s.fakeApi.WSURL() + "/instances/" + s.agent.UUID + "/data",
+	}
 
 	_, err := s.rootConn.Exec("DELETE FROM mysql.user WHERE user='percona-agent'")
 	t.Check(err, IsNil)
@@ -203,18 +213,19 @@ func (s *MainTestSuite) GetGrants() []string {
 func (s *MainTestSuite) TestDefaultInstall(t *C) {
 	// Register required api handlers
 	s.fakeApi.AppendPing()
-	serverInstance := &proto.ServerInstance{}
-	s.fakeApi.AppendInstancesServer(s.serverInstance.Id, serverInstance)
-	s.fakeApi.AppendInstancesServerId(s.serverInstance.Id, serverInstance)
-	mysqlInstance := &proto.MySQLInstance{}
-	s.fakeApi.AppendInstancesMysql(s.mysqlInstance.Id, mysqlInstance)
-	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance.Id, mysqlInstance)
-	s.fakeApi.AppendConfigsMmDefaultServer()
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.mysqlInstance, http.StatusCreated, 0),
+	}
+	s.fakeApi.AppendInstances(nil, queueInstances) // GET instance first, POST instances UUIDs second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
+	s.fakeApi.AppendInstancesUUID(s.agent)
+	s.fakeApi.AppendInstancesUUID(s.mysqlInstance)
+	s.fakeApi.AppendConfigsMmDefaultOS()
 	s.fakeApi.AppendConfigsMmDefaultMysql()
 	s.fakeApi.AppendSysconfigDefaultMysql()
 	s.fakeApi.AppendConfigsQanDefault()
-	s.fakeApi.AppendAgents(s.agent)
-	s.fakeApi.AppendAgentsUuid(s.agent)
 
 	cmd := exec.Command(
 		s.bin,
@@ -234,13 +245,13 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -251,12 +262,11 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 			"agent.conf",
 			"data.conf",
 			"log.conf",
-			fmt.Sprintf("mm-mysql-%d.conf", s.mysqlInstance.Id),
-			fmt.Sprintf("mm-server-%d.conf", s.serverInstance.Id),
-			fmt.Sprintf("mysql-%d.conf", s.mysqlInstance.Id),
+			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
+			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
 			"qan.conf",
-			fmt.Sprintf("server-%d.conf", s.serverInstance.Id),
-			fmt.Sprintf("sysconfig-mysql-%d.conf", s.mysqlInstance.Id),
+			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
+			"system-tree.json",
 		},
 		t,
 	)
@@ -265,12 +275,9 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 	s.expectDefaultDataConfig(t)
 	s.expectDefaultLogConfig(t)
 	s.expectDefaultMmMysqlConfig(t)
-	s.expectDefaultMmServerConfig(t)
-	s.expectMysqlConfig(*mysqlInstance, t)
+	s.expectDefaultMmOSConfig(t)
 	s.expectDefaultQanConfig(t)
-	s.expectServerConfig(*serverInstance, t)
 	s.expectDefaultSysconfigMysqlConfig(t)
-
 	// Should create percona-agent user with grants on *.* and performance_schema.*.
 	s.expectMysqlUserExists(t)
 }
@@ -278,18 +285,19 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(t *C) {
 	// Register required api handlers
 	s.fakeApi.AppendPing()
-	serverInstance := &proto.ServerInstance{}
-	s.fakeApi.AppendInstancesServer(s.serverInstance.Id, serverInstance)
-	s.fakeApi.AppendInstancesServerId(s.serverInstance.Id, serverInstance)
-	mysqlInstance := &proto.MySQLInstance{}
-	s.fakeApi.AppendInstancesMysql(s.mysqlInstance.Id, mysqlInstance)
-	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance.Id, mysqlInstance)
-	s.fakeApi.AppendConfigsMmDefaultServer()
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.mysqlInstance, http.StatusCreated, 0),
+	}
+	s.fakeApi.AppendInstances(nil, queueInstances) // GET instance first, POST instances UUIDs second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
+	s.fakeApi.AppendInstancesUUID(s.agent)
+	s.fakeApi.AppendInstancesUUID(s.mysqlInstance)
+	s.fakeApi.AppendConfigsMmDefaultOS()
 	s.fakeApi.AppendConfigsMmDefaultMysql()
-	s.fakeApi.AppendConfigsQanDefault()
 	s.fakeApi.AppendSysconfigDefaultMysql()
-	s.fakeApi.AppendAgents(s.agent)
-	s.fakeApi.AppendAgentsUuid(s.agent)
+	s.fakeApi.AppendConfigsQanDefault()
 
 	cmd := exec.Command(
 		s.bin,
@@ -313,29 +321,25 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-
-	err := cmd.Wait()
-	t.Assert(err, IsNil)
 
 	s.expectConfigs(
 		[]string{
 			"agent.conf",
 			"data.conf",
 			"log.conf",
-			fmt.Sprintf("mm-mysql-%d.conf", s.mysqlInstance.Id),
-			fmt.Sprintf("mm-server-%d.conf", s.serverInstance.Id),
-			fmt.Sprintf("mysql-%d.conf", s.mysqlInstance.Id),
+			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
+			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
 			"qan.conf",
-			fmt.Sprintf("server-%d.conf", s.serverInstance.Id),
-			fmt.Sprintf("sysconfig-mysql-%d.conf", s.mysqlInstance.Id),
+			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
+			"system-tree.json",
 		},
 		t,
 	)
@@ -344,15 +348,13 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(
 	s.expectDefaultDataConfig(t)
 	s.expectDefaultLogConfig(t)
 	s.expectDefaultMmMysqlConfig(t)
-	s.expectDefaultMmServerConfig(t)
-	s.expectMysqlConfig(*mysqlInstance, t)
+	s.expectDefaultMmOSConfig(t)
 	s.expectDefaultQanConfig(t)
-	s.expectServerConfig(*serverInstance, t)
 	s.expectDefaultSysconfigMysqlConfig(t)
-
 	// Should create percona-agent user with grants on *.* and performance_schema.*.
 	s.expectMysqlUserExists(t)
 }
+
 func (s *MainTestSuite) TestNonInteractiveInstallWithMissingApiKey(t *C) {
 	cmd := exec.Command(
 		s.bin,
@@ -385,18 +387,19 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithMissingApiKey(t *C) {
 func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t *C) {
 	// Register required api handlers
 	s.fakeApi.AppendPing()
-	serverInstance := &proto.ServerInstance{}
-	s.fakeApi.AppendInstancesServer(s.serverInstance.Id, serverInstance)
-	s.fakeApi.AppendInstancesServerId(s.serverInstance.Id, serverInstance)
-	mysqlInstance := &proto.MySQLInstance{}
-	s.fakeApi.AppendInstancesMysql(s.mysqlInstance.Id, mysqlInstance)
-	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance.Id, mysqlInstance)
-	s.fakeApi.AppendConfigsMmDefaultServer()
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.mysqlInstance, http.StatusCreated, 0),
+	}
+	s.fakeApi.AppendInstances(nil, queueInstances) // GET instance first, POST instances UUIDs second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
+	s.fakeApi.AppendInstancesUUID(s.agent)
+	s.fakeApi.AppendInstancesUUID(s.mysqlInstance)
+	s.fakeApi.AppendConfigsMmDefaultOS()
 	s.fakeApi.AppendConfigsMmDefaultMysql()
-	s.fakeApi.AppendConfigsQanDefault()
 	s.fakeApi.AppendSysconfigDefaultMysql()
-	s.fakeApi.AppendAgents(s.agent)
-	s.fakeApi.AppendAgentsUuid(s.agent)
+	s.fakeApi.AppendConfigsQanDefault()
 
 	cmd := exec.Command(
 		s.bin,
@@ -419,12 +422,12 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t 
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
 
 	t.Check(cmdTest.ReadLine(), Equals, "Skip creating MySQL user (-create-mysql-user=false)\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -435,43 +438,41 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t 
 			"agent.conf",
 			"data.conf",
 			"log.conf",
-			fmt.Sprintf("mm-mysql-%d.conf", s.mysqlInstance.Id),
-			fmt.Sprintf("mm-server-%d.conf", s.serverInstance.Id),
-			fmt.Sprintf("mysql-%d.conf", s.mysqlInstance.Id),
+			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
+			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
 			"qan.conf",
-			fmt.Sprintf("server-%d.conf", s.serverInstance.Id),
-			fmt.Sprintf("sysconfig-mysql-%d.conf", s.mysqlInstance.Id),
+			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
+			"system-tree.json",
 		},
 		t,
 	)
-
 	s.expectDefaultAgentConfig(t)
 	s.expectDefaultDataConfig(t)
 	s.expectDefaultLogConfig(t)
 	s.expectDefaultMmMysqlConfig(t)
-	s.expectDefaultMmServerConfig(t)
-	s.expectMysqlConfig(*mysqlInstance, t)
+	s.expectDefaultMmOSConfig(t)
 	s.expectDefaultQanConfig(t)
-	s.expectServerConfig(*serverInstance, t)
 	s.expectDefaultSysconfigMysqlConfig(t)
-
-	// -create-mysql-user=false
+	// Should not create percona-agent user
 	s.expectMysqlUserNotExists(t)
 }
-func (s *MainTestSuite) TestWithAgentMySQLUser(t *C) {
 
+func (s *MainTestSuite) TestWithAgentMySQLUser(t *C) {
 	// Register required api handlers
 	s.fakeApi.AppendPing()
-	s.fakeApi.AppendInstancesServer(1, s.serverInstance)
-	s.fakeApi.AppendInstancesServerId(1, s.serverInstance)
-	s.fakeApi.AppendInstancesMysql(1, s.mysqlInstance)
-	s.fakeApi.AppendInstancesMysqlId(1, s.mysqlInstance)
-	s.fakeApi.AppendConfigsMmDefaultServer()
-	s.fakeApi.AppendConfigsQanDefault()
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.mysqlInstance, http.StatusCreated, 0),
+	}
+	s.fakeApi.AppendInstances(nil, queueInstances) // GET instance first, POST instances UUIDs second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
+	s.fakeApi.AppendInstancesUUID(s.agent)
+	s.fakeApi.AppendInstancesUUID(s.mysqlInstance)
+	s.fakeApi.AppendConfigsMmDefaultOS()
 	s.fakeApi.AppendConfigsMmDefaultMysql()
 	s.fakeApi.AppendSysconfigDefaultMysql()
-	s.fakeApi.AppendAgents(s.agent)
-	s.fakeApi.AppendAgentsUuid(s.agent)
+	s.fakeApi.AppendConfigsQanDefault()
 
 	user := "some-user"
 	pass := "some-pass"
@@ -504,11 +505,10 @@ func (s *MainTestSuite) TestWithAgentMySQLUser(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
 	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Created agent: uuid=0001\n")
-	// Use the s flag (?s) to let .* match \n
-	t.Assert(cmdTest.ReadLine(), Matches, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, "Using provided user/pass for mysql-agent user. DSN: some-user:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n")
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", s.mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, "")
 
 	err = cmd.Wait()
@@ -521,38 +521,19 @@ func (s *MainTestSuite) TestWithAgentMySQLUser(t *C) {
 func (s *MainTestSuite) TestInstall(t *C) {
 	// Register required api handlers
 	s.fakeApi.AppendPing()
-	serverInstance := &proto.ServerInstance{}
-	s.fakeApi.AppendInstancesServer(s.serverInstance.Id, serverInstance)
-	s.fakeApi.AppendInstancesServerId(s.serverInstance.Id, serverInstance)
-	mysqlInstance := &proto.MySQLInstance{}
-	s.fakeApi.AppendInstancesMysql(s.mysqlInstance.Id, mysqlInstance)
-	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance.Id, mysqlInstance)
-	s.fakeApi.AppendConfigsMmDefaultServer()
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.mysqlInstance, http.StatusCreated, 0),
+	}
+	s.fakeApi.AppendInstances(nil, queueInstances) // GET instance first, POST instances UUIDs second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
+	s.fakeApi.AppendInstancesUUID(s.agent)
+	s.fakeApi.AppendInstancesUUID(s.mysqlInstance)
+	s.fakeApi.AppendConfigsMmDefaultOS()
 	s.fakeApi.AppendConfigsMmDefaultMysql()
 	s.fakeApi.AppendSysconfigDefaultMysql()
 	s.fakeApi.AppendConfigsQanDefault()
-	s.fakeApi.Append("/agents", func(w http.ResponseWriter, r *http.Request) {
-		// Validate
-		expectedProtoAgent := proto.Agent{
-			Uuid:     "",
-			Hostname: s.agent.Hostname,
-			Version:  s.agent.Version,
-		}
-		protoAgent := proto.Agent{}
-		body, err := ioutil.ReadAll(r.Body)
-		t.Assert(err, IsNil)
-		err = json.Unmarshal(body, &protoAgent)
-		t.Assert(err, IsNil)
-		for i := range protoAgent.Configs {
-			protoAgent.Configs[i].Updated = time.Time{}
-		}
-		t.Assert(protoAgent, DeepEquals, expectedProtoAgent)
-
-		// Send response
-		w.Header().Set("Location", fmt.Sprintf("%s/agents/%s", s.fakeApi.URL(), s.agent.Uuid))
-		w.WriteHeader(http.StatusCreated)
-	})
-	s.fakeApi.AppendAgentsUuid(s.agent)
 
 	cmd := exec.Command(
 		s.bin,
@@ -577,13 +558,13 @@ func (s *MainTestSuite) TestInstall(t *C) {
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -594,12 +575,11 @@ func (s *MainTestSuite) TestInstall(t *C) {
 			"agent.conf",
 			"data.conf",
 			"log.conf",
-			fmt.Sprintf("mm-mysql-%d.conf", s.mysqlInstance.Id),
-			fmt.Sprintf("mm-server-%d.conf", s.serverInstance.Id),
-			fmt.Sprintf("mysql-%d.conf", s.mysqlInstance.Id),
+			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
+			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
 			"qan.conf",
-			fmt.Sprintf("server-%d.conf", s.serverInstance.Id),
-			fmt.Sprintf("sysconfig-mysql-%d.conf", s.mysqlInstance.Id),
+			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
+			"system-tree.json",
 		},
 		t,
 	)
@@ -608,26 +588,25 @@ func (s *MainTestSuite) TestInstall(t *C) {
 	s.expectDefaultDataConfig(t)
 	s.expectDefaultLogConfig(t)
 	s.expectDefaultMmMysqlConfig(t)
-	s.expectDefaultMmServerConfig(t)
-	s.expectMysqlConfig(*mysqlInstance, t)
+	s.expectDefaultMmOSConfig(t)
 	s.expectDefaultQanConfig(t)
-	s.expectServerConfig(*serverInstance, t)
 	s.expectDefaultSysconfigMysqlConfig(t)
-
 	// Should create percona-agent user with grants on *.* and performance_schema.*.
 	s.expectMysqlUserExists(t)
 }
 
 func (s *MainTestSuite) TestInstallFailsOnAgentsLimit(t *C) {
-	agentLimit := 5
+	var agentLimit uint = 5
 
 	// Register required api handlers
 	s.fakeApi.AppendPing()
-	s.fakeApi.Append("/agents", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Percona-Agents-Limit", fmt.Sprintf("%d", agentLimit))
-		// Send response
-		w.WriteHeader(http.StatusForbidden)
-	})
+	// Installer will create OS instance first then fail hitting agent limit
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusForbidden, agentLimit),
+	}
+	s.fakeApi.AppendInstances(nil, queueInstances) // GET instance first, POST instances UUIDs second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
 
 	cmd := exec.Command(
 		s.bin,
@@ -652,8 +631,9 @@ func (s *MainTestSuite) TestInstallFailsOnAgentsLimit(t *C) {
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
 
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Maximum number of %d agents exceeded.\n", agentLimit))
-	t.Check(cmdTest.ReadLine(), Equals, "Go to https://cloud.percona.com/agents and remove unused agents or contact Percona to increase limit.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Go to https://cloud.percona.com/ and remove unused agents or contact Percona to increase limit.\n")
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -662,44 +642,17 @@ func (s *MainTestSuite) TestInstallFailsOnAgentsLimit(t *C) {
 	s.expectConfigs([]string{}, t)
 	s.expectMysqlUserNotExists(t)
 }
-func (s *MainTestSuite) TestInstallWorksWithExistingMySQLInstanceAndInstanceIsUpdated(t *C) {
+
+func (s *MainTestSuite) TestInstallFailsOnOSLimit(t *C) {
+	var instanceLimit uint = 5
+
 	// Register required api handlers
 	s.fakeApi.AppendPing()
-	serverInstance := &proto.ServerInstance{}
-	s.fakeApi.AppendInstancesServer(s.serverInstance.Id, serverInstance)
-	s.fakeApi.AppendInstancesServerId(s.serverInstance.Id, serverInstance)
-	mysqlInstance := &proto.MySQLInstance{}
-	s.fakeApi.Append("/instances/mysql", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Location", fmt.Sprintf("%s/instances/mysql/%d", s.fakeApi.URL(), s.mysqlInstance.Id))
-		w.WriteHeader(http.StatusConflict) // Instance already exists
-	})
-	s.fakeApi.Append(fmt.Sprintf("/instances/mysql/%d", s.mysqlInstance.Id), func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case "GET":
-			w.WriteHeader(http.StatusOK)
-			data, _ := json.Marshal(mysqlInstance)
-			w.Write(data)
-		case "PUT":
-			body, err := ioutil.ReadAll(r.Body)
-			if err != nil {
-				panic(err)
-			}
-			err = json.Unmarshal(body, mysqlInstance)
-			if err != nil {
-				panic(err)
-			}
-			mysqlInstance.Id = s.mysqlInstance.Id
-			w.WriteHeader(http.StatusOK)
-		default:
-			w.WriteHeader(600)
-		}
-	})
-	s.fakeApi.AppendConfigsMmDefaultServer()
-	s.fakeApi.AppendConfigsMmDefaultMysql()
-	s.fakeApi.AppendSysconfigDefaultMysql()
-	s.fakeApi.AppendConfigsQanDefault()
-	s.fakeApi.AppendAgents(s.agent)
-	s.fakeApi.AppendAgentsUuid(s.agent)
+	// Installer will create OS instance first then fail hitting agent limit
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusForbidden, instanceLimit),
+	}
+	s.fakeApi.AppendInstances(nil, queueInstances) // GET instance first, POST instances UUIDs second
 
 	cmd := exec.Command(
 		s.bin,
@@ -724,13 +677,65 @@ func (s *MainTestSuite) TestInstallWorksWithExistingMySQLInstanceAndInstanceIsUp
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Maximum number of %d OS instances exceeded.\n", instanceLimit))
+	t.Check(cmdTest.ReadLine(), Equals, "Go to https://cloud.percona.com/ and remove unused OS instances or contact Percona to increase limit.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
+
+	err := cmd.Wait()
+	t.Check(err, ErrorMatches, "exit status 1")
+
+	s.expectConfigs([]string{}, t)
+	s.expectMysqlUserNotExists(t)
+}
+
+func (s *MainTestSuite) TestInstallsWithExistingMySQLInstanceAndInstanceIsUpdated(t *C) {
+	// Register required api handlers
+	s.fakeApi.AppendPing()
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.mysqlInstance, http.StatusConflict, 0),
+	}
+
+	s.fakeApi.AppendInstances(s.osInstance, queueInstances) // GET instance first, POST instances UUIDs second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
+	s.fakeApi.AppendInstancesUUID(s.agent)
+	s.fakeApi.AppendInstancesUUID(s.mysqlInstance)
+	s.fakeApi.AppendConfigsMmDefaultOS()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendConfigsQanDefault()
+
+	cmd := exec.Command(
+		s.bin,
+		"-basedir="+pct.Basedir.Path(),
+		"-api-host="+s.fakeApi.URL(),
+		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
+	)
+
+	cmdTest := cmdtest.NewCmdTest(cmd)
+
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
+	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
+	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
+	cmdTest.Write(s.apiKey + "\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
+
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -741,12 +746,11 @@ func (s *MainTestSuite) TestInstallWorksWithExistingMySQLInstanceAndInstanceIsUp
 			"agent.conf",
 			"data.conf",
 			"log.conf",
-			fmt.Sprintf("mm-mysql-%d.conf", s.mysqlInstance.Id),
-			fmt.Sprintf("mm-server-%d.conf", s.serverInstance.Id),
-			fmt.Sprintf("mysql-%d.conf", s.mysqlInstance.Id),
+			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
+			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
 			"qan.conf",
-			fmt.Sprintf("server-%d.conf", s.serverInstance.Id),
-			fmt.Sprintf("sysconfig-mysql-%d.conf", s.mysqlInstance.Id),
+			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
+			"system-tree.json",
 		},
 		t,
 	)
@@ -755,12 +759,9 @@ func (s *MainTestSuite) TestInstallWorksWithExistingMySQLInstanceAndInstanceIsUp
 	s.expectDefaultDataConfig(t)
 	s.expectDefaultLogConfig(t)
 	s.expectDefaultMmMysqlConfig(t)
-	s.expectDefaultMmServerConfig(t)
-	s.expectMysqlConfig(*mysqlInstance, t)
+	s.expectDefaultMmOSConfig(t)
 	s.expectDefaultQanConfig(t)
-	s.expectServerConfig(*serverInstance, t)
 	s.expectDefaultSysconfigMysqlConfig(t)
-
 	// Should create percona-agent user with grants on *.* and performance_schema.*.
 	s.expectMysqlUserExists(t)
 }
@@ -768,14 +769,20 @@ func (s *MainTestSuite) TestInstallWorksWithExistingMySQLInstanceAndInstanceIsUp
 func (s *MainTestSuite) TestInstallFailsOnUpdatingMySQLInstance(t *C) {
 	// Register required api handlers
 	s.fakeApi.AppendPing()
-	serverInstance := &proto.ServerInstance{}
-	s.fakeApi.AppendInstancesServer(s.serverInstance.Id, serverInstance)
-	s.fakeApi.AppendInstancesServerId(s.serverInstance.Id, serverInstance)
-	s.fakeApi.Append("/instances/mysql", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Location", fmt.Sprintf("%s/instances/mysql/%d", s.fakeApi.URL(), s.mysqlInstance.Id))
-		w.WriteHeader(http.StatusConflict) // Instance already exists
-	})
-	s.fakeApi.Append(fmt.Sprintf("/instances/mysql/%d", s.mysqlInstance.Id), func(w http.ResponseWriter, r *http.Request) {
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.mysqlInstance, http.StatusConflict, 0),
+	}
+	s.fakeApi.AppendInstances(s.osInstance, queueInstances) // GET tree instance first, POST instances second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
+	s.fakeApi.AppendInstancesUUID(s.agent)
+	s.fakeApi.AppendConfigsMmDefaultOS()
+	s.fakeApi.AppendConfigsMmDefaultMysql()
+	s.fakeApi.AppendSysconfigDefaultMysql()
+	s.fakeApi.AppendConfigsQanDefault()
+
+	s.fakeApi.Append(fmt.Sprintf("/instances/%s", s.mysqlInstance.UUID), func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "PUT":
 			w.WriteHeader(http.StatusInternalServerError)
@@ -783,11 +790,6 @@ func (s *MainTestSuite) TestInstallFailsOnUpdatingMySQLInstance(t *C) {
 			w.WriteHeader(600)
 		}
 	})
-	s.fakeApi.AppendConfigsMmDefaultServer()
-	s.fakeApi.AppendConfigsMmDefaultMysql()
-	s.fakeApi.AppendSysconfigDefaultMysql()
-	s.fakeApi.AppendAgents(s.agent)
-	s.fakeApi.AppendAgentsUuid(s.agent)
 
 	cmd := exec.Command(
 		s.bin,
@@ -812,8 +814,8 @@ func (s *MainTestSuite) TestInstallFailsOnUpdatingMySQLInstance(t *C) {
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
@@ -869,96 +871,22 @@ func (s *MainTestSuite) TestInstallWithWrongApiKey(t *C) {
 	s.expectMysqlUserNotExists(t)
 }
 
-// todo what's the point of -create-agent flag? for what is it usefull?
-func (s *MainTestSuite) TestInstallWithFlagCreateAgentFalse(t *C) {
-	// Register required api handlers
-	s.fakeApi.AppendPing()
-	serverInstance := &proto.ServerInstance{}
-	s.fakeApi.AppendInstancesServer(s.serverInstance.Id, serverInstance)
-	s.fakeApi.AppendInstancesServerId(s.serverInstance.Id, serverInstance)
-	mysqlInstance := &proto.MySQLInstance{}
-	s.fakeApi.AppendInstancesMysql(s.mysqlInstance.Id, mysqlInstance)
-	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance.Id, mysqlInstance)
-	s.fakeApi.AppendConfigsMmDefaultServer()
-	s.fakeApi.AppendConfigsMmDefaultMysql()
-	s.fakeApi.AppendSysconfigDefaultMysql()
-	s.fakeApi.AppendConfigsQanDefault()
-	// Flag -create-agent=false implies that agent
-	// shouldn't query below api routes
-	//s.fakeApi.AppendAgents(s.agent)
-	//s.fakeApi.AppendAgentsUuid(s.agent)
-
-	cmd := exec.Command(
-		s.bin,
-		"-basedir="+pct.Basedir.Path(),
-		"-api-host="+s.fakeApi.URL(),
-		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
-		"-create-agent=false", // we are testing this flag
-	)
-
-	cmdTest := cmdtest.NewCmdTest(cmd)
-
-	if err := cmd.Start(); err != nil {
-		log.Fatal(err)
-	}
-
-	t.Check(cmdTest.ReadLine(), Equals, "CTRL-C at any time to quit\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API host: "+s.fakeApi.URL()+"\n")
-
-	t.Check(cmdTest.ReadLine(), Equals, "No API Key Defined.\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Please Enter your API Key, it is available at "+s.apphost+"/api-key\n")
-	t.Check(cmdTest.ReadLine(), Equals, "API key: ")
-	cmdTest.Write(s.apiKey + "\n")
-	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
-
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
-	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
-
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Not creating agent (-create-agent=false)\n"))
-	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
-
-	err := cmd.Wait()
-	t.Assert(err, IsNil)
-
-	s.expectConfigs(
-		[]string{
-			//fmt.Sprintf("mm-mysql-%d.conf", s.mysqlInstance.Id),
-			//fmt.Sprintf("mm-server-%d.conf", s.serverInstance.Id),
-			fmt.Sprintf("mysql-%d.conf", s.mysqlInstance.Id),
-			//"qan.conf",
-			fmt.Sprintf("server-%d.conf", s.serverInstance.Id),
-			//fmt.Sprintf("sysconfig-mysql-%d.conf", s.mysqlInstance.Id),
-		},
-		t,
-	)
-
-	//s.expectDefaultMmMysqlConfig(t)
-	//s.expectDefaultMmServerConfig(t)
-	s.expectMysqlConfig(*mysqlInstance, t)
-	//s.expectDefaultQanConfig(t)
-	s.expectServerConfig(*serverInstance, t)
-	//s.expectDefaultSysconfigMysqlConfig(t)
-
-	s.expectMysqlUserExists(t)
-}
-
 func (s *MainTestSuite) TestInstallWithFlagOldPasswordsTrue(t *C) {
 	// Register required api handlers
 	s.fakeApi.AppendPing()
-	serverInstance := &proto.ServerInstance{}
-	s.fakeApi.AppendInstancesServer(s.serverInstance.Id, serverInstance)
-	s.fakeApi.AppendInstancesServerId(s.serverInstance.Id, serverInstance)
-	mysqlInstance := &proto.MySQLInstance{}
-	s.fakeApi.AppendInstancesMysql(s.mysqlInstance.Id, mysqlInstance)
-	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance.Id, mysqlInstance)
-	s.fakeApi.AppendConfigsMmDefaultServer()
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.mysqlInstance, http.StatusCreated, 0),
+	}
+	s.fakeApi.AppendInstances(nil, queueInstances) // GET instance first, POST instances UUIDs second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
+	s.fakeApi.AppendInstancesUUID(s.agent)
+	s.fakeApi.AppendInstancesUUID(s.mysqlInstance)
+	s.fakeApi.AppendConfigsMmDefaultOS()
 	s.fakeApi.AppendConfigsMmDefaultMysql()
 	s.fakeApi.AppendSysconfigDefaultMysql()
 	s.fakeApi.AppendConfigsQanDefault()
-	s.fakeApi.AppendAgents(s.agent)
-	s.fakeApi.AppendAgentsUuid(s.agent)
 
 	cmd := exec.Command(
 		s.bin,
@@ -984,14 +912,13 @@ func (s *MainTestSuite) TestInstallWithFlagOldPasswordsTrue(t *C) {
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
-	// Flag -old-passwords=true should add &allowOldPasswords=true to DSN
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true&allowOldPasswords=true\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -1002,55 +929,51 @@ func (s *MainTestSuite) TestInstallWithFlagOldPasswordsTrue(t *C) {
 			"agent.conf",
 			"data.conf",
 			"log.conf",
-			fmt.Sprintf("mm-mysql-%d.conf", s.mysqlInstance.Id),
-			fmt.Sprintf("mm-server-%d.conf", s.serverInstance.Id),
-			fmt.Sprintf("mysql-%d.conf", s.mysqlInstance.Id),
+			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
+			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
 			"qan.conf",
-			fmt.Sprintf("server-%d.conf", s.serverInstance.Id),
-			fmt.Sprintf("sysconfig-mysql-%d.conf", s.mysqlInstance.Id),
+			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
+			"system-tree.json",
 		},
 		t,
 	)
-
 	s.expectDefaultAgentConfig(t)
 	s.expectDefaultDataConfig(t)
 	s.expectDefaultLogConfig(t)
 	s.expectDefaultMmMysqlConfig(t)
-	s.expectDefaultMmServerConfig(t)
-	s.expectMysqlConfig(*mysqlInstance, t)
+	s.expectDefaultMmOSConfig(t)
 	s.expectDefaultQanConfig(t)
-	s.expectServerConfig(*serverInstance, t)
 	s.expectDefaultSysconfigMysqlConfig(t)
-
-	// Should create percona-agent user with grants on *.* and performance_schema.*.
+	// Should not create percona-agent user
 	s.expectMysqlUserExists(t)
 }
 
-func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) {
-	// Register required api handlers
+func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) { // Register required api handlers
 	s.fakeApi.AppendPing()
-	serverInstance := &proto.ServerInstance{}
-	s.fakeApi.AppendInstancesServer(s.serverInstance.Id, serverInstance)
-	s.fakeApi.AppendInstancesServerId(s.serverInstance.Id, serverInstance)
-	mysqlInstance := &proto.MySQLInstance{}
-	s.fakeApi.AppendInstancesMysql(s.mysqlInstance.Id, mysqlInstance)
-	s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance.Id, mysqlInstance)
-	s.fakeApi.AppendConfigsMmDefaultServer()
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.mysqlInstance, http.StatusCreated, 0),
+	}
+	s.fakeApi.AppendInstances(nil, queueInstances) // GET instance first, POST instances UUIDs second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
+	s.fakeApi.AppendInstancesUUID(s.agent)
+	s.fakeApi.AppendInstancesUUID(s.mysqlInstance)
+	s.fakeApi.AppendConfigsMmDefaultOS()
 	s.fakeApi.AppendConfigsMmDefaultMysql()
 	s.fakeApi.AppendSysconfigDefaultMysql()
 	s.fakeApi.AppendConfigsQanDefault()
-	s.fakeApi.AppendAgents(s.agent)
-	s.fakeApi.AppendAgentsUuid(s.agent)
 
 	cmd := exec.Command(
 		s.bin,
 		"-basedir="+pct.Basedir.Path(),
 		"-api-host="+s.fakeApi.URL(),
 		"-mysql-defaults-file="+test.RootDir+"/installer/my.cnf-root_user",
-		"-api-key="+s.apiKey, // We are testing this flag
+		"-api-key="+s.apiKey,
 	)
 
 	cmdTest := cmdtest.NewCmdTest(cmd)
+
 	if err := cmd.Start(); err != nil {
 		log.Fatal(err)
 	}
@@ -1060,13 +983,13 @@ func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) {
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
 
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s hostname=%s id=%d\n", mysqlInstance.DSN, s.mysqlInstance.Hostname, s.mysqlInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -1077,46 +1000,37 @@ func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) {
 			"agent.conf",
 			"data.conf",
 			"log.conf",
-			fmt.Sprintf("mm-mysql-%d.conf", s.mysqlInstance.Id),
-			fmt.Sprintf("mm-server-%d.conf", s.serverInstance.Id),
-			fmt.Sprintf("mysql-%d.conf", s.mysqlInstance.Id),
+			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
+			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
 			"qan.conf",
-			fmt.Sprintf("server-%d.conf", s.serverInstance.Id),
-			fmt.Sprintf("sysconfig-mysql-%d.conf", s.mysqlInstance.Id),
+			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
+			"system-tree.json",
 		},
 		t,
 	)
-
 	s.expectDefaultAgentConfig(t)
 	s.expectDefaultDataConfig(t)
 	s.expectDefaultLogConfig(t)
 	s.expectDefaultMmMysqlConfig(t)
-	s.expectDefaultMmServerConfig(t)
-	s.expectMysqlConfig(*mysqlInstance, t)
+	s.expectDefaultMmOSConfig(t)
 	s.expectDefaultQanConfig(t)
-	s.expectServerConfig(*serverInstance, t)
 	s.expectDefaultSysconfigMysqlConfig(t)
-
-	// Should create percona-agent user with grants on *.* and performance_schema.*.
+	// Should not create percona-agent user
 	s.expectMysqlUserExists(t)
 }
 
 func (s *MainTestSuite) TestInstallWithFlagMysqlFalse(t *C) {
 	// Register required api handlers
 	s.fakeApi.AppendPing()
-	serverInstance := &proto.ServerInstance{}
-	s.fakeApi.AppendInstancesServer(s.serverInstance.Id, serverInstance)
-	s.fakeApi.AppendInstancesServerId(s.serverInstance.Id, serverInstance)
-	// Flag -mysql=false implies that agent
-	// shouldn't query below api routes
-	//s.fakeApi.AppendInstancesMysql(s.mysqlInstance)
-	//s.fakeApi.AppendInstancesMysqlId(s.mysqlInstance)
-	s.fakeApi.AppendConfigsMmDefaultServer()
-	//s.fakeApi.AppendConfigsMmDefaultMysql()
-	//s.fakeApi.AppendSysconfigDefaultMysql()
-	//s.fakeApi.AppendConfigsQanDefault()
-	s.fakeApi.AppendAgents(s.agent)
-	s.fakeApi.AppendAgentsUuid(s.agent)
+	queueInstances := []*fakeapi.InstanceStatus{
+		fakeapi.NewInstanceStatus(s.osInstance, http.StatusCreated, 0),
+		fakeapi.NewInstanceStatus(s.agent, http.StatusCreated, 0),
+	}
+	s.fakeApi.AppendInstances(nil, queueInstances) // GET instance first, POST instances UUIDs second
+	s.fakeApi.AppendInstancesUUID(s.osInstance)
+	s.fakeApi.AppendInstancesUUID(s.agent)
+	s.fakeApi.AppendConfigsMmDefaultOS()
+	s.fakeApi.AppendConfigsQanDefault()
 
 	cmd := exec.Command(
 		s.bin,
@@ -1136,8 +1050,8 @@ func (s *MainTestSuite) TestInstallWithFlagMysqlFalse(t *C) {
 
 	t.Check(cmdTest.ReadLine(), Equals, "Verifying API key "+s.apiKey+"...\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.Uuid))
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created server instance: hostname=%s id=%d\n", s.serverInstance.Hostname, s.serverInstance.Id))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
 
 	t.Check(cmdTest.ReadLine(), Equals, "Not starting MySQL services (-start-mysql-services=false)\n")
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
@@ -1150,8 +1064,8 @@ func (s *MainTestSuite) TestInstallWithFlagMysqlFalse(t *C) {
 			"agent.conf",
 			"data.conf",
 			"log.conf",
-			fmt.Sprintf("mm-server-%d.conf", s.serverInstance.Id),
-			fmt.Sprintf("server-%d.conf", s.serverInstance.Id),
+			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
+			"system-tree.json",
 		},
 		t,
 	)
@@ -1159,8 +1073,7 @@ func (s *MainTestSuite) TestInstallWithFlagMysqlFalse(t *C) {
 	s.expectDefaultAgentConfig(t)
 	s.expectDefaultDataConfig(t)
 	s.expectDefaultLogConfig(t)
-	s.expectDefaultMmServerConfig(t)
-	s.expectServerConfig(*serverInstance, t)
+	s.expectDefaultMmOSConfig(t)
 
 	// Should NOT create percona-agent user with grants on *.* and performance_schema.*.
 	s.expectMysqlUserNotExists(t)
@@ -1178,11 +1091,11 @@ func (s *MainTestSuite) expectConfigs(expectedConfigs []string, t *C) {
 
 func (s *MainTestSuite) expectDefaultAgentConfig(t *C) {
 	expectedConfig := agent.Config{
-		AgentUuid:   s.agent.Uuid,
+		AgentUUID:   s.agent.UUID,
 		ApiHostname: s.fakeApi.URL(),
 		ApiKey:      s.apiKey,
 		Keepalive:   0,
-		Links:       s.agent.Links,
+		Links:       s.agentLinks,
 		PidFile:     "percona-agent.pid",
 	}
 
@@ -1225,45 +1138,27 @@ func (s *MainTestSuite) expectDefaultLogConfig(t *C) {
 }
 
 func (s *MainTestSuite) expectDefaultMmMysqlConfig(t *C) {
-	service := "mysql"
-	instanceId := s.mysqlInstance.Id
+	service := "mm"
+	instanceUUID := s.mysqlInstance.UUID
 	expectedConfig := fakeapi.ConfigMmDefaultMysql
-	expectedConfig.ServiceInstance = proto.ServiceInstance{
-		Service:    service,
-		InstanceId: instanceId,
-	}
+	expectedConfig.UUID = instanceUUID
 
 	gotConfig := mmMysql.Config{}
-	if err := pct.Basedir.ReadConfig(fmt.Sprintf("mm-%s-%d", service, instanceId), &gotConfig); err != nil {
-		t.Errorf("Read mm-%s-%d config: %s", service, instanceId, err)
+	if err := pct.Basedir.ReadInstanceConfig(service, instanceUUID, &gotConfig); err != nil {
+		t.Errorf("Read %s-%s config: %v", service, instanceUUID, err)
 	}
 
 	t.Check(gotConfig, DeepEquals, expectedConfig)
 }
 
-func (s *MainTestSuite) expectDefaultMmServerConfig(t *C) {
-	service := "server"
-	instanceId := s.serverInstance.Id
-	expectedConfig := fakeapi.ConfigMmDefaultServer
-	expectedConfig.ServiceInstance = proto.ServiceInstance{
-		Service:    service,
-		InstanceId: instanceId,
-	}
+func (s *MainTestSuite) expectDefaultMmOSConfig(t *C) {
+	instanceUUID := s.osInstance.UUID
+	expectedConfig := fakeapi.ConfigMmDefaultOS
+	expectedConfig.UUID = instanceUUID
 
 	gotConfig := mmSystem.Config{}
-	if err := pct.Basedir.ReadConfig(fmt.Sprintf("mm-%s-%d", service, instanceId), &gotConfig); err != nil {
-		t.Errorf("Read mm-%s-%d config: %s", service, instanceId, err)
-	}
-
-	t.Check(gotConfig, DeepEquals, expectedConfig)
-}
-
-func (s *MainTestSuite) expectMysqlConfig(expectedConfig proto.MySQLInstance, t *C) {
-	service := "mysql"
-	instanceId := expectedConfig.Id
-	gotConfig := proto.MySQLInstance{}
-	if err := pct.Basedir.ReadConfig(fmt.Sprintf("%s-%d", service, instanceId), &gotConfig); err != nil {
-		t.Errorf("Read %s-%d config: %s", service, instanceId, err)
+	if err := pct.Basedir.ReadInstanceConfig("mm", instanceUUID, &gotConfig); err != nil {
+		t.Errorf("Read mm-%s config: %v", instanceUUID, err)
 	}
 
 	t.Check(gotConfig, DeepEquals, expectedConfig)
@@ -1271,12 +1166,8 @@ func (s *MainTestSuite) expectMysqlConfig(expectedConfig proto.MySQLInstance, t 
 
 func (s *MainTestSuite) expectDefaultQanConfig(t *C) {
 	expectedConfig := qan.Config{
-		ServiceInstance: proto.ServiceInstance{
-			Service:    "mysql",
-			InstanceId: s.mysqlInstance.Id,
-		},
+		UUID:              s.mysqlInstance.UUID,
 		CollectFrom:       "",
-		MaxWorkers:        0,
 		Interval:          60,
 		MaxSlowLogSize:    0,
 		RemoveOldSlowLogs: false,
@@ -1293,29 +1184,14 @@ func (s *MainTestSuite) expectDefaultQanConfig(t *C) {
 	t.Check(gotConfig, DeepEquals, expectedConfig)
 }
 
-func (s *MainTestSuite) expectServerConfig(expectedConfig proto.ServerInstance, t *C) {
-	service := "server"
-	instanceId := expectedConfig.Id
-	gotConfig := proto.ServerInstance{}
-	if err := pct.Basedir.ReadConfig(fmt.Sprintf("%s-%d", service, instanceId), &gotConfig); err != nil {
-		t.Errorf("Read %s-%d config: %s", service, instanceId, err)
-	}
-
-	t.Check(gotConfig, DeepEquals, expectedConfig)
-}
-
 func (s *MainTestSuite) expectDefaultSysconfigMysqlConfig(t *C) {
-	service := "mysql"
-	instanceId := s.mysqlInstance.Id
+	instanceUUID := s.mysqlInstance.UUID
 	expectedConfig := fakeapi.ConfigSysconfigDefaultMysql
-	expectedConfig.ServiceInstance = proto.ServiceInstance{
-		Service:    service,
-		InstanceId: instanceId,
-	}
-
+	expectedConfig.UUID = instanceUUID
 	gotConfig := sysconfigMysql.Config{}
-	if err := pct.Basedir.ReadConfig(fmt.Sprintf("sysconfig-%s-%d", service, instanceId), &gotConfig); err != nil {
-		t.Errorf("Read sysconfig-%s-%d config: %s", service, instanceId, err)
+	service := "sysconfig"
+	if err := pct.Basedir.ReadInstanceConfig(service, instanceUUID, &gotConfig); err != nil {
+		t.Errorf("Read sysconfig-%s config: %s", service, instanceUUID, err)
 	}
 
 	t.Check(gotConfig, DeepEquals, expectedConfig)

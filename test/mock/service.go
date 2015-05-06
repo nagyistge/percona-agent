@@ -19,7 +19,8 @@ package mock
 
 import (
 	"fmt"
-	"github.com/percona/cloud-protocol/proto"
+
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/pct"
 )
 
@@ -73,9 +74,9 @@ func (m *MockServiceManager) Status() map[string]string {
 func (m *MockServiceManager) GetConfig() ([]proto.AgentConfig, []error) {
 	configs := []proto.AgentConfig{
 		{
-			InternalService: m.name,
-			Config:          `{"Foo":"bar"}`,
-			Running:         m.IsRunningVal,
+			Service: m.name,
+			Config:  `{"Foo":"bar"}`,
+			Running: m.IsRunningVal,
 		},
 	}
 	return configs, nil

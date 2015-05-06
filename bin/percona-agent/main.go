@@ -30,7 +30,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/client"
 	"github.com/percona/percona-agent/data"
@@ -126,7 +126,7 @@ func run() error {
 	}
 
 	golog.Println("ApiHostname: " + agentConfig.ApiHostname)
-	golog.Println("AgentUuid: " + agentConfig.AgentUuid)
+	golog.Println("AgentUUID: " + agentConfig.AgentUUID)
 
 	/**
 	 * Ping and exit, maybe.
@@ -462,7 +462,7 @@ func run() error {
 			cmd := &proto.Cmd{
 				Ts:        time.Now().UTC(),
 				User:      u.Username + " (SIGHUP)",
-				AgentUuid: agentConfig.AgentUuid,
+				AgentUUID: agentConfig.AgentUUID,
 				Service:   "agent",
 				Cmd:       "Reconnect",
 			}
@@ -488,7 +488,7 @@ func ConnectAPI(agentConfig *agent.Config, retry int) (*pct.API, error) {
 		try++
 		time.Sleep(backoff.Wait())
 		golog.Println("Connecting to API")
-		if err := api.Connect(agentConfig.ApiHostname, agentConfig.ApiKey, agentConfig.AgentUuid); err != nil {
+		if err := api.Connect(agentConfig.ApiHostname, agentConfig.ApiKey, agentConfig.AgentUUID); err != nil {
 			golog.Println(err)
 			continue
 		}

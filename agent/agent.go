@@ -29,7 +29,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/pct"
 	pctCmd "github.com/percona/percona-agent/pct/cmd"
 )
@@ -37,9 +37,10 @@ import (
 // REV="$(git rev-parse HEAD)"
 // go build -ldflags "-X github.com/percona/percon-agent/agnet.REVISION $REV"
 var REVISION string = "0"
-var VERSION string = "1.0.13"
+var VERSION string = "1.1.0"
 var REL string = ""
 var MIN_SUPPORTED_MYSQL_VERSION = "5.1.0"
+var CLOUD_PROTOCOL_VERSION = "2.0"
 
 const (
 	CMD_QUEUE_SIZE    = 10
@@ -301,8 +302,8 @@ func LoadConfig() ([]byte, error) {
 	if config.ApiKey == "" {
 		return nil, errors.New("Missing ApiKey")
 	}
-	if config.AgentUuid == "" {
-		return nil, errors.New("Missing AgentUuid")
+	if config.AgentUUID == "" {
+		return nil, errors.New("Missing AgentUUID")
 	}
 	data, err := json.Marshal(config)
 	if err != nil {
@@ -329,7 +330,7 @@ func (agent *Agent) GetConfig() ([]proto.AgentConfig, []error) {
 
 	// Configs are always returned as array of AgentConfig resources.
 	agentConfig := proto.AgentConfig{
-		InternalService: "agent",
+		Service: "agent",
 		// no external service
 		Config:  string(bytes),
 		Running: true,

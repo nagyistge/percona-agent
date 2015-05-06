@@ -18,16 +18,17 @@
 package client_test
 
 import (
-	"github.com/percona/cloud-protocol/proto"
+	"log"
+	"net"
+	"testing"
+	"time"
+
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/client"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
-	"log"
-	"net"
-	"testing"
-	"time"
 )
 
 // Hook gocheck into the "go test" runner.

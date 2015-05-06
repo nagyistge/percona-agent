@@ -19,6 +19,7 @@ package pct
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -57,7 +58,6 @@ func (b *basedir) Init(path string) error {
 	if err := MakeDir(b.path); err != nil && !os.IsExist(err) {
 		return err
 	}
-
 	b.configDir = filepath.Join(b.path, CONFIG_DIR)
 	if err := MakeDir(b.configDir); err != nil && !os.IsExist(err) {
 		return err
@@ -108,9 +108,54 @@ func (b *basedir) ConfigFile(service string) string {
 	return filepath.Join(b.configDir, service+CONFIG_FILE_SUFFIX)
 }
 
-func (b *basedir) ReadConfig(service string, v interface{}) error {
-	configFile := filepath.Join(b.configDir, service+CONFIG_FILE_SUFFIX)
+func (b *basedir) InstanceConfigFile(service, UUID string) string {
+	return filepath.Join(b.configDir, service+"-"+UUID+CONFIG_FILE_SUFFIX)
+}
+
+type ConfigIterator struct {
+	current int
+	files   []string
+}
+
+func (it *ConfigIterator) Next() bool {
+	it.current++
+	if it.current >= len(it.files) {
+		return false
+	}
+	return true
+}
+
+func (it *ConfigIterator) Read(v interface{}) error {
+	configFile := it.files[it.current]
 	data, err := ioutil.ReadFile(configFile)
+	if err != nil && !os.IsNotExist(err) {
+		// There's an error and it's not "file not found"
+		return fmt.Errorf("Error reading config file (%s): %v", configFile, err)
+	}
+	if len(data) == 0 {
+		return fmt.Errorf("Config file is empty: %s", configFile)
+	}
+	err = json.Unmarshal(data, &v)
+	if err != nil {
+		return fmt.Errorf("Error unmarshalling config file (%s): %v", configFile, err)
+	}
+	return nil
+}
+
+func (b *basedir) NewConfigIterator(service string) (*ConfigIterator, error) {
+	files, err := filepath.Glob(b.configDir + "/" + service + "-*" + CONFIG_FILE_SUFFIX)
+	if err != nil {
+		return nil, fmt.Errorf("Could not get %s config files: %v", service, err)
+	}
+	return &ConfigIterator{files: files, current: -1}, nil
+}
+
+func (b *basedir) ReadConfig(name string, config interface{}) error {
+	return b.readFile(b.ConfigFile(name), config)
+}
+
+func (b *basedir) readFile(file string, v interface{}) error {
+	data, err := ioutil.ReadFile(file)
 	if err != nil && !os.IsNotExist(err) {
 		// There's an error and it's not "file not found".
 		return err
@@ -121,23 +166,45 @@ func (b *basedir) ReadConfig(service string, v interface{}) error {
 	return err
 }
 
-func (b *basedir) WriteConfig(service string, config interface{}) error {
-	configFile := filepath.Join(b.configDir, service+CONFIG_FILE_SUFFIX)
+func (b *basedir) ReadInstanceConfig(service, UUID string, config interface{}) error {
+	if err := b.readFile(b.InstanceConfigFile(service, UUID), config); err != nil {
+		return fmt.Errorf("Could not read config file: %v", err)
+	}
+	return nil
+}
+
+func (b *basedir) WriteConfig(name string, config interface{}) error {
+	return b.writeFile(b.ConfigFile(name), config)
+}
+
+// Given a service string and a config this method will serialize the config
+// to JSON and store the result in a file with composite name <service>-<uuid>.conf
+func (b *basedir) WriteInstanceConfig(service, UUID string, config interface{}) error {
+	if err := b.writeFile(b.InstanceConfigFile(service, UUID), config); err != nil {
+		return fmt.Errorf("Could not store config file: %v", err)
+	}
+	return nil
+}
+
+// writeFile writes a config to a filePath
+func (b *basedir) writeFile(filePath string, config interface{}) error {
 	data, err := json.MarshalIndent(config, "", "    ")
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(configFile, data, 0600)
+	return ioutil.WriteFile(filePath, data, 0600)
 }
 
 func (b *basedir) WriteConfigString(service, config string) error {
-	configFile := filepath.Join(b.configDir, service+CONFIG_FILE_SUFFIX)
-	return ioutil.WriteFile(configFile, []byte(config), 0600)
+	return ioutil.WriteFile(b.ConfigFile(service), []byte(config), 0600)
 }
 
 func (b *basedir) RemoveConfig(service string) error {
-	configFile := filepath.Join(b.configDir, service+CONFIG_FILE_SUFFIX)
-	return RemoveFile(configFile)
+	return RemoveFile(b.ConfigFile(service))
+}
+
+func (b *basedir) RemoveInstanceConfig(service, UUID string) error {
+	return RemoveFile(b.InstanceConfigFile(service, UUID))
 }
 
 func (b *basedir) File(file string) string {

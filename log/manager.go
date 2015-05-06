@@ -20,7 +20,7 @@ package log
 import (
 	"encoding/json"
 	"errors"
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/pct"
 	"os"
 	"sync"
@@ -159,7 +159,7 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 	}
 	// Configs are always returned as array of AgentConfig resources.
 	config := proto.AgentConfig{
-		InternalService: "log",
+		Service: "log",
 		// no external service
 		Config:  string(bytes),
 		Running: m.running,

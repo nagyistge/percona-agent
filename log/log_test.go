@@ -20,18 +20,20 @@ package log_test
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/percona/cloud-protocol/proto"
-	"github.com/percona/percona-agent/log"
-	"github.com/percona/percona-agent/pct"
-	"github.com/percona/percona-agent/test"
-	"github.com/percona/percona-agent/test/mock"
-	. "gopkg.in/check.v1"
 	"io"
 	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	. "github.com/go-test/test"
+	"github.com/percona/cloud-protocol/proto/v2"
+	"github.com/percona/percona-agent/log"
+	"github.com/percona/percona-agent/pct"
+	"github.com/percona/percona-agent/test"
+	"github.com/percona/percona-agent/test/mock"
+	. "gopkg.in/check.v1"
 )
 
 // Hook gocheck into the "go test" runner.
@@ -273,8 +275,8 @@ func (s *RelayTestSuite) TestOfflineBuffering(t *C) {
 		{Ts: test.Ts, Level: proto.LOG_ERROR, Service: "test", Msg: "err2"},
 		{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log", Msg: "Connected to API"},
 	}
-	if same, diff := test.IsDeeply(got, expect); !same {
-		test.Dump(got)
+	if same, diff := IsDeeply(got, expect); !same {
+		Dump(got)
 		t.Error(diff)
 	}
 }
@@ -340,7 +342,7 @@ func (s *RelayTestSuite) TestOffline1stBufferOverflow(t *C) {
 	}
 	// Last msg (+4):
 	expect[len(expect)-1] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log", Msg: "Connected to API"}
-	if same, diff := test.IsDeeply(got, expect); !same {
+	if same, diff := IsDeeply(got, expect); !same {
 		t.Error(diff)
 	}
 
@@ -453,8 +455,8 @@ func (s *RelayTestSuite) TestOffline2ndBufferOverflow(t *C) {
 	// Last msg (+4):
 	expect[len(expect)-1] = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log", Msg: "Connected to API"}
 
-	if same, diff := test.IsDeeply(got, expect); !same {
-		test.Dump(got)
+	if same, diff := IsDeeply(got, expect); !same {
+		Dump(got)
 		t.Error(diff)
 	}
 }
@@ -531,7 +533,7 @@ func (s *ManagerTestSuite) TestLogService(t *C) {
 	}
 	t.Assert(gotLog, NotNil)
 	expectLog := proto.LogEntry{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log-svc-test", Msg: "i'm a log entry"}
-	if same, diff := test.IsDeeply(gotLog, expectLog); !same {
+	if same, diff := IsDeeply(gotLog, expectLog); !same {
 		t.Logf("%+v", got)
 		t.Error(diff)
 	}
@@ -566,15 +568,15 @@ func (s *ManagerTestSuite) TestLogService(t *C) {
 	t.Assert(err, IsNil)
 
 	cmd := &proto.Cmd{
-		User:    "daniel",
+		User: "daniel",
 		Service: "log",
-		Cmd:     "SetConfig",
-		Data:    configData,
+		Cmd:  "SetConfig",
+		Data: configData,
 	}
 
 	gotReply := m.Handle(cmd)
 	expectReply := cmd.Reply(config)
-	if same, diff := test.IsDeeply(gotReply, expectReply); !same {
+	if same, diff := IsDeeply(gotReply, expectReply); !same {
 		t.Logf("%+v", gotReply)
 		t.Error(diff)
 	}
@@ -597,7 +599,7 @@ func (s *ManagerTestSuite) TestLogService(t *C) {
 		}
 	}
 	expectLog = proto.LogEntry{Ts: test.Ts, Level: proto.LOG_WARNING, Service: "log-svc-test", Msg: "blah"}
-	if same, diff := test.IsDeeply(gotLog, expectLog); !same {
+	if same, diff := IsDeeply(gotLog, expectLog); !same {
 		t.Logf("%+v", got)
 		t.Error(diff)
 	}
@@ -618,8 +620,8 @@ func (s *ManagerTestSuite) TestLogService(t *C) {
 	if err := json.Unmarshal(data, gotConfig); err != nil {
 		t.Fatal(err)
 	}
-	if same, diff := test.IsDeeply(gotConfig, config); !same {
-		test.Dump(gotConfig)
+	if same, diff := IsDeeply(gotConfig, config); !same {
+		Dump(gotConfig)
 		t.Error(diff)
 	}
 
@@ -628,9 +630,9 @@ func (s *ManagerTestSuite) TestLogService(t *C) {
 	 */
 
 	cmd = &proto.Cmd{
-		User:    "daniel",
+		User: "daniel",
 		Service: "log",
-		Cmd:     "GetConfig",
+		Cmd:  "GetConfig",
 	}
 	reply := m.Handle(cmd)
 	t.Assert(reply.Error, Equals, "")
@@ -641,13 +643,13 @@ func (s *ManagerTestSuite) TestLogService(t *C) {
 	}
 	expectConfigRes := []proto.AgentConfig{
 		{
-			InternalService: "log",
-			Config:          string(configData),
-			Running:         true,
+			Service:    "log",
+			Config:  string(configData),
+			Running: true,
 		},
 	}
-	if same, diff := test.IsDeeply(gotConfigRes, expectConfigRes); !same {
-		test.Dump(gotConfigRes)
+	if same, diff := IsDeeply(gotConfigRes, expectConfigRes); !same {
+		Dump(gotConfigRes)
 		t.Error(diff)
 	}
 
@@ -678,8 +680,8 @@ func (s *ManagerTestSuite) TestReconnect(t *C) {
 		{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log", Msg: "Started"},
 		{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log", Msg: "Connected to API"},
 	}
-	if same, diff := test.IsDeeply(got, expect); !same {
-		test.Dump(got)
+	if same, diff := IsDeeply(got, expect); !same {
+		Dump(got)
 		t.Fatal(diff)
 	}
 
@@ -692,9 +694,9 @@ func (s *ManagerTestSuite) TestReconnect(t *C) {
 	s.client.SetConnectChan(s.connectChan)
 
 	cmd := &proto.Cmd{
-		User:    "daniel",
+		User: "daniel",
 		Service: "log",
-		Cmd:     "Reconnect",
+		Cmd:  "Reconnect",
 	}
 	reply := m.Handle(cmd)
 	t.Check(reply.Error, Equals, "")
@@ -721,8 +723,8 @@ func (s *ManagerTestSuite) TestReconnect(t *C) {
 		{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log", Msg: "Connected to API"},
 		{Ts: test.Ts, Level: proto.LOG_INFO, Service: "log-svc-test", Msg: "after reconnect"},
 	}
-	if same, diff := test.IsDeeply(got, expect); !same {
-		test.Dump(got)
+	if same, diff := IsDeeply(got, expect); !same {
+		Dump(got)
 		t.Error(diff)
 	}
 }

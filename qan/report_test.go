@@ -22,7 +22,7 @@ import (
 	"io/ioutil"
 	"time"
 
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/qan"
 	"github.com/percona/percona-agent/qan/slowlog"
@@ -53,8 +53,8 @@ func (s *ReportTestSuite) TestResult001(t *C) {
 		EndOffset:   1000,
 	}
 	config := qan.Config{
-		ServiceInstance: proto.ServiceInstance{Service: "mysql", InstanceId: 1},
-		ReportLimit:     10,
+		UUID:        "1",
+		ReportLimit: 10,
 	}
 	report := qan.MakeReport(config, interval, result)
 
@@ -89,14 +89,13 @@ func (s *ReportTestSuite) TestResult001(t *C) {
 }
 
 func (s *ReportTestSuite) TestResult014(t *C) {
-	si := proto.ServiceInstance{Service: "mysql", InstanceId: 1}
 	config := qan.Config{
-		ServiceInstance: si,
-		CollectFrom:     "slowlog",
-		Interval:        60,
-		WorkerRunTime:   60,
-		ReportLimit:     500,
-		MaxSlowLogSize:  1024 * 1024 * 1000,
+		UUID:           "1",
+		CollectFrom:    "slowlog",
+		Interval:       60,
+		WorkerRunTime:  60,
+		ReportLimit:    500,
+		MaxSlowLogSize: 1024 * 1024 * 1000,
 	}
 	logChan := make(chan *proto.LogEntry, 1000)
 	w := slowlog.NewWorker(pct.NewLogger(logChan, "w"), config, mock.NewNullMySQL())

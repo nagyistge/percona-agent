@@ -19,8 +19,9 @@ package factory
 
 import (
 	"encoding/json"
-	"errors"
-	"github.com/percona/cloud-protocol/proto"
+	"fmt"
+
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/instance"
 	mysqlConn "github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
@@ -41,34 +42,35 @@ func NewFactory(logChan chan *proto.LogEntry, ir *instance.Repo) *Factory {
 	return f
 }
 
-func (f *Factory) Make(service string, instanceId uint, data []byte) (sysconfig.Monitor, error) {
+func (f *Factory) Make(uuid string, data []byte) (sysconfig.Monitor, error) {
 	var monitor sysconfig.Monitor
-	switch service {
-	case "mysql":
-		// Load the MySQL instance info (DSN, name, etc.).
-		mysqlIt := &proto.MySQLInstance{}
-		if err := f.ir.Get(service, instanceId, mysqlIt); err != nil {
-			return nil, err
-		}
-
-		// Parse the MySQL sysconfig config.
-		config := &mysql.Config{}
-		if err := json.Unmarshal(data, config); err != nil {
-			return nil, err
-		}
-
-		// The user-friendly name of the service, e.g. sysconfig-mysql-db101:
-		alias := "sysconfig-mysql-" + mysqlIt.Hostname
-
-		// Make a MySQL sysconfig monitor.
-		monitor = mysql.NewMonitor(
-			alias,
-			config,
-			pct.NewLogger(f.logChan, alias),
-			mysqlConn.NewConnection(mysqlIt.DSN),
-		)
-	default:
-		return nil, errors.New("Unknown sysconfig monitor type: " + service)
+	mysqlIt, err := f.ir.Get(uuid)
+	if err != nil {
+		return nil, err
 	}
+	if !instance.IsMySQLInstance(mysqlIt) {
+		return nil, fmt.Errorf("Can't sysconfig monitor instance %s with prefix %s ", uuid, mysqlIt.Prefix)
+	}
+
+	/*
+	 * Load the MySQL instance info (DSN, name, etc.).
+	 */
+
+	// Parse the MySQL sysconfig config.
+	config := &mysql.Config{}
+	if err := json.Unmarshal(data, config); err != nil {
+		return nil, err
+	}
+
+	// The user-friendly name of the service, e.g. sysconfig-mysql-db101:
+	alias := "sysconfig-mysql-" + mysqlIt.Name
+
+	// Make a MySQL sysconfig monitor.
+	monitor = mysql.NewMonitor(
+		alias,
+		config,
+		pct.NewLogger(f.logChan, alias),
+		mysqlConn.NewConnection(mysqlIt.DSN),
+	)
 	return monitor, nil
 }

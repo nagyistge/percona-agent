@@ -18,7 +18,7 @@
 package mock
 
 import (
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v2"
 )
 
 type QueryService struct {

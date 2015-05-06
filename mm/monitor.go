@@ -17,10 +17,7 @@
 
 package mm
 
-import (
-	"github.com/percona/cloud-protocol/proto"
-	"time"
-)
+import "time"
 
 /**
  * A Monitor collects one or more Metric, usually many.  The MySQL monitor
@@ -32,7 +29,7 @@ import (
  * in a Report and sent to the Spooler (data/spooler.go).
  */
 
-// Collect metrics when tickChan ticks, send to collecitonChan.
+// Collect metrics when tickChan ticks, send to collectionChan.
 type Monitor interface {
 	Start(tickChan chan time.Time, collectionChan chan *Collection) error
 	Stop() error
@@ -42,7 +39,7 @@ type Monitor interface {
 }
 
 type MonitorFactory interface {
-	Make(service string, instanceId uint, data []byte) (Monitor, error)
+	Make(uuid string, data []byte) (Monitor, error)
 }
 
 var MetricTypes map[string]bool = map[string]bool{
@@ -63,14 +60,14 @@ type Metric struct {
 // Collections can come from different instances.  For example,
 // one agent can monitor two different MySQL instances.
 type Collection struct {
-	proto.ServiceInstance
+	UUID    string
 	Ts      int64 // UTC Unix timestamp
 	Metrics []Metric
 }
 
 // Stats for each metric from a service instance, computed at each report interval.
 type InstanceStats struct {
-	proto.ServiceInstance
+	UUID  string
 	Stats map[string]*Stats // keyed on metric name
 }
 

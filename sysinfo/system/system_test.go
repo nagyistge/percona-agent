@@ -19,16 +19,17 @@ package system_test
 
 import (
 	"encoding/json"
-	"github.com/percona/cloud-protocol/proto"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/sysinfo/system"
 	. "github.com/percona/percona-agent/test/checkers"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
-	"io/ioutil"
-	"os"
-	"path/filepath"
-	"testing"
 )
 
 // Hook up gocheck into the "go test" runner.
@@ -93,7 +94,7 @@ func (s *TestSuite) TestService(t *C) {
 
 	cmd := &proto.Cmd{
 		Service: "Summary",
-		Cmd:     "system",
+		Cmd:  "system",
 	}
 
 	gotReply := service.Handle(cmd)
@@ -135,7 +136,7 @@ func (s *TestSuite) TestExecutableNotFound(t *C) {
 
 	cmd := &proto.Cmd{
 		Service: "Summary",
-		Cmd:     "system",
+		Cmd:  "system",
 	}
 
 	gotReply := service.Handle(cmd)

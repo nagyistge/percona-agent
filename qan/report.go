@@ -21,7 +21,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/percona/cloud-protocol/proto"
 	"github.com/percona/go-mysql/event"
 	"github.com/percona/percona-agent/pct"
 )
@@ -38,16 +37,16 @@ type Result struct {
 	Error      string              `json:",omitempty"`
 }
 
-// Final QAN data struct, composed of a Result{} and metatdata, sent to the
+// Final QAN data struct, composed of a Result{} and metadata, sent to the
 // data.Spooler by the manager running the slow log or perfomance schema
 // (pfs) parser.
 type Report struct {
-	proto.ServiceInstance                     // MySQL instance
-	StartTs               time.Time           // of interval, UTC
-	EndTs                 time.Time           // of interval, UTC
-	RunTime               float64             // seconds parsing data
-	Global                *event.GlobalClass  // metrics for all data
-	Class                 []*event.QueryClass // per-class metrics
+	UUID    string              // UUID of MySQL instance
+	StartTs time.Time           // of interval, UTC
+	EndTs   time.Time           // of interval, UTC
+	RunTime float64             // seconds parsing data
+	Global  *event.GlobalClass  // metrics for all data
+	Class   []*event.QueryClass // per-class metrics
 	// slow log:
 	SlowLogFile     string `json:",omitempty"` // not slow_query_log_file if rotated
 	SlowLogFileSize int64  `json:",omitempty"`
@@ -72,12 +71,12 @@ func MakeReport(config Config, interval *Interval, result *Result) *Report {
 
 	// Make Report from Result and other metadata (e.g. Interval).
 	report := &Report{
-		ServiceInstance: config.ServiceInstance,
-		StartTs:         interval.StartTime,
-		EndTs:           interval.StopTime,
-		RunTime:         result.RunTime,
-		Global:          result.Global,
-		Class:           result.Class,
+		UUID:    config.UUID,
+		StartTs: interval.StartTime,
+		EndTs:   interval.StopTime,
+		RunTime: result.RunTime,
+		Global:  result.Global,
+		Class:   result.Class,
 	}
 	if interval != nil {
 		size, err := pct.FileSize(interval.Filename)
