@@ -1,8 +1,7 @@
 {
   "Stats":[
     {
-      "Service":"mysql",
-      "InstanceId":1,
+	  "UUID": "00000000000000000000000000000001",
       "Stats":{
         "host1/a":{
           "Cnt":1,

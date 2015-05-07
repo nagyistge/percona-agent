@@ -1,6 +1,5 @@
 {
-  "Service":"mysql",
-  "InstanceId":1,
+  "UUID": "00000000000000000000000000000001",
   "Ts":1257894007,
   "Metrics":[
     {"Name":"bytes_sent","Type":"counter","Number":1630}
