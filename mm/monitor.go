@@ -67,8 +67,10 @@ type Collection struct {
 
 // Stats for each metric from a service instance, computed at each report interval.
 type InstanceStats struct {
-	UUID  string
-	Stats map[string]*Stats // keyed on metric name
+	UUID       string
+	InstanceId uint              // TODO: Just to be able to compile cloud-api, THIS MUST GO once cloud-api uses UUIDs for MM and stops importing this
+	Service    string            // TODO: Just to be able to compile cloud-api, THIS MUST GO once cloud-api uses UUIDs for MM and stops importing this
+	Stats      map[string]*Stats // keyed on metric name
 }
 
 type Report struct {
