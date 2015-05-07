@@ -124,7 +124,7 @@ func (s *AggregatorTestSuite) TestC001(t *C) {
 	t.Check(got.Ts, Equals, t1)
 	t.Check(uint64(got.Duration), Equals, uint64(interval))
 
-	expect := &mm.Report{}
+	expect := &proto.MMReport{}
 	if err := test.LoadMmReport(sample+"/c001r.json", expect); err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func (s *AggregatorTestSuite) TestC002(t *C) {
 	t.Check(got.Ts, Equals, t1)
 	t.Check(uint64(got.Duration), Equals, uint64(interval))
 
-	expect := &mm.Report{}
+	expect := &proto.MMReport{}
 	if err := test.LoadMmReport(sample+"/c002r.json", expect); err != nil {
 		t.Fatal("c002r.json ", err)
 	}
@@ -195,7 +195,7 @@ func (s *AggregatorTestSuite) TestC000(t *C) {
 	t.Check(got.Ts, Equals, t1)
 	t.Check(uint64(got.Duration), Equals, uint64(interval))
 
-	expect := &mm.Report{}
+	expect := &proto.MMReport{}
 	if err := test.LoadMmReport(sample+"/c000r.json", expect); err != nil {
 		t.Fatal("c000r.json ", err)
 	}
@@ -242,7 +242,7 @@ func (s *AggregatorTestSuite) TestC003(t *C) {
 	t.Assert(got, NotNil)
 	t.Check(got.Ts, Equals, t1)
 	t.Check(uint64(got.Duration), Equals, uint64(interval))
-	expect := &mm.Report{}
+	expect := &proto.MMReport{}
 	if err := test.LoadMmReport(sample+"/c003r.json", expect); err != nil {
 		t.Fatal("c003r.json ", err)
 	}
@@ -253,7 +253,7 @@ func (s *AggregatorTestSuite) TestC003(t *C) {
 	// Get the collected stats
 	// As got.Stats[0].Stats is a map, we run this empty 'for' loop just to get
 	// the stats for the first key in the map, into the stats variable.
-	var stats *mm.Stats
+	var stats *proto.Stats
 	for _, stats = range got.Stats[0].Stats {
 	}
 	// First time, stats.Cnt must be equal to the number of seconds in the interval
@@ -322,7 +322,7 @@ func (s *AggregatorTestSuite) TestC003Lost(t *C) {
 	t.Assert(got, NotNil)
 	t.Check(got.Ts, Equals, t1)
 	t.Check(uint64(got.Duration), Equals, uint64(interval))
-	expect := &mm.Report{}
+	expect := &proto.MMReport{}
 	if err := test.LoadMmReport(sample+"/c003rlost.json", expect); err != nil {
 		t.Fatal("c003r.json ", err)
 	}
@@ -664,10 +664,10 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 
 	// The agent calls mm.Handle() with the cmd (for logging and status) and the config data.
 	cmd := &proto.Cmd{
-		User: "daniel",
+		User:    "daniel",
 		Service: "mm",
-		Cmd:  "StartService",
-		Data: mmConfigData,
+		Cmd:     "StartService",
+		Data:    mmConfigData,
 	}
 	reply := m.Handle(cmd)
 	t.Assert(reply, NotNil)
@@ -702,10 +702,10 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	 */
 
 	cmd = &proto.Cmd{
-		User: "daniel",
+		User:    "daniel",
 		Service: "mm",
-		Cmd:  "StopService",
-		Data: mmConfigData,
+		Cmd:     "StopService",
+		Data:    mmConfigData,
 	}
 
 	// Handles StopService without error.
@@ -733,10 +733,10 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	 * Start the monitor again (restarting monitor).
 	 */
 	cmd = &proto.Cmd{
-		User: "daniel",
+		User:    "daniel",
 		Service: "mm",
-		Cmd:  "StartService",
-		Data: mmConfigData,
+		Cmd:     "StartService",
+		Data:    mmConfigData,
 	}
 
 	// If this were a real monitor, it would decode and set its own config.
@@ -777,10 +777,10 @@ func (s *ManagerTestSuite) TestRestartMonitor(t *C) {
 	 */
 
 	cmd = &proto.Cmd{
-		User: "daniel",
+		User:    "daniel",
 		Service: "mm",
-		Cmd:  "Pontificate",
-		Data: mmConfigData,
+		Cmd:     "Pontificate",
+		Data:    mmConfigData,
 	}
 
 	// Unknown cmd causes error.
@@ -813,10 +813,10 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	mysqlData, err := json.Marshal(mysqlMonitorConfig)
 	t.Assert(err, IsNil)
 	cmd := &proto.Cmd{
-		User: "daniel",
+		User:    "daniel",
 		Service: "mm",
-		Cmd:  "StartService",
-		Data: mysqlData,
+		Cmd:     "StartService",
+		Data:    mysqlData,
 	}
 	s.mysqlMonitor.SetConfig(mysqlMonitorConfig)
 	reply := m.Handle(cmd)
@@ -836,10 +836,10 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	systemData, err := json.Marshal(systemMonitorConfig)
 	t.Assert(err, IsNil)
 	cmd = &proto.Cmd{
-		User: "daniel",
+		User:    "daniel",
 		Service: "mm",
-		Cmd:  "StartService",
-		Data: systemData,
+		Cmd:     "StartService",
+		Data:    systemData,
 	}
 	s.systemMonitor.SetConfig(systemMonitorConfig)
 	reply = m.Handle(cmd)
@@ -850,7 +850,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	 * GetConfig from mm which should return all monitors' configs.
 	 */
 	cmd = &proto.Cmd{
-		Cmd:  "GetConfig",
+		Cmd:     "GetConfig",
 		Service: "mm",
 	}
 	reply = m.Handle(cmd)
@@ -863,13 +863,13 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	}
 	expectConfig := []proto.AgentConfig{
 		{
-			Service:    "mm",
+			Service: "mm",
 			UUID:    "00000000000000000000000000000001",
 			Config:  string(systemData),
 			Running: true,
 		},
 		{
-			Service:    "mm",
+			Service: "mm",
 			UUID:    "00000000000000000000000000000003",
 			Config:  string(mysqlData),
 			Running: true,

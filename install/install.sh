@@ -108,7 +108,7 @@ install() {
             echo
             exit 0
         elif [ "$cmpVer" == "1" ]; then
-            echo "Never version already installed, exiting."
+            echo "Newer version already installed, exiting."
             exit 1
         else
             echo "Same version already installed, exiting."

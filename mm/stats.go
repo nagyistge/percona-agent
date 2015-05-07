@@ -22,6 +22,8 @@ import (
 	"log"
 	"sort"
 	"strings"
+
+	"github.com/percona/cloud-protocol/proto/v2"
 )
 
 type ErrValueLap struct {
@@ -39,16 +41,16 @@ func (e ErrValueLap) Error() string {
 	return fmt.Sprintf("Value lap: "+strings.Join(values, ", "), a...)
 }
 
+// Stats type stores and aggregates metric stats
 type Stats struct {
-	metricType string    `json:"-"` // ignore
-	str        string    `json:",omitempty"`
-	firstVal   bool      `json:"-"`
-	prevTs     int64     `json:"-"`
-	penuTs     int64     `json:"-"`
-	prevVal    float64   `json:"-"` // last value
-	penuVal    float64   `json:"-"` // 2nd to last (penultimate) value
-	vals       []float64 `json:"-"`
-	sum        float64   `json:"-"`
+	metricType string
+	firstVal   bool
+	prevTs     int64
+	penuTs     int64
+	prevVal    float64 // last value
+	penuVal    float64 // 2nd to last (penultimate) value
+	vals       []float64
+	sum        float64
 	Cnt        int
 	Min        float64
 	Pct5       float64
@@ -135,12 +137,21 @@ func (s *Stats) Add(m *Metric, ts int64) error {
 	return err
 }
 
-func (s *Stats) Finalize() *Stats {
+// Summarize and return a proto.Stats
+func (s *Stats) Finalize() *proto.Stats {
 	if len(s.vals) == 0 {
 		return nil
 	}
 	s.Summarize()
-	return &Stats{
+	return &proto.Stats{
+		//		MetricType: s.metricType,
+		//		FirstVal:   s.firstVal,
+		//		PrevTs:     s.prevTs,
+		//		PenuTs:     s.penuTs,
+		//		PrevVal:    s.prevVal,
+		//		PenuVal:    s.penuVal,
+		//		Vals:       s.vals,
+		//		Sum:        s.sum,
 		Cnt:   s.Cnt,
 		Min:   s.Min,
 		Pct5:  s.Pct5,
