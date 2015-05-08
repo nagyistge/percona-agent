@@ -28,7 +28,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 
 	"errors"
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v1"
 	"github.com/percona/percona-agent/mm"
 	"github.com/percona/percona-agent/mrms"
 	"github.com/percona/percona-agent/mysql"

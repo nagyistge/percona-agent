@@ -19,7 +19,7 @@ package query_test
 
 import (
 	"fmt"
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v1"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/query"
 	"github.com/percona/percona-agent/test/mock"
