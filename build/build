@@ -10,7 +10,7 @@ if [ $# -eq 1 -a "$1" = "help" ]; then
    echo "Environment vars:"
    echo "  DEPS Clone deps into vendor/     (yes)"
    echo "  PKG  Create a tarball in build/  (yes)"
-   echo "  DEV  Append rev to version       (no)"
+   echo "  DEV  Add rev to version and pkg  (no)"
    echo
    echo "Example: DEPS=no DEV=yes $0"
    echo
@@ -69,6 +69,7 @@ REV="$(git rev-parse HEAD)"
 REL=""
 if [ "$DEV" = "yes" ]; then
    REL=$(printf "%.3s" "$REV")
+   VER="$VER-$REL"
    go build -ldflags "-X github.com/percona/percona-agent/agent.REVISION $REV -X github.com/percona/percona-agent/agent.REL -$REL"
 else
    go build -ldflags "-X github.com/percona/percona-agent/agent.REVISION $REV"
