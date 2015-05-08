@@ -1,0 +1,116 @@
+#!/bin/sh
+
+DEPS="${DEPS:-"yes"}"
+PKG="${PKG:-"yes"}"
+DEV="${DEV:-"no"}"
+
+if [ $# -eq 1 -a "$1" = "help" ]; then
+   echo "Usage: $0 [help]"
+   echo
+   echo "Environment vars:"
+   echo "  DEPS Clone deps into vendor/     (yes)"
+   echo "  PKG  Create a tarball in build/  (yes)"
+   echo "  DEV  Append rev to version       (no)"
+   echo
+   echo "Example: DEPS=no DEV=yes $0"
+   echo
+   echo "This script must be ran from the root or build/ dir."
+   echo "Binaries and packages are put in build/."
+   exit 0
+fi
+
+set -eu
+
+err() {
+   echo "$@" >&2
+   exit 1
+}
+
+BIN="percona-agent"
+
+if [ -d ".git" ]; then
+echo "yes"
+   ROOT_DIR="$PWD"
+elif [ "$(basename "$PWD")" = "build" ]; then
+   cd ..
+   ROOT_DIR="$PWD"
+else
+   err "Run this script from the root dir or build/ dir."
+fi
+BUILD_DIR="$ROOT_DIR/build"
+
+if [ -z "$(which strings)" ]; then
+   err "The 'strings' program is required. Install binutils."
+fi
+
+PLATFORM=`uname -m`
+if [ "$PLATFORM" = "x86_64" ]; then
+   ARCH="x86_64"  # no change
+elif [ "$PLATFORM" = "i686" -o "$PLATFORM" = "i386" ]; then
+   ARCH="i386"
+else
+   er "Unknown platform: $PLATFORM"
+fi
+
+# Install/update deps
+VENDOR_DIR="$ROOT_DIR/vendor"
+if [ "$DEPS" = "yes" ]; then
+   echo "Cloning deps into $VENDOR_DIR..."
+   export GOPATH="$VENDOR_DIR:$GOPATH"
+   [ ! -d "$VENDOR_DIR" ] && mkdir "$VENDOR_DIR"
+   GOPATH="$VENDOR_DIR" godep restore
+fi
+
+# Build percona-agent
+echo "Building percona-agent binary..."
+cd bin/percona-agent
+VER="$(awk '/var VERSION/ {print $5}' ../../agent/agent.go | sed 's/"//g')"
+REV="$(git rev-parse HEAD)"
+REL=""
+if [ "$DEV" = "yes" ]; then
+   REL=$(printf "%.3s" "$REV")
+   go build -ldflags "-X github.com/percona/percona-agent/agent.REVISION $REV -X github.com/percona/percona-agent/agent.REL -$REL"
+else
+   go build -ldflags "-X github.com/percona/percona-agent/agent.REVISION $REV"
+fi
+
+# Check that bin was compiled with pkgs from vendor dir
+if [ "$DEPS" = "yes" ]; then
+   strings percona-agent | grep -q "$VENDOR_DIR/src/github.com/percona/cloud-protocol" \
+      || err "ERROR: percona-agent not built with vendor deps ($VENDOR_DIR)"
+fi
+
+# Build percona-agent-installer
+echo "Building percona-agent-installer binary..."
+cd ../$BIN-installer/
+go build
+
+cd $BUILD_DIR
+
+# Build the package
+if [ "$PKG" = "yes" ]; then
+   PKG_DIR="$BIN-$VER-$ARCH"
+   echo "Creating ${PKG_DIR}.tar.gz..."
+   [ -f $BIN.tar.gz ] && rm -f $BIN.tar.gz
+   if [ -d $PKG_DIR ]; then
+      rm -rf $PKG_DIR/*
+   fi
+   mkdir -p "$PKG_DIR/bin" "$PKG_DIR/init.d"
+   cp ../install/install.sh $PKG_DIR/install
+   cp ../COPYING ../README.md ../Changelog ../Authors $PKG_DIR/
+   cp ../bin/$BIN/$BIN ../bin/$BIN-installer/$BIN-installer $PKG_DIR/bin
+   cp ../install/$BIN $PKG_DIR/init.d
+   tar cvfz $BIN-$VER-$ARCH.tar.gz $PKG_DIR/ > /dev/null
+   FINAL_BIN="$PKG_DIR/bin/$BIN"
+else
+   if [ "$DEV" = "yes" ]; then
+      cp ../bin/$BIN/$BIN ./$BIN-$REL
+      FINAL_BIN="./$BIN-$REL"
+   else
+      cp ../bin/$BIN/$BIN .
+      FINAL_BIN="./$BIN"
+   fi
+fi
+
+echo -n "Built "
+$FINAL_BIN -version
