@@ -6,6 +6,5 @@ bin/percona-agent-config/percona-agent-config*
 bin/percona-agent-data/percona-agent-data*
 bin/percona-agent-cli/percona-agent-cli*
 bin/percona-agent-installer/percona-agent-installer*
-build/agent-build/agent-build*
 build/percona-agent*
 vendor/
