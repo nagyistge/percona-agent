@@ -18,7 +18,7 @@
 package mrms_test
 
 import (
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v1"
 	"github.com/percona/percona-agent/mrms"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test/mock"

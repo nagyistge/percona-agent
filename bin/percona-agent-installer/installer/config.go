@@ -20,7 +20,7 @@ package installer
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v1"
 	"github.com/percona/percona-agent/data"
 	pctLog "github.com/percona/percona-agent/log"
 	"github.com/percona/percona-agent/pct"
