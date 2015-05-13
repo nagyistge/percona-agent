@@ -21,7 +21,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v1"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test"

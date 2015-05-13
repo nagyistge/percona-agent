@@ -23,7 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v1"
 	"io"
 	"io/ioutil"
 	"net"

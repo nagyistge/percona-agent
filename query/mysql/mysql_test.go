@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v1"
 	"github.com/percona/percona-agent/mysql"
 	mysqlExec "github.com/percona/percona-agent/query/mysql"
 	. "gopkg.in/check.v1"

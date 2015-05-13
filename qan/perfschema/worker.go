@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v1"
 	"github.com/percona/go-mysql/event"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
