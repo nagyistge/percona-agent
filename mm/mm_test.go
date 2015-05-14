@@ -904,6 +904,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 			Running: true,
 		},
 	}
+	sort.Sort(test.ByInternalService(gotConfig))
 	if same, diff := test.IsDeeply(gotConfig, expectConfig); !same {
 		test.Dump(gotConfig)
 		t.Error(diff)

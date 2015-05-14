@@ -20,8 +20,11 @@ package pct
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
+
+	"github.com/hashicorp/go-version"
 )
 
 func FileSize(fileName string) (int64, error) {
@@ -171,4 +174,19 @@ func Duration(s float64) string {
 
 func TimeString(t time.Time) string {
 	return t.UTC().Format("2006-01-02 15:04:05 MST")
+}
+
+func AtLeastVersion(v1, v2 string) (bool, error) {
+	re := regexp.MustCompile("-.*$")
+	v1 = re.ReplaceAllString(v1, "") // Strip everything after the first dash
+	v2 = re.ReplaceAllString(v2, "") // Strip everything after the first dash
+	v, err := version.NewVersion(v1)
+	if err != nil {
+		return false, err
+	}
+	constraints, err := version.NewConstraint(">= " + v2)
+	if err != nil {
+		return false, err
+	}
+	return constraints.Check(v), nil
 }

@@ -25,10 +25,7 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/hashicorp/go-version"
-	"github.com/percona/cloud-protocol/proto/v1"
 	"github.com/percona/percona-agent/pct"
-	"regexp"
 )
 
 type Query struct {
@@ -42,12 +39,11 @@ type Connector interface {
 	DSN() string
 	Connect(tries uint) error
 	Close()
-	Explain(q string, db string) (explain *proto.ExplainResult, err error)
 	Set([]Query) error
 	GetGlobalVarString(varName string) string
 	GetGlobalVarNumber(varName string) float64
 	Uptime() (uptime int64, err error)
-	AtLeastVersion(v string) (bool, error)
+	AtLeastVersion(string) (bool, error)
 }
 
 type Connection struct {
@@ -62,7 +58,7 @@ func NewConnection(dsn string) *Connection {
 	c := &Connection{
 		dsn:           dsn,
 		backoff:       pct.NewBackoff(20 * time.Second),
-		connectionMux: new(sync.Mutex),
+		connectionMux: &sync.Mutex{},
 	}
 	return c
 }
@@ -129,40 +125,6 @@ func (c *Connection) Close() {
 	}
 }
 
-func (c *Connection) Explain(query string, db string) (explain *proto.ExplainResult, err error) {
-	// Transaction because we need to ensure USE and EXPLAIN are run in one connection
-	tx, err := c.conn.Begin()
-	defer tx.Rollback()
-	if err != nil {
-		return nil, err
-	}
-
-	// Some queries are not bound to database
-	if db != "" {
-		_, err := tx.Exec(fmt.Sprintf("USE %s", db))
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	classicExplain, err := c.classicExplain(tx, query)
-	if err != nil {
-		return nil, err
-	}
-
-	jsonExplain, err := c.jsonExplain(tx, query)
-	if err != nil {
-		return nil, err
-	}
-
-	explain = &proto.ExplainResult{
-		Classic: classicExplain,
-		JSON:    jsonExplain,
-	}
-
-	return explain, nil
-}
-
 func (c *Connection) Set(queries []Query) error {
 	if c.conn == nil {
 		return errors.New("Not connected")
@@ -205,31 +167,6 @@ func (c *Connection) GetGlobalVarNumber(varName string) float64 {
 	return varValue
 }
 
-func (c *Connection) AtLeastVersion(v string) (bool, error) {
-	mysqlVersion := c.GetGlobalVarString("version") // Version in the form m.n.o-ubuntu
-	return AtLeastVersion(mysqlVersion, v)
-}
-
-// Check if version v2 is equal or higher than v1 (v2 >= v1)
-// v2 can be in form m.n.o-ubuntu
-func AtLeastVersion(v1, v2 string) (bool, error) {
-	re := regexp.MustCompile("-.*$")
-	v1 = re.ReplaceAllString(v1, "") // Strip everything after the first dash
-
-	v, err := version.NewVersion(v1)
-	if err != nil {
-		return false, err
-	}
-	constraints, err := version.NewConstraint(">= " + v2)
-	if err != nil {
-		return false, err
-	}
-	if constraints.Check(v) {
-		return true, nil
-	}
-	return false, nil
-}
-
 func (c *Connection) Uptime() (uptime int64, err error) {
 	if c.conn == nil {
 		return 0, fmt.Errorf("Error while getting Uptime(). Not connected to the db: %s", c.DSN())
@@ -241,83 +178,8 @@ func (c *Connection) Uptime() (uptime int64, err error) {
 	return uptime, nil
 }
 
-func (c *Connection) classicExplain(tx *sql.Tx, query string) (classicExplain []*proto.ExplainRow, err error) {
-	// Partitions are introduced since MySQL 5.1
-	// We can simply run EXPLAIN /*!50100 PARTITIONS*/ to get this column when it's available
-	// without prior check for MySQL version.
-	rows, err := tx.Query(fmt.Sprintf("EXPLAIN /*!50100 PARTITIONS*/ %s", query))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	// Go rows.Scan() expects exact number of columns
-	// so when number of columns is undefined then the easiest way to
-	// overcome this problem is to count received number of columns
-	// With 'partitions' it is 11 columns
-	columns, err := rows.Columns()
-	if err != nil {
-		return nil, err
-	}
-	hasPartitions := len(columns) == 11
-
-	for rows.Next() {
-		explainRow := &proto.ExplainRow{}
-		if hasPartitions {
-			err = rows.Scan(
-				&explainRow.Id,
-				&explainRow.SelectType,
-				&explainRow.Table,
-				&explainRow.Partitions, // Since MySQL 5.1
-				&explainRow.Type,
-				&explainRow.PossibleKeys,
-				&explainRow.Key,
-				&explainRow.KeyLen,
-				&explainRow.Ref,
-				&explainRow.Rows,
-				&explainRow.Extra,
-			)
-		} else {
-			err = rows.Scan(
-				&explainRow.Id,
-				&explainRow.SelectType,
-				&explainRow.Table,
-				&explainRow.Type,
-				&explainRow.PossibleKeys,
-				&explainRow.Key,
-				&explainRow.KeyLen,
-				&explainRow.Ref,
-				&explainRow.Rows,
-				&explainRow.Extra,
-			)
-		}
-		if err != nil {
-			return nil, err
-		}
-		classicExplain = append(classicExplain, explainRow)
-	}
-	err = rows.Err()
-	if err != nil {
-		return nil, err
-	}
-
-	return classicExplain, nil
-}
-
-func (c *Connection) jsonExplain(tx *sql.Tx, query string) (jsonExplain string, err error) {
-	// EXPLAIN in JSON format is introduced since MySQL 5.6.5
-	jsonFormatSupported, err := c.AtLeastVersion("5.6.5")
-	if err != nil {
-		return "", err
-	}
-	if !jsonFormatSupported {
-		return "", nil
-	}
-
-	err = tx.QueryRow(fmt.Sprintf("EXPLAIN FORMAT=JSON %s", query)).Scan(&jsonExplain)
-	if err != nil {
-		return "", err
-	}
-
-	return jsonExplain, nil
+// Check if version v2 is equal or higher than v1 (v2 >= v1)
+// v2 can be in form m.n.o-ubuntu
+func (c *Connection) AtLeastVersion(minVersion string) (bool, error) {
+	return pct.AtLeastVersion(c.GetGlobalVarString("version"), minVersion)
 }

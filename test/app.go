@@ -253,3 +253,11 @@ func privkey(file string) (key *rsa.PrivateKey, err error) {
 
 	return x509.ParsePKCS1PrivateKey(der)
 }
+
+type ByInternalService []proto.AgentConfig
+
+func (a ByInternalService) Len() int      { return len(a) }
+func (a ByInternalService) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a ByInternalService) Less(i, j int) bool {
+	return a[i].InternalService < a[j].InternalService
+}

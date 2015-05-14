@@ -132,3 +132,34 @@ func (s *SysTestSuite) TestDuration(t *C) {
 	t.Check(pct.Duration(4000), Equals, "1h6m40s")
 	t.Check(pct.Duration(100000), Equals, "1d3h46m40s")
 }
+
+func (s *SysTestSuite) TestAtLeastVersion(t *C) {
+	var got bool
+	var err error
+
+	v := "5.1"
+
+	got, err = pct.AtLeastVersion("5.0", v)
+	t.Check(err, IsNil)
+	t.Check(got, Equals, false)
+
+	got, err = pct.AtLeastVersion("ubuntu-something", v)
+	t.Check(err, NotNil)
+	t.Check(got, Equals, false)
+
+	got, err = pct.AtLeastVersion("5.0.1-ubuntu-something", v)
+	t.Check(err, IsNil)
+	t.Check(got, Equals, false)
+
+	got, err = pct.AtLeastVersion(v, v)
+	t.Check(err, IsNil)
+	t.Check(got, Equals, true)
+
+	got, err = pct.AtLeastVersion("5.1.0-ubuntu-something", v)
+	t.Check(err, IsNil)
+	t.Check(got, Equals, true)
+
+	got, err = pct.AtLeastVersion("10.1.0-MariaDB", v)
+	t.Check(err, IsNil)
+	t.Check(got, Equals, true)
+}
