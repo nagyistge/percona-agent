@@ -21,15 +21,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/percona/cloud-protocol/proto/v1"
-	"github.com/percona/diskv"
-	"github.com/percona/percona-agent/pct"
 	"os"
 	"path"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/percona/cloud-protocol/proto/v1"
+	"github.com/percona/diskv"
+	"github.com/percona/percona-agent/pct"
 )
 
 var ErrSpoolTimeout = errors.New("Timeout spooling data")
@@ -67,6 +68,7 @@ type DiskvSpooler struct {
 	oldest       int64
 	fileSize     map[string]int
 	cancelChan   chan struct{}
+	purgeChan    chan time.Time
 }
 
 func NewDiskvSpooler(logger *pct.Logger, dataDir, trashDir, hostname string, limits proto.DataSpoolLimits) *DiskvSpooler {
@@ -227,6 +229,10 @@ func (s *DiskvSpooler) Purge(now time.Time, limits proto.DataSpoolLimits) (int, 
 	return s.purge(now, limits)
 }
 
+func (s *DiskvSpooler) PurgeChan(c chan time.Time) {
+	s.purgeChan = c // testing only
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // Implementation
 /////////////////////////////////////////////////////////////////////////////
@@ -246,7 +252,14 @@ func (s *DiskvSpooler) run() {
 		s.sync.Done()
 	}()
 
-	purgeTicker := time.NewTicker(15 * time.Minute)
+	var purgeTicker *time.Ticker
+	var purgeChan <-chan time.Time
+	if s.purgeChan == nil {
+		purgeTicker = time.NewTicker(15 * time.Minute)
+		purgeChan = purgeTicker.C
+	} else {
+		purgeChan = s.purgeChan // testing only
+	}
 
 	for {
 		s.status.Update("data-spooler", "Idle")
@@ -274,7 +287,7 @@ func (s *DiskvSpooler) run() {
 				s.oldest = ts
 			}
 			s.mux.Unlock()
-		case <-purgeTicker.C:
+		case <-purgeChan:
 			n, removed := s.purge(time.Now().UTC(), s.limits)
 			if n == 0 {
 				s.logger.Info("Spool size is ok, no files purged")
@@ -283,6 +296,9 @@ func (s *DiskvSpooler) run() {
 					s.logger.Warn("Purged all data files")
 				} else {
 					for reason, files := range removed {
+						if len(files) == 0 {
+							continue
+						}
 						switch reason {
 						case "age":
 							s.logger.Warn(fmt.Sprintf("Removed %d old data files", len(files)))
@@ -327,7 +343,7 @@ func (s *DiskvSpooler) purge(now time.Time, limits proto.DataSpoolLimits) (int, 
 
 	defer s.updateStats()
 
-	s.logger.Debug(fmt.Sprintf("purge:limits:%#v", limits))
+	s.logger.Debug(fmt.Sprintf("purge:limits:%+v", limits))
 
 	purge := false
 	if limits.MaxAge == 0 || limits.MaxSize == 0 || limits.MaxFiles == 0 {
