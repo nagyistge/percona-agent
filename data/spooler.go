@@ -291,25 +291,23 @@ func (s *DiskvSpooler) run() {
 			n, removed := s.purge(time.Now().UTC(), s.limits)
 			if n == 0 {
 				s.logger.Info("Spool size is ok, no files purged")
-			} else {
-				if len(removed["purged"]) > 0 {
-					s.logger.Warn("Purged all data files")
-				} else {
-					for reason, files := range removed {
-						if len(files) == 0 {
-							continue
-						}
-						switch reason {
-						case "age":
-							s.logger.Warn(fmt.Sprintf("Removed %d old data files", len(files)))
-						case "size":
-							s.logger.Warn(fmt.Sprintf("Removed %d data files to reduce spool size", len(files)))
-						case "files":
-							s.logger.Warn(fmt.Sprintf("Removed %d data files to reduce number of files", len(files)))
-						default:
-							s.logger.Warn(fmt.Sprintf("Removed %d data files", len(files)))
-						}
-					}
+				continue
+			}
+			for reason, files := range removed {
+				if len(files) == 0 {
+					continue
+				}
+				switch reason {
+				case "age":
+					s.logger.Warn(fmt.Sprintf("Removed %d old data files", len(files)))
+				case "size":
+					s.logger.Warn(fmt.Sprintf("Removed %d data files to reduce spool size", len(files)))
+				case "files":
+					s.logger.Warn(fmt.Sprintf("Removed %d data files to reduce number of files", len(files)))
+				case "purged":
+					s.logger.Warn(fmt.Sprintf("Purged all %d data files", len(files)))
+				default:
+					s.logger.Warn(fmt.Sprintf("Removed %d data files", len(files)))
 				}
 			}
 		case <-s.sync.StopChan:
