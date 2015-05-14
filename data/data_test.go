@@ -21,32 +21,26 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"io"
+	"io/ioutil"
+	"os"
+	"path"
+	"path/filepath"
+	"testing"
+	"time"
+
 	"github.com/percona/cloud-protocol/proto/v1"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
-	"io"
-	"io/ioutil"
-	"log"
-	"os"
-	"path"
-	"path/filepath"
-	"testing"
-	"time"
 )
 
 // Hook up gocheck into the "go test" runner.
 func Test(t *testing.T) { TestingT(t) }
 
 var sample = test.RootDir + "/qan/"
-
-func debug(logChan chan *proto.LogEntry) {
-	for logEntry := range logChan {
-		log.Println(logEntry)
-	}
-}
 
 /////////////////////////////////////////////////////////////////////////////
 // DiskvSpooler test suite
@@ -58,6 +52,7 @@ type DiskvSpoolerTestSuite struct {
 	basedir  string
 	dataDir  string
 	trashDir string
+	limits   proto.DataSpoolLimits
 }
 
 var _ = Suite(&DiskvSpoolerTestSuite{})
@@ -69,6 +64,12 @@ func (s *DiskvSpoolerTestSuite) SetUpSuite(t *C) {
 	s.basedir, _ = ioutil.TempDir("/tmp", "percona-agent-data-spooler-test")
 	s.dataDir = path.Join(s.basedir, "data")
 	s.trashDir = path.Join(s.basedir, "trash")
+
+	s.limits = proto.DataSpoolLimits{
+		MaxAge:   data.DEFAULT_DATA_MAX_AGE,
+		MaxSize:  data.DEFAULT_DATA_MAX_SIZE,
+		MaxFiles: data.DEFAULT_DATA_MAX_FILES,
+	}
 }
 
 func (s *DiskvSpoolerTestSuite) SetUpTest(t *C) {
@@ -98,10 +99,8 @@ func (s *DiskvSpoolerTestSuite) TestSpoolData(t *C) {
 	sz := data.NewJsonSerializer()
 
 	// Create and start the spooler.
-	spool := data.NewDiskvSpooler(s.logger, s.dataDir, s.trashDir, "localhost")
-	if spool == nil {
-		t.Fatal("NewDiskvSpooler")
-	}
+	spool := data.NewDiskvSpooler(s.logger, s.dataDir, s.trashDir, "localhost", s.limits)
+	t.Assert(spool, NotNil)
 
 	err := spool.Start(sz)
 	if err != nil {
@@ -179,10 +178,8 @@ func (s *DiskvSpoolerTestSuite) TestSpoolGzipData(t *C) {
 	sz := data.NewJsonGzipSerializer()
 
 	// See TestSpoolData() for description of these tasks.
-	spool := data.NewDiskvSpooler(s.logger, s.dataDir, s.trashDir, "localhost")
-	if spool == nil {
-		t.Fatal("NewDiskvSpooler")
-	}
+	spool := data.NewDiskvSpooler(s.logger, s.dataDir, s.trashDir, "localhost", s.limits)
+	t.Assert(spool, NotNil)
 
 	err := spool.Start(sz)
 	if err != nil {
@@ -304,7 +301,7 @@ func (s *DiskvSpoolerTestSuite) TestRejectData(t *C) {
 	sz := data.NewJsonSerializer()
 
 	// Create and start the spooler.
-	spool := data.NewDiskvSpooler(s.logger, s.dataDir, s.trashDir, "localhost")
+	spool := data.NewDiskvSpooler(s.logger, s.dataDir, s.trashDir, "localhost", s.limits)
 	t.Assert(spool, NotNil)
 
 	err := spool.Start(sz)
@@ -357,7 +354,7 @@ func (s *DiskvSpoolerTestSuite) TestRejectData(t *C) {
 	 * that the spooler does not read/index/cache bad files.
 	 */
 
-	spool = data.NewDiskvSpooler(s.logger, s.dataDir, s.trashDir, "localhost")
+	spool = data.NewDiskvSpooler(s.logger, s.dataDir, s.trashDir, "localhost", s.limits)
 	t.Assert(spool, NotNil)
 	err = spool.Start(sz)
 	t.Assert(err, IsNil)
@@ -798,6 +795,11 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	config := &data.Config{
 		Encoding:     "",
 		SendInterval: 1,
+		Limits: proto.DataSpoolLimits{
+			MaxAge:   data.DEFAULT_DATA_MAX_AGE,
+			MaxSize:  data.DEFAULT_DATA_MAX_SIZE,
+			MaxFiles: data.DEFAULT_DATA_MAX_FILES,
+		},
 	}
 	bytes, _ := json.Marshal(config)
 	// Write config to disk because manager reads it on start,
@@ -869,6 +871,11 @@ func (s *ManagerTestSuite) TestSetConfig(t *C) {
 	config := &data.Config{
 		Encoding:     "",
 		SendInterval: 1,
+		Limits: proto.DataSpoolLimits{
+			MaxAge:   data.DEFAULT_DATA_MAX_AGE,
+			MaxSize:  data.DEFAULT_DATA_MAX_SIZE,
+			MaxFiles: data.DEFAULT_DATA_MAX_FILES,
+		},
 	}
 	pct.Basedir.WriteConfig("data", config)
 

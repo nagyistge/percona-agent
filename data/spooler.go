@@ -32,11 +32,6 @@ import (
 	"time"
 )
 
-const (
-	WRITE_BUFFER = 100
-	CACHE_SIZE   = 1024 * 1024 * 8 // 8M
-)
-
 var ErrSpoolTimeout = errors.New("Timeout spooling data")
 
 type Spooler interface {
@@ -49,6 +44,7 @@ type Spooler interface {
 	Read(file string) ([]byte, error)
 	Remove(file string) error
 	Reject(file string) error
+	Purge(time.Time, proto.DataSpoolLimits) (int, map[string][]string)
 }
 
 // http://godoc.org/github.com/peterbourgon/diskv
@@ -57,6 +53,7 @@ type DiskvSpooler struct {
 	dataDir  string
 	trashDir string
 	hostname string
+	limits   proto.DataSpoolLimits
 	// --
 	sz           Serializer
 	dataChan     chan *proto.Data
@@ -72,14 +69,15 @@ type DiskvSpooler struct {
 	cancelChan   chan struct{}
 }
 
-func NewDiskvSpooler(logger *pct.Logger, dataDir, trashDir, hostname string) *DiskvSpooler {
+func NewDiskvSpooler(logger *pct.Logger, dataDir, trashDir, hostname string, limits proto.DataSpoolLimits) *DiskvSpooler {
 	s := &DiskvSpooler{
 		logger:   logger,
 		dataDir:  dataDir,
 		trashDir: trashDir,
 		hostname: hostname,
+		limits:   limits,
 		// --
-		dataChan: make(chan *proto.Data, WRITE_BUFFER),
+		dataChan: make(chan *proto.Data, DEFAULT_DATA_MAX_FILES),
 		sync:     pct.NewSyncChan(),
 		status:   pct.NewStatus([]string{"data-spooler", "data-spooler-count", "data-spooler-size", "data-spooler-oldest"}),
 		mux:      new(sync.Mutex),
@@ -114,40 +112,14 @@ func (s *DiskvSpooler) Start(sz Serializer) error {
 	s.cache = diskv.New(diskv.Options{
 		BasePath:     s.dataDir,
 		Transform:    func(s string) []string { return []string{} },
-		CacheSizeMax: CACHE_SIZE,
+		CacheSizeMax: DEFAULT_DATA_MAX_SIZE,
 		Index:        &diskv.LLRBIndex{},
 		IndexLess:    func(a, b string) bool { return a < b },
 	})
 
 	s.mux.Lock()
-	defer s.mux.Unlock()
-	s.oldest = time.Now().UTC().UnixNano()
-	for key := range s.Files() {
-		data, err := s.cache.Read(key)
-		if err != nil {
-			s.logger.Error("Cannot read data file", key, ":", err)
-			s.cache.Erase(key)
-			continue
-		}
-		parts := strings.Split(key, "_") // service_nanoUnixTs
-		if len(parts) != 2 {
-			s.logger.Error("Invalid data file name:", key)
-			s.cache.Erase(key)
-			continue
-		}
-
-		ts, err := strconv.ParseInt(parts[1], 10, 64)
-		if err != nil {
-			s.logger.Error("ParseInt", key, ":", err)
-			s.cache.Erase(key)
-			continue
-		}
-		if ts < s.oldest {
-			s.oldest = ts
-		}
-		s.count++
-		s.size += uint64(len(data))
-	}
+	s.updateStats()
+	s.mux.Unlock()
 
 	go s.run()
 	s.logger.Info("Started")
@@ -234,23 +206,7 @@ func (s *DiskvSpooler) Read(file string) ([]byte, error) {
 }
 
 func (s *DiskvSpooler) Remove(file string) error {
-	size, ok := s.fileSize[file]
-	if !ok {
-		data, _ := s.Read(file)
-		size = len(data)
-	}
-	// Don't lock mutex yet in case this takes awhile (it shouldn't):
-	if err := s.cache.Erase(file); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	s.count--
-	s.size -= uint64(size)
-	if ok {
-		delete(s.fileSize, file)
-	}
-	return nil
+	return s.remove(file, true) // true=lock
 }
 
 func (s *DiskvSpooler) Reject(file string) error {
@@ -267,11 +223,14 @@ func (s *DiskvSpooler) Reject(file string) error {
 	return nil
 }
 
+func (s *DiskvSpooler) Purge(now time.Time, limits proto.DataSpoolLimits) (int, map[string][]string) {
+	return s.purge(now, limits)
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // Implementation
 /////////////////////////////////////////////////////////////////////////////
 
-// @goroutine[1]
 func (s *DiskvSpooler) run() {
 	defer func() {
 		if err := recover(); err != nil {
@@ -286,6 +245,8 @@ func (s *DiskvSpooler) run() {
 		}
 		s.sync.Done()
 	}()
+
+	purgeTicker := time.NewTicker(15 * time.Minute)
 
 	for {
 		s.status.Update("data-spooler", "Idle")
@@ -313,9 +274,156 @@ func (s *DiskvSpooler) run() {
 				s.oldest = ts
 			}
 			s.mux.Unlock()
+		case <-purgeTicker.C:
+			n, removed := s.purge(time.Now().UTC(), s.limits)
+			if n == 0 {
+				s.logger.Info("Spool size is ok, no files purged")
+			} else {
+				if len(removed["purged"]) > 0 {
+					s.logger.Warn("Purged all data files")
+				} else {
+					for reason, files := range removed {
+						switch reason {
+						case "age":
+							s.logger.Warn(fmt.Sprintf("Removed %d old data files", len(files)))
+						case "size":
+							s.logger.Warn(fmt.Sprintf("Removed %d data files to reduce spool size", len(files)))
+						case "files":
+							s.logger.Warn(fmt.Sprintf("Removed %d data files to reduce number of files", len(files)))
+						default:
+							s.logger.Warn(fmt.Sprintf("Removed %d data files", len(files)))
+						}
+					}
+				}
+			}
 		case <-s.sync.StopChan:
 			s.sync.Graceful()
 			return
 		}
 	}
+}
+
+func (*DiskvSpooler) ts(key string) (int64, error) {
+	parts := strings.Split(key, "_") // service_nanoUnixTs
+	if len(parts) != 2 {
+		return 0, fmt.Errorf("Invalid data file name: '%s'", key)
+	}
+	ts, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("ParseInt(%s): %s", key, err)
+	}
+	return ts, nil
+}
+
+func (s *DiskvSpooler) purge(now time.Time, limits proto.DataSpoolLimits) (int, map[string][]string) {
+	s.logger.Debug("purge:call")
+	defer s.logger.Debug("purge:return")
+
+	s.status.Update("data-spooler", "Purging")
+	defer s.status.Update("data-spooler", "Idle")
+
+	s.mux.Lock()
+	defer s.mux.Unlock()
+
+	defer s.updateStats()
+
+	s.logger.Debug(fmt.Sprintf("purge:limits:%#v", limits))
+
+	purge := false
+	if limits.MaxAge == 0 || limits.MaxSize == 0 || limits.MaxFiles == 0 {
+		s.logger.Debug("purge:all")
+		purge = true
+	}
+
+	removed := map[string][]string{
+		"age":    []string{},
+		"size":   []string{},
+		"files":  []string{},
+		"purged": []string{},
+	}
+	n := 0
+	nowNano := now.UnixNano()
+
+	defer s.CancelFiles()
+	for file := range s.Files() {
+		// File names have the format <service>_<nano unix ts>. Get the ts and
+		// convert it to seconds from the given now.
+		ts, err := s.ts(file)
+		if err != nil {
+			s.logger.Error(err)
+			s.remove(file, false) // false=we've already locked mux
+			continue
+		}
+		age := uint((nowNano - ts) / 1000000000) // 1 ns = 1 billionth of a second
+
+		if purge {
+			removed["purged"] = append(removed["purged"], file)
+		} else if age > limits.MaxAge {
+			s.logger.Debug(fmt.Sprintf("purge:age:%d", age))
+			removed["age"] = append(removed["age"], file)
+		} else if s.size > limits.MaxSize {
+			s.logger.Debug(fmt.Sprintf("purge:size:%d", s.size))
+			s.logger.Debug("purge:size:" + file)
+			removed["size"] = append(removed["size"], file)
+		} else if s.count > limits.MaxFiles {
+			s.logger.Debug(fmt.Sprintf("purge:files:%d", s.count))
+			removed["files"] = append(removed["files"], file)
+		} else {
+			continue // keep file
+		}
+		s.remove(file, false) // false=we've already locked mux
+		n++
+	}
+
+	return n, removed
+}
+
+func (s *DiskvSpooler) updateStats() {
+	//
+	// XXX Caller must guard with mux!
+	//
+	s.count = 0
+	s.size = 0
+	s.oldest = time.Now().UTC().UnixNano()
+	for key := range s.Files() {
+		data, err := s.cache.Read(key)
+		if err != nil {
+			s.logger.Error("Cannot read data file", key, ":", err)
+			s.cache.Erase(key)
+			continue
+		}
+		ts, err := s.ts(key)
+		if err != nil {
+			s.logger.Error(err)
+			s.cache.Erase(key)
+			continue
+		}
+		if ts < s.oldest {
+			s.oldest = ts
+		}
+		s.count++
+		s.size += uint64(len(data))
+	}
+}
+
+func (s *DiskvSpooler) remove(file string, lock bool) error {
+	size, ok := s.fileSize[file]
+	if !ok {
+		data, _ := s.Read(file)
+		size = len(data)
+	}
+	// Don't lock mutex yet in case this takes awhile (it shouldn't):
+	if err := s.cache.Erase(file); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if lock {
+		s.mux.Lock()
+		defer s.mux.Unlock()
+	}
+	s.count--
+	s.size -= uint64(size)
+	if ok {
+		delete(s.fileSize, file)
+	}
+	return nil
 }
