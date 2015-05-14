@@ -18,7 +18,7 @@
             "Rev": "a197e5d40516f2e9f74dcee085a5f2d4604e94df"
         },
         {
-            "ImportPath": "github.com/percona/cloud-protocol/proto",
+            "ImportPath": "github.com/percona/cloud-protocol/proto/v1",
             "Rev": "d02794d8269a6d385a19bddea242e20468f3f985"
         },
         {
