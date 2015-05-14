@@ -20,11 +20,12 @@ package data
 import (
 	"encoding/json"
 	"errors"
-	"github.com/percona/cloud-protocol/proto/v1"
-	"github.com/percona/percona-agent/pct"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/percona/cloud-protocol/proto/v1"
+	"github.com/percona/percona-agent/pct"
 )
 
 type Manager struct {
@@ -61,7 +62,6 @@ func NewManager(logger *pct.Logger, dataDir, trashDir, hostname string, client p
 // Interface
 /////////////////////////////////////////////////////////////////////////////
 
-// @goroutine[0]
 func (m *Manager) Start() error {
 	m.mux.Lock()
 	defer m.mux.Unlock()
@@ -104,6 +104,7 @@ func (m *Manager) Start() error {
 		m.dataDir,
 		m.trashDir,
 		m.hostname,
+		config.Limits,
 	)
 	if err := spooler.Start(sz); err != nil {
 		return err
@@ -129,7 +130,6 @@ func (m *Manager) Start() error {
 	return nil
 }
 
-// @goroutine[0]
 func (m *Manager) Stop() error {
 	m.status.Update("data", "Stopping sender")
 	m.sender.Stop()
@@ -147,7 +147,6 @@ func (m *Manager) Stop() error {
 	return nil
 }
 
-// @goroutine[0]
 func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	m.status.UpdateRe("data", "Handling", cmd)
 	defer m.status.Update("data", "Running")
@@ -161,12 +160,14 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 	case "SetConfig":
 		newConfig, errs := m.handleSetConfig(cmd)
 		return cmd.Reply(newConfig, errs...)
+	case "Purge":
+		removed, errs := m.handlePurge(cmd)
+		return cmd.Reply(removed, errs...)
 	default:
 		return cmd.Reply(nil, pct.UnknownCmdError{Cmd: cmd.Cmd})
 	}
 }
 
-// @goroutine[0:1]
 func (m *Manager) Status() map[string]string {
 	return m.status.Merge(m.client.Status(), m.spooler.Status(), m.sender.Status())
 }
@@ -202,6 +203,7 @@ func (m *Manager) validateConfig(config *Config) error {
 	if config.Encoding != "" && config.Encoding != "gzip" {
 		return errors.New("Invalid data encoding: " + config.Encoding)
 	}
+
 	if config.SendInterval < 0 {
 		return errors.New("SendInterval must be > 0")
 	} else if config.SendInterval > 3600 {
@@ -212,6 +214,18 @@ func (m *Manager) validateConfig(config *Config) error {
 	} else if config.SendInterval == 0 {
 		config.SendInterval = DEFAULT_DATA_SEND_INTERVAL
 	}
+
+	// as of 1.0.13
+	if config.Limits.MaxAge == 0 {
+		config.Limits.MaxAge = DEFAULT_DATA_MAX_AGE
+	}
+	if config.Limits.MaxSize == 0 {
+		config.Limits.MaxSize = DEFAULT_DATA_MAX_SIZE
+	}
+	if config.Limits.MaxFiles == 0 {
+		config.Limits.MaxFiles = DEFAULT_DATA_MAX_FILES
+	}
+
 	return nil
 }
 
@@ -280,4 +294,15 @@ func makeSerializer(encoding string) (Serializer, error) {
 	default:
 		return nil, errors.New("Unknown encoding: " + encoding)
 	}
+}
+
+func (m *Manager) handlePurge(cmd *proto.Cmd) (interface{}, []error) {
+	limits := proto.DataSpoolLimits{}
+	if len(cmd.Data) > 0 {
+		if err := json.Unmarshal(cmd.Data, &limits); err != nil {
+			return nil, []error{err}
+		}
+	}
+	_, removed := m.spooler.Purge(time.Now().UTC(), limits)
+	return removed, nil
 }

@@ -21,32 +21,26 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"io"
+	"io/ioutil"
+	"os"
+	"path"
+	"path/filepath"
+	"testing"
+	"time"
+
 	"github.com/percona/cloud-protocol/proto/v1"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
-	"io"
-	"io/ioutil"
-	"log"
-	"os"
-	"path"
-	"path/filepath"
-	"testing"
-	"time"
 )
 
 // Hook up gocheck into the "go test" runner.
 func Test(t *testing.T) { TestingT(t) }
 
 var sample = test.RootDir + "/qan/"
-
-func debug(logChan chan *proto.LogEntry) {
-	for logEntry := range logChan {
-		log.Println(logEntry)
-	}
-}
 
 /////////////////////////////////////////////////////////////////////////////
 // DiskvSpooler test suite
@@ -58,6 +52,7 @@ type DiskvSpoolerTestSuite struct {
 	basedir  string
 	dataDir  string
 	trashDir string
+	limits   proto.DataSpoolLimits
 }
 
 var _ = Suite(&DiskvSpoolerTestSuite{})
@@ -69,6 +64,12 @@ func (s *DiskvSpoolerTestSuite) SetUpSuite(t *C) {
 	s.basedir, _ = ioutil.TempDir("/tmp", "percona-agent-data-spooler-test")
 	s.dataDir = path.Join(s.basedir, "data")
 	s.trashDir = path.Join(s.basedir, "trash")
+
+	s.limits = proto.DataSpoolLimits{
+		MaxAge:   data.DEFAULT_DATA_MAX_AGE,
+		MaxSize:  data.DEFAULT_DATA_MAX_SIZE,
+		MaxFiles: data.DEFAULT_DATA_MAX_FILES,
+	}
 }
 
 func (s *DiskvSpoolerTestSuite) SetUpTest(t *C) {
@@ -98,10 +99,8 @@ func (s *DiskvSpoolerTestSuite) TestSpoolData(t *C) {
 	sz := data.NewJsonSerializer()
 
 	// Create and start the spooler.
-	spool := data.NewDiskvSpooler(s.logger, s.dataDir, s.trashDir, "localhost")
-	if spool == nil {
-		t.Fatal("NewDiskvSpooler")
-	}
+	spool := data.NewDiskvSpooler(s.logger, s.dataDir, s.trashDir, "localhost", s.limits)
+	t.Assert(spool, NotNil)
 
 	err := spool.Start(sz)
 	if err != nil {
@@ -179,10 +178,8 @@ func (s *DiskvSpoolerTestSuite) TestSpoolGzipData(t *C) {
 	sz := data.NewJsonGzipSerializer()
 
 	// See TestSpoolData() for description of these tasks.
-	spool := data.NewDiskvSpooler(s.logger, s.dataDir, s.trashDir, "localhost")
-	if spool == nil {
-		t.Fatal("NewDiskvSpooler")
-	}
+	spool := data.NewDiskvSpooler(s.logger, s.dataDir, s.trashDir, "localhost", s.limits)
+	t.Assert(spool, NotNil)
 
 	err := spool.Start(sz)
 	if err != nil {
@@ -304,7 +301,7 @@ func (s *DiskvSpoolerTestSuite) TestRejectData(t *C) {
 	sz := data.NewJsonSerializer()
 
 	// Create and start the spooler.
-	spool := data.NewDiskvSpooler(s.logger, s.dataDir, s.trashDir, "localhost")
+	spool := data.NewDiskvSpooler(s.logger, s.dataDir, s.trashDir, "localhost", s.limits)
 	t.Assert(spool, NotNil)
 
 	err := spool.Start(sz)
@@ -357,7 +354,7 @@ func (s *DiskvSpoolerTestSuite) TestRejectData(t *C) {
 	 * that the spooler does not read/index/cache bad files.
 	 */
 
-	spool = data.NewDiskvSpooler(s.logger, s.dataDir, s.trashDir, "localhost")
+	spool = data.NewDiskvSpooler(s.logger, s.dataDir, s.trashDir, "localhost", s.limits)
 	t.Assert(spool, NotNil)
 	err = spool.Start(sz)
 	t.Assert(err, IsNil)
@@ -375,6 +372,117 @@ func (s *DiskvSpoolerTestSuite) TestRejectData(t *C) {
 	t.Assert(gotFiles, HasLen, 1)
 
 	spool.Stop()
+}
+
+func (s *DiskvSpoolerTestSuite) TestSpoolLimits(t *C) {
+	// as of 1.0.13
+
+	limits := proto.DataSpoolLimits{
+		MaxAge:   10,   // seconds
+		MaxSize:  1024, // bytes
+		MaxFiles: 2,
+	}
+
+	sz := data.NewJsonSerializer()
+	spool := data.NewDiskvSpooler(s.logger, s.dataDir, s.trashDir, "localhost", limits)
+	t.Assert(spool, NotNil)
+	err := spool.Start(sz)
+	t.Assert(err, IsNil)
+
+	// Spool 3 data files (doesn't matter what, any data works).
+	now := time.Now()
+	logEntry := &proto.LogEntry{
+		Ts:  now,
+		Msg: "1",
+	}
+	spool.Write("log", logEntry)
+	logEntry.Msg = "2"
+	spool.Write("log", logEntry)
+	logEntry.Msg = "3"
+	spool.Write("log", logEntry)
+
+	// Wait for spooler to write the data files.
+	files := test.WaitFiles(s.dataDir, 3)
+	t.Assert(files, HasLen, 3)
+
+	// Purge the spool and 1 data file should be droppoed because
+	// we set limits.MaxFiles=2.
+	n, removed := spool.Purge(time.Now().UTC(), limits)
+	t.Check(n, Equals, 1)
+	t.Check(removed["purged"], HasLen, 0)
+	t.Check(removed["age"], HasLen, 0)
+	t.Check(removed["size"], HasLen, 0)
+	t.Assert(removed["files"], HasLen, 1) // here it is
+
+	// Find out how large the files are so we can purge based on MaxSize.
+	totalSize := 0
+	for file := range spool.Files() {
+		data, err := spool.Read(file)
+		t.Assert(err, IsNil)
+		totalSize += len(data)
+	}
+
+	// Set MaxSize a few bytes less than the total which should cause only one
+	// data file to be purged.
+	limits.MaxSize = uint64(totalSize - 10)
+
+	n, removed = spool.Purge(time.Now().UTC(), limits)
+	t.Check(n, Equals, 1)
+	t.Check(removed["purged"], HasLen, 0)
+	t.Check(removed["age"], HasLen, 0)
+	t.Check(removed["size"], HasLen, 1) // here it is
+	t.Assert(removed["files"], HasLen, 0)
+
+	// To test MaxAge, pass in a now arg that's in the past and it should cause
+	// the last file to be purged.
+	n, removed = spool.Purge(time.Now().Add(-1*time.Minute).UTC(), limits)
+	t.Check(n, Equals, 1)
+	t.Check(removed["purged"], HasLen, 0)
+	t.Check(removed["age"], HasLen, 1) // here it is
+	t.Check(removed["size"], HasLen, 0)
+	t.Assert(removed["files"], HasLen, 0)
+
+	// Test a full spool purge by passing no limits.
+	spool.Write("log", logEntry)
+	spool.Write("log", logEntry)
+	spool.Write("log", logEntry)
+
+	files = test.WaitFiles(s.dataDir, 3)
+	t.Assert(files, HasLen, 3)
+
+	limits = proto.DataSpoolLimits{} // no limit = purge all
+	n, removed = spool.Purge(time.Now().UTC(), limits)
+	t.Check(n, Equals, 3)
+	t.Check(removed["purged"], HasLen, 3) // here it is
+	t.Check(removed["age"], HasLen, 0)
+	t.Check(removed["size"], HasLen, 0)
+	t.Assert(removed["files"], HasLen, 0)
+
+	// Finally, test that the auto-purge works by sending a tick manually.
+	limits = proto.DataSpoolLimits{
+		MaxAge:   10,   // seconds
+		MaxSize:  1024, // bytes
+		MaxFiles: 2,
+	}
+	spool = data.NewDiskvSpooler(s.logger, s.dataDir, s.trashDir, "localhost", limits)
+	t.Assert(spool, NotNil)
+
+	purgeChan := make(chan time.Time, 1)
+	spool.PurgeChan(purgeChan) // must set before calling Start
+
+	err = spool.Start(sz)
+	t.Assert(err, IsNil)
+
+	spool.Write("log", logEntry)
+	spool.Write("log", logEntry)
+	spool.Write("log", logEntry) // one too many
+	files = test.WaitFiles(s.dataDir, 3)
+	t.Assert(files, HasLen, 3)
+
+	purgeChan <- time.Now() // cause auto-purge in run()
+	time.Sleep(200 * time.Millisecond)
+	files = test.WaitFiles(s.dataDir, 2)
+	t.Assert(files, HasLen, 2)
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -798,6 +906,11 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	config := &data.Config{
 		Encoding:     "",
 		SendInterval: 1,
+		Limits: proto.DataSpoolLimits{
+			MaxAge:   data.DEFAULT_DATA_MAX_AGE,
+			MaxSize:  data.DEFAULT_DATA_MAX_SIZE,
+			MaxFiles: data.DEFAULT_DATA_MAX_FILES,
+		},
 	}
 	bytes, _ := json.Marshal(config)
 	// Write config to disk because manager reads it on start,
@@ -869,6 +982,11 @@ func (s *ManagerTestSuite) TestSetConfig(t *C) {
 	config := &data.Config{
 		Encoding:     "",
 		SendInterval: 1,
+		Limits: proto.DataSpoolLimits{
+			MaxAge:   data.DEFAULT_DATA_MAX_AGE,
+			MaxSize:  data.DEFAULT_DATA_MAX_SIZE,
+			MaxFiles: data.DEFAULT_DATA_MAX_FILES,
+		},
 	}
 	pct.Basedir.WriteConfig("data", config)
 
@@ -1003,4 +1121,55 @@ func (s *ManagerTestSuite) TestStatus(t *C) {
 	t.Check(status["data"], Equals, "Running")
 	t.Check(status["data-spooler"], Equals, "Idle")
 	t.Check(status["data-sender"], Equals, "Idle")
+}
+
+func (s *ManagerTestSuite) TestPurge(t *C) {
+	m := data.NewManager(s.logger, s.dataDir, s.trashDir, "localhost", s.client)
+	t.Assert(m, NotNil)
+
+	config := &data.Config{
+		Encoding:     "",
+		SendInterval: 1,
+		Limits: proto.DataSpoolLimits{
+			MaxAge:   300,
+			MaxSize:  1024,
+			MaxFiles: 2,
+		},
+	}
+	pct.Basedir.WriteConfig("data", config)
+
+	err := m.Start()
+	t.Assert(err, IsNil)
+
+	sender := m.Sender()
+	t.Check(sender, NotNil)
+
+	cmd := &proto.Cmd{
+		Service: "data",
+		Cmd:     "Purge",
+		// no SpoolDataLimits in Data causes full purge
+	}
+
+	spool := m.Spooler()
+	now := time.Now()
+	logEntry := &proto.LogEntry{
+		Ts:  now,
+		Msg: "1",
+	}
+	spool.Write("log", logEntry)
+	spool.Write("log", logEntry)
+	files := test.WaitFiles(s.dataDir, 2)
+	t.Assert(files, HasLen, 2)
+
+	reply := m.Handle(cmd)
+	t.Assert(reply.Error, Equals, "")
+	t.Assert(reply.Data, NotNil)
+	got := map[string][]string{}
+	if err := json.Unmarshal(reply.Data, &got); err != nil {
+		t.Fatal(err)
+	}
+	t.Check(got["purged"], HasLen, 2) // here it is
+	t.Check(got["age"], HasLen, 0)
+	t.Check(got["size"], HasLen, 0)
+	t.Assert(got["files"], HasLen, 0)
 }
