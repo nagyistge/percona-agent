@@ -1,6 +1,6 @@
 percona-agent Changelog
 
-v1.0.13
+v1.0.13 released 2015-05-15
 
   * PCT-1438: First and last seen query timestamps are not converted to UTC
   * PCT-1619: QAN for Performance Schema crashes on null digest
