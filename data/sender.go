@@ -19,7 +19,7 @@ package data
 
 import (
 	"fmt"
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v1"
 	"github.com/percona/percona-agent/pct"
 	"time"
 )
@@ -177,6 +177,7 @@ func (s *Sender) send() {
 
 func (s *Sender) sendAllFiles(startTime time.Time, sent *SentInfo) error {
 	s.status.Update("data-sender", "Running")
+	defer s.spool.CancelFiles()
 	for file := range s.spool.Files() {
 		s.logger.Debug("send:" + file)
 

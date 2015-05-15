@@ -18,6 +18,9 @@
 package mock
 
 import (
+	"time"
+
+	"github.com/percona/cloud-protocol/proto/v1"
 	"github.com/percona/percona-agent/data"
 )
 
@@ -70,6 +73,9 @@ func (s *Spooler) Files() <-chan string {
 	return filesChan
 }
 
+func (s *Spooler) CancelFiles() {
+}
+
 func (s *Spooler) Read(file string) ([]byte, error) {
 	return s.DataOut[file], nil
 }
@@ -87,4 +93,8 @@ func (s *Spooler) Reject(file string) error {
 func (s *Spooler) Reset() {
 	s.DataIn = []interface{}{}
 	s.RejectedFiles = []string{}
+}
+
+func (s *Spooler) Purge(now time.Time, limits proto.DataSpoolLimits) (int, map[string][]string) {
+	return 0, nil
 }

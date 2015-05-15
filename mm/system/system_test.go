@@ -18,7 +18,7 @@
 package system_test
 
 import (
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v1"
 	"github.com/percona/percona-agent/mm"
 	"github.com/percona/percona-agent/mm/system"
 	"github.com/percona/percona-agent/pct"

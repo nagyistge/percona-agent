@@ -17,13 +17,21 @@
 
 package data
 
+import (
+	"github.com/percona/cloud-protocol/proto/v1"
+)
+
 const (
 	DEFAULT_DATA_ENCODING      = "gzip"
 	DEFAULT_DATA_SEND_INTERVAL = 63
+	DEFAULT_DATA_MAX_AGE       = 3600             // 1h
+	DEFAULT_DATA_MAX_SIZE      = 1024 * 1024 * 10 // 10 MiB
+	DEFAULT_DATA_MAX_FILES     = 100
 )
 
 type Config struct {
 	Encoding     string
 	SendInterval uint
-	Blackhole    bool
+	Blackhole    bool // don't send if true
+	Limits       proto.DataSpoolLimits
 }

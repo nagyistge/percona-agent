@@ -18,7 +18,7 @@
 package sysconfig
 
 import (
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v1"
 )
 
 type Config struct {

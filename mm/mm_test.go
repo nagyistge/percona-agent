@@ -27,7 +27,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v1"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/mm"
@@ -904,6 +904,7 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 			Running: true,
 		},
 	}
+	sort.Sort(test.ByInternalService(gotConfig))
 	if same, diff := test.IsDeeply(gotConfig, expectConfig); !same {
 		test.Dump(gotConfig)
 		t.Error(diff)

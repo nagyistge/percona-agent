@@ -1,5 +1,13 @@
 percona-agent Changelog
 
+v1.0.13 released 2015-05-15
+
+  * PCT-1438: First and last seen query timestamps are not converted to UTC
+  * PCT-1619: QAN for Performance Schema crashes on null digest
+  * PCT-1669: Agent logs all warnings like "strconv.ParseFloat: parsing "ON": invalid syntax"
+  * PCT-1675: Agent should limit the size of its data spool
+  * Update diskv package to avoid potential goroutine leaks
+
 v1.0.12 released 2015-04-08
 
   * PCT-625: Handle failure when number of agents exceeded

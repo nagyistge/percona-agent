@@ -19,7 +19,7 @@ package agent_test
 
 import (
 	"encoding/json"
-	"github.com/percona/cloud-protocol/proto"
+	"github.com/percona/cloud-protocol/proto/v1"
 	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/pct"
 	pctCmd "github.com/percona/percona-agent/pct/cmd"
@@ -164,14 +164,6 @@ func (s *AgentTestSuite) TearDownSuite(t *C) {
 	if err := os.RemoveAll(s.tmpDir); err != nil {
 		t.Error(err)
 	}
-}
-
-type ByInternalService []proto.AgentConfig
-
-func (a ByInternalService) Len() int      { return len(a) }
-func (a ByInternalService) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a ByInternalService) Less(i, j int) bool {
-	return a[i].InternalService < a[j].InternalService
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -570,7 +562,7 @@ func (s *AgentTestSuite) TestGetAllConfigs(t *C) {
 
 	bytes, _ := json.Marshal(s.config)
 
-	sort.Sort(ByInternalService(gotConfigs))
+	sort.Sort(test.ByInternalService(gotConfigs))
 	expectConfigs := []proto.AgentConfig{
 		{
 			InternalService: "agent",
