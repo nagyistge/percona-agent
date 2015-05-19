@@ -144,14 +144,6 @@ func (s *Stats) Finalize() *proto.Stats {
 	}
 	s.Summarize()
 	return &proto.Stats{
-		//		MetricType: s.metricType,
-		//		FirstVal:   s.firstVal,
-		//		PrevTs:     s.prevTs,
-		//		PenuTs:     s.penuTs,
-		//		PrevVal:    s.prevVal,
-		//		PenuVal:    s.penuVal,
-		//		Vals:       s.vals,
-		//		Sum:        s.sum,
 		Cnt:   s.Cnt,
 		Min:   s.Min,
 		Pct5:  s.Pct5,

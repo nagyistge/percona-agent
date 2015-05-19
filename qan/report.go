@@ -26,10 +26,10 @@ import (
 	"github.com/percona/percona-agent/pct"
 )
 
-// slowlog|perf schema --> Result --> proto.QAReport --> data.Spooler
+// slowlog|perf schema --> Result --> proto.QANReport --> data.Spooler
 
 // Data for an interval from slow log or performance schema (pfs) parser,
-// passed to MakeReport() which wraps it in a proto.QANReport{} with metadata.
+// passed to MakeReport() which transforms into a proto.QANReport{}.
 type Result struct {
 	Global     *event.GlobalClass  // metrics for all data
 	Class      []*event.QueryClass // per-class metrics
