@@ -131,6 +131,7 @@ install() {
     exitStatus=$?
     if [ "$exitStatus" -eq "10" ]; then
        echo "  -uninstall: Stop agent and uninstall it (USE WITH CAUTION!)"
+       echo "  -help -h -?: Print list of options with descriptions and exit"
        exit $?
     elif [ "$exitStatus" -ne "0" ]; then
        echo
@@ -244,6 +245,8 @@ uninstall() {
 
 if [ "$*" == "--help" -o "$*" == "-help" -o "$*" == "-h" -o "$*" == "-?" ]; then
    "$INSTALLER_DIR/bin/$BIN-installer" -h
+   echo "  -uninstall: Stop agent and uninstall it (USE WITH CAUTION!)"
+   echo "  -help -h -?: Print list of options with descriptions and exit"
    echo "See http://cloud-docs.percona.com/Install.html for more information."
    exit 0
 fi

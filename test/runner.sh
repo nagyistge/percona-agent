@@ -25,11 +25,23 @@ done
 
 # Update dependencies
 if [ "$UPDATE_DEPENDENCIES" == "yes" ]; then
-    go build -o build/agent-build/agent-build github.com/percona/percona-agent/build/agent-build
-    build/agent-build/agent-build -build=false
-
-    VENDOR_DIR="$PWD/vendor"
-    export GOPATH="$VENDOR_DIR:$GOPATH"
+    if ! type "gpm" &> /dev/null; then
+        cmd="go get -u github.com/tools/godep"
+        # If godeps is not installed then install it first
+        echo -n "Fetching godep binary ($cmd)... "
+        ${cmd} && echo "done"
+        if [ $? -ne 0 ]; then
+            echo "failed"
+            exit 1
+        fi
+    fi
+    cmd="godep restore"
+    echo -n "Setting dependencies ($cmd)... "
+    ${cmd} && echo "done"
+    if [ $? -ne 0 ]; then
+        echo "failed"
+        exit 1
+    fi
 fi
 
 failures="/tmp/go-test-failures.$$"
