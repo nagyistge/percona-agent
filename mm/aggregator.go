@@ -72,7 +72,7 @@ func (a *Aggregator) Stop() {
 // Our own local instance stats keyed on metric name, different from
 // proto.InstanceStats. proto.Instances embeds proto.Stats and we need a
 // different Stats struct with a different interface to add and summarize metrics.
-type InstanceStats map[string]*Stats
+type metrics map[string]*Stats
 
 // @goroutine[1]
 func (a *Aggregator) run() {
@@ -86,9 +86,8 @@ func (a *Aggregator) run() {
 
 	var curInterval int64
 	var startTs time.Time
-	//cur := []*InstanceStats{}
 
-	cur := map[string]InstanceStats{} // InstanceStats map with UUID keys
+	cur := map[string]metrics{} // matrics map with UUID keys
 
 	for {
 		select {
@@ -121,11 +120,11 @@ func (a *Aggregator) run() {
 
 			// Each collection is from a specific service instance.
 			// Find the stats for this instance, create if they don't exist.
-			var is InstanceStats
+			var is metrics
 			if i, found := cur[collection.UUID]; found {
 				is = i
 			} else {
-				is = InstanceStats{}
+				is = metrics{}
 				cur[collection.UUID] = is
 			}
 
@@ -159,7 +158,7 @@ func (a *Aggregator) run() {
 }
 
 // @goroutine[1]
-func (a *Aggregator) report(startTs time.Time, is map[string]InstanceStats) {
+func (a *Aggregator) report(startTs time.Time, is map[string]metrics) {
 	a.logger.Debug("Summarize metrics for", startTs)
 
 	// The instance stats given (is) are a persistent buffer, so we need

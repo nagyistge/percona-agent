@@ -111,7 +111,7 @@ func (s *AggregatorTestSuite) TestC001(t *C) {
 
 	got := test.WaitMmReport(s.dataChan)
 	if got != nil {
-		t.Error("No report before 2nd interval, got: %+v", got)
+		t.Errorf("No report before 2nd interval, got: %+v", got)
 	}
 
 	// Ts in c001 is 2009-11-10 23:05:01, 1s into the next interval.
