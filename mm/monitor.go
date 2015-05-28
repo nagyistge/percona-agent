@@ -64,15 +64,3 @@ type Collection struct {
 	Ts      int64 // UTC Unix timestamp
 	Metrics []Metric
 }
-
-// Stats for each metric from a service instance, computed at each report interval.
-type InstanceStats struct {
-	UUID  string
-	Stats map[string]*Stats // keyed on metric name
-}
-
-type Report struct {
-	Ts       time.Time // start, UTC
-	Duration uint      // seconds
-	Stats    []*InstanceStats
-}

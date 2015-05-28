@@ -19,15 +19,16 @@ package test
 
 import (
 	"encoding/json"
-	"github.com/percona/cloud-protocol/proto/v2"
-	"github.com/percona/percona-agent/mm"
-	"github.com/percona/percona-agent/pct"
-	"github.com/percona/percona-agent/sysconfig"
 	"io/ioutil"
 	"log"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/percona/cloud-protocol/proto/v2"
+	"github.com/percona/percona-agent/mm"
+	"github.com/percona/percona-agent/pct"
+	"github.com/percona/percona-agent/sysconfig"
 )
 
 var Ts, _ = time.Parse("2006-01-02 15:04:05", "2013-12-30 18:36:00")
@@ -230,10 +231,10 @@ func WaitFiles(dir string, n int) []os.FileInfo {
 	return files
 }
 
-func WaitMmReport(dataChan chan interface{}) *mm.Report {
+func WaitMmReport(dataChan chan interface{}) *proto.MMReport {
 	select {
 	case data := <-dataChan:
-		report := data.(*mm.Report)
+		report := data.(*proto.MMReport)
 		return report
 	case <-time.After(100 * time.Millisecond):
 		return nil

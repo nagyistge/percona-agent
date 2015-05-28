@@ -22,6 +22,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/pct"
 )
@@ -68,6 +69,11 @@ func (a *Aggregator) Stop() {
 // Implementation
 /////////////////////////////////////////////////////////////////////////////
 
+// Our own local instance stats keyed on metric name, different from
+// proto.InstanceStats. proto.Instances embeds proto.Stats and we need a
+// different Stats struct with a different interface to add and summarize metrics.
+type metrics map[string]*Stats
+
 // @goroutine[1]
 func (a *Aggregator) run() {
 	defer func() {
@@ -80,7 +86,8 @@ func (a *Aggregator) run() {
 
 	var curInterval int64
 	var startTs time.Time
-	cur := []*InstanceStats{}
+
+	cur := map[string]metrics{} // matrics map with UUID keys
 
 	for {
 		select {
@@ -98,9 +105,9 @@ func (a *Aggregator) run() {
 
 				// Init next stats based on current ones to avoid re-creating them.
 				// todo: what if metrics from an instance aren't collected?
-				for n := range cur {
-					for key, _ := range cur[n].Stats {
-						cur[n].Stats[key].Reset()
+				for _, stats := range cur {
+					for key, _ := range stats {
+						stats[key].Reset()
 					}
 				}
 				curInterval = interval
@@ -113,26 +120,17 @@ func (a *Aggregator) run() {
 
 			// Each collection is from a specific service instance.
 			// Find the stats for this instance, create if they don't exist.
-			var is *InstanceStats
-			for _, i := range cur {
-				if collection.UUID == i.UUID {
-					is = i
-					break
-				}
-			}
-
-			if is == nil {
-				// New service instance, create stats for it.
-				is = &InstanceStats{
-					UUID:  collection.UUID,
-					Stats: make(map[string]*Stats),
-				}
-				cur = append(cur, is)
+			var is metrics
+			if i, found := cur[collection.UUID]; found {
+				is = i
+			} else {
+				is = metrics{}
+				cur[collection.UUID] = is
 			}
 
 			// Add each metric in the collection to its Stats.
 			for _, metric := range collection.Metrics {
-				stats, haveStats := is.Stats[metric.Name]
+				stats, haveStats := is[metric.Name]
 				if !haveStats {
 					// New metric, create stats for it.
 					var err error
@@ -141,7 +139,7 @@ func (a *Aggregator) run() {
 						a.logger.Error(metric.Name, "invalid:", err.Error())
 						continue
 					}
-					is.Stats[metric.Name] = stats
+					is[metric.Name] = stats
 				}
 				if err := stats.Add(&metric, collection.Ts); err != nil {
 					f := a.logger.Error
@@ -160,22 +158,22 @@ func (a *Aggregator) run() {
 }
 
 // @goroutine[1]
-func (a *Aggregator) report(startTs time.Time, is []*InstanceStats) {
+func (a *Aggregator) report(startTs time.Time, is map[string]metrics) {
 	a.logger.Debug("Summarize metrics for", startTs)
 
 	// The instance stats given (is) are a persistent buffer, so we need
 	// to copy and filter the contents for the report, else the next interval
 	// could change something which will affect values already reported because
 	// we use pointers to all data structs.  Also, it's possible this
-	// interval does not have metrics reported in previosu intervals
+	// interval does not have metrics reported in previous intervals
 	// (i.e. no values, Cnt=0); see https://jira.percona.com/browse/PCT-911.
-	finalInstanceStats := []*InstanceStats{}
-	for _, i := range is {
+	finalInstanceStats := []*proto.InstanceStats{}
+	for uuid, i := range is {
 
 		// Finalize the stats for every metric.  If the final stats are nil,
 		// then no values were reported (Cnt=0), so we ignore the metric.
-		finalMetrics := make(map[string]*Stats)
-		for metric, stats := range i.Stats {
+		finalMetrics := make(map[string]*proto.Stats)
+		for metric, stats := range i {
 			finalStats := stats.Finalize()
 			if finalStats == nil {
 				// No values, so no stats; ignore the metric.
@@ -193,8 +191,8 @@ func (a *Aggregator) report(startTs time.Time, is []*InstanceStats) {
 		}
 
 		// Create a copy of this instance with the copy of its stats.
-		finalInstance := &InstanceStats{
-			UUID:  i.UUID,
+		finalInstance := &proto.InstanceStats{
+			UUID:  uuid,
 			Stats: finalMetrics,
 		}
 		finalInstanceStats = append(finalInstanceStats, finalInstance)
@@ -206,7 +204,7 @@ func (a *Aggregator) report(startTs time.Time, is []*InstanceStats) {
 		return
 	}
 
-	report := &Report{
+	report := &proto.MMReport{
 		Ts:       startTs,
 		Duration: uint(a.interval),
 		Stats:    finalInstanceStats,

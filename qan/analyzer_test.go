@@ -346,7 +346,7 @@ func (s *AnalyzerTestSuite) TestRealSlowLogWorker(t *C) {
 	s.intervalChan <- i
 	data := test.WaitData(s.dataChan)
 	t.Assert(data, HasLen, 1)
-	res := data[0].(*qan.Report)
+	res := data[0].(*proto.QANReport)
 	t.Check(res.Global.TotalQueries, Equals, uint64(2))
 
 	err = a.Stop()

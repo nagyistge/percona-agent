@@ -21,38 +21,21 @@ import (
 	"sort"
 	"time"
 
+	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/go-mysql/event"
 	"github.com/percona/percona-agent/pct"
 )
 
-// slowlog|perf schema --> Result --> Report --> data.Spooler
+// slowlog|perf schema --> Result --> proto.QANReport --> data.Spooler
 
 // Data for an interval from slow log or performance schema (pfs) parser,
-// passed to MakeReport() which wraps it in a Report{} with metadata.
+// passed to MakeReport() which transforms into a proto.QANReport{}.
 type Result struct {
 	Global     *event.GlobalClass  // metrics for all data
 	Class      []*event.QueryClass // per-class metrics
 	RunTime    float64             // seconds parsing data, hopefully < interval
 	StopOffset int64               // slow log offset where parsing stopped, should be <= end offset
 	Error      string              `json:",omitempty"`
-}
-
-// Final QAN data struct, composed of a Result{} and metadata, sent to the
-// data.Spooler by the manager running the slow log or perfomance schema
-// (pfs) parser.
-type Report struct {
-	UUID    string              // UUID of MySQL instance
-	StartTs time.Time           // of interval, UTC
-	EndTs   time.Time           // of interval, UTC
-	RunTime float64             // seconds parsing data
-	Global  *event.GlobalClass  // metrics for all data
-	Class   []*event.QueryClass // per-class metrics
-	// slow log:
-	SlowLogFile     string `json:",omitempty"` // not slow_query_log_file if rotated
-	SlowLogFileSize int64  `json:",omitempty"`
-	StartOffset     int64  `json:",omitempty"` // parsing starts
-	EndOffset       int64  `json:",omitempty"` // parsing stops, but...
-	StopOffset      int64  `json:",omitempty"` // ...parsing didn't complete if stop < end
 }
 
 type ByQueryTime []*event.QueryClass
@@ -65,12 +48,12 @@ func (a ByQueryTime) Less(i, j int) bool {
 	return a[i].Metrics.TimeMetrics["Query_time"].Sum > a[j].Metrics.TimeMetrics["Query_time"].Sum
 }
 
-func MakeReport(config Config, interval *Interval, result *Result) *Report {
+func MakeReport(config Config, interval *Interval, result *Result) *proto.QANReport {
 	// Sort classes by Query_time_sum, descending.
 	sort.Sort(ByQueryTime(result.Class))
 
-	// Make Report from Result and other metadata (e.g. Interval).
-	report := &Report{
+	// Make proto.QANReport from Result and other metadata (e.g. Interval).
+	report := &proto.QANReport{
 		UUID:    config.UUID,
 		StartTs: interval.StartTime,
 		EndTs:   interval.StopTime,
