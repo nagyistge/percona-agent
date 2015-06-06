@@ -168,11 +168,11 @@ func (s *AgentTestSuite) TearDownSuite(t *C) {
 	}
 }
 
-type ByInternalService []proto.AgentConfig
+type ByService []proto.AgentConfig
 
-func (a ByInternalService) Len() int      { return len(a) }
-func (a ByInternalService) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a ByInternalService) Less(i, j int) bool {
+func (a ByService) Len() int      { return len(a) }
+func (a ByService) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a ByService) Less(i, j int) bool {
 	return a[i].Service < a[j].Service
 }
 
@@ -570,7 +570,7 @@ func (s *AgentTestSuite) TestGetAllConfigs(t *C) {
 
 	bytes, _ := json.Marshal(s.config)
 
-	sort.Sort(ByInternalService(gotConfigs))
+	sort.Sort(ByService(gotConfigs))
 	expectConfigs := []proto.AgentConfig{
 		{
 			Service: "agent",
