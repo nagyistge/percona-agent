@@ -156,18 +156,8 @@ func (a *API) Connect(hostname, apiKey, agentUuid string) error {
 		return err
 	}
 
-	// Get agent links: <API hostname>/agents/
-	// TODO: probably we should use RFC 6570 for URI template and send that as part of entry links
-	var entry string
-
-	// TODO remove this when LegacyV2 is not used anymore
-	if LegacyV2 {
-		entry = "agents"
-	} else {
-		entry = "instances"
-	}
-
-	agentLinks, err := a.getLinks(apiKey, entryLinks[entry]+"/"+agentUuid)
+	// Get agent links: <API hostname>/<instances_endpoint>/:uuid
+	agentLinks, err := a.getLinks(apiKey, entryLinks["agents"]+"/"+agentUuid)
 	if err != nil {
 		return err
 	}
@@ -219,20 +209,6 @@ func (a *API) getLinks(apiKey, url string) (map[string]string, error) {
 	} else if len(data) == 0 {
 		return nil, fmt.Errorf("OK response from %s but no content", url)
 	}
-
-	// Hack to be able to demo percona-agent
-	//////////////////////////////////////////////////////////////////////////////
-	if LegacyV2 {
-		type Links struct {
-			Links map[string]string
-		}
-		links := Links{}
-		if err := json.Unmarshal(data, &links); err != nil {
-			return nil, fmt.Errorf("GET %s error: json.Unmarshal: %s: %s", url, err, string(data))
-		}
-		return links.Links, nil
-	}
-	//////////////////////////////////////////////////////////////////////////////
 
 	halLinks := &halgo.Links{}
 	if err := json.Unmarshal(data, halLinks); err != nil {

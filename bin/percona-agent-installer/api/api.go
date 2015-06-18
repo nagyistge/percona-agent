@@ -65,7 +65,7 @@ func (a *Api) CreateInstance(it *proto.Instance) (newIt *proto.Instance, links m
 	if err != nil {
 		return nil, nil, err
 	}
-	url := a.apiConnector.URL("/instances")
+	url := a.apiConnector.URL("/v3-instances")
 	resp, _, err := a.apiConnector.Post(a.apiConnector.ApiKey(), url, data)
 	if a.debug {
 		log.Printf("resp=%#v\n", resp)
