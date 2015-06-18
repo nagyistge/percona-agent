@@ -34,6 +34,7 @@ import (
 	"github.com/percona/percona-agent/bin/percona-agent-installer/term"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/mysql"
+	"github.com/percona/percona-agent/pct"
 )
 
 var portNumberRe = regexp.MustCompile(`\.\d+$`)
@@ -50,13 +51,14 @@ type Installer struct {
 	api          *api.Api
 	instanceRepo *instance.Repo
 	agentConfig  *agent.Config
+	uuidFactory  pct.UUIDFactoryInterface
 	flags        Flags
 	// --
 	osInstance *proto.Instance
 	defaultDSN mysql.DSN
 }
 
-func NewInstaller(terminal *term.Terminal, basedir string, api *api.Api, instanceRepo *instance.Repo, agentConfig *agent.Config, flags Flags) (*Installer, error) {
+func NewInstaller(terminal *term.Terminal, basedir string, api *api.Api, instanceRepo *instance.Repo, agentConfig *agent.Config, uuidFactory pct.UUIDFactoryInterface, flags Flags) (*Installer, error) {
 	if agentConfig.ApiHostname == "" {
 		agentConfig.ApiHostname = agent.DEFAULT_API_HOSTNAME
 	}
@@ -65,8 +67,8 @@ func NewInstaller(terminal *term.Terminal, basedir string, api *api.Api, instanc
 	}
 	hostname, _ := os.Hostname()
 
-	// We don't set UUID thats APIs job
 	osIt := &proto.Instance{}
+	osIt.UUID = uuidFactory.New()
 	osIt.Type = "OS"
 	osIt.Prefix = "os"
 	osIt.Name = hostname
@@ -86,6 +88,7 @@ func NewInstaller(terminal *term.Terminal, basedir string, api *api.Api, instanc
 		api:          api,
 		instanceRepo: instanceRepo,
 		agentConfig:  agentConfig,
+		uuidFactory:  uuidFactory,
 		flags:        flags,
 		// --
 		osInstance: osIt,
@@ -311,6 +314,7 @@ func (i *Installer) InstallerCreateMySQLInstance() (mi *proto.Instance, err erro
 	// Create MySQL instance, UUID will be set by API.
 	dsnString, _ := agentDSN.DSN()
 	mi = &proto.Instance{}
+	mi.UUID = i.uuidFactory.New()
 	mi.Type = "MySQL"
 	mi.Prefix = "mysql"
 	mi.Name = i.osInstance.Name
@@ -321,7 +325,7 @@ func (i *Installer) InstallerCreateMySQLInstance() (mi *proto.Instance, err erro
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", mi.DSN, mi.Name, mi.UUID)
+	fmt.Printf("Created MySQL instance: name=%s uuid=%s\n", mi.Name, mi.UUID)
 	return mi, nil
 }
 
@@ -403,6 +407,7 @@ func (i *Installer) InstallerGetDefaultConfigs(oi, mi *proto.Instance) (configs 
 
 func (i *Installer) InstallerCreateAgentWithInitialServiceConfigs() (protoAgentInst *proto.Instance, links map[string]string, err error) {
 	protoAgentInst = &proto.Instance{}
+	protoAgentInst.UUID = i.uuidFactory.New()
 	protoAgentInst.Type = "Percona Agent"
 	protoAgentInst.Prefix = "agent"
 	protoAgentInst.ParentUUID = i.osInstance.UUID
