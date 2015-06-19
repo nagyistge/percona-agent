@@ -64,15 +64,15 @@ fi
 # Build percona-agent
 echo "Building percona-agent binary..."
 cd bin/percona-agent
-VER="$(awk '/var VERSION/ {print $5}' ../../agent/version/version.go | sed 's/"//g')"
+VER="$(awk '/var VERSION/ {print $5}' ../../agent/release/release.go | sed 's/"//g')"
 REV="$(git rev-parse HEAD)"
 REL=""
 if [ "$DEV" = "yes" ]; then
    REL=$(printf "%.3s" "$REV")
    VER="$VER-$REL"
-   go build -ldflags "-X github.com/percona/percona-agent/agent/version.REVISION $REV -X github.com/percona/percona-agent/agent/version.REL -$REL"
+   go build -ldflags "-X github.com/percona/percona-agent/agent/release.REVISION $REV -X github.com/percona/percona-agent/agent/release.REL -$REL"
 else
-   go build -ldflags "-X github.com/percona/percona-agent/agent/version.REVISION $REV"
+   go build -ldflags "-X github.com/percona/percona-agent/agent/release.REVISION $REV"
 fi
 
 # Check that bin was compiled with pkgs from vendor dir
