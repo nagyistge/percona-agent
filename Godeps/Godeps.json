@@ -52,7 +52,7 @@
             "ImportPath": "github.com/jagregory/halgo",
             "Rev": "d1d6fd6cbc6ff4df35f82b03bf93fdade591985d"
         },
-		{
+        {
              "ImportPath": "github.com/nu7hatch/gouuid",
             "Rev": "179d4d0c4d8d407a32af483c2354df1d2c91e6c3"
         }
