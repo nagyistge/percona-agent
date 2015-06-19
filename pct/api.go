@@ -44,6 +44,8 @@ var timeoutClientConfig = &TimeoutClientConfig{
 	ReadWriteTimeout: 10 * time.Second,
 }
 
+const apiMimeType = "application/vnd.percona.v3+json"
+
 type APIConnector interface {
 	Connect(hostname, apiKey, agentUuid string) error
 	Init(hostname, apiKey string, headers map[string]string) (code int, err error)
@@ -229,6 +231,7 @@ func (a *API) Get(apiKey, url string) (int, []byte, error) {
 	}
 	req.Header.Add("X-Percona-API-Key", apiKey)
 	req.Header.Add("X-Percona-Agent-Version", release.VERSION)
+	req.Header.Add("Accept", apiMimeType)
 
 	// todo: timeout
 	resp, err := a.client.Do(req)
@@ -309,6 +312,7 @@ func (a *API) send(method, apiKey, url string, data []byte) (*http.Response, []b
 	header := http.Header{}
 	header.Set("X-Percona-API-Key", apiKey)
 	header.Set("X-Percona-Agent-Version", release.VERSION)
+	header.Set("Accept", apiMimeType)
 	req.Header = header
 
 	resp, err := a.client.Do(req)
