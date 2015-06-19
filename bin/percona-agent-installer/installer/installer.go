@@ -30,6 +30,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/agent"
+	"github.com/percona/percona-agent/agent/release"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/api"
 	"github.com/percona/percona-agent/bin/percona-agent-installer/term"
 	"github.com/percona/percona-agent/instance"
@@ -205,7 +206,7 @@ VERIFY_API_KEY:
 		startTime := time.Now()
 		fmt.Printf("Verifying API key %s...\n", i.agentConfig.ApiKey)
 		headers := map[string]string{
-			"X-Percona-Agent-Version": agent.VERSION,
+			"X-Percona-Agent-Version": release.VERSION,
 		}
 		code, err := i.api.Init(i.agentConfig.ApiHostname, i.agentConfig.ApiKey, headers)
 		elapsedTime := time.Since(startTime)
@@ -355,7 +356,7 @@ func (i *Installer) InstallerGetDefaultConfigs(oi, mi *proto.Instance) (configs 
 		config, err := i.api.GetMmOSConfig(oi)
 		if err != nil {
 			fmt.Println(err)
-			fmt.Println("WARNING: cannot start server metrics monitor")
+			fmt.Println("WARNING: cannot start OS metrics monitor")
 		} else {
 			configs = append(configs, *config)
 		}
@@ -412,7 +413,7 @@ func (i *Installer) InstallerCreateAgentWithInitialServiceConfigs() (protoAgentI
 	protoAgentInst.Prefix = "agent"
 	protoAgentInst.ParentUUID = i.osInstance.UUID
 	protoAgentInst.Name = i.osInstance.Name
-	protoAgentInst.Properties = map[string]string{"version": agent.VERSION}
+	protoAgentInst.Properties = map[string]string{"version": release.VERSION}
 
 	protoAgentInst, links, err = i.api.CreateInstance(protoAgentInst)
 	if err != nil {

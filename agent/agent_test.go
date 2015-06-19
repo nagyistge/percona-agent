@@ -29,6 +29,7 @@ import (
 	. "github.com/go-test/test"
 	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/agent"
+	"github.com/percona/percona-agent/agent/release"
 	"github.com/percona/percona-agent/pct"
 	pctCmd "github.com/percona/percona-agent/pct/cmd"
 	"github.com/percona/percona-agent/qan"
@@ -607,7 +608,7 @@ func (s *AgentTestSuite) TestGetVersion(t *C) {
 	t.Assert(len(got), Equals, 1)
 	version := &proto.Version{}
 	json.Unmarshal(got[0].Data, &version)
-	t.Check(version.Running, Equals, agent.VERSION)
+	t.Check(version.Running, Equals, release.VERSION)
 }
 
 func (s *AgentTestSuite) TestSetConfigApiKey(t *C) {

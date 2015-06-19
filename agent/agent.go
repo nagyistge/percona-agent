@@ -30,15 +30,11 @@ import (
 	"time"
 
 	"github.com/percona/cloud-protocol/proto/v2"
+	"github.com/percona/percona-agent/agent/release"
 	"github.com/percona/percona-agent/pct"
 	pctCmd "github.com/percona/percona-agent/pct/cmd"
 )
 
-// REV="$(git rev-parse HEAD)"
-// go build -ldflags "-X github.com/percona/percon-agent/agnet.REVISION $REV"
-var REVISION string = "0"
-var VERSION string = "1.1.0"
-var REL string = ""
 var MIN_SUPPORTED_MYSQL_VERSION = "5.1.0"
 var CLOUD_PROTOCOL_VERSION = "2.0"
 
@@ -77,7 +73,7 @@ func NewAgent(config *Config, logger *pct.Logger, api pct.APIConnector, client p
 		logger:    logger,
 		client:    client,
 		services:  services,
-		updater:   pct.NewUpdater(logger, api, pct.PublicKey, os.Args[0], VERSION),
+		updater:   pct.NewUpdater(logger, api, pct.PublicKey, os.Args[0], release.VERSION),
 		// --
 		status:     pct.NewStatus([]string{"agent", "agent-cmd-handler"}),
 		cmdChan:    make(chan *proto.Cmd, CMD_QUEUE_SIZE),
@@ -130,7 +126,7 @@ func (agent *Agent) Run() error {
 	// https://jira.percona.com/browse/PCT-765
 	agent.keepalive = time.NewTicker(time.Duration(agent.config.Keepalive) * time.Second)
 
-	logger.Info("Started version: " + VERSION)
+	logger.Info("Started version: " + release.VERSION)
 
 	for {
 		logger.Debug("idle")
@@ -612,8 +608,8 @@ func (agent *Agent) handleSetConfig(cmd *proto.Cmd) (interface{}, []error) {
 
 func (agent *Agent) handleVersion(cmd *proto.Cmd) (interface{}, []error) {
 	v := &proto.Version{
-		Running:  VERSION + REL,
-		Revision: REVISION,
+		Running:  release.VERSION + release.REL,
+		Revision: release.REVISION,
 	}
 	bin, err := filepath.Abs(os.Args[0])
 	if err != nil {

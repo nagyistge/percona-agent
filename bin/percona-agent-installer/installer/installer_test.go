@@ -39,6 +39,12 @@ type InstallerTestSuite struct{}
 
 var _ = Suite(&InstallerTestSuite{})
 
+type fakeUUIDFactory struct{}
+
+func (f fakeUUIDFactory) New() string {
+	return "1"
+}
+
 func (i *InstallerTestSuite) TestIsSupportedMySQLVersion(t *C) {
 	var got bool
 	var err error
@@ -52,7 +58,8 @@ func (i *InstallerTestSuite) TestIsSupportedMySQLVersion(t *C) {
 	logger := pct.NewLogger(logChan, "instance-repo")
 	instanceRepo := instance.NewRepo(logger, pct.Basedir.Dir("config"))
 	terminal := term.NewTerminal(os.Stdin, false, true)
-	inst, err := installer.NewInstaller(terminal, "", api, instanceRepo, agentConfig, flags)
+
+	inst, err := installer.NewInstaller(terminal, "", api, instanceRepo, agentConfig, fakeUUIDFactory{}, flags)
 	t.Assert(err, IsNil)
 	conn := mock.NewNullMySQL()
 	errSomethingWentWrong := fmt.Errorf("Something went wrong")

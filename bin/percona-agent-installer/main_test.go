@@ -32,6 +32,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/agent"
+	"github.com/percona/percona-agent/agent/release"
 	"github.com/percona/percona-agent/data"
 	agentLog "github.com/percona/percona-agent/log"
 	mmMysql "github.com/percona/percona-agent/mm/mysql"
@@ -123,7 +124,7 @@ func (s *MainTestSuite) SetUpSuite(t *C) {
 
 	s.osInstance.Subsystems = []proto.Instance{*s.agent, *s.mysqlInstance}
 
-	s.agent.Properties = map[string]string{"version": agent.VERSION}
+	s.agent.Properties = map[string]string{"version": release.VERSION}
 }
 
 func (s *MainTestSuite) SetUpTest(t *C) {
@@ -131,10 +132,10 @@ func (s *MainTestSuite) SetUpTest(t *C) {
 	s.fakeApi = fakeapi.NewFakeApi()
 	// Expected agent links
 	s.agentLinks = map[string]string{
-		"log":  s.fakeApi.WSURL() + "/instances/" + s.agent.UUID + "/log",
-		"self": s.fakeApi.URL() + "/instances/" + s.agent.UUID,
-		"cmd":  s.fakeApi.WSURL() + "/instances/" + s.agent.UUID + "/cmd",
-		"data": s.fakeApi.WSURL() + "/instances/" + s.agent.UUID + "/data",
+		"cmd":  s.fakeApi.WSURL() + "/agents/" + s.agent.UUID + "/cmd",
+		"data": s.fakeApi.WSURL() + "/agents/" + s.agent.UUID + "/data",
+		"log":  s.fakeApi.WSURL() + "/agents/" + s.agent.UUID + "/log",
+		"self": s.fakeApi.URL() + "/v3-instances/" + s.agent.UUID,
 	}
 
 	_, err := s.rootConn.Exec("DELETE FROM mysql.user WHERE user='percona-agent'")
@@ -251,7 +252,7 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: name=%s uuid=%s\n", s.mysqlInstance.Name, s.mysqlInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -264,7 +265,7 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 			"log.conf",
 			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
 			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
-			"qan.conf",
+			fmt.Sprintf("qan-%s.conf", s.mysqlInstance.UUID),
 			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
 			"system-tree.json",
 		},
@@ -327,7 +328,7 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: name=%s uuid=%s\n", s.mysqlInstance.Name, s.mysqlInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	s.expectConfigs(
@@ -337,7 +338,7 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(
 			"log.conf",
 			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
 			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
-			"qan.conf",
+			fmt.Sprintf("qan-%s.conf", s.mysqlInstance.UUID),
 			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
 			"system-tree.json",
 		},
@@ -427,7 +428,7 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t 
 
 	t.Check(cmdTest.ReadLine(), Equals, "Skip creating MySQL user (-create-mysql-user=false)\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: name=%s uuid=%s\n", s.mysqlInstance.Name, s.mysqlInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -440,7 +441,7 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t 
 			"log.conf",
 			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
 			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
-			"qan.conf",
+			fmt.Sprintf("qan-%s.conf", s.mysqlInstance.UUID),
 			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
 			"system-tree.json",
 		},
@@ -508,7 +509,7 @@ func (s *MainTestSuite) TestWithAgentMySQLUser(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created OS: name=%s uuid=%s\n", s.osInstance.Name, s.osInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created agent: uuid=%s\n", s.agent.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, "Using provided user/pass for mysql-agent user. DSN: some-user:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n")
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: name=%s uuid=%s\n", s.mysqlInstance.Name, s.mysqlInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, "")
 
 	err = cmd.Wait()
@@ -564,7 +565,7 @@ func (s *MainTestSuite) TestInstall(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: name=%s uuid=%s\n", s.mysqlInstance.Name, s.mysqlInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -577,7 +578,7 @@ func (s *MainTestSuite) TestInstall(t *C) {
 			"log.conf",
 			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
 			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
-			"qan.conf",
+			fmt.Sprintf("qan-%s.conf", s.mysqlInstance.UUID),
 			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
 			"system-tree.json",
 		},
@@ -735,7 +736,7 @@ func (s *MainTestSuite) TestInstallsWithExistingMySQLInstanceAndInstanceIsUpdate
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: name=%s uuid=%s\n", s.mysqlInstance.Name, s.mysqlInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -748,7 +749,7 @@ func (s *MainTestSuite) TestInstallsWithExistingMySQLInstanceAndInstanceIsUpdate
 			"log.conf",
 			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
 			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
-			"qan.conf",
+			fmt.Sprintf("qan-%s.conf", s.mysqlInstance.UUID),
 			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
 			"system-tree.json",
 		},
@@ -782,7 +783,7 @@ func (s *MainTestSuite) TestInstallFailsOnUpdatingMySQLInstance(t *C) {
 	s.fakeApi.AppendSysconfigDefaultMysql()
 	s.fakeApi.AppendConfigsQanDefault()
 
-	s.fakeApi.Append(fmt.Sprintf("/instances/%s", s.mysqlInstance.UUID), func(w http.ResponseWriter, r *http.Request) {
+	s.fakeApi.Append(fmt.Sprintf("/v3-instances/%s", s.mysqlInstance.UUID), func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "PUT":
 			w.WriteHeader(http.StatusInternalServerError)
@@ -918,7 +919,7 @@ func (s *MainTestSuite) TestInstallWithFlagOldPasswordsTrue(t *C) {
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true&allowOldPasswords=true\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: name=%s uuid=%s\n", s.mysqlInstance.Name, s.mysqlInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -931,7 +932,7 @@ func (s *MainTestSuite) TestInstallWithFlagOldPasswordsTrue(t *C) {
 			"log.conf",
 			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
 			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
-			"qan.conf",
+			fmt.Sprintf("qan-%s.conf", s.mysqlInstance.UUID),
 			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
 			"system-tree.json",
 		},
@@ -989,7 +990,7 @@ func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) { // Register required a
 	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("MySQL root DSN: %s:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)\n", s.username))
 	t.Check(cmdTest.ReadLine(), Equals, "Created MySQL user: percona-agent:<password-hidden>@unix(/var/run/mysqld/mysqld.sock)/?parseTime=true\n")
 
-	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: dsn=%s name=%s uuid=%s\n", s.mysqlInstance.DSN, s.mysqlInstance.Name, s.mysqlInstance.UUID))
+	t.Check(cmdTest.ReadLine(), Equals, fmt.Sprintf("Created MySQL instance: name=%s uuid=%s\n", s.mysqlInstance.Name, s.mysqlInstance.UUID))
 	t.Check(cmdTest.ReadLine(), Equals, "") // No more data
 
 	err := cmd.Wait()
@@ -1002,7 +1003,7 @@ func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) { // Register required a
 			"log.conf",
 			fmt.Sprintf("mm-%s.conf", s.osInstance.UUID),
 			fmt.Sprintf("mm-%s.conf", s.mysqlInstance.UUID),
-			"qan.conf",
+			fmt.Sprintf("qan-%s.conf", s.mysqlInstance.UUID),
 			fmt.Sprintf("sysconfig-%s.conf", s.mysqlInstance.UUID),
 			"system-tree.json",
 		},
@@ -1177,7 +1178,7 @@ func (s *MainTestSuite) expectDefaultQanConfig(t *C) {
 	}
 
 	gotConfig := qan.Config{}
-	if err := pct.Basedir.ReadConfig("qan", &gotConfig); err != nil {
+	if err := pct.Basedir.ReadInstanceConfig("qan", s.mysqlInstance.UUID, &gotConfig); err != nil {
 		t.Errorf("Read qan config: %s", err)
 	}
 

@@ -33,12 +33,9 @@ import (
 	"time"
 
 	"github.com/jagregory/halgo"
+	"github.com/percona/percona-agent/agent/release"
 )
 
-// TODO: Once demo is over this variable along with code that uses it must be removed
-var LegacyV2 = true
-
-// TODO once LegacyV2 code is removed, agents entry link MUST also be removed, its not needed in v3
 var requiredEntryLinks = []string{"agents", "instances", "download"}
 
 var requiredAgentLinks = []string{"cmd", "log", "data", "self"}
@@ -231,6 +228,7 @@ func (a *API) Get(apiKey, url string) (int, []byte, error) {
 		return 0, nil, err
 	}
 	req.Header.Add("X-Percona-API-Key", apiKey)
+	req.Header.Add("X-Percona-Agent-Version", release.VERSION)
 
 	// todo: timeout
 	resp, err := a.client.Do(req)
@@ -310,6 +308,7 @@ func (a *API) send(method, apiKey, url string, data []byte) (*http.Response, []b
 	req, err := http.NewRequest(method, url, bytes.NewReader(data))
 	header := http.Header{}
 	header.Set("X-Percona-API-Key", apiKey)
+	header.Set("X-Percona-Agent-Version", release.VERSION)
 	req.Header = header
 
 	resp, err := a.client.Do(req)
