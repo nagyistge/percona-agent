@@ -25,9 +25,11 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/nu7hatch/gouuid"
 	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/agent/release"
@@ -35,7 +37,6 @@ import (
 	"github.com/percona/percona-agent/bin/percona-agent-installer/term"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/mysql"
-	"github.com/percona/percona-agent/pct"
 )
 
 var portNumberRe = regexp.MustCompile(`\.\d+$`)
@@ -52,14 +53,22 @@ type Installer struct {
 	api          *api.Api
 	instanceRepo *instance.Repo
 	agentConfig  *agent.Config
-	uuidFactory  pct.UUIDFactoryInterface
 	flags        Flags
 	// --
 	osInstance *proto.Instance
 	defaultDSN mysql.DSN
 }
 
-func NewInstaller(terminal *term.Terminal, basedir string, api *api.Api, instanceRepo *instance.Repo, agentConfig *agent.Config, uuidFactory pct.UUIDFactoryInterface, flags Flags) (*Installer, error) {
+func NewUUID() string {
+	u4, err := uuid.NewV4()
+	if err != nil {
+		fmt.Println("Could not create UUID4: %v", err)
+		return ""
+	}
+	return strings.Replace(u4.String(), "-", "", -1)
+}
+
+func NewInstaller(terminal *term.Terminal, basedir string, api *api.Api, instanceRepo *instance.Repo, agentConfig *agent.Config, flags Flags) (*Installer, error) {
 	if agentConfig.ApiHostname == "" {
 		agentConfig.ApiHostname = agent.DEFAULT_API_HOSTNAME
 	}
@@ -69,7 +78,7 @@ func NewInstaller(terminal *term.Terminal, basedir string, api *api.Api, instanc
 	hostname, _ := os.Hostname()
 
 	osIt := &proto.Instance{}
-	osIt.UUID = uuidFactory.New()
+	osIt.UUID = NewUUID()
 	osIt.Type = "OS"
 	osIt.Prefix = "os"
 	osIt.Name = hostname
@@ -89,7 +98,6 @@ func NewInstaller(terminal *term.Terminal, basedir string, api *api.Api, instanc
 		api:          api,
 		instanceRepo: instanceRepo,
 		agentConfig:  agentConfig,
-		uuidFactory:  uuidFactory,
 		flags:        flags,
 		// --
 		osInstance: osIt,
@@ -315,7 +323,7 @@ func (i *Installer) InstallerCreateMySQLInstance() (mi *proto.Instance, err erro
 	// Create MySQL instance, UUID will be set by API.
 	dsnString, _ := agentDSN.DSN()
 	mi = &proto.Instance{}
-	mi.UUID = i.uuidFactory.New()
+	mi.UUID = NewUUID()
 	mi.Type = "MySQL"
 	mi.Prefix = "mysql"
 	mi.Name = i.osInstance.Name
@@ -408,7 +416,7 @@ func (i *Installer) InstallerGetDefaultConfigs(oi, mi *proto.Instance) (configs 
 
 func (i *Installer) InstallerCreateAgentWithInitialServiceConfigs() (protoAgentInst *proto.Instance, links map[string]string, err error) {
 	protoAgentInst = &proto.Instance{}
-	protoAgentInst.UUID = i.uuidFactory.New()
+	protoAgentInst.UUID = NewUUID()
 	protoAgentInst.Type = "Percona Agent"
 	protoAgentInst.Prefix = "agent"
 	protoAgentInst.ParentUUID = i.osInstance.UUID

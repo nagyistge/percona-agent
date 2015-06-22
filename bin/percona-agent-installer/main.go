@@ -162,8 +162,7 @@ func main() {
 	logger := pct.NewLogger(logChan, "instance-repo")
 	instanceRepo := instance.NewRepo(logger, pct.Basedir.Dir("config"))
 	terminal := term.NewTerminal(os.Stdin, flagInteractive, flagDebug)
-	uuidFactory := pct.NewUUIDFactory()
-	agentInstaller, err := installer.NewInstaller(terminal, flagBasedir, api, instanceRepo, agentConfig, uuidFactory, flags)
+	agentInstaller, err := installer.NewInstaller(terminal, flagBasedir, api, instanceRepo, agentConfig, flags)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
