@@ -55,6 +55,7 @@ var UUID_RE = regexp.MustCompile("^[0-9A-Fa-f]{32}$")
 
 // Creates a new instance repository and returns a pointer to it
 func NewRepo(logger *pct.Logger, configDir string) *Repo {
+	gob.Register(map[string]interface{}{}) // required to clone tree
 	m := &Repo{
 		logger:    logger,
 		configDir: configDir,

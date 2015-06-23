@@ -96,13 +96,13 @@ func swapHTTPScheme(url, newScheme string) string {
 // If maxAgents != 0 this method will return HTTP Forbidden and X-Percona-Agent-Limit header in case of an agent
 // instance POST request
 func (f *FakeApi) AppendInstances(treeInst *proto.Instance, postInsts []*InstanceStatus) {
-	// POST /instances will be sent more than once, handlers for URL can only be registered once, hence the need of
+	// POST /v3-instances will be sent more than once, handlers for URL can only be registered once, hence the need of
 	// a queue
-	f.Append("/instances", func(w http.ResponseWriter, r *http.Request) {
+	f.Append("/v3-instances", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
 			if treeInst == nil {
-				panic(errors.New("Tried to GET /instances but handler had no data to serve"))
+				panic(errors.New("Tried to GET /v3-instances but handler had no data to serve"))
 			}
 			w.WriteHeader(http.StatusOK)
 			data, _ := json.Marshal(&treeInst)
@@ -119,7 +119,7 @@ func (f *FakeApi) AppendInstances(treeInst *proto.Instance, postInsts []*Instanc
 			}
 
 			if len(postInsts) == 0 {
-				panic(errors.New("Tried to POST /instances but handler doesn't have queued instances to return a valid Location"))
+				panic(errors.New("Tried to POST /v3-instances but handler doesn't have queued instances to return a valid Location"))
 			}
 
 			// Dequeue one instance
@@ -133,7 +133,7 @@ func (f *FakeApi) AppendInstances(treeInst *proto.Instance, postInsts []*Instanc
 				w.WriteHeader(instStatus.status)
 				return
 			}
-			w.Header().Set("Location", fmt.Sprintf("%s/instances/%s", f.URL(), newInst.UUID))
+			w.Header().Set("Location", fmt.Sprintf("%s/v3-instances/%s", f.URL(), newInst.UUID))
 			w.WriteHeader(instStatus.status)
 		}
 
@@ -141,19 +141,19 @@ func (f *FakeApi) AppendInstances(treeInst *proto.Instance, postInsts []*Instanc
 }
 
 func (f *FakeApi) AppendInstancesUUID(inst *proto.Instance) {
-	f.Append(fmt.Sprintf("/instances/%s", inst.UUID), func(w http.ResponseWriter, r *http.Request) {
+	f.Append(fmt.Sprintf("/v3-instances/%s", inst.UUID), func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
 			w.WriteHeader(http.StatusOK)
-			selfURI := fmt.Sprintf("%s/instances/%s", f.URL(), inst.UUID)
+			selfURI := fmt.Sprintf("%s/v3-instances/%s", f.URL(), inst.UUID)
 			// Build our HAL-ready instance (with self URI)
 			links := halgo.Links{}.Self(selfURI)
 			// Other links only for agent instances
 			if inst.Prefix == AGENT_INST_PREFIX {
 				ws_url := swapHTTPScheme(f.URL(), WS_SCHEME)
-				links = links.Link("cmd", "%s/instances/%s/cmd", ws_url, inst.UUID)
-				links = links.Link("data", "%s/instances/%s/data", ws_url, inst.UUID)
-				links = links.Link("log", "%s/instances/%s/log", ws_url, inst.UUID)
+				links = links.Link("cmd", "%s/agents/%s/cmd", ws_url, inst.UUID)
+				links = links.Link("data", "%s/agents/%s/data", ws_url, inst.UUID)
+				links = links.Link("log", "%s/agents/%s/log", ws_url, inst.UUID)
 			}
 			newInstHAL := api.InstanceHAL{Links: links, Instance: *inst}
 			data, _ := json.Marshal(newInstHAL)

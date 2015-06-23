@@ -33,12 +33,9 @@ import (
 	"time"
 
 	"github.com/jagregory/halgo"
+	"github.com/percona/percona-agent/agent/release"
 )
 
-// TODO: Once demo is over this variable along with code that uses it must be removed
-var LegacyV2 = true
-
-// TODO once LegacyV2 code is removed, agents entry link MUST also be removed, its not needed in v3
 var requiredEntryLinks = []string{"agents", "instances", "download"}
 
 var requiredAgentLinks = []string{"cmd", "log", "data", "self"}
@@ -46,6 +43,8 @@ var timeoutClientConfig = &TimeoutClientConfig{
 	ConnectTimeout:   10 * time.Second,
 	ReadWriteTimeout: 10 * time.Second,
 }
+
+const apiMimeType = "application/vnd.percona.v3+json"
 
 type APIConnector interface {
 	Connect(hostname, apiKey, agentUuid string) error
@@ -156,18 +155,8 @@ func (a *API) Connect(hostname, apiKey, agentUuid string) error {
 		return err
 	}
 
-	// Get agent links: <API hostname>/agents/
-	// TODO: probably we should use RFC 6570 for URI template and send that as part of entry links
-	var entry string
-
-	// TODO remove this when LegacyV2 is not used anymore
-	if LegacyV2 {
-		entry = "agents"
-	} else {
-		entry = "instances"
-	}
-
-	agentLinks, err := a.getLinks(apiKey, entryLinks[entry]+"/"+agentUuid)
+	// Get agent links: <API hostname>/<instances_endpoint>/:uuid
+	agentLinks, err := a.getLinks(apiKey, entryLinks["agents"]+"/"+agentUuid)
 	if err != nil {
 		return err
 	}
@@ -220,20 +209,6 @@ func (a *API) getLinks(apiKey, url string) (map[string]string, error) {
 		return nil, fmt.Errorf("OK response from %s but no content", url)
 	}
 
-	// Hack to be able to demo percona-agent
-	//////////////////////////////////////////////////////////////////////////////
-	if LegacyV2 {
-		type Links struct {
-			Links map[string]string
-		}
-		links := Links{}
-		if err := json.Unmarshal(data, &links); err != nil {
-			return nil, fmt.Errorf("GET %s error: json.Unmarshal: %s: %s", url, err, string(data))
-		}
-		return links.Links, nil
-	}
-	//////////////////////////////////////////////////////////////////////////////
-
 	halLinks := &halgo.Links{}
 	if err := json.Unmarshal(data, halLinks); err != nil {
 		return nil, fmt.Errorf("GET %s error: json.Unmarshal: %s: %s", url, err, string(data))
@@ -255,6 +230,8 @@ func (a *API) Get(apiKey, url string) (int, []byte, error) {
 		return 0, nil, err
 	}
 	req.Header.Add("X-Percona-API-Key", apiKey)
+	req.Header.Add("X-Percona-Agent-Version", release.VERSION)
+	req.Header.Add("Accept", apiMimeType)
 
 	// todo: timeout
 	resp, err := a.client.Do(req)
@@ -334,6 +311,8 @@ func (a *API) send(method, apiKey, url string, data []byte) (*http.Response, []b
 	req, err := http.NewRequest(method, url, bytes.NewReader(data))
 	header := http.Header{}
 	header.Set("X-Percona-API-Key", apiKey)
+	header.Set("X-Percona-Agent-Version", release.VERSION)
+	header.Set("Accept", apiMimeType)
 	req.Header = header
 
 	resp, err := a.client.Do(req)

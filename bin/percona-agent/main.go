@@ -32,6 +32,7 @@ import (
 
 	"github.com/percona/cloud-protocol/proto/v2"
 	"github.com/percona/percona-agent/agent"
+	"github.com/percona/percona-agent/agent/release"
 	"github.com/percona/percona-agent/client"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/instance"
@@ -88,12 +89,12 @@ func init() {
 }
 
 func run() error {
-	version := fmt.Sprintf("percona-agent %s%s rev %s", agent.VERSION, agent.REL, agent.REVISION)
+	agentVersion := fmt.Sprintf("percona-agent %s%s rev %s", release.VERSION, release.REL, release.REVISION)
 	if flagVersion {
-		fmt.Println(version)
+		fmt.Println(agentVersion)
 		return nil
 	}
-	golog.Printf("Running %s pid %d\n", version, os.Getpid())
+	golog.Printf("Running %s pid %d\n", agentVersion, os.Getpid())
 
 	if err := pct.Basedir.Init(flagBasedir); err != nil {
 		return err
@@ -135,7 +136,7 @@ func run() error {
 	// Set for all connections to API.  X-Percona-API-Key is set automatically
 	// using the pct.APIConnector.
 	headers := map[string]string{
-		"X-Percona-Agent-Version": agent.VERSION,
+		"X-Percona-Agent-Version": release.VERSION,
 	}
 
 	if flagPing {

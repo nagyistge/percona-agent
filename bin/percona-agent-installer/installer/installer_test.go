@@ -52,6 +52,7 @@ func (i *InstallerTestSuite) TestIsSupportedMySQLVersion(t *C) {
 	logger := pct.NewLogger(logChan, "instance-repo")
 	instanceRepo := instance.NewRepo(logger, pct.Basedir.Dir("config"))
 	terminal := term.NewTerminal(os.Stdin, false, true)
+
 	inst, err := installer.NewInstaller(terminal, "", api, instanceRepo, agentConfig, flags)
 	t.Assert(err, IsNil)
 	conn := mock.NewNullMySQL()
@@ -70,4 +71,13 @@ func (i *InstallerTestSuite) TestIsSupportedMySQLVersion(t *C) {
 	t.Assert(got, Equals, true)
 
 	conn.Close()
+}
+
+func (i *InstallerTestSuite) TestNewUUID(t *C) {
+	re := `^[a-fA-F0-9]{32}$`
+	uuid1 := installer.NewUUID()
+	t.Assert(uuid1, Matches, re)
+	uuid2 := installer.NewUUID()
+	t.Assert(uuid1, Matches, re)
+	t.Assert(uuid1, Not(Equals), uuid2)
 }

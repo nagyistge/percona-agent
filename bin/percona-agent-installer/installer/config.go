@@ -30,7 +30,7 @@ func (i *Installer) writeConfigs(configs []proto.AgentConfig) error {
 	for _, config := range configs {
 		name := config.Service
 		switch name {
-		case "agent", "log", "data", "qan":
+		case "agent", "log", "data":
 		default:
 			name += "-" + config.UUID
 		}
