@@ -258,7 +258,6 @@ func WaitStatus(timeout int, r pct.StatusReporter, proc string, state string) bo
 			}
 		}
 	}
-	return false
 }
 
 func WaitStatusPrefix(timeout int, r pct.StatusReporter, proc string, state string) bool {
@@ -278,7 +277,6 @@ func WaitStatusPrefix(timeout int, r pct.StatusReporter, proc string, state stri
 			}
 		}
 	}
-	return false
 }
 
 func WaitCollection(cChan chan *mm.Collection, n int) []*mm.Collection {

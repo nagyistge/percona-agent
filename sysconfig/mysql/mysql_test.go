@@ -98,11 +98,11 @@ func (s *TestSuite) TestStartCollectStop(t *C) {
 	c := got[0]
 
 	if c.Ts != now.Unix() {
-		t.Error("Report.Ts set to %s; got %s", now.Unix(), c.Ts)
+		t.Errorf("Report.Ts set to %d; got %d", now.Unix(), c.Ts)
 	}
 
 	if len(c.Settings) < 100 {
-		t.Fatal("Collect > 100 vars; got %+v", c.Settings)
+		t.Fatalf("Collect > 100 vars; got %+v", c.Settings)
 	}
 
 	haveWaitTimeout := false

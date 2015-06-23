@@ -132,7 +132,7 @@ func (s *TestSuite) TestStartCollectStop(t *C) {
 	// The monitor should only collect and send metrics on ticks; we haven't ticked yet.
 	got := test.WaitCollection(s.collectionChan, 0)
 	if len(got) > 0 {
-		t.Fatal("No tick, no collection; got %+v", got)
+		t.Fatalf("No tick, no collection; got %+v", got)
 	}
 
 	// Now tick.  This should make monitor collect.
@@ -145,14 +145,14 @@ func (s *TestSuite) TestStartCollectStop(t *C) {
 	c := got[0]
 
 	if c.Ts != now.Unix() {
-		t.Error("Collection.Ts set to %s; got %s", now.Unix(), c.Ts)
+		t.Errorf("Collection.Ts set to %d; got %d", now.Unix(), c.Ts)
 	}
 
 	// Only two metrics should be reported, from the config ^: threads_connected,
 	// threads_running.  Their values (from MySQL) are variable, but we know they
 	// should be > 1 because we're a thread connected and running.
 	if len(c.Metrics) != 2 {
-		t.Fatal("Collected only configured metrics; got %+v", c.Metrics)
+		t.Fatalf("Collected only configured metrics; got %+v", c.Metrics)
 	}
 	if c.Metrics[0].Name != "mysql/threads_connected" {
 		t.Error("First metric is ", "mysql/threads_connected; got", c.Metrics[0].Name)
@@ -243,7 +243,7 @@ func (s *TestSuite) TestCollectInnoDBStats(t *C) {
 	 * +-------------+-----------+-------+----------------+
 	 */
 	if len(c.Metrics) != 4 {
-		t.Fatal("Collect 4 InnoDB metrics; got %+v", c.Metrics)
+		t.Fatalf("Collect 4 InnoDB metrics; got %+v", c.Metrics)
 	}
 	expect := []mm.Metric{
 		{Name: "mysql/innodb/dml/dml_reads", Type: "counter", Number: 0},
@@ -436,7 +436,7 @@ func (s *TestSuite) TestHandleMySQLRestarts(t *C) {
 	 * +-------------+-----------+-------+----------------+
 	 */
 	if len(c.Metrics) != 4 {
-		t.Fatal("Collect 4 InnoDB metrics; got %+v", c.Metrics)
+		t.Fatalf("Collect 4 InnoDB metrics; got %+v", c.Metrics)
 	}
 	expect := []mm.Metric{
 		{Name: "mysql/innodb/dml/dml_reads", Type: "counter", Number: 0},

@@ -152,7 +152,7 @@ func (s *DiskvSpoolerTestSuite) TestSpoolData(t *C) {
 	t.Check(protoData.ContentEncoding, Equals, "")
 	if protoData.Created.IsZero() || protoData.Created.Before(now) {
 		// The proto.Data can't be created before the data it contains.
-		t.Error("proto.Data.Created after data, got %s", protoData.Created)
+		t.Errorf("proto.Data.Created after data, got %s", protoData.Created)
 	}
 
 	// The LogoEntry we get back should be identical the one we spooled.

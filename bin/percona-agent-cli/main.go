@@ -22,13 +22,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/percona/cloud-protocol/proto/v2"
 	"io/ioutil"
 	golog "log"
 	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/percona/cloud-protocol/proto/v2"
 )
 
 func init() {
@@ -175,7 +176,7 @@ func (cli *Cli) agent(args []string) {
 	needLinks := []string{"self", "cmd", "log", "data"}
 	for _, needLink := range needLinks {
 		if _, ok := links.Links[needLink]; !ok {
-			fmt.Println("ERROR: API did not return a %s link.  Reconnect and try again.\n", needLink)
+			fmt.Printf("ERROR: API did not return a %s link.  Reconnect and try again.\n\n", needLink)
 			return
 		}
 	}

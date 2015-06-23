@@ -1191,7 +1191,7 @@ func (s *MainTestSuite) expectDefaultSysconfigMysqlConfig(t *C) {
 	gotConfig := sysconfigMysql.Config{}
 	service := "sysconfig"
 	if err := pct.Basedir.ReadInstanceConfig(service, instanceUUID, &gotConfig); err != nil {
-		t.Errorf("Read sysconfig-%s config: %s", service, instanceUUID, err)
+		t.Errorf("Read sysconfig-%s config: %s", instanceUUID, err)
 	}
 
 	t.Check(gotConfig, DeepEquals, expectedConfig)

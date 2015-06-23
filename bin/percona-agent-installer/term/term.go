@@ -97,7 +97,7 @@ func (t *Terminal) PromptBool(question string, defaultAnswer string) (bool, erro
 	for {
 		answer, err := t.PromptString(question, defaultAnswer)
 		if t.debug {
-			log.Printf("again=%t\n", answer)
+			log.Printf("again=%s\n", answer)
 			log.Printf("err=%s\n", err)
 		}
 		if err != nil {

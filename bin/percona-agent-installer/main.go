@@ -111,12 +111,12 @@ func main() {
 	}
 
 	if flagMySQLSocket != "" && flagMySQLHost != "" {
-		log.Println("Options -mysql-socket and -mysql-host are exclusive\n")
+		log.Print("Options -mysql-socket and -mysql-host are exclusive\n\n")
 		os.Exit(1)
 	}
 
 	if flagMySQLSocket != "" && flagMySQLPort != "" {
-		log.Println("Options -mysql-socket and -mysql-port are exclusive\n")
+		log.Print("Options -mysql-socket and -mysql-port are exclusive\n\n")
 		os.Exit(1)
 	}
 

@@ -515,7 +515,7 @@ func (s *ManagerTestSuite) TestStartCollectStop(t *C) {
 	// The monitor should only collect and send metrics on ticks; we haven't ticked yet.
 	got := test.WaitCollection(s.collectionChan, 0)
 	if len(got) > 0 {
-		t.Fatal("No tick, no collection; got %+v", got)
+		t.Fatalf("No tick, no collection; got %+v", got)
 	}
 
 	// Now tick.  This should make monitor collect.

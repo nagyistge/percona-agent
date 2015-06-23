@@ -91,7 +91,7 @@ func (m *Manager) Start() error {
 	defer m.mux.Unlock()
 
 	if m.running {
-		return pct.ServiceIsRunningError{"qan"}
+		return pct.ServiceIsRunningError{Service: "qan"}
 	}
 
 	// Manager ("qan" in status) runs independent from qan-parser.
