@@ -72,7 +72,7 @@ func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collect
 	defer m.logger.Debug("Start:return")
 
 	if m.running {
-		return pct.ServiceIsRunningError{m.name}
+		return pct.ServiceIsRunningError{Service: m.name}
 	}
 
 	m.tickChan = tickChan

@@ -198,7 +198,7 @@ func (c *WebsocketClient) dialTimeout(config *websocket.Config, timeout uint) (w
 		err = websocket.ErrBadScheme
 	}
 	if err != nil {
-		return nil, &websocket.DialError{config, err}
+		return nil, &websocket.DialError{Config: config, Err: err}
 	}
 
 	ws, err = websocket.NewClient(config, conn)

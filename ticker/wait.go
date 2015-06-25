@@ -18,9 +18,10 @@
 package ticker
 
 import (
-	"github.com/percona/percona-agent/pct"
 	"log"
 	"time"
+
+	"github.com/percona/percona-agent/pct"
 )
 
 type WaitTicker struct {

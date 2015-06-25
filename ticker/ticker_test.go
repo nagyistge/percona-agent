@@ -264,11 +264,11 @@ func (s *WaitTickerTestSuite) TestWaitTicker(t *check.C) {
 
 	d := ticks[1].Sub(ticks[0])
 	if d.Seconds() >= 1.0 {
-		t.Error("Ticks when receiver ready; got %f", d.Seconds())
+		t.Errorf("Ticks when receiver ready; got %f", d.Seconds())
 	}
 
 	d = ticks[2].Sub(ticks[1])
 	if d.Seconds() < 1.9 || d.Seconds() > 2.5 {
-		t.Error("Waits interval seconds; got %f", d.Seconds())
+		t.Errorf("Waits interval seconds; got %f", d.Seconds())
 	}
 }

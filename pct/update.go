@@ -83,7 +83,7 @@ func NewUpdater(logger *Logger, api APIConnector, pubKey []byte, currentBin, cur
 }
 
 func (u *Updater) Check() (string, string, error) {
-	url := fmt.Sprintf("%s/latest", u.api.EntryLink("download"), u.major, u.minor)
+	url := fmt.Sprintf("%s/latest", u.api.EntryLink("download"))
 	v, err := u.download(url)
 	if err != nil {
 		return "", "", err
@@ -158,7 +158,7 @@ func (u *Updater) download(url string) ([]byte, error) {
 	code, data, err := u.api.Get(u.api.ApiKey(), url)
 	u.logger.Debug(fmt.Sprintf("download:code:%d", code))
 	if err != nil {
-		return nil, fmt.Errorf("GET %s error: %s", err)
+		return nil, fmt.Errorf("GET %s error: %s", url, err)
 	}
 	if code != 200 {
 		return nil, fmt.Errorf("GET %s returned %d, expected 200", url, code)

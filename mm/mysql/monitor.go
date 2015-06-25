@@ -84,7 +84,7 @@ func (m *Monitor) Start(tickChan chan time.Time, collectionChan chan *mm.Collect
 	defer m.logger.Debug("Start:return")
 
 	if m.running {
-		return pct.ServiceIsRunningError{m.name}
+		return pct.ServiceIsRunningError{Service: m.name}
 	}
 
 	m.tickChan = tickChan
@@ -387,7 +387,7 @@ func (m *Monitor) GetShowStatusMetrics(conn *sql.DB, c *mm.Collection) error {
 			continue
 		}
 
-		c.Metrics = append(c.Metrics, mm.Metric{"mysql/" + statName, metricType, metricValue, ""})
+		c.Metrics = append(c.Metrics, mm.Metric{Name: "mysql/" + statName, Type: metricType, Number: metricValue, String: ""})
 	}
 	err = rows.Err()
 	if err != nil {
@@ -426,7 +426,7 @@ func (m *Monitor) GetInnoDBMetrics(conn *sql.DB, c *mm.Collection) error {
 		metricName := "mysql/innodb/" + strings.ToLower(statSubsystem) + "/" + strings.ToLower(statName)
 		metricValue, err := strconv.ParseFloat(statCount, 64)
 		if err != nil {
-			m.logger.Warn(fmt.Sprintf("Cannot convert '%s' value '%s' to float: %s", metricName, metricValue, err))
+			m.logger.Warn(fmt.Sprintf("Cannot convert '%s' value '%f' to float: %s", metricName, metricValue, err))
 			metricValue = 0.0
 		}
 		var metricType string
@@ -435,7 +435,7 @@ func (m *Monitor) GetInnoDBMetrics(conn *sql.DB, c *mm.Collection) error {
 		} else {
 			metricType = "counter"
 		}
-		c.Metrics = append(c.Metrics, mm.Metric{metricName, metricType, metricValue, ""})
+		c.Metrics = append(c.Metrics, mm.Metric{Name: metricName, Type: metricType, Number: metricValue, String: ""})
 	}
 	err = rows.Err()
 	if err != nil {
@@ -538,7 +538,7 @@ func (m *Monitor) getIndexUserStats(conn *sql.DB, c *mm.Collection, ignoreDb str
 
 		metricName := "mysql/db." + tableSchema + "/t." + tableName + "/idx." + indexName + "/rows_read"
 		metricValue := float64(rowsRead)
-		c.Metrics = append(c.Metrics, mm.Metric{metricName, "counter", metricValue, ""})
+		c.Metrics = append(c.Metrics, mm.Metric{Name: metricName, Type: "counter", Number: metricValue, String: ""})
 	}
 	err = rows.Err()
 	if err != nil {

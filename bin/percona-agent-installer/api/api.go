@@ -91,8 +91,8 @@ func (a *Api) CreateInstance(it *proto.Instance) (newIt *proto.Instance, links m
 		default:
 			// This should never happen, but we must handle it
 			err = fmt.Errorf("Maximum number of %s %s instances exceeded.\n"+
-				"Go to https://cloud.percona.com/ and remove unused %s instances or contact Percona to increase limit.",
-				it.Type, resp.Header.Get("X-Percona-Limit-Err"))
+				"Go to https://cloud.percona.com/ and remove unused instances or contact Percona to increase limit.",
+				resp.Header.Get("X-Percona-Limit-Err"), it.Type)
 		}
 		return nil, nil, err
 	} else {
