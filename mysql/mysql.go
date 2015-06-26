@@ -24,11 +24,13 @@ import (
 	"sync"
 	"time"
 
+	"regexp"
+
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/hashicorp/go-version"
 	"github.com/percona/cloud-protocol/proto/v2"
+	"github.com/percona/cloud-protocol/proto/v2/qan"
 	"github.com/percona/percona-agent/pct"
-	"regexp"
 )
 
 type Query struct {
@@ -43,7 +45,7 @@ type Connector interface {
 	Connect(tries uint) error
 	Close()
 	Explain(q string, db string) (explain *proto.ExplainResult, err error)
-	Set([]Query) error
+	Set([]qan.ConfigQuery) error
 	GetGlobalVarString(varName string) string
 	GetGlobalVarNumber(varName string) float64
 	Uptime() (uptime int64, err error)
@@ -163,7 +165,7 @@ func (c *Connection) Explain(query string, db string) (explain *proto.ExplainRes
 	return explain, nil
 }
 
-func (c *Connection) Set(queries []Query) error {
+func (c *Connection) Set(queries []qan.ConfigQuery) error {
 	if c.conn == nil {
 		return errors.New("Not connected")
 	}

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/percona/cloud-protocol/proto/v2"
+	protoV2Qan "github.com/percona/cloud-protocol/proto/v2/qan"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
@@ -59,7 +60,7 @@ func NewRealAnalyzerFactory(
 }
 
 func (f *RealAnalyzerFactory) Make(
-	config qan.Config,
+	config protoV2Qan.QanConfig,
 	name string,
 	mysqlConn mysql.Connector,
 	restartChan <-chan bool,

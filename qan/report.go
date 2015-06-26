@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/percona/cloud-protocol/proto/v2"
+	"github.com/percona/cloud-protocol/proto/v2/qan"
 	"github.com/percona/go-mysql/event"
 	"github.com/percona/percona-agent/pct"
 )
@@ -48,7 +49,7 @@ func (a ByQueryTime) Less(i, j int) bool {
 	return a[i].Metrics.TimeMetrics["Query_time"].Sum > a[j].Metrics.TimeMetrics["Query_time"].Sum
 }
 
-func MakeReport(config Config, interval *Interval, result *Result) *proto.QANReport {
+func MakeReport(config qan.QanConfig, interval *Interval, result *Result) *proto.QANReport {
 	// Sort classes by Query_time_sum, descending.
 	sort.Sort(ByQueryTime(result.Class))
 

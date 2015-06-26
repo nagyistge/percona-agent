@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/percona/cloud-protocol/proto/v2/qan"
 	"github.com/percona/percona-agent/data"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
@@ -52,20 +53,20 @@ type Analyzer interface {
 	Stop() error
 	Status() map[string]string
 	String() string
-	Config() Config
-	SetConfig(Config)
+	Config() qan.QanConfig
+	SetConfig(qan.QanConfig)
 }
 
 // An AnalyzerFactory makes an Analyzer, real or mock.
 type AnalyzerFactory interface {
-	Make(config Config, name string, mysqlConn mysql.Connector, restartChan <-chan bool, tickChan chan time.Time) Analyzer
+	Make(config qan.QanConfig, name string, mysqlConn mysql.Connector, restartChan <-chan bool, tickChan chan time.Time) Analyzer
 }
 
 // --------------------------------------------------------------------------
 
 type RealAnalyzer struct {
 	logger      *pct.Logger
-	config      Config
+	config      qan.QanConfig
 	iter        IntervalIter
 	mysqlConn   mysql.Connector
 	restartChan <-chan bool
@@ -83,7 +84,7 @@ type RealAnalyzer struct {
 	mux                 *sync.RWMutex
 }
 
-func NewRealAnalyzer(logger *pct.Logger, config Config, iter IntervalIter, mysqlConn mysql.Connector, restartChan <-chan bool, worker Worker, clock ticker.Manager, spool data.Spooler) *RealAnalyzer {
+func NewRealAnalyzer(logger *pct.Logger, config qan.QanConfig, iter IntervalIter, mysqlConn mysql.Connector, restartChan <-chan bool, worker Worker, clock ticker.Manager, spool data.Spooler) *RealAnalyzer {
 	name := logger.Service()
 	a := &RealAnalyzer{
 		logger:      logger,
@@ -148,11 +149,11 @@ func (a *RealAnalyzer) Status() map[string]string {
 	return a.status.Merge(a.worker.Status())
 }
 
-func (a *RealAnalyzer) Config() Config {
+func (a *RealAnalyzer) Config() qan.QanConfig {
 	return a.config
 }
 
-func (a *RealAnalyzer) SetConfig(config Config) {
+func (a *RealAnalyzer) SetConfig(config qan.QanConfig) {
 	a.config = config
 }
 
@@ -172,8 +173,8 @@ func (a *RealAnalyzer) TakeOverPerconaServerRotation() error {
 		a.config.MaxSlowLogSize = maxSlowLogSize
 
 		// Using Set makes testing easier
-		disablePSrotation := []mysql.Query{
-			mysql.Query{Set: "SET GLOBAL max_slowlog_size = 0"},
+		disablePSrotation := []qan.ConfigQuery{
+			qan.ConfigQuery{Set: "SET GLOBAL max_slowlog_size = 0"},
 		}
 
 		if err := a.mysqlConn.Set(disablePSrotation); err != nil {
@@ -183,7 +184,7 @@ func (a *RealAnalyzer) TakeOverPerconaServerRotation() error {
 	return nil
 }
 
-func (a *RealAnalyzer) configureMySQL(config []mysql.Query, tryLimit int) {
+func (a *RealAnalyzer) configureMySQL(config []qan.ConfigQuery, tryLimit int) {
 	a.logger.Debug("configureMySQL:call")
 	defer func() {
 		if err := recover(); err != nil {
@@ -339,7 +340,7 @@ func (a *RealAnalyzer) run() {
 			tickChan := a.iter.TickChan()
 			t := a.clock.ETA(tickChan)
 			if t > 60 {
-				began := ticker.Began(a.config.Interval, uint(time.Now().UTC().Unix()))
+				began := ticker.Began(uint(a.config.Interval), uint(time.Now().UTC().Unix()))
 				a.logger.Info("First interval began at", began)
 				tickChan <- began
 			} else {

@@ -23,6 +23,8 @@ import (
 	"time"
 
 	"github.com/percona/cloud-protocol/proto/v2"
+	//protoV2Qan "github.com/percona/cloud-protocol/proto/v2/qan"
+	protoV2Qan "github.com/percona/cloud-protocol/proto/v2/qan"
 	"github.com/percona/go-mysql/event"
 	"github.com/percona/go-mysql/log"
 	parser "github.com/percona/go-mysql/log/slow"
@@ -33,7 +35,7 @@ import (
 )
 
 type WorkerFactory interface {
-	Make(name string, config qan.Config, mysqlConn mysql.Connector) *Worker
+	Make(name string, config protoV2Qan.QanConfig, mysqlConn mysql.Connector) *Worker
 }
 
 type RealWorkerFactory struct {
@@ -47,7 +49,7 @@ func NewRealWorkerFactory(logChan chan *proto.LogEntry) *RealWorkerFactory {
 	return f
 }
 
-func (f *RealWorkerFactory) Make(name string, config qan.Config, mysqlConn mysql.Connector) *Worker {
+func (f *RealWorkerFactory) Make(name string, config protoV2Qan.QanConfig, mysqlConn mysql.Connector) *Worker {
 	return NewWorker(pct.NewLogger(f.logChan, name), config, mysqlConn)
 }
 
@@ -68,7 +70,7 @@ func (j *Job) String() string {
 
 type Worker struct {
 	logger    *pct.Logger
-	config    qan.Config
+	config    protoV2Qan.QanConfig
 	mysqlConn mysql.Connector
 	// --
 	ZeroRunTime bool // testing
@@ -88,7 +90,7 @@ type Worker struct {
 	utcOffset time.Duration
 }
 
-func NewWorker(logger *pct.Logger, config qan.Config, mysqlConn mysql.Connector) *Worker {
+func NewWorker(logger *pct.Logger, config protoV2Qan.QanConfig, mysqlConn mysql.Connector) *Worker {
 	// By default replace numbers in words with ?
 	query.ReplaceNumbersInWords = true
 
