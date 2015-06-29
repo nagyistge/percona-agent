@@ -14,7 +14,7 @@
         },
         {
             "ImportPath": "github.com/percona/cloud-protocol",
-            "Rev": "7239efae4b54c102ad80e91186ea367c8b349a47"
+            "Rev": "39a123b49f57bfaa2b4e849057578ec8fe2f92d1"
         },
         {
             "ImportPath": "github.com/percona/go-mysql/event",
