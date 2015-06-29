@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/percona/cloud-protocol/proto/v2"
+	protoV2Qan "github.com/percona/cloud-protocol/proto/v2/qan"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/qan"
 	"github.com/percona/percona-agent/qan/slowlog"
@@ -52,7 +53,7 @@ func (s *ReportTestSuite) TestResult001(t *C) {
 		StartOffset: 0,
 		EndOffset:   1000,
 	}
-	config := qan.Config{
+	config := protoV2Qan.QanConfig{
 		UUID:        "1",
 		ReportLimit: 10,
 	}
@@ -89,7 +90,7 @@ func (s *ReportTestSuite) TestResult001(t *C) {
 }
 
 func (s *ReportTestSuite) TestResult014(t *C) {
-	config := qan.Config{
+	config := protoV2Qan.QanConfig{
 		UUID:           "1",
 		CollectFrom:    "slowlog",
 		Interval:       60,

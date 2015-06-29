@@ -310,11 +310,11 @@ func (s *WorkerTestSuite) TestRotateAndRemoveSlowLog(t *C) {
 		RemoveOldSlowLogs: true, // <-- HERE too
 		ExampleQueries:    false,
 		WorkerRunTime:     600,
-		Start: []mysql.Query{
-			mysql.Query{Set: "-- start"},
+		Start: []protoV2Qan.ConfigQuery{
+			protoV2Qan.ConfigQuery{Set: "-- start"},
 		},
-		Stop: []mysql.Query{
-			mysql.Query{Set: "-- stop"},
+		Stop: []protoV2Qan.ConfigQuery{
+			protoV2Qan.ConfigQuery{Set: "-- stop"},
 		},
 		CollectFrom: "slowlog",
 	}
