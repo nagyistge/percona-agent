@@ -272,13 +272,13 @@ func (s *AnalyzerTestSuite) TestMySQLRestart(t *C) {
 		t.Error("Timeout waiting for <-s.nullmysql.SetChan")
 	}
 	test.WaitStatus(1, a, "qan-analyzer", "Idle")
-	expectedQueries := []mysql.Query{
-		mysql.Query{
+	expectedQueries := []protoV2Qan.ConfigQuery{
+		protoV2Qan.ConfigQuery{
 			Set:    "SET GLOBAL max_slowlog_size = 0",
 			Verify: "",
 			Expect: "",
 		},
-		mysql.Query{
+		protoV2Qan.ConfigQuery{
 			Set:    "-- start",
 			Verify: "",
 			Expect: "",
@@ -479,8 +479,8 @@ func (s *AnalyzerTestSuite) TestSlowLogTakeOver(t *C) {
 	s.nullmysql.SetGlobalVarNumber("max_slowlog_size", 5000)
 	// Trigger slowlog rotation, takeover should succeed since max_slowlog_size >= 4096
 	a.TakeOverPerconaServerRotation()
-	expectedQueries := []mysql.Query{
-		mysql.Query{
+	expectedQueries := []protoV2Qan.ConfigQuery{
+		protoV2Qan.ConfigQuery{
 			Set:    "SET GLOBAL max_slowlog_size = 0",
 			Verify: "",
 			Expect: "",
