@@ -30,6 +30,7 @@ import (
 
 	. "github.com/go-test/test"
 	"github.com/percona/cloud-protocol/proto/v2"
+	protoV2Qan "github.com/percona/cloud-protocol/proto/v2/qan"
 	"github.com/percona/go-mysql/event"
 	"github.com/percona/go-mysql/log"
 	gomysql "github.com/percona/go-mysql/test"
@@ -65,7 +66,7 @@ type WorkerTestSuite struct {
 	logger        *pct.Logger
 	now           time.Time
 	mysqlInstance proto.Instance
-	config        qan.Config
+	config        protoV2Qan.QanConfig
 	mysqlConn     mysql.Connector
 	worker        *slowlog.Worker
 	nullmysql     *mock.NullMySQL
@@ -80,16 +81,16 @@ func (s *WorkerTestSuite) SetUpSuite(t *C) {
 	s.logger = pct.NewLogger(s.logChan, "qan-worker")
 	s.now = time.Now()
 	s.mysqlInstance = proto.Instance{UUID: "1", Name: "mysql1"}
-	s.config = qan.Config{
+	s.config = protoV2Qan.QanConfig{
 		UUID: s.mysqlInstance.UUID,
-		Start: []mysql.Query{
-			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-			mysql.Query{Set: "SET GLOBAL long_query_time=0.123"},
-			mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+		Start: []protoV2Qan.ConfigQuery{
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=OFF"},
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL long_query_time=0.123"},
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=ON"},
 		},
-		Stop: []mysql.Query{
-			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
+		Stop: []protoV2Qan.ConfigQuery{
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=OFF"},
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL long_query_time=10"},
 		},
 		Interval:          60,         // 1 min
 		MaxSlowLogSize:    1073741824, // 1 GiB
@@ -105,7 +106,7 @@ func (s *WorkerTestSuite) SetUpTest(t *C) {
 	s.nullmysql.Reset()
 }
 
-func (s *WorkerTestSuite) RunWorker(config qan.Config, mysqlConn mysql.Connector, i *qan.Interval) (*qan.Result, error) {
+func (s *WorkerTestSuite) RunWorker(config protoV2Qan.QanConfig, mysqlConn mysql.Connector, i *qan.Interval) (*qan.Result, error) {
 	w := slowlog.NewWorker(s.logger, config, mysqlConn)
 	w.ZeroRunTime = true
 	w.Setup(i)
@@ -302,7 +303,7 @@ func (s *WorkerTestSuite) TestRotateAndRemoveSlowLog(t *C) {
 	 */
 
 	// See TestStartService() for description of these startup tasks.
-	config := qan.Config{
+	config := protoV2Qan.QanConfig{
 		UUID:              s.mysqlInstance.UUID,
 		Interval:          300,
 		MaxSlowLogSize:    1000, // <-- HERE
@@ -414,18 +415,18 @@ func (s *WorkerTestSuite) TestRotateSlowLog(t *C) {
 	}
 
 	// See TestStartService() for description of these startup tasks.
-	config := qan.Config{
+	config := protoV2Qan.QanConfig{
 		UUID:              s.mysqlInstance.UUID,
 		Interval:          300,
 		MaxSlowLogSize:    1000,
 		RemoveOldSlowLogs: false, // <-- HERE
 		ExampleQueries:    false,
 		WorkerRunTime:     600,
-		Start: []mysql.Query{
-			mysql.Query{Set: "-- start"},
+		Start: []protoV2Qan.ConfigQuery{
+			protoV2Qan.ConfigQuery{Set: "-- start"},
 		},
-		Stop: []mysql.Query{
-			mysql.Query{Set: "-- stop"},
+		Stop: []protoV2Qan.ConfigQuery{
+			protoV2Qan.ConfigQuery{Set: "-- stop"},
 		},
 		CollectFrom: "slowlog",
 	}
@@ -514,14 +515,14 @@ func (s *WorkerTestSuite) TestRotateSlowLog(t *C) {
 }
 
 func (s *WorkerTestSuite) TestStop(t *C) {
-	config := qan.Config{
+	config := protoV2Qan.QanConfig{
 		UUID:              s.mysqlInstance.UUID,
 		Interval:          300,
 		MaxSlowLogSize:    1024 * 1024 * 1024,
 		RemoveOldSlowLogs: true,
 		WorkerRunTime:     60,
-		Start:             []mysql.Query{},
-		Stop:              []mysql.Query{},
+		Start:             []protoV2Qan.ConfigQuery{},
+		Stop:              []protoV2Qan.ConfigQuery{},
 		CollectFrom:       "slowlog",
 	}
 	w := slowlog.NewWorker(s.logger, config, s.nullmysql)

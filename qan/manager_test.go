@@ -27,8 +27,8 @@ import (
 
 	. "github.com/go-test/test"
 	"github.com/percona/cloud-protocol/proto/v2"
+	protoV2Qan "github.com/percona/cloud-protocol/proto/v2/qan"
 	"github.com/percona/percona-agent/instance"
-	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
 	"github.com/percona/percona-agent/qan"
 	"github.com/percona/percona-agent/test"
@@ -153,25 +153,25 @@ func (s *ManagerTestSuite) TestStartWithConfig(t *C) {
 	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
 	m := qan.NewManager(s.logger, s.clock, s.im, s.mrmsMonitor, mockConnFactory, f)
 	t.Assert(m, NotNil)
-	configs := make([]qan.Config, 0)
+	configs := make([]protoV2Qan.QanConfig, 0)
 	for i, analyzerType := range []string{"slowlog", "perfschema"} {
 		// We have two analyzerTypes and two MySQL instances in fixture, lets re-use the index
 		// as we only need one of each analizer type and they need to be different instances.
 		mysqlInstance := mysqlInstances[i]
 		// Write a realistic qan.conf config to disk.
-		config := qan.Config{
+		config := protoV2Qan.QanConfig{
 			UUID:          mysqlInstance.UUID,
 			CollectFrom:   analyzerType,
 			Interval:      300,
 			WorkerRunTime: 600,
-			Start: []mysql.Query{
-				mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-				mysql.Query{Set: "SET GLOBAL long_query_time=0.456"},
-				mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+			Start: []protoV2Qan.ConfigQuery{
+				protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=OFF"},
+				protoV2Qan.ConfigQuery{Set: "SET GLOBAL long_query_time=0.456"},
+				protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=ON"},
 			},
-			Stop: []mysql.Query{
-				mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-				mysql.Query{Set: "SET GLOBAL long_query_time=10"},
+			Stop: []protoV2Qan.ConfigQuery{
+				protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=OFF"},
+				protoV2Qan.ConfigQuery{Set: "SET GLOBAL long_query_time=10"},
 			},
 		}
 		err := pct.Basedir.WriteInstanceConfig("qan", mysqlInstance.UUID, &config)
@@ -202,7 +202,7 @@ func (s *ManagerTestSuite) TestStartWithConfig(t *C) {
 	} else {
 		t.Check(f.Args, HasLen, 2)
 
-		argConfigs := []qan.Config{f.Args[0].Config, f.Args[1].Config}
+		argConfigs := []protoV2Qan.QanConfig{f.Args[0].Config, f.Args[1].Config}
 		t.Check(argConfigs, DeepEquals, configs)
 		t.Check(f.Args[0].Name, Equals, a1.String())
 		t.Check(f.Args[1].Name, Equals, a2.String())
@@ -246,22 +246,22 @@ func (s *ManagerTestSuite) TestStart2RemoteQAN(t *C) {
 	mockConnFactory := &mock.ConnectionFactory{Conn: s.nullmysql}
 	m := qan.NewManager(s.logger, s.clock, s.im, s.mrmsMonitor, mockConnFactory, f)
 	t.Assert(m, NotNil)
-	configs := make([]qan.Config, 0)
+	configs := make([]protoV2Qan.QanConfig, 0)
 	for _, mysqlInstance := range mysqlInstances {
 		// Write a realistic qan.conf config to disk.
-		config := qan.Config{
+		config := protoV2Qan.QanConfig{
 			UUID:          mysqlInstance.UUID,
 			CollectFrom:   "perfschema",
 			Interval:      300,
 			WorkerRunTime: 600,
-			Start: []mysql.Query{
-				mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-				mysql.Query{Set: "SET GLOBAL long_query_time=0.456"},
-				mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+			Start: []protoV2Qan.ConfigQuery{
+				protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=OFF"},
+				protoV2Qan.ConfigQuery{Set: "SET GLOBAL long_query_time=0.456"},
+				protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=ON"},
 			},
-			Stop: []mysql.Query{
-				mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-				mysql.Query{Set: "SET GLOBAL long_query_time=10"},
+			Stop: []protoV2Qan.ConfigQuery{
+				protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=OFF"},
+				protoV2Qan.ConfigQuery{Set: "SET GLOBAL long_query_time=10"},
 			},
 		}
 		err := pct.Basedir.WriteInstanceConfig("qan", mysqlInstance.UUID, &config)
@@ -292,7 +292,7 @@ func (s *ManagerTestSuite) TestStart2RemoteQAN(t *C) {
 	} else {
 		t.Check(f.Args, HasLen, 2)
 
-		argConfigs := []qan.Config{f.Args[0].Config, f.Args[1].Config}
+		argConfigs := []protoV2Qan.QanConfig{f.Args[0].Config, f.Args[1].Config}
 		t.Check(argConfigs, DeepEquals, configs)
 		t.Check(f.Args[0].Name, Equals, a1.String())
 		t.Check(f.Args[1].Name, Equals, a2.String())
@@ -336,19 +336,19 @@ func (s *ManagerTestSuite) TestGetConfig(t *C) {
 	t.Assert(len(mysqlInstances), Equals, 2)
 	mysqlUUID := mysqlInstances[0].UUID
 	// Write a realistic qan.conf config to disk.
-	config := qan.Config{
+	config := protoV2Qan.QanConfig{
 		UUID:          mysqlUUID,
 		CollectFrom:   "slowlog",
 		Interval:      300,
 		WorkerRunTime: 600,
-		Start: []mysql.Query{
-			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-			mysql.Query{Set: "SET GLOBAL long_query_time=0.456"},
-			mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+		Start: []protoV2Qan.ConfigQuery{
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=OFF"},
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL long_query_time=0.456"},
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=ON"},
 		},
-		Stop: []mysql.Query{
-			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
+		Stop: []protoV2Qan.ConfigQuery{
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=OFF"},
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL long_query_time=10"},
 		},
 	}
 	err := pct.Basedir.WriteInstanceConfig("qan", mysqlUUID, &config)
@@ -390,16 +390,16 @@ func (s *ManagerTestSuite) TestValidateConfig(t *C) {
 	t.Assert(len(mysqlInstances), Equals, 2)
 	mysqlUUID := mysqlInstances[0].UUID
 
-	config := qan.Config{
+	config := protoV2Qan.QanConfig{
 		UUID: mysqlUUID,
-		Start: []mysql.Query{
-			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-			mysql.Query{Set: "SET GLOBAL long_query_time=0.123"},
-			mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+		Start: []protoV2Qan.ConfigQuery{
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=OFF"},
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL long_query_time=0.123"},
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=ON"},
 		},
-		Stop: []mysql.Query{
-			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
+		Stop: []protoV2Qan.ConfigQuery{
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=OFF"},
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL long_query_time=10"},
 		},
 		Interval:          300,        // 5 min
 		MaxSlowLogSize:    1073741824, // 1 GiB
@@ -412,13 +412,13 @@ func (s *ManagerTestSuite) TestValidateConfig(t *C) {
 	t.Check(err, IsNil)
 
 	// CollectFrom is empty in old versions; it should default to "slowlog".
-	config = qan.Config{
+	config = protoV2Qan.QanConfig{
 		UUID: mysqlUUID,
-		Start: []mysql.Query{
-			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+		Start: []protoV2Qan.ConfigQuery{
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=OFF"},
 		},
-		Stop: []mysql.Query{
-			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
+		Stop: []protoV2Qan.ConfigQuery{
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=OFF"},
 		},
 		Interval:          0,
 		MaxSlowLogSize:    1073741824, // 1 GiB
@@ -452,16 +452,16 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	mysqlUUID := mysqlInstances[0].UUID
 
 	// Create the qan config.
-	config := &qan.Config{
+	config := &protoV2Qan.QanConfig{
 		UUID: mysqlUUID,
-		Start: []mysql.Query{
-			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-			mysql.Query{Set: "SET GLOBAL long_query_time=0.123"},
-			mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+		Start: []protoV2Qan.ConfigQuery{
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=OFF"},
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL long_query_time=0.123"},
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=ON"},
 		},
-		Stop: []mysql.Query{
-			mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-			mysql.Query{Set: "SET GLOBAL long_query_time=10"},
+		Stop: []protoV2Qan.ConfigQuery{
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=OFF"},
+			protoV2Qan.ConfigQuery{Set: "SET GLOBAL long_query_time=10"},
 		},
 		Interval:          300,        // 5 min
 		MaxSlowLogSize:    1073741824, // 1 GiB
@@ -488,7 +488,7 @@ func (s *ManagerTestSuite) TestStartService(t *C) {
 	// The manager writes the qan config to disk.
 	data, err := ioutil.ReadFile(pct.Basedir.InstanceConfigFile("qan", mysqlUUID))
 	t.Check(err, IsNil)
-	gotConfig := &qan.Config{}
+	gotConfig := &protoV2Qan.QanConfig{}
 	err = json.Unmarshal(data, gotConfig)
 	t.Check(err, IsNil)
 	if same, diff := IsDeeply(gotConfig, config); !same {

@@ -20,8 +20,10 @@ package mock
 import (
 	"time"
 
+	protov2Qan "github.com/percona/cloud-protocol/proto/v2/qan"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/qan"
+	//protov2Qan "github.com/percona/cloud-protocol/proto/v2/qan"
 )
 
 type QanAnalyzer struct {
@@ -29,7 +31,7 @@ type QanAnalyzer struct {
 	StopChan  chan bool
 	ErrorChan chan error
 	CrashChan chan bool
-	config    qan.Config
+	config    protov2Qan.QanConfig
 	name      string
 }
 
@@ -39,7 +41,7 @@ func NewQanAnalyzer(name string) *QanAnalyzer {
 		StopChan:  make(chan bool, 1),
 		ErrorChan: make(chan error, 1),
 		CrashChan: make(chan bool, 1),
-		config:    qan.Config{},
+		config:    protov2Qan.QanConfig{},
 		name:      name,
 	}
 	return a
@@ -65,11 +67,11 @@ func (a *QanAnalyzer) String() string {
 	return a.name
 }
 
-func (a *QanAnalyzer) Config() qan.Config {
+func (a *QanAnalyzer) Config() protov2Qan.QanConfig {
 	return a.config
 }
 
-func (a *QanAnalyzer) SetConfig(config qan.Config) {
+func (a *QanAnalyzer) SetConfig(config protov2Qan.QanConfig) {
 	a.config = config
 }
 
@@ -94,7 +96,7 @@ func (a *QanAnalyzer) crashOrError() error {
 /////////////////////////////////////////////////////////////////////////////
 
 type AnalyzerArgs struct {
-	Config      qan.Config
+	Config      protov2Qan.QanConfig
 	Name        string
 	MysqlConn   mysql.Connector
 	RestartChan <-chan bool
@@ -116,7 +118,7 @@ func NewQanAnalyzerFactory(a ...qan.Analyzer) *QanAnalyzerFactory {
 }
 
 func (f *QanAnalyzerFactory) Make(
-	config qan.Config,
+	config protov2Qan.QanConfig,
 	name string,
 	mysqlConn mysql.Connector,
 	restartChan <-chan bool,

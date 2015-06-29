@@ -30,6 +30,7 @@ import (
 
 	. "github.com/go-test/test"
 	"github.com/percona/cloud-protocol/proto/v2"
+	protoV2Qan "github.com/percona/cloud-protocol/proto/v2/qan"
 	"github.com/percona/go-mysql/event"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
@@ -288,18 +289,18 @@ func (s *WorkerTestSuite) TestRealWorker(t *C) {
 	f := perfschema.NewRealWorkerFactory(s.logChan)
 	w := f.Make("qan-worker", mysqlConn)
 
-	start := []mysql.Query{
-		mysql.Query{Verify: "performance_schema", Expect: "1"},
-		mysql.Query{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'YES' WHERE NAME = 'statements_digest'"},
-		mysql.Query{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'YES', TIMED = 'YES' WHERE NAME LIKE 'statement/sql/%'"},
-		mysql.Query{Set: "TRUNCATE performance_schema.events_statements_summary_by_digest"},
+	start := []protoV2Qan.ConfigQuery{
+		protoV2Qan.ConfigQuery{Verify: "performance_schema", Expect: "1"},
+		protoV2Qan.ConfigQuery{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'YES' WHERE NAME = 'statements_digest'"},
+		protoV2Qan.ConfigQuery{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'YES', TIMED = 'YES' WHERE NAME LIKE 'statement/sql/%'"},
+		protoV2Qan.ConfigQuery{Set: "TRUNCATE performance_schema.events_statements_summary_by_digest"},
 	}
 	if err := mysqlConn.Set(start); err != nil {
 		t.Fatal(err)
 	}
-	stop := []mysql.Query{
-		mysql.Query{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'NO' WHERE NAME = 'statements_digest'"},
-		mysql.Query{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'NO', TIMED = 'NO' WHERE NAME LIKE 'statement/sql/%'"},
+	stop := []protoV2Qan.ConfigQuery{
+		protoV2Qan.ConfigQuery{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'NO' WHERE NAME = 'statements_digest'"},
+		protoV2Qan.ConfigQuery{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'NO', TIMED = 'NO' WHERE NAME LIKE 'statement/sql/%'"},
 	}
 	defer func() {
 		if err := mysqlConn.Set(stop); err != nil {
@@ -380,18 +381,18 @@ func (s *WorkerTestSuite) TestIterOutOfSeq(t *C) {
 	f := perfschema.NewRealWorkerFactory(s.logChan)
 	w := f.Make("qan-worker", mysqlConn)
 
-	start := []mysql.Query{
-		mysql.Query{Verify: "performance_schema", Expect: "1"},
-		mysql.Query{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'YES' WHERE NAME = 'statements_digest'"},
-		mysql.Query{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'YES', TIMED = 'YES' WHERE NAME LIKE 'statement/sql/%'"},
-		mysql.Query{Set: "TRUNCATE performance_schema.events_statements_summary_by_digest"},
+	start := []protoV2Qan.ConfigQuery{
+		protoV2Qan.ConfigQuery{Verify: "performance_schema", Expect: "1"},
+		protoV2Qan.ConfigQuery{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'YES' WHERE NAME = 'statements_digest'"},
+		protoV2Qan.ConfigQuery{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'YES', TIMED = 'YES' WHERE NAME LIKE 'statement/sql/%'"},
+		protoV2Qan.ConfigQuery{Set: "TRUNCATE performance_schema.events_statements_summary_by_digest"},
 	}
 	if err := mysqlConn.Set(start); err != nil {
 		t.Fatal(err)
 	}
-	stop := []mysql.Query{
-		mysql.Query{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'NO' WHERE NAME = 'statements_digest'"},
-		mysql.Query{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'NO', TIMED = 'NO' WHERE NAME LIKE 'statement/sql/%'"},
+	stop := []protoV2Qan.ConfigQuery{
+		protoV2Qan.ConfigQuery{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'NO' WHERE NAME = 'statements_digest'"},
+		protoV2Qan.ConfigQuery{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'NO', TIMED = 'NO' WHERE NAME LIKE 'statement/sql/%'"},
 	}
 	defer func() {
 		if err := mysqlConn.Set(stop); err != nil {
@@ -456,18 +457,18 @@ func (s *WorkerTestSuite) TestIterClockReset(t *C) {
 	f := perfschema.NewRealWorkerFactory(s.logChan)
 	w := f.Make("qan-worker", mysqlConn)
 
-	start := []mysql.Query{
-		mysql.Query{Verify: "performance_schema", Expect: "1"},
-		mysql.Query{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'YES' WHERE NAME = 'statements_digest'"},
-		mysql.Query{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'YES', TIMED = 'YES' WHERE NAME LIKE 'statement/sql/%'"},
-		mysql.Query{Set: "TRUNCATE performance_schema.events_statements_summary_by_digest"},
+	start := []protoV2Qan.ConfigQuery{
+		protoV2Qan.ConfigQuery{Verify: "performance_schema", Expect: "1"},
+		protoV2Qan.ConfigQuery{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'YES' WHERE NAME = 'statements_digest'"},
+		protoV2Qan.ConfigQuery{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'YES', TIMED = 'YES' WHERE NAME LIKE 'statement/sql/%'"},
+		protoV2Qan.ConfigQuery{Set: "TRUNCATE performance_schema.events_statements_summary_by_digest"},
 	}
 	if err := mysqlConn.Set(start); err != nil {
 		t.Fatal(err)
 	}
-	stop := []mysql.Query{
-		mysql.Query{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'NO' WHERE NAME = 'statements_digest'"},
-		mysql.Query{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'NO', TIMED = 'NO' WHERE NAME LIKE 'statement/sql/%'"},
+	stop := []protoV2Qan.ConfigQuery{
+		protoV2Qan.ConfigQuery{Set: "UPDATE performance_schema.setup_consumers SET ENABLED = 'NO' WHERE NAME = 'statements_digest'"},
+		protoV2Qan.ConfigQuery{Set: "UPDATE performance_schema.setup_instruments SET ENABLED = 'NO', TIMED = 'NO' WHERE NAME LIKE 'statement/sql/%'"},
 	}
 	defer func() {
 		if err := mysqlConn.Set(stop); err != nil {

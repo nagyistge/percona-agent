@@ -31,6 +31,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/percona/cloud-protocol/proto/v2"
+	"github.com/percona/cloud-protocol/proto/v2/qan"
 	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/agent/release"
 	"github.com/percona/percona-agent/data"
@@ -38,7 +39,6 @@ import (
 	mmMysql "github.com/percona/percona-agent/mm/mysql"
 	mmSystem "github.com/percona/percona-agent/mm/system"
 	"github.com/percona/percona-agent/pct"
-	"github.com/percona/percona-agent/qan"
 	sysconfigMysql "github.com/percona/percona-agent/sysconfig/mysql"
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/cmdtest"
@@ -1166,7 +1166,7 @@ func (s *MainTestSuite) expectDefaultMmOSConfig(t *C) {
 }
 
 func (s *MainTestSuite) expectDefaultQanConfig(t *C) {
-	expectedConfig := qan.Config{
+	expectedConfig := qan.QanConfig{
 		UUID:              s.mysqlInstance.UUID,
 		CollectFrom:       "",
 		Interval:          60,
@@ -1177,7 +1177,7 @@ func (s *MainTestSuite) expectDefaultQanConfig(t *C) {
 		ReportLimit:       0,
 	}
 
-	gotConfig := qan.Config{}
+	gotConfig := qan.QanConfig{}
 	if err := pct.Basedir.ReadInstanceConfig("qan", s.mysqlInstance.UUID, &gotConfig); err != nil {
 		t.Errorf("Read qan config: %s", err)
 	}

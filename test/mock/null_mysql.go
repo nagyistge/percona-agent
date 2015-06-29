@@ -21,11 +21,11 @@ import (
 	"database/sql"
 
 	"github.com/percona/cloud-protocol/proto/v2"
-	"github.com/percona/percona-agent/mysql"
+	"github.com/percona/cloud-protocol/proto/v2/qan"
 )
 
 type NullMySQL struct {
-	set               []mysql.Query
+	set               []qan.ConfigQuery
 	explain           map[string]*proto.ExplainResult
 	uptime            int64
 	uptimeCount       uint
@@ -39,7 +39,7 @@ type NullMySQL struct {
 
 func NewNullMySQL() *NullMySQL {
 	n := &NullMySQL{
-		set:        []mysql.Query{},
+		set:        []qan.ConfigQuery{},
 		explain:    make(map[string]*proto.ExplainResult),
 		stringVars: make(map[string]string),
 		numberVars: make(map[string]float64),
@@ -72,7 +72,7 @@ func (n *NullMySQL) SetExplain(query string, explain *proto.ExplainResult) {
 	n.explain[query] = explain
 }
 
-func (n *NullMySQL) Set(queries []mysql.Query) error {
+func (n *NullMySQL) Set(queries []qan.ConfigQuery) error {
 	for _, q := range queries {
 		n.set = append(n.set, q)
 	}
@@ -83,7 +83,7 @@ func (n *NullMySQL) Set(queries []mysql.Query) error {
 	return nil
 }
 
-func (n *NullMySQL) GetSet() []mysql.Query {
+func (n *NullMySQL) GetSet() []qan.ConfigQuery {
 	return n.set
 }
 

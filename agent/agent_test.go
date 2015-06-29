@@ -28,11 +28,11 @@ import (
 
 	. "github.com/go-test/test"
 	"github.com/percona/cloud-protocol/proto/v2"
+	"github.com/percona/cloud-protocol/proto/v2/qan"
 	"github.com/percona/percona-agent/agent"
 	"github.com/percona/percona-agent/agent/release"
 	"github.com/percona/percona-agent/pct"
 	pctCmd "github.com/percona/percona-agent/pct/cmd"
-	"github.com/percona/percona-agent/qan"
 	"github.com/percona/percona-agent/test"
 	"github.com/percona/percona-agent/test/mock"
 	. "gopkg.in/check.v1"
@@ -274,7 +274,7 @@ func (s *AgentTestSuite) TestStatusAfterConnFail(t *C) {
 
 func (s *AgentTestSuite) TestStartStopService(t *C) {
 	// To start a service, first we make a config for the service:
-	qanConfig := &qan.Config{
+	qanConfig := &qan.QanConfig{
 		Interval:          60,         // seconds
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
@@ -380,7 +380,7 @@ func (s *AgentTestSuite) TestStartStopService(t *C) {
 func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
 	// This test is like TestStartService but simulates a slow starting service.
 
-	qanConfig := &qan.Config{
+	qanConfig := &qan.QanConfig{
 		Interval:          60,         // seconds
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,

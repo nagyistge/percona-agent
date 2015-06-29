@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/percona/cloud-protocol/proto/v2"
+	"github.com/percona/cloud-protocol/proto/v2/qan"
 	"github.com/percona/percona-agent/mysql"
 )
 
@@ -59,7 +60,7 @@ func (s *SlowMySQL) Explain(query string, db string) (explain *proto.ExplainResu
 	return s.realConnection.Explain(query, db)
 }
 
-func (s *SlowMySQL) Set(queries []mysql.Query) error {
+func (s *SlowMySQL) Set(queries []qan.ConfigQuery) error {
 	return s.realConnection.Set(queries)
 }
 

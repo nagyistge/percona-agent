@@ -26,10 +26,10 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jagregory/halgo"
 	"github.com/percona/cloud-protocol/proto/v2"
+	"github.com/percona/cloud-protocol/proto/v2/qan"
 	mmMySQL "github.com/percona/percona-agent/mm/mysql"
 	mmOS "github.com/percona/percona-agent/mm/system"
 	"github.com/percona/percona-agent/pct"
-	"github.com/percona/percona-agent/qan"
 	sysconfigMySQL "github.com/percona/percona-agent/sysconfig/mysql"
 )
 
@@ -264,7 +264,7 @@ func (a *Api) GetQanConfig(mi *proto.Instance) (*proto.AgentConfig, error) {
 	if code != http.StatusOK {
 		return nil, fmt.Errorf("Failed to get default Query Analytics config (%s, status %d)", url, code)
 	}
-	config := &qan.Config{}
+	config := &qan.QanConfig{}
 	if err := json.Unmarshal(data, config); err != nil {
 		return nil, err
 	}

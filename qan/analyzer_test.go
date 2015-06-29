@@ -25,6 +25,7 @@ import (
 
 	. "github.com/go-test/test"
 	"github.com/percona/cloud-protocol/proto/v2"
+	protoV2Qan "github.com/percona/cloud-protocol/proto/v2/qan"
 	"github.com/percona/percona-agent/instance"
 	"github.com/percona/percona-agent/mysql"
 	"github.com/percona/percona-agent/pct"
@@ -51,7 +52,7 @@ type AnalyzerTestSuite struct {
 	configDir    string
 	im           *instance.Repo
 	mysqlUUID    string
-	config       qan.Config
+	config       protoV2Qan.QanConfig
 }
 
 var _ = Suite(&AnalyzerTestSuite{})
@@ -101,17 +102,17 @@ func (s *AnalyzerTestSuite) SetUpTest(t *C) {
 	}
 	s.worker = mock.NewQanWorker()
 	// Config needs to be recreated on every test since it can be modified by the test analyzers
-	s.config = qan.Config{
+	s.config = protoV2Qan.QanConfig{
 		UUID:           s.mysqlUUID,
 		CollectFrom:    "slowlog",
 		Interval:       60,
 		WorkerRunTime:  60,
 		MaxSlowLogSize: MAX_SLOW_LOG_SIZE,
-		Start: []mysql.Query{
-			mysql.Query{Set: "-- start"},
+		Start: []protoV2Qan.ConfigQuery{
+			protoV2Qan.ConfigQuery{Set: "-- start"},
 		},
-		Stop: []mysql.Query{
-			mysql.Query{Set: "-- stop"},
+		Stop: []protoV2Qan.ConfigQuery{
+			protoV2Qan.ConfigQuery{Set: "-- stop"},
 		},
 	}
 }
@@ -304,14 +305,14 @@ func (s *AnalyzerTestSuite) TestRealSlowLogWorker(t *C) {
 	defer test.DrainRecvData(s.dataChan)
 
 	config := s.config
-	config.Start = []mysql.Query{
-		mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-		mysql.Query{Set: "SET GLOBAL long_query_time=0"},
-		mysql.Query{Set: "SET GLOBAL slow_query_log=ON"},
+	config.Start = []protoV2Qan.ConfigQuery{
+		protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=OFF"},
+		protoV2Qan.ConfigQuery{Set: "SET GLOBAL long_query_time=0"},
+		protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=ON"},
 	}
-	config.Stop = []mysql.Query{
-		mysql.Query{Set: "SET GLOBAL slow_query_log=OFF"},
-		mysql.Query{Set: "SET GLOBAL long_query_time=10"},
+	config.Stop = []protoV2Qan.ConfigQuery{
+		protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=OFF"},
+		protoV2Qan.ConfigQuery{Set: "SET GLOBAL long_query_time=10"},
 	}
 
 	worker := slowlog.NewWorker(pct.NewLogger(s.logChan, "qan-worker"), config, realmysql)
