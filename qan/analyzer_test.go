@@ -52,7 +52,7 @@ type AnalyzerTestSuite struct {
 	configDir    string
 	im           *instance.Repo
 	mysqlUUID    string
-	config       protoV2Qan.QanConfig
+	config       protoV2Qan.Config
 }
 
 var _ = Suite(&AnalyzerTestSuite{})
@@ -102,7 +102,7 @@ func (s *AnalyzerTestSuite) SetUpTest(t *C) {
 	}
 	s.worker = mock.NewQanWorker()
 	// Config needs to be recreated on every test since it can be modified by the test analyzers
-	s.config = protoV2Qan.QanConfig{
+	s.config = protoV2Qan.Config{
 		UUID:           s.mysqlUUID,
 		CollectFrom:    "slowlog",
 		Interval:       60,

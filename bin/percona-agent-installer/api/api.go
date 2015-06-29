@@ -251,7 +251,7 @@ func (a *Api) GetSysconfigMySQLConfig(mi *proto.Instance) (*proto.AgentConfig, e
 }
 
 // Gets the default QAN config from API
-func (a *Api) GetQanConfig(mi *proto.Instance) (*proto.AgentConfig, error) {
+func (a *Api) GetConfig(mi *proto.Instance) (*proto.AgentConfig, error) {
 	url := a.apiConnector.URL("/configs/qan/default")
 	code, data, err := a.apiConnector.Get(a.apiConnector.ApiKey(), url)
 	if a.debug {
@@ -264,7 +264,7 @@ func (a *Api) GetQanConfig(mi *proto.Instance) (*proto.AgentConfig, error) {
 	if code != http.StatusOK {
 		return nil, fmt.Errorf("Failed to get default Query Analytics config (%s, status %d)", url, code)
 	}
-	config := &qan.QanConfig{}
+	config := &qan.Config{}
 	if err := json.Unmarshal(data, config); err != nil {
 		return nil, err
 	}

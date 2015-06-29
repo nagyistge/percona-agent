@@ -66,7 +66,7 @@ type WorkerTestSuite struct {
 	logger        *pct.Logger
 	now           time.Time
 	mysqlInstance proto.Instance
-	config        protoV2Qan.QanConfig
+	config        protoV2Qan.Config
 	mysqlConn     mysql.Connector
 	worker        *slowlog.Worker
 	nullmysql     *mock.NullMySQL
@@ -81,7 +81,7 @@ func (s *WorkerTestSuite) SetUpSuite(t *C) {
 	s.logger = pct.NewLogger(s.logChan, "qan-worker")
 	s.now = time.Now()
 	s.mysqlInstance = proto.Instance{UUID: "1", Name: "mysql1"}
-	s.config = protoV2Qan.QanConfig{
+	s.config = protoV2Qan.Config{
 		UUID: s.mysqlInstance.UUID,
 		Start: []protoV2Qan.ConfigQuery{
 			protoV2Qan.ConfigQuery{Set: "SET GLOBAL slow_query_log=OFF"},
@@ -106,7 +106,7 @@ func (s *WorkerTestSuite) SetUpTest(t *C) {
 	s.nullmysql.Reset()
 }
 
-func (s *WorkerTestSuite) RunWorker(config protoV2Qan.QanConfig, mysqlConn mysql.Connector, i *qan.Interval) (*qan.Result, error) {
+func (s *WorkerTestSuite) RunWorker(config protoV2Qan.Config, mysqlConn mysql.Connector, i *qan.Interval) (*qan.Result, error) {
 	w := slowlog.NewWorker(s.logger, config, mysqlConn)
 	w.ZeroRunTime = true
 	w.Setup(i)
@@ -303,7 +303,7 @@ func (s *WorkerTestSuite) TestRotateAndRemoveSlowLog(t *C) {
 	 */
 
 	// See TestStartService() for description of these startup tasks.
-	config := protoV2Qan.QanConfig{
+	config := protoV2Qan.Config{
 		UUID:              s.mysqlInstance.UUID,
 		Interval:          300,
 		MaxSlowLogSize:    1000, // <-- HERE
@@ -415,7 +415,7 @@ func (s *WorkerTestSuite) TestRotateSlowLog(t *C) {
 	}
 
 	// See TestStartService() for description of these startup tasks.
-	config := protoV2Qan.QanConfig{
+	config := protoV2Qan.Config{
 		UUID:              s.mysqlInstance.UUID,
 		Interval:          300,
 		MaxSlowLogSize:    1000,
@@ -515,7 +515,7 @@ func (s *WorkerTestSuite) TestRotateSlowLog(t *C) {
 }
 
 func (s *WorkerTestSuite) TestStop(t *C) {
-	config := protoV2Qan.QanConfig{
+	config := protoV2Qan.Config{
 		UUID:              s.mysqlInstance.UUID,
 		Interval:          300,
 		MaxSlowLogSize:    1024 * 1024 * 1024,

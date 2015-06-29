@@ -395,7 +395,7 @@ func (i *Installer) InstallerGetDefaultConfigs(oi, mi *proto.Instance) (configs 
 					if i.flags.Bool["debug"] {
 						log.Printf("MySQL is local")
 					}
-					config, err := i.api.GetQanConfig(mi)
+					config, err := i.api.GetConfig(mi)
 					if err != nil {
 						fmt.Println(err)
 						fmt.Println("WARNING: cannot start Query Analytics")

@@ -277,7 +277,7 @@ func (s *MainTestSuite) TestDefaultInstall(t *C) {
 	s.expectDefaultLogConfig(t)
 	s.expectDefaultMmMysqlConfig(t)
 	s.expectDefaultMmOSConfig(t)
-	s.expectDefaultQanConfig(t)
+	s.expectDefaultConfig(t)
 	s.expectDefaultSysconfigMysqlConfig(t)
 	// Should create percona-agent user with grants on *.* and performance_schema.*.
 	s.expectMysqlUserExists(t)
@@ -350,7 +350,7 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithJustCredentialDetailsFlags(
 	s.expectDefaultLogConfig(t)
 	s.expectDefaultMmMysqlConfig(t)
 	s.expectDefaultMmOSConfig(t)
-	s.expectDefaultQanConfig(t)
+	s.expectDefaultConfig(t)
 	s.expectDefaultSysconfigMysqlConfig(t)
 	// Should create percona-agent user with grants on *.* and performance_schema.*.
 	s.expectMysqlUserExists(t)
@@ -452,7 +452,7 @@ func (s *MainTestSuite) TestNonInteractiveInstallWithFlagCreateMySQLUserFalse(t 
 	s.expectDefaultLogConfig(t)
 	s.expectDefaultMmMysqlConfig(t)
 	s.expectDefaultMmOSConfig(t)
-	s.expectDefaultQanConfig(t)
+	s.expectDefaultConfig(t)
 	s.expectDefaultSysconfigMysqlConfig(t)
 	// Should not create percona-agent user
 	s.expectMysqlUserNotExists(t)
@@ -590,7 +590,7 @@ func (s *MainTestSuite) TestInstall(t *C) {
 	s.expectDefaultLogConfig(t)
 	s.expectDefaultMmMysqlConfig(t)
 	s.expectDefaultMmOSConfig(t)
-	s.expectDefaultQanConfig(t)
+	s.expectDefaultConfig(t)
 	s.expectDefaultSysconfigMysqlConfig(t)
 	// Should create percona-agent user with grants on *.* and performance_schema.*.
 	s.expectMysqlUserExists(t)
@@ -761,7 +761,7 @@ func (s *MainTestSuite) TestInstallsWithExistingMySQLInstanceAndInstanceIsUpdate
 	s.expectDefaultLogConfig(t)
 	s.expectDefaultMmMysqlConfig(t)
 	s.expectDefaultMmOSConfig(t)
-	s.expectDefaultQanConfig(t)
+	s.expectDefaultConfig(t)
 	s.expectDefaultSysconfigMysqlConfig(t)
 	// Should create percona-agent user with grants on *.* and performance_schema.*.
 	s.expectMysqlUserExists(t)
@@ -943,7 +943,7 @@ func (s *MainTestSuite) TestInstallWithFlagOldPasswordsTrue(t *C) {
 	s.expectDefaultLogConfig(t)
 	s.expectDefaultMmMysqlConfig(t)
 	s.expectDefaultMmOSConfig(t)
-	s.expectDefaultQanConfig(t)
+	s.expectDefaultConfig(t)
 	s.expectDefaultSysconfigMysqlConfig(t)
 	// Should not create percona-agent user
 	s.expectMysqlUserExists(t)
@@ -1014,7 +1014,7 @@ func (s *MainTestSuite) TestInstallWithFlagApiKey(t *C) { // Register required a
 	s.expectDefaultLogConfig(t)
 	s.expectDefaultMmMysqlConfig(t)
 	s.expectDefaultMmOSConfig(t)
-	s.expectDefaultQanConfig(t)
+	s.expectDefaultConfig(t)
 	s.expectDefaultSysconfigMysqlConfig(t)
 	// Should not create percona-agent user
 	s.expectMysqlUserExists(t)
@@ -1165,8 +1165,8 @@ func (s *MainTestSuite) expectDefaultMmOSConfig(t *C) {
 	t.Check(gotConfig, DeepEquals, expectedConfig)
 }
 
-func (s *MainTestSuite) expectDefaultQanConfig(t *C) {
-	expectedConfig := qan.QanConfig{
+func (s *MainTestSuite) expectDefaultConfig(t *C) {
+	expectedConfig := qan.Config{
 		UUID:              s.mysqlInstance.UUID,
 		CollectFrom:       "",
 		Interval:          60,
@@ -1177,7 +1177,7 @@ func (s *MainTestSuite) expectDefaultQanConfig(t *C) {
 		ReportLimit:       0,
 	}
 
-	gotConfig := qan.QanConfig{}
+	gotConfig := qan.Config{}
 	if err := pct.Basedir.ReadInstanceConfig("qan", s.mysqlInstance.UUID, &gotConfig); err != nil {
 		t.Errorf("Read qan config: %s", err)
 	}

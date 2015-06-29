@@ -31,7 +31,7 @@ type QanAnalyzer struct {
 	StopChan  chan bool
 	ErrorChan chan error
 	CrashChan chan bool
-	config    protov2Qan.QanConfig
+	config    protov2Qan.Config
 	name      string
 }
 
@@ -41,7 +41,7 @@ func NewQanAnalyzer(name string) *QanAnalyzer {
 		StopChan:  make(chan bool, 1),
 		ErrorChan: make(chan error, 1),
 		CrashChan: make(chan bool, 1),
-		config:    protov2Qan.QanConfig{},
+		config:    protov2Qan.Config{},
 		name:      name,
 	}
 	return a
@@ -67,11 +67,11 @@ func (a *QanAnalyzer) String() string {
 	return a.name
 }
 
-func (a *QanAnalyzer) Config() protov2Qan.QanConfig {
+func (a *QanAnalyzer) Config() protov2Qan.Config {
 	return a.config
 }
 
-func (a *QanAnalyzer) SetConfig(config protov2Qan.QanConfig) {
+func (a *QanAnalyzer) SetConfig(config protov2Qan.Config) {
 	a.config = config
 }
 
@@ -96,7 +96,7 @@ func (a *QanAnalyzer) crashOrError() error {
 /////////////////////////////////////////////////////////////////////////////
 
 type AnalyzerArgs struct {
-	Config      protov2Qan.QanConfig
+	Config      protov2Qan.Config
 	Name        string
 	MysqlConn   mysql.Connector
 	RestartChan <-chan bool
@@ -118,7 +118,7 @@ func NewQanAnalyzerFactory(a ...qan.Analyzer) *QanAnalyzerFactory {
 }
 
 func (f *QanAnalyzerFactory) Make(
-	config protov2Qan.QanConfig,
+	config protov2Qan.Config,
 	name string,
 	mysqlConn mysql.Connector,
 	restartChan <-chan bool,

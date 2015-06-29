@@ -110,7 +110,7 @@ func (m *Manager) Start() error {
 	}
 
 	for it.Next() {
-		config := new(qan.QanConfig)
+		config := new(qan.Config)
 		if err := it.Read(config); err != nil {
 			m.logger.Error(fmt.Sprintf("Cannot read Query Analytics config for %s: %v", config.UUID, err))
 			continue
@@ -176,7 +176,7 @@ func (m *Manager) Handle(cmd *proto.Cmd) *proto.Reply {
 		if !m.running {
 			return cmd.Reply(nil, pct.ServiceIsNotRunningError{Service: "qan"})
 		}
-		config := qan.QanConfig{}
+		config := qan.Config{}
 		if err := json.Unmarshal(cmd.Data, &config); err != nil {
 			return cmd.Reply(nil, err)
 		}
@@ -240,7 +240,7 @@ func (m *Manager) GetConfig() ([]proto.AgentConfig, []error) {
 	return configs, nil
 }
 
-func ValidateConfig(config *qan.QanConfig) error {
+func ValidateConfig(config *qan.Config) error {
 	if config.CollectFrom == "" {
 		// Before perf schema, CollectFrom didn't exist, so existing default QAN configs
 		// don't have it.  To be backwards-compatible, no CollectFrom == slowlog.
@@ -274,7 +274,7 @@ func ValidateConfig(config *qan.QanConfig) error {
 // Implementation
 /////////////////////////////////////////////////////////////////////////////
 
-func (m *Manager) startAnalyzer(config qan.QanConfig) error {
+func (m *Manager) startAnalyzer(config qan.Config) error {
 	/*
 		XXX Assume caller has locked m.mux.
 	*/

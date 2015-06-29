@@ -53,7 +53,7 @@ func (s *ReportTestSuite) TestResult001(t *C) {
 		StartOffset: 0,
 		EndOffset:   1000,
 	}
-	config := protoV2Qan.QanConfig{
+	config := protoV2Qan.Config{
 		UUID:        "1",
 		ReportLimit: 10,
 	}
@@ -90,7 +90,7 @@ func (s *ReportTestSuite) TestResult001(t *C) {
 }
 
 func (s *ReportTestSuite) TestResult014(t *C) {
-	config := protoV2Qan.QanConfig{
+	config := protoV2Qan.Config{
 		UUID:           "1",
 		CollectFrom:    "slowlog",
 		Interval:       60,

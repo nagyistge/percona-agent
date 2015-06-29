@@ -60,7 +60,7 @@ func NewRealAnalyzerFactory(
 }
 
 func (f *RealAnalyzerFactory) Make(
-	config protoV2Qan.QanConfig,
+	config protoV2Qan.Config,
 	name string,
 	mysqlConn mysql.Connector,
 	restartChan <-chan bool,

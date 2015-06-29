@@ -274,7 +274,7 @@ func (s *AgentTestSuite) TestStatusAfterConnFail(t *C) {
 
 func (s *AgentTestSuite) TestStartStopService(t *C) {
 	// To start a service, first we make a config for the service:
-	qanConfig := &qan.QanConfig{
+	qanConfig := &qan.Config{
 		Interval:          60,         // seconds
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
@@ -380,7 +380,7 @@ func (s *AgentTestSuite) TestStartStopService(t *C) {
 func (s *AgentTestSuite) TestStartServiceSlow(t *C) {
 	// This test is like TestStartService but simulates a slow starting service.
 
-	qanConfig := &qan.QanConfig{
+	qanConfig := &qan.Config{
 		Interval:          60,         // seconds
 		MaxSlowLogSize:    1073741824, // 1 GiB
 		RemoveOldSlowLogs: true,
